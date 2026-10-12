@@ -52,6 +52,20 @@ const EnvSchema = z.object({
   MINIO_REGION: z.string().optional(),
   MINIO_PUBLIC_BASE_URL: optionalUrl,
   AVATAR_MAX_BYTES: z.coerce.number().int().min(1).max(20 * 1024 * 1024).default(5 * 1024 * 1024),
+  INTEGRATION_SECRET_KEY: z.string().min(32),
+  MTEAM_ALLOWED_HOSTS: z.string().default('api.m-team.cc,api.m-team.io').transform((value, context) => {
+    const hosts = value.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean);
+    if (hosts.length === 0 || hosts.some((host) => !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/.test(host))) {
+      context.addIssue({ code: 'custom', message: 'must be a comma-separated hostname allowlist' });
+      return z.NEVER;
+    }
+    return [...new Set(hosts)];
+  }),
+  MTEAM_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
+  MTEAM_RESOURCE_CHECK_TTL_SECONDS: z.coerce.number().int().min(60).max(604_800).default(86_400),
+  MTEAM_RESOURCE_RETRY_DELAY_SECONDS: z.coerce.number().int().min(10).max(86_400).default(300),
+  MTEAM_RESOURCE_CHECK_LEASE_SECONDS: z.coerce.number().int().min(30).max(3_600).default(120),
+  MTEAM_SEARCH_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(60_000).default(2_500),
   ...trendingFields,
 });
 

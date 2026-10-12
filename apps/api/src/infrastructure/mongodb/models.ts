@@ -8,6 +8,9 @@ import { createUserMovieStateModel } from './user-movie-state.schema.js';
 import { createUserModel } from './user.schema.js';
 import { createPersonModel } from './person.schema.js';
 import { createMovieCreditModel } from './movie-credit.schema.js';
+import { createIntegrationConfigModel } from './integration-config.schema.js';
+import { createMovieResourceCheckModel } from './movie-resource-check.schema.js';
+import { createMovieResourceCheckTaskModel } from './movie-resource-check-task.schema.js';
 
 export function createModels(connection: Connection) {
   return {
@@ -20,6 +23,9 @@ export function createModels(connection: Connection) {
     syncJobs: createSyncJobModel(connection),
     people: createPersonModel(connection),
     movieCredits: createMovieCreditModel(connection),
+    integrationConfigs: createIntegrationConfigModel(connection),
+    movieResourceChecks: createMovieResourceCheckModel(connection),
+    movieResourceCheckTasks: createMovieResourceCheckTaskModel(connection),
   };
 }
 

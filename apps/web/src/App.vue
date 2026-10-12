@@ -7,6 +7,7 @@ import MyMovies from './features/movies/MyMovies.vue';
 import MovieDetail from './features/movies/MovieDetail.vue';
 import { useI18n } from './i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
+import MTeamSettings from './features/integrations/MTeamSettings.vue';
 
 const { apiBaseUrl } = loadWebConfig();
 const { locale, setLocale, t } = useI18n();
@@ -486,31 +487,25 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
           <p>{{ t('account.settingsDescription') }}</p>
         </div>
         <form class="settings-form" novalidate @submit.prevent="saveProfile">
-          <section class="settings-card" aria-labelledby="avatar-section-title">
-            <div class="settings-card-heading">
-              <div>
-                <h2 id="avatar-section-title">{{ t('profile.avatarSection') }}</h2>
-                <p>{{ t('profile.avatarSectionDescription') }}</p>
-              </div>
-              <div class="avatar large">
-                <img v-if="avatarSource" :src="avatarSource" :alt="t('a11y.currentAvatar', { name: profileName || user.displayName })" />
-                <span v-else>{{ profileName.slice(0, 1).toUpperCase() || '?' }}</span>
-              </div>
-            </div>
-            <div class="avatar-actions">
-              <label class="upload-button">
-                {{ t('profile.avatarChoose') }}
-                <input class="file-input" type="file" accept="image/jpeg,image/png,image/webp" :aria-label="t('a11y.chooseAvatar')" @change="chooseAvatar" />
-              </label>
-              <button v-if="avatarSource || user.avatarUrl" class="text-button danger" type="button" @click="removeAvatar">{{ t('profile.avatarRemove') }}</button>
-              <small>{{ t('profile.avatarHint') }}</small>
-            </div>
-          </section>
-          <section class="settings-card" aria-labelledby="profile-section-title">
-            <div class="settings-card-heading compact">
+          <section class="settings-card profile-settings-card" aria-labelledby="profile-section-title">
+            <div class="settings-card-heading profile-card-heading">
               <div>
                 <h2 id="profile-section-title">{{ t('profile.basicSection') }}</h2>
                 <p>{{ t('profile.basicSectionDescription') }}</p>
+              </div>
+              <div class="profile-avatar-editor">
+                <div class="avatar large">
+                  <img v-if="avatarSource" :src="avatarSource" :alt="t('a11y.currentAvatar', { name: profileName || user.displayName })" />
+                  <span v-else>{{ profileName.slice(0, 1).toUpperCase() || '?' }}</span>
+                </div>
+                <div class="avatar-actions profile-avatar-actions">
+                  <label class="upload-button">
+                    {{ t('profile.avatarChoose') }}
+                    <input class="file-input" type="file" accept="image/jpeg,image/png,image/webp" :aria-label="t('a11y.chooseAvatar')" @change="chooseAvatar" />
+                  </label>
+                  <button v-if="avatarSource || user.avatarUrl" class="text-button danger" type="button" @click="removeAvatar">{{ t('profile.avatarRemove') }}</button>
+                  <small>{{ t('profile.avatarHint') }}</small>
+                </div>
               </div>
             </div>
             <div class="settings-fields">
@@ -531,20 +526,35 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
                 <small v-if="profileNameError" id="profile-display-name-error" class="field-error">{{ profileNameError }}</small>
               </label>
               <div class="readonly-field">
-                <span>{{ t('profile.emailLabel') }}</span>
+                <div class="readonly-field-heading">
+                  <span>{{ t('profile.emailLabel') }}</span>
+                  <small>{{ t('profile.emailReadonlyHint') }}</small>
+                </div>
                 <strong>{{ user.email }}</strong>
-                <small>{{ t('profile.emailReadonlyHint') }}</small>
+              </div>
+            </div>
+            <div class="settings-card-footer">
+              <div class="settings-feedback">
+                <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
+                <p v-if="successMessage" class="success settings-message" role="status" aria-live="polite">{{ successMessage }}</p>
+              </div>
+              <div class="settings-actions">
+                <button class="primary" type="submit" :disabled="submitting || !profileDirty">
+                  {{ submitting ? t('profile.saving') : t('profile.save') }}
+                </button>
               </div>
             </div>
           </section>
-          <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
-          <p v-if="successMessage" class="success settings-message" role="status" aria-live="polite">{{ successMessage }}</p>
-          <div class="settings-actions">
-            <button class="primary" type="submit" :disabled="submitting || !profileDirty">
-              {{ submitting ? t('profile.saving') : t('profile.save') }}
-            </button>
-          </div>
         </form>
+        <section class="settings-section" aria-labelledby="integrations-section-title">
+          <div class="settings-section-heading">
+            <h2 id="integrations-section-title">{{ t('integrations.sectionTitle') }}</h2>
+            <p>{{ t('integrations.sectionDescription') }}</p>
+          </div>
+          <div class="settings-form">
+            <MTeamSettings />
+          </div>
+        </section>
       </template>
     </section>
 

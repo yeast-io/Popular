@@ -6,3 +6,4 @@ export * from './common/pagination.schema.js';
 export * from './movie_statuses/movie-status.schema.js';
 export * from './movies/movie.schema.js';
 export * from './users/user.schema.js';
+export * from './integrations/integration.schema.js';

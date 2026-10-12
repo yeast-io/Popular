@@ -5,8 +5,13 @@ import type { UserMovieStateDocument } from './user-movie-state.schema.js';
 export class MongoMovieStatusStore implements MovieStatusStore {
   constructor(private readonly states: Model<UserMovieStateDocument>) {}
 
-  async set(ownerId: string, tmdbId: number, status: MovieStatusRecord['status']): Promise<void> {
-    await this.states.updateOne({ ownerId, tmdbId }, { $set: { status } }, { upsert: true }).exec();
+  async set(ownerId: string, tmdbId: number, status: MovieStatusRecord['status']): Promise<MovieStatusRecord['status'] | null> {
+    const previous = await this.states.findOneAndUpdate(
+      { ownerId, tmdbId },
+      { $set: { status } },
+      { upsert: true, returnDocument: 'before' },
+    ).lean().exec();
+    return previous ? previous.status as MovieStatusRecord['status'] : null;
   }
 
   async delete(ownerId: string, tmdbId: number): Promise<void> {

@@ -49,6 +49,7 @@ export interface MovieCatalogStore {
   readMovieDetail(tmdbId: number, locale: Locale): Promise<MovieDetailRecord | null>;
   publishSearch(query: string, record: TrendingPageRecord, locale: Locale): Promise<void>;
   readSearch(query: string, page: number, locale: Locale): Promise<TrendingPageRecord | null>;
+  readMovieIdentity?(tmdbId: number, locale: Locale): Promise<{ title: string; imdbId?: string } | null>;
 }
 
 export interface MovieStatusRecord {
@@ -58,7 +59,7 @@ export interface MovieStatusRecord {
 }
 
 export interface MovieStatusStore {
-  set(ownerId: string, tmdbId: number, status: MovieStatusRecord['status']): Promise<void>;
+  set(ownerId: string, tmdbId: number, status: MovieStatusRecord['status']): Promise<MovieStatusRecord['status'] | null>;
   delete(ownerId: string, tmdbId: number): Promise<void>;
   readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieStatusRecord[]>;
   list(ownerId: string, status: MovieStatusRecord['status'] | undefined, page: number, pageSize: number): Promise<{ items: MovieStatusRecord[]; total: number }>;

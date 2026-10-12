@@ -11,6 +11,7 @@ export const errorCodes = [
   'SERVICE_UNAVAILABLE',
   'TRENDING_NOT_SYNCED',
   'TRENDING_SYNC_IN_PROGRESS',
+  'INTEGRATION_VALIDATION_FAILED',
 ] as const;
 
 export const ErrorCodeSchema = Type.Union(errorCodes.map((code) => Type.Literal(code)));

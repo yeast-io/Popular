@@ -40,3 +40,43 @@ test('movie localizations, people, and credits have stable identity indexes', ()
   ));
   void connection.destroy();
 });
+
+test('integration configurations are unique per owner and provider and hide secrets by default', () => {
+  const connection = mongoose.createConnection();
+  const models = createModels(connection);
+  assert.ok(models.integrationConfigs.schema.indexes().some(([fields, options]) =>
+    fields.ownerId === 1 && fields.provider === 1 && options.unique === true,
+  ));
+  assert.equal(models.integrationConfigs.schema.path('encryptedApiKey').options.select, false);
+  void connection.destroy();
+});
+
+test('movie resource checks use the complete task identity as their unique key', () => {
+  const connection = mongoose.createConnection();
+  const models = createModels(connection);
+  assert.ok(models.movieResourceChecks.schema.indexes().some(([fields, options]) =>
+    fields.ownerId === 1 && fields.tmdbId === 1 && fields.provider === 1 && options.unique === true,
+  ));
+  assert.deepEqual(
+    Object.keys(models.movieResourceChecks.schema.paths).sort(),
+    [
+      '_id',
+      'availability',
+      'checkedAt',
+      'createdAt',
+      'expiresAt',
+      'lastAttemptAt',
+      'lastAttemptStatus',
+      'lastErrorCode',
+      'matchedBy',
+      'ownerId',
+      'provider',
+      'tmdbId',
+      'updatedAt',
+    ],
+  );
+  assert.ok(models.movieResourceCheckTasks.schema.indexes().some(([fields, options]) =>
+    fields.ownerId === 1 && fields.tmdbId === 1 && fields.provider === 1 && options.unique === true,
+  ));
+  void connection.destroy();
+});

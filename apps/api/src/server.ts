@@ -16,6 +16,12 @@ import { MovieService } from './modules/movies/movie.service.js';
 import { TrendingSyncService } from './modules/movies/trending-sync.service.js';
 import { MongoMovieStatusStore } from './infrastructure/mongodb/user-movie-state.store.js';
 import { MovieStatusService } from './modules/movie-statuses/movie-status.service.js';
+import { MongoIntegrationConfigStore } from './infrastructure/mongodb/integration-config.store.js';
+import { MTeamClient } from './infrastructure/mteam/client.js';
+import { IntegrationService } from './modules/integrations/integration.service.js';
+import { SecretCrypto } from './modules/integrations/secret-crypto.js';
+import { MongoMovieResourceCheckStore } from './infrastructure/mongodb/movie-resource-check.store.js';
+import { MovieResourceCheckService } from './modules/integrations/movie-resource-check.service.js';
 
 const config = loadConfig();
 const loggers = createLoggers(config.LOG_LEVEL);
@@ -46,13 +52,44 @@ try {
     },
   );
   const movieStatusStore = new MongoMovieStatusStore(models.userMovieStates);
+  const integrationConfigStore = new MongoIntegrationConfigStore(models.integrationConfigs);
+  const mteam = new MTeamClient(config.MTEAM_REQUEST_TIMEOUT_MS);
+  const secrets = new SecretCrypto(config.INTEGRATION_SECRET_KEY);
+  const movieResourceChecks = new MovieResourceCheckService(
+    new MongoMovieResourceCheckStore(models.movieResourceChecks, models.movieResourceCheckTasks),
+    integrationConfigStore,
+    secrets,
+    mteam,
+    trendingStore,
+    tmdb,
+    config.TMDB_LANGUAGE,
+    {
+      resultTtlMs: config.MTEAM_RESOURCE_CHECK_TTL_SECONDS * 1_000,
+      retryDelayMs: config.MTEAM_RESOURCE_RETRY_DELAY_SECONDS * 1_000,
+      leaseMs: config.MTEAM_RESOURCE_CHECK_LEASE_SECONDS * 1_000,
+      minimumIntervalMs: config.MTEAM_SEARCH_MIN_INTERVAL_MS,
+    },
+    {
+      info: (bindings, message) => loggers.app.info(bindings, message),
+      error: (bindings, message) => loggers.error.error(bindings, message),
+    },
+  );
   const movieService = new MovieService(
     trendingStore, trendingSync, tmdb, trendingStore, movieStatusStore,
   );
-  const movieStatusService = new MovieStatusService(movieStatusStore, trendingStore, config.TMDB_LANGUAGE);
+  const movieStatusService = new MovieStatusService(
+    movieStatusStore, trendingStore, config.TMDB_LANGUAGE, movieResourceChecks,
+  );
+  const integrationService = new IntegrationService(
+    authService,
+    integrationConfigStore,
+    mteam,
+    secrets,
+    new Set(config.MTEAM_ALLOWED_HOSTS),
+  );
 
   const app = await buildApp({
-    config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService,
+    config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
   });
   app.addHook('onClose', async () => closeInfrastructure(infrastructure));
 

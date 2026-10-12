@@ -17,7 +17,9 @@ const catalog = {
 const store = {
   set: async (_ownerId: string, tmdbId: number, status: MovieStatusRecord['status']) => {
     const existing = rows.find((row) => row.tmdbId === tmdbId);
+    const previous = existing?.status ?? null;
     if (existing) existing.status = status; else rows.push({ tmdbId, status, updatedAt: new Date() });
+    return previous;
   },
   delete: async (_ownerId: string, tmdbId: number) => { const index = rows.findIndex((row) => row.tmdbId === tmdbId); if (index >= 0) rows.splice(index, 1); },
   readForMovies: async () => rows,
@@ -59,4 +61,31 @@ test('My Movies requests localized movie records without changing saved states',
   assert.equal(result.locale, 'en-US');
   assert.equal(result.items[0]?.title, 'Movie Seven');
   assert.equal(result.items[0]?.userStatus, 'interested');
+});
+
+test('transitioning to interested schedules a forced background check after saving', async () => {
+  rows.length = 0;
+  const calls: Array<{ ownerId: string; tmdbId: number; force: boolean }> = [];
+  const service = new MovieStatusService(store, catalog, 'zh-CN', {
+    schedule: (ownerId, tmdbId, options) => calls.push({ ownerId, tmdbId, force: options?.force === true }),
+  });
+
+  await service.set('owner-a', 7, 'interested');
+  await service.set('owner-a', 7, 'interested');
+
+  assert.deepEqual(calls, [{ ownerId: 'owner-a', tmdbId: 7, force: true }]);
+});
+
+test('listing interested movies schedules checks without awaiting remote work', async () => {
+  rows.length = 0;
+  rows.push({ tmdbId: 7, status: 'interested', updatedAt: new Date() });
+  const calls: number[] = [];
+  const service = new MovieStatusService(store, catalog, 'zh-CN', {
+    schedule: (_ownerId, tmdbId) => { calls.push(tmdbId); },
+  });
+
+  const result = await service.list('owner-a', 'interested', 1, 20);
+
+  assert.equal(result.items.length, 1);
+  assert.deepEqual(calls, [7]);
 });

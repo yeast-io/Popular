@@ -14,6 +14,8 @@ import { registerMovieRoutes } from './modules/movies/movie.routes.js';
 import type { MovieService } from './modules/movies/movie.service.js';
 import { registerMovieStatusRoutes } from './modules/movie-statuses/movie-status.routes.js';
 import type { MovieStatusService } from './modules/movie-statuses/movie-status.service.js';
+import { registerIntegrationRoutes } from './modules/integrations/integration.routes.js';
+import type { IntegrationService } from './modules/integrations/integration.service.js';
 
 export interface BuildAppOptions {
   config: AppConfig;
@@ -22,9 +24,10 @@ export interface BuildAppOptions {
   userService?: UserService;
   movieService?: MovieService;
   movieStatusService?: MovieStatusService;
+  integrationService?: IntegrationService;
 }
 
-export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
@@ -40,6 +43,7 @@ export async function buildApp({ config, healthDependencies, authService, userSe
     if (userService) registerUserRoutes(api, userService, config);
     if (movieService) registerMovieRoutes(api, movieService, authService, config);
     if (movieStatusService && authService) registerMovieStatusRoutes(api, movieStatusService, authService, config);
+    if (integrationService) registerIntegrationRoutes(api, integrationService, config);
   }, { prefix: '/api/v1' });
 
   return app;

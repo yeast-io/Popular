@@ -98,6 +98,17 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     return (await this.movies.exists({ tmdbId })) !== null;
   }
 
+  async readMovieIdentity(tmdbId: number, locale: Locale): Promise<{ title: string; imdbId?: string } | null> {
+    const [movie, localization] = await Promise.all([
+      this.movies.findOne({ tmdbId }).select({ imdbId: 1, originalTitle: 1 }).lean().exec(),
+      this.localizations.findOne({ movieTmdbId: tmdbId, locale }).select({ title: 1 }).lean().exec(),
+    ]);
+    if (!movie) return null;
+    const title = localization?.title || movie.originalTitle;
+    if (!title) return null;
+    return { title, ...(movie.imdbId ? { imdbId: movie.imdbId } : {}) };
+  }
+
   async writeMovieDetail(movie: MovieDetailRecord, syncedAt: Date, locale: Locale): Promise<void> {
     if (!this.people || !this.credits) throw new Error('Movie detail persistence is not configured');
     const allCredits = [...movie.cast, ...movie.directors];

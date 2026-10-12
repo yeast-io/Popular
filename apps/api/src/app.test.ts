@@ -15,6 +15,7 @@ const config = loadConfig({
   MINIO_SECRET_KEY: 'secret',
   MINIO_BUCKET: 'avatars',
   SESSION_TOKEN_PEPPER: 'test-session-pepper-at-least-32-characters',
+  INTEGRATION_SECRET_KEY: 'test-integration-secret-key-at-least-32-characters',
   TMDB_READ_ACCESS_TOKEN: 'test-token',
   ACCESS_LOG_ENABLED: 'false',
 });

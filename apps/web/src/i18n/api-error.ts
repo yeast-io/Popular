@@ -12,6 +12,7 @@ const errorKeys = {
   SERVICE_UNAVAILABLE: 'errors.serviceUnavailable',
   TRENDING_NOT_SYNCED: 'errors.trendingNotSynced',
   TRENDING_SYNC_IN_PROGRESS: 'errors.trendingSyncInProgress',
+  INTEGRATION_VALIDATION_FAILED: 'errors.mteamValidation',
 } as const satisfies Record<ErrorCode, TranslationKey>;
 
 export class LocalizedApiError extends Error {
