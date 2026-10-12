@@ -17,7 +17,10 @@ const movieResourceCheckSchema = new Schema({
   lastAttemptStatus: { type: String, enum: ['success', 'error'] },
   lastErrorCode: {
     type: String,
-    enum: ['authentication', 'network', 'timeout', 'invalid_response', 'remote_error', 'permission'],
+    enum: [
+      'authentication', 'permission', 'network', 'timeout', 'rate_limited',
+      'invalid_response', 'remote_error', 'internal_error',
+    ],
   },
 }, { timestamps: true, collection: 'movie_resource_checks', versionKey: false });
 

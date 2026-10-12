@@ -852,6 +852,16 @@ label small {
   color: #aaa;
   background: rgba(160, 161, 157, 0.07);
 }
+.resource-status {
+  margin: 9px 0 0;
+  color: #7fd49a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.67rem;
+  line-height: 1.45;
+}
+.resource-status.error {
+  color: #f2a900;
+}
 .filter-tabs {
   display: flex;
   gap: 8px;

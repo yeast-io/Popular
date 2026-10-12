@@ -28,6 +28,32 @@ export const MyMoviesQuerySchema = Type.Object({
   locale: Type.Optional(LocaleSchema),
 }, { additionalProperties: false });
 
+export const MovieResourceAvailabilitySchema = Type.Union([
+  Type.Literal('available'),
+  Type.Literal('unavailable'),
+  Type.Literal('unchecked'),
+  Type.Literal('unmatchable'),
+]);
+
+export const MovieResourceCheckSchema = Type.Object({
+  provider: Type.Literal('mteam'),
+  availability: MovieResourceAvailabilitySchema,
+  checkedAt: Type.Optional(Type.String({ format: 'date-time' })),
+  expiresAt: Type.Optional(Type.String({ format: 'date-time' })),
+  lastAttemptAt: Type.Optional(Type.String({ format: 'date-time' })),
+  lastAttemptStatus: Type.Optional(Type.Union([Type.Literal('success'), Type.Literal('error')])),
+  lastErrorCode: Type.Optional(Type.Union([
+    Type.Literal('authentication'),
+    Type.Literal('permission'),
+    Type.Literal('network'),
+    Type.Literal('timeout'),
+    Type.Literal('rate_limited'),
+    Type.Literal('invalid_response'),
+    Type.Literal('remote_error'),
+    Type.Literal('internal_error'),
+  ])),
+}, { additionalProperties: false });
+
 export const MyMoviesResponseSchema = Type.Object({
   items: Type.Array(Type.Object({
     tmdbId: Type.Integer({ minimum: 1 }),
@@ -38,6 +64,7 @@ export const MyMoviesResponseSchema = Type.Object({
     posterUrl: Type.Optional(Type.String({ format: 'uri' })),
     voteAverage: Type.Optional(Type.Number({ minimum: 0, maximum: 10 })),
     userStatus: TrackedMovieStatusSchema,
+    resourceCheck: Type.Optional(MovieResourceCheckSchema),
   }, { additionalProperties: false })),
   pagination: Type.Object({
     page: Type.Integer({ minimum: 1 }),
@@ -54,3 +81,5 @@ export type SetMovieStatusRequest = Static<typeof SetMovieStatusRequestSchema>;
 export type MovieStatusResponse = Static<typeof MovieStatusResponseSchema>;
 export type MyMoviesQuery = Static<typeof MyMoviesQuerySchema>;
 export type MyMoviesResponse = Static<typeof MyMoviesResponseSchema>;
+export type MovieResourceAvailability = Static<typeof MovieResourceAvailabilitySchema>;
+export type MovieResourceCheck = Static<typeof MovieResourceCheckSchema>;

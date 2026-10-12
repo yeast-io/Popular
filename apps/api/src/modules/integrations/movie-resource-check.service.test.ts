@@ -21,6 +21,8 @@ class StubCheckStore implements MovieResourceCheckStore {
   acquireCalls: Array<{ key: MovieResourceCheckKey; force: boolean }> = [];
   completed: MovieResourceCheckCompletion[] = [];
 
+  async readForMovies() { return []; }
+
   async tryAcquire(key: MovieResourceCheckKey, _attemptedAt: Date, _staleAttemptBefore: Date, _failedAttemptBefore: Date, force: boolean) {
     this.acquireCalls.push({ key, force });
     return this.acquire;
@@ -142,6 +144,18 @@ test('permission failures persist an error without inventing an availability res
   assert.deepEqual(checks.completed[0], {
     lastAttemptStatus: 'error',
     lastErrorCode: 'permission',
+  });
+});
+
+test('unexpected server failures are stored as a sanitized internal error', async () => {
+  const { checks, mteam, service } = harness();
+  mteam.error = new Error('database password must not be persisted');
+
+  await service.checkNow('owner-a', 603);
+
+  assert.deepEqual(checks.completed[0], {
+    lastAttemptStatus: 'error',
+    lastErrorCode: 'internal_error',
   });
 });
 

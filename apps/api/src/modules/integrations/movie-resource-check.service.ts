@@ -164,7 +164,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   private failureResult(
     error: unknown,
   ): Extract<MovieResourceCheckCompletion, { lastAttemptStatus: 'error' }> {
-    const lastErrorCode = error instanceof IntegrationValidationError ? error.failureType : 'network';
+    const lastErrorCode = error instanceof IntegrationValidationError ? error.failureType : 'internal_error';
     return {
       lastAttemptStatus: 'error',
       lastErrorCode,

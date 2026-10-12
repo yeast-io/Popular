@@ -2,6 +2,7 @@ import type { Model } from 'mongoose';
 import type {
   MovieResourceCheckKey,
   MovieResourceCheckCompletion,
+  MovieResourceCheckRecord,
   MovieResourceCheckStore,
 } from '../../modules/integrations/movie-resource-check.types.js';
 import type { MovieResourceCheckDocument } from './movie-resource-check.schema.js';
@@ -12,6 +13,23 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     private readonly checks: Model<MovieResourceCheckDocument>,
     private readonly tasks: Model<MovieResourceCheckTaskDocument>,
   ) {}
+
+  async readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieResourceCheckRecord[]> {
+    if (tmdbIds.length === 0) return [];
+    const rows = await this.checks.find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam' }).lean().exec();
+    return rows.map((row) => ({
+      ownerId: String(row.ownerId),
+      tmdbId: row.tmdbId,
+      provider: 'mteam',
+      availability: row.availability,
+      ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
+      ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
+      ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+      ...(row.lastAttemptAt ? { lastAttemptAt: row.lastAttemptAt } : {}),
+      ...(row.lastAttemptStatus ? { lastAttemptStatus: row.lastAttemptStatus } : {}),
+      ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+    }));
+  }
 
   async tryAcquire(
     key: MovieResourceCheckKey,
@@ -86,7 +104,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     if (!state || !state.lastAttemptAt) return true;
     if (state.expiresAt && state.expiresAt <= attemptedAt) return true;
     return state.lastAttemptStatus === 'error'
-      && ['network', 'timeout', 'remote_error'].includes(state.lastErrorCode ?? '')
+      && ['network', 'timeout', 'rate_limited', 'remote_error', 'internal_error'].includes(state.lastErrorCode ?? '')
       && state.lastAttemptAt <= failedAttemptBefore;
   }
 

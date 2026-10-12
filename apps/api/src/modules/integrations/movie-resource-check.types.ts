@@ -3,12 +3,22 @@ import type { IntegrationFailureType } from '@movie-hub/contract';
 export type MovieResourceProvider = 'mteam';
 export type MovieResourceAvailability = 'available' | 'unavailable' | 'unchecked' | 'unmatchable';
 export type MovieResourceMatchMethod = 'imdb';
-export type MovieResourceCheckErrorCode = IntegrationFailureType | 'permission';
+export type MovieResourceCheckErrorCode = IntegrationFailureType | 'permission' | 'rate_limited' | 'internal_error';
 
 export interface MovieResourceCheckKey {
   ownerId: string;
   tmdbId: number;
   provider: MovieResourceProvider;
+}
+
+export interface MovieResourceCheckRecord extends MovieResourceCheckKey {
+  availability: MovieResourceAvailability;
+  matchedBy?: MovieResourceMatchMethod;
+  checkedAt?: Date;
+  expiresAt?: Date;
+  lastAttemptAt?: Date;
+  lastAttemptStatus?: 'success' | 'error';
+  lastErrorCode?: MovieResourceCheckErrorCode;
 }
 
 type SuccessfulMovieResourceCheck = {
@@ -28,6 +38,7 @@ export type MovieResourceCheckCompletion = SuccessfulMovieResourceCheck | {
 };
 
 export interface MovieResourceCheckStore {
+  readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieResourceCheckRecord[]>;
   tryAcquire(
     key: MovieResourceCheckKey,
     attemptedAt: Date,

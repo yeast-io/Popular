@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  createPinnedLookup, isPublicAddress, parseSearchReleases, resolvePublicAddresses, verificationUrl, withAbsoluteTimeout,
+  classifyMTeamHttpFailure, createPinnedLookup, isPublicAddress, parseSearchReleases, resolvePublicAddresses,
+  verificationUrl, withAbsoluteTimeout,
 } from './client.js';
 
 test('uses the authenticated M-Team endpoint that requires no request parameters', () => {
@@ -62,4 +63,11 @@ test('rejects a search response that cannot prove visibility or seeder count', (
     code: 0,
     data: { data: [{ imdb: 'tt0133093', status: { visible: true, banned: false } }] },
   }), /invalid search response/);
+});
+
+test('classifies rate limiting separately while sanitizing other upstream server failures', () => {
+  assert.equal(classifyMTeamHttpFailure(401), 'authentication');
+  assert.equal(classifyMTeamHttpFailure(403), 'permission');
+  assert.equal(classifyMTeamHttpFailure(429), 'rate_limited');
+  assert.equal(classifyMTeamHttpFailure(500), 'remote_error');
 });

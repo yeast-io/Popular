@@ -9,7 +9,11 @@ import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier } f
 import { SecretCrypto } from './secret-crypto.js';
 
 export class IntegrationValidationError extends Error {
-  constructor(public readonly failureType: IntegrationFailureType | 'permission', message: string, options?: ErrorOptions) {
+  constructor(
+    public readonly failureType: IntegrationFailureType | 'permission' | 'rate_limited',
+    message: string,
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = 'IntegrationValidationError';
   }
@@ -43,7 +47,7 @@ export class IntegrationService {
       await this.mteam.verify(baseUrl, apiKey);
     } catch (error) {
       const failureType = error instanceof IntegrationValidationError
-        ? error.failureType === 'permission' ? 'remote_error' : error.failureType
+        ? error.failureType === 'permission' || error.failureType === 'rate_limited' ? 'remote_error' : error.failureType
         : 'network';
       await this.configs.recordFailure(ownerId, 'mteam', attemptedAt, failureType);
       throw new AppError(502, 'INTEGRATION_VALIDATION_FAILED', 'M-Team validation failed', { failureType });
@@ -73,7 +77,7 @@ export class IntegrationService {
       );
     } catch (error) {
       const failureType = error instanceof IntegrationValidationError
-        ? error.failureType === 'permission' ? 'remote_error' : error.failureType
+        ? error.failureType === 'permission' || error.failureType === 'rate_limited' ? 'remote_error' : error.failureType
         : 'network';
       await this.configs.recordFailure(ownerId, 'mteam', attemptedAt, failureType);
       throw new AppError(502, 'INTEGRATION_VALIDATION_FAILED', 'M-Team validation failed', { failureType });

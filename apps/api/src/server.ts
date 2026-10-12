@@ -55,8 +55,12 @@ try {
   const integrationConfigStore = new MongoIntegrationConfigStore(models.integrationConfigs);
   const mteam = new MTeamClient(config.MTEAM_REQUEST_TIMEOUT_MS);
   const secrets = new SecretCrypto(config.INTEGRATION_SECRET_KEY);
+  const movieResourceCheckStore = new MongoMovieResourceCheckStore(
+    models.movieResourceChecks,
+    models.movieResourceCheckTasks,
+  );
   const movieResourceChecks = new MovieResourceCheckService(
-    new MongoMovieResourceCheckStore(models.movieResourceChecks, models.movieResourceCheckTasks),
+    movieResourceCheckStore,
     integrationConfigStore,
     secrets,
     mteam,
@@ -78,7 +82,7 @@ try {
     trendingStore, trendingSync, tmdb, trendingStore, movieStatusStore,
   );
   const movieStatusService = new MovieStatusService(
-    movieStatusStore, trendingStore, config.TMDB_LANGUAGE, movieResourceChecks,
+    movieStatusStore, trendingStore, config.TMDB_LANGUAGE, movieResourceChecks, movieResourceCheckStore,
   );
   const integrationService = new IntegrationService(
     authService,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Model } from 'mongoose';
+import { Types } from 'mongoose';
 import type { MovieResourceCheckDocument } from './movie-resource-check.schema.js';
 import type { MovieResourceCheckTaskDocument } from './movie-resource-check-task.schema.js';
 import { MongoMovieResourceCheckStore } from './movie-resource-check.store.js';
@@ -9,9 +10,13 @@ const key = { ownerId: '507f1f77bcf86cd799439011', tmdbId: 603, provider: 'mteam
 const attemptedAt = new Date('2026-10-13T00:00:00.000Z');
 
 function harness(state: Partial<MovieResourceCheckDocument> | null = null) {
-  const calls: Array<{ operation: 'state' | 'task' | 'release'; filter: unknown; update?: unknown }> = [];
+  const calls: Array<{ operation: 'read' | 'state' | 'task' | 'release'; filter: unknown; update?: unknown }> = [];
   const checks = {
     findOne: () => ({ lean: () => ({ exec: async () => state }) }),
+    find(filter: unknown) {
+      calls.push({ operation: 'read', filter });
+      return { lean: () => ({ exec: async () => state ? [state] : [] }) };
+    },
     updateOne(filter: unknown, update: unknown) {
       calls.push({ operation: 'state', filter, update });
       return { exec: async () => ({}) };
@@ -33,6 +38,33 @@ function harness(state: Partial<MovieResourceCheckDocument> | null = null) {
   } as unknown as Model<MovieResourceCheckTaskDocument>;
   return { calls, store: new MongoMovieResourceCheckStore(checks, tasks) };
 }
+
+test('reads only display-safe resource check state for the requested owner and movies', async () => {
+  const checkedAt = new Date('2026-10-12T00:00:00.000Z');
+  const ownerId = new Types.ObjectId(key.ownerId);
+  const { calls, store } = harness({
+    ...key,
+    ownerId,
+    availability: 'available',
+    checkedAt,
+    lastAttemptAt: attemptedAt,
+    lastAttemptStatus: 'error',
+    lastErrorCode: 'rate_limited',
+  });
+
+  assert.deepEqual(await store.readForMovies(key.ownerId, [key.tmdbId]), [{
+    ...key,
+    availability: 'available',
+    checkedAt,
+    lastAttemptAt: attemptedAt,
+    lastAttemptStatus: 'error',
+    lastErrorCode: 'rate_limited',
+  }]);
+  assert.deepEqual(calls[0], {
+    operation: 'read',
+    filter: { ownerId: key.ownerId, tmdbId: { $in: [key.tmdbId] }, provider: 'mteam' },
+  });
+});
 
 test('acquiring a check puts checking in task state and preserves the previous resource result', async () => {
   const previousCheck = new Date('2026-10-12T00:00:00.000Z');

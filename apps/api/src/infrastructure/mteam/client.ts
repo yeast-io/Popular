@@ -172,17 +172,12 @@ function postJson(
       lookup: createPinnedLookup(address),
     };
     const req = request(url, options, (response) => {
-      if (response.statusCode === 401 || response.statusCode === 403) {
-        response.resume();
-        reject(new IntegrationValidationError(
-          response.statusCode === 401 ? 'authentication' : 'permission',
-          `M-Team returned HTTP ${response.statusCode}`,
-        ));
-        return;
-      }
       if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
         response.resume();
-        reject(new IntegrationValidationError('remote_error', `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`));
+        reject(new IntegrationValidationError(
+          classifyMTeamHttpFailure(response.statusCode),
+          `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`,
+        ));
         return;
       }
       const chunks: Buffer[] = [];
@@ -205,6 +200,15 @@ function postJson(
     });
     req.end(body ? JSON.stringify(body) : undefined);
   });
+}
+
+export function classifyMTeamHttpFailure(
+  statusCode: number | undefined,
+): IntegrationValidationError['failureType'] {
+  if (statusCode === 401) return 'authentication';
+  if (statusCode === 403) return 'permission';
+  if (statusCode === 429) return 'rate_limited';
+  return 'remote_error';
 }
 
 function isSuccessPayload(payload: unknown): boolean {

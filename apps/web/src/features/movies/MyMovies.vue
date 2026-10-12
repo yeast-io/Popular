@@ -56,6 +56,21 @@ function releaseDateLabel(releaseDate?: string): string {
 function markPosterFailed(tmdbId: number) {
   failedPosters.value = new Set(failedPosters.value).add(tmdbId);
 }
+
+function resourceStatusLabel(movie: MyMoviesResponse['items'][number]): string {
+  const check = movie.resourceCheck;
+  if (!check) return '';
+  if (check.lastAttemptStatus === 'error') {
+    if (!check.checkedAt) return t('movie.resource.checkFailed');
+    if (check.availability === 'available') return t('movie.resource.availableRefreshFailed');
+    if (check.availability === 'unavailable') return t('movie.resource.unavailableRefreshFailed');
+    return t('movie.resource.checkFailed');
+  }
+  if (check.availability === 'available') return t('movie.resource.available');
+  if (check.availability === 'unavailable') return t('movie.resource.unavailable');
+  if (check.availability === 'unmatchable') return t('movie.resource.unmatchable');
+  return t('movie.resource.pending');
+}
 </script>
 
 <template>
@@ -139,6 +154,14 @@ function markPosterFailed(tmdbId: number) {
                 <span class="sr-only">{{ t('a11y.movieStatusLabel') }}: </span>{{ statusOptions.find(([status]) => status === movie.userStatus)?.[1] }}
               </span>
             </div>
+            <p
+              v-if="movie.resourceCheck"
+              class="resource-status"
+              :class="{ error: movie.resourceCheck.lastAttemptStatus === 'error' }"
+              role="status"
+            >
+              {{ resourceStatusLabel(movie) }}
+            </p>
           </div>
         </a>
       </article>
