@@ -1,0 +1,280 @@
+import type { Locale } from '@movie-hub/contract';
+import type { Model } from 'mongoose';
+import type { MovieCreditDocument } from './movie-credit.schema.js';
+import type { MovieLocalizationDocument } from './movie-localization.schema.js';
+import type { MovieResultSetDocument } from './movie-result-set.schema.js';
+import type { MovieDocument } from './movie.schema.js';
+import type { PersonDocument } from './person.schema.js';
+import type {
+  MovieCatalogStore, MovieDetailRecord, MovieRecord, TrendingPageRecord, TrendingStore,
+} from '../../modules/movies/movie.types.js';
+
+export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
+  constructor(
+    private readonly movies: Model<MovieDocument>,
+    private readonly localizations: Model<MovieLocalizationDocument>,
+    private readonly resultSets: Model<MovieResultSetDocument>,
+    private readonly people?: Model<PersonDocument>,
+    private readonly credits?: Model<MovieCreditDocument>,
+  ) {}
+
+  async publishPage(record: TrendingPageRecord, locale: Locale): Promise<void> {
+    await this.upsertMovies(record.movies, record.fetchedAt, locale);
+    await this.resultSets.updateOne(
+      { key: trendingKey(locale, record.page) },
+      { $set: {
+        type: 'trending', params: { mediaType: 'movie', window: 'week', language: locale }, page: record.page,
+        tmdbIds: record.movies.map(({ tmdbId }) => tmdbId), totalPages: record.totalPages,
+        totalResults: record.totalResults, fetchedAt: record.fetchedAt,
+      } },
+      { upsert: true },
+    );
+  }
+
+  async publishSearch(query: string, record: TrendingPageRecord, locale: Locale): Promise<void> {
+    await this.upsertMovies(record.movies, record.fetchedAt, locale);
+    await this.resultSets.updateOne(
+      { key: searchKey(query, locale, record.page) },
+      { $set: {
+        type: 'search', params: { query, language: locale }, page: record.page,
+        tmdbIds: record.movies.map(({ tmdbId }) => tmdbId), totalPages: record.totalPages,
+        totalResults: record.totalResults, fetchedAt: record.fetchedAt,
+      } },
+      { upsert: true },
+    );
+  }
+
+  async readSearch(query: string, page: number, locale: Locale): Promise<TrendingPageRecord | null> {
+    const resultSet = await this.resultSets.findOne({ key: searchKey(query, locale, page) }).lean().exec();
+    if (!resultSet) return null;
+    return {
+      movies: await this.readMovies(resultSet.tmdbIds, locale),
+      page: resultSet.page,
+      totalPages: resultSet.totalPages,
+      totalResults: resultSet.totalResults,
+      fetchedAt: resultSet.fetchedAt,
+      expectedMovieCount: resultSet.tmdbIds.length,
+    };
+  }
+
+  async upsertMovies(records: MovieRecord[], syncedAt: Date, locale: Locale): Promise<void> {
+    if (records.length === 0) return;
+    await this.movies.bulkWrite(records.map((movie) => ({ updateOne: {
+      filter: { tmdbId: movie.tmdbId },
+      update: { $set: toBaseMovieUpdate(movie), $setOnInsert: { tmdbId: movie.tmdbId } },
+      upsert: true,
+    } })), { ordered: false });
+    await this.localizations.bulkWrite(records.map((movie) => ({ updateOne: {
+      filter: { movieTmdbId: movie.tmdbId, locale },
+      update: {
+        $set: toSummaryLocalizationUpdate(movie, syncedAt),
+        $setOnInsert: { movieTmdbId: movie.tmdbId, locale },
+      },
+      upsert: true,
+    } })), { ordered: false });
+  }
+
+  async readMovies(tmdbIds: number[], locale: Locale): Promise<MovieRecord[]> {
+    if (tmdbIds.length === 0) return [];
+    const [movies, localizations] = await Promise.all([
+      this.movies.find({ tmdbId: { $in: tmdbIds } }).lean().exec(),
+      this.localizations.find({
+        movieTmdbId: { $in: tmdbIds },
+        locale,
+      }).lean().exec(),
+    ]);
+    const movieById = new Map(movies.map((movie) => [movie.tmdbId, movie]));
+    const localizationByKey = new Map(localizations.map((row) => [`${row.movieTmdbId}:${row.locale}`, row]));
+    return tmdbIds.flatMap((tmdbId) => {
+      const movie = movieById.get(tmdbId);
+      if (!movie) return [];
+      const requested = localizationByKey.get(`${tmdbId}:${locale}`);
+      const localized = resolveLocalization(requested, movie.originalTitle ?? undefined);
+      return localized ? [fromDocuments(movie, localized)] : [];
+    });
+  }
+
+  async hasMovie(tmdbId: number): Promise<boolean> {
+    return (await this.movies.exists({ tmdbId })) !== null;
+  }
+
+  async writeMovieDetail(movie: MovieDetailRecord, syncedAt: Date, locale: Locale): Promise<void> {
+    if (!this.people || !this.credits) throw new Error('Movie detail persistence is not configured');
+    const allCredits = [...movie.cast, ...movie.directors];
+    const uniquePeople = [...new Map(allCredits.map(({ person }) => [person.tmdbId, person])).values()];
+    if (uniquePeople.length > 0) {
+      await this.people.bulkWrite(uniquePeople.map((person) => ({ updateOne: {
+        filter: { tmdbId: person.tmdbId, locale },
+        update: { $set: { ...person, locale, syncedAt } },
+        upsert: true,
+      } })), { ordered: false });
+    }
+
+    const syncVersion = crypto.randomUUID();
+    if (allCredits.length > 0) {
+      await this.credits.insertMany(allCredits.map((credit) => ({
+        movieTmdbId: movie.tmdbId, locale, personTmdbId: credit.person.tmdbId,
+        tmdbCreditId: credit.creditId, creditType: credit.type,
+        ...(credit.character ? { character: credit.character } : {}),
+        ...(credit.order !== undefined ? { castOrder: credit.order } : {}),
+        syncVersion,
+      })), { ordered: false });
+    }
+
+    await this.movies.updateOne(
+      { tmdbId: movie.tmdbId },
+      { $set: {
+        ...toBaseMovieUpdate(movie),
+        ...(movie.imdbId ? { imdbId: movie.imdbId } : {}),
+        ...(typeof movie.runtimeMinutes === 'number' ? { runtimeMinutes: movie.runtimeMinutes } : {}),
+      }, $setOnInsert: { tmdbId: movie.tmdbId } },
+      { upsert: true },
+    );
+    await this.localizations.updateOne(
+      { movieTmdbId: movie.tmdbId, locale },
+      { $set: {
+        ...toSummaryLocalizationUpdate(movie, syncedAt),
+        ...(movie.tagline ? { tagline: movie.tagline } : {}),
+        genres: movie.genres,
+        detailSyncedAt: syncedAt,
+        activeCreditVersion: syncVersion,
+      }, $setOnInsert: { movieTmdbId: movie.tmdbId, locale } },
+      { upsert: true },
+    );
+    await this.credits.deleteMany({ movieTmdbId: movie.tmdbId, locale, syncVersion: { $ne: syncVersion } });
+  }
+
+  async readMovieDetail(tmdbId: number, locale: Locale): Promise<MovieDetailRecord | null> {
+    if (!this.people || !this.credits) throw new Error('Movie detail persistence is not configured');
+    const [movie, localization] = await Promise.all([
+      this.movies.findOne({ tmdbId }).lean().exec(),
+      this.localizations.findOne({ movieTmdbId: tmdbId, locale }).lean().exec(),
+    ]);
+    if (!movie) return null;
+    const detailSource = localization?.detailSyncedAt && localization.activeCreditVersion ? localization : undefined;
+    if (!detailSource) return null;
+    const localized = resolveLocalization(localization, movie.originalTitle ?? undefined);
+    if (!localized) return null;
+
+    const credits = await this.credits.find({
+      movieTmdbId: tmdbId, locale: detailSource.locale, syncVersion: detailSource.activeCreditVersion,
+    }).sort({ creditType: 1, castOrder: 1 }).lean().exec();
+    const people = await this.people.find({
+      tmdbId: { $in: credits.map(({ personTmdbId }) => personTmdbId) }, locale: detailSource.locale,
+    }).lean().exec();
+    const peopleById = new Map(people.map((person) => [person.tmdbId, person]));
+    const mappedCredits = credits.flatMap((credit) => {
+      const person = peopleById.get(credit.personTmdbId);
+      if (!person) return [];
+      return [{
+        person: {
+          tmdbId: person.tmdbId, name: person.name,
+          ...(person.originalName ? { originalName: person.originalName } : {}),
+          ...(person.profilePath ? { profilePath: person.profilePath } : {}),
+        },
+        creditId: credit.tmdbCreditId, type: credit.creditType,
+        ...(credit.character ? { character: credit.character } : {}),
+        ...(typeof credit.castOrder === 'number' ? { order: credit.castOrder } : {}),
+      }];
+    });
+    return {
+      ...fromDocuments(movie, localized),
+      localizationLocale: detailSource.locale as Locale,
+      ...(movie.imdbId ? { imdbId: movie.imdbId } : {}),
+      ...(localized.tagline ? { tagline: localized.tagline } : {}),
+      ...(typeof movie.runtimeMinutes === 'number' ? { runtimeMinutes: movie.runtimeMinutes } : {}),
+      genres: localized.genres ?? [],
+      cast: mappedCredits.filter((credit) => credit.type === 'cast'),
+      directors: mappedCredits.filter((credit) => credit.type === 'director'),
+      detailSyncedAt: detailSource.detailSyncedAt!,
+    };
+  }
+
+  async readPage(page: number, locale: Locale): Promise<TrendingPageRecord | null> {
+    const resultSet = await this.resultSets.findOne({ key: trendingKey(locale, page) }).lean().exec();
+    if (!resultSet) return null;
+    const movies = await this.readMovies(resultSet.tmdbIds, locale);
+    return {
+      movies, page: resultSet.page, totalPages: resultSet.totalPages,
+      totalResults: resultSet.totalResults, fetchedAt: resultSet.fetchedAt,
+    };
+  }
+}
+
+export function trendingKey(locale: Locale, page: number): string {
+  return `trending:movie:week:${locale}:${page}`;
+}
+
+export function searchKey(query: string, locale: Locale, page: number): string {
+  const normalized = query.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase(locale);
+  return `search:movie:${locale}:${encodeURIComponent(normalized)}:${page}`;
+}
+
+function toBaseMovieUpdate(movie: MovieRecord): Record<string, unknown> {
+  const update: Record<string, unknown> = { genreIds: movie.genreIds };
+  for (const key of ['originalTitle', 'releaseDate', 'voteAverage', 'voteCount'] as const) {
+    if (movie[key] !== undefined) update[key] = key === 'releaseDate' ? new Date(movie[key]) : movie[key];
+  }
+  return update;
+}
+
+function toSummaryLocalizationUpdate(movie: MovieRecord, syncedAt: Date): Record<string, unknown> {
+  const update: Record<string, unknown> = { title: movie.title, summarySyncedAt: syncedAt };
+  for (const key of ['overview', 'posterPath', 'backdropPath'] as const) {
+    if (movie[key] !== undefined) update[key] = movie[key];
+  }
+  return update;
+}
+
+interface ResolvedLocalization {
+  locale: string;
+  title: string;
+  overview?: string;
+  tagline?: string;
+  posterPath?: string;
+  backdropPath?: string;
+  genres?: Array<{ tmdbId: number; name: string }>;
+  summarySyncedAt: Date;
+  detailSyncedAt?: Date;
+}
+
+function resolveLocalization(
+  localization: MovieLocalizationDocument | null | undefined,
+  originalTitle: string | undefined,
+): ResolvedLocalization | undefined {
+  const title = localization?.title || originalTitle;
+  if (!title || !localization) return undefined;
+  return {
+    locale: localization.locale,
+    title,
+    summarySyncedAt: localization.summarySyncedAt,
+    ...(localization.overview ? { overview: localization.overview } : {}),
+    ...(localization.tagline ? { tagline: localization.tagline } : {}),
+    ...(localization.posterPath ? { posterPath: localization.posterPath } : {}),
+    ...(localization.backdropPath ? { backdropPath: localization.backdropPath } : {}),
+    ...(localization.genres
+      ? { genres: localization.genres.map((genre) => ({ tmdbId: genre.tmdbId, name: genre.name })) }
+      : {}),
+    ...(localization.detailSyncedAt ? { detailSyncedAt: localization.detailSyncedAt } : {}),
+  };
+}
+
+function fromDocuments(movie: MovieDocument, localized: ResolvedLocalization): MovieRecord {
+  const result: MovieRecord = {
+    tmdbId: movie.tmdbId,
+    title: localized.title,
+    genreIds: movie.genreIds ?? [],
+    summarySyncedAt: localized.summarySyncedAt,
+    localizationLocale: localized.locale as Locale,
+  };
+  if (movie.originalTitle) result.originalTitle = movie.originalTitle;
+  if (localized.overview) result.overview = localized.overview;
+  const posterPath = localized.posterPath ?? movie.posterPath;
+  const backdropPath = localized.backdropPath ?? movie.backdropPath;
+  if (posterPath) result.posterPath = posterPath;
+  if (backdropPath) result.backdropPath = backdropPath;
+  if (movie.releaseDate instanceof Date) result.releaseDate = movie.releaseDate.toISOString().slice(0, 10);
+  if (typeof movie.voteAverage === 'number') result.voteAverage = movie.voteAverage;
+  if (typeof movie.voteCount === 'number') result.voteCount = movie.voteCount;
+  return result;
+}

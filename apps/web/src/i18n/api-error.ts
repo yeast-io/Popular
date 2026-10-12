@@ -1,0 +1,46 @@
+import type { ApiError, ErrorCode } from '@movie-hub/contract';
+import { t, type TranslationKey } from './index';
+
+const errorKeys = {
+  BAD_REQUEST: 'errors.badRequest',
+  UNAUTHORIZED: 'errors.unauthorized',
+  FORBIDDEN: 'errors.forbidden',
+  NOT_FOUND: 'errors.notFound',
+  CONFLICT: 'errors.conflict',
+  VALIDATION_ERROR: 'errors.validation',
+  INTERNAL_ERROR: 'errors.unknown',
+  SERVICE_UNAVAILABLE: 'errors.serviceUnavailable',
+  TRENDING_NOT_SYNCED: 'errors.trendingNotSynced',
+  TRENDING_SYNC_IN_PROGRESS: 'errors.trendingSyncInProgress',
+} as const satisfies Record<ErrorCode, TranslationKey>;
+
+export class LocalizedApiError extends Error {
+  constructor(readonly translationKey: TranslationKey) {
+    super(translationKey);
+    this.name = 'LocalizedApiError';
+  }
+}
+
+export function apiErrorKey(value: unknown, fallback: TranslationKey = 'errors.unknown'): TranslationKey {
+  const code = (value as Partial<ApiError> | null)?.error?.code;
+  return code && code in errorKeys ? errorKeys[code as ErrorCode] : fallback;
+}
+
+export function localizedApiError(value: unknown, fallback?: TranslationKey): LocalizedApiError {
+  return new LocalizedApiError(apiErrorKey(value, fallback));
+}
+
+export async function localizedResponseError(
+  response: Response,
+  fallback: TranslationKey = 'errors.requestFailed',
+): Promise<LocalizedApiError> {
+  try {
+    return localizedApiError(await response.json(), fallback);
+  } catch {
+    return new LocalizedApiError(fallback);
+  }
+}
+
+export function localizedErrorMessage(error: unknown, fallback: TranslationKey): string {
+  return t(error instanceof LocalizedApiError ? error.translationKey : fallback);
+}

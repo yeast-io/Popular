@@ -1,0 +1,116 @@
+import { z } from 'zod';
+import { supportedLocales } from '@movie-hub/contract';
+
+const booleanString = z
+  .enum(['true', 'false'])
+  .transform((value) => value === 'true');
+
+const optionalUrl = z.string().url().optional().or(z.literal('').transform(() => undefined));
+
+const mongodbFields = {
+  MONGODB_URI: z.string().url().refine((url) => ['mongodb:', 'mongodb+srv:'].includes(new URL(url).protocol), 'must use mongodb:// or mongodb+srv://'),
+  MONGODB_DB_NAME: z.string().regex(/^[^/\\. "*$<>:|?]+$/, 'contains characters MongoDB does not allow').default('movie_hub'),
+};
+
+const redisFields = {
+  REDIS_URL: z.string().url().refine((url) => ['redis:', 'rediss:'].includes(new URL(url).protocol), 'must use redis:// or rediss://'),
+  REDIS_KEY_PREFIX: z.string().min(1).default('movie_hub:'),
+};
+
+const trendingFields = {
+  TMDB_READ_ACCESS_TOKEN: z.string().min(1),
+  TMDB_LANGUAGE: z.enum(supportedLocales).default('zh-CN'),
+  TMDB_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
+  TRENDING_SYNC_PAGES: z.coerce.number().int().min(1).max(50).default(3),
+  TRENDING_SYNC_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(3),
+  TRENDING_SYNC_LOCK_TTL_SECONDS: z.coerce.number().int().min(30).max(3_600).default(300),
+};
+
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  HOST: z.string().min(1).default('0.0.0.0'),
+  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+  WEB_ORIGIN: z.string().url(),
+  TRUST_PROXY: z.string().default('false'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  ACCESS_LOG_ENABLED: booleanString.default(true),
+  ...mongodbFields,
+  ...redisFields,
+  SESSION_COOKIE_NAME: z.string().regex(/^[A-Za-z0-9_-]+$/).default('movie_hub_session'),
+  SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(31_536_000).default(2_592_000),
+  SESSION_TOKEN_PEPPER: z.string().min(32),
+  SESSION_COOKIE_SECURE: booleanString.default(false),
+  MINIO_ENDPOINT: z.string().min(1).refine(
+    (value) => !value.includes('://') && !value.includes('/'),
+    'must be a hostname or IP address without protocol, port, or path',
+  ),
+  MINIO_PORT: z.coerce.number().int().min(1).max(65_535).default(9000),
+  MINIO_USE_SSL: booleanString.default(true),
+  MINIO_ACCESS_KEY: z.string().min(1),
+  MINIO_SECRET_KEY: z.string().min(1),
+  MINIO_BUCKET: z.string().min(3),
+  MINIO_REGION: z.string().optional(),
+  MINIO_PUBLIC_BASE_URL: optionalUrl,
+  AVATAR_MAX_BYTES: z.coerce.number().int().min(1).max(20 * 1024 * 1024).default(5 * 1024 * 1024),
+  ...trendingFields,
+});
+
+const TrendingEnvSchema = z.object({
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  ...mongodbFields,
+  ...redisFields,
+  ...trendingFields,
+});
+
+const MigrationEnvSchema = z.object(mongodbFields);
+
+export type AppConfig = z.infer<typeof EnvSchema> & { trustProxy: false | string[] };
+export type TrendingConfig = z.infer<typeof TrendingEnvSchema>;
+export type MigrationConfig = z.infer<typeof MigrationEnvSchema>;
+
+export class InvalidEnvironmentError extends Error {
+  constructor(public readonly issues: string[]) {
+    super(`Invalid environment:\n${issues.map((issue) => `- ${issue}`).join('\n')}`);
+    this.name = 'InvalidEnvironmentError';
+  }
+}
+
+export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
+  const parsed = EnvSchema.safeParse(environment);
+  if (!parsed.success) {
+    throw new InvalidEnvironmentError(
+      parsed.error.issues.map((issue) => `${issue.path.join('.') || 'environment'}: ${issue.message}`),
+    );
+  }
+
+  const trustProxy = parseTrustProxy(parsed.data.TRUST_PROXY);
+  return { ...parsed.data, trustProxy };
+}
+
+export function loadTrendingConfig(environment: NodeJS.ProcessEnv = process.env): TrendingConfig {
+  const parsed = TrendingEnvSchema.safeParse(environment);
+  if (!parsed.success) {
+    throw new InvalidEnvironmentError(
+      parsed.error.issues.map((issue) => `${issue.path.join('.') || 'environment'}: ${issue.message}`),
+    );
+  }
+  return parsed.data;
+}
+
+export function loadMigrationConfig(environment: NodeJS.ProcessEnv = process.env): MigrationConfig {
+  const parsed = MigrationEnvSchema.safeParse(environment);
+  if (!parsed.success) {
+    throw new InvalidEnvironmentError(
+      parsed.error.issues.map((issue) => `${issue.path.join('.') || 'environment'}: ${issue.message}`),
+    );
+  }
+  return parsed.data;
+}
+
+function parseTrustProxy(value: string): false | string[] {
+  if (value === 'true') throw new InvalidEnvironmentError(['TRUST_PROXY: true trusts every proxy; provide explicit trusted addresses or CIDR ranges']);
+  if (value === 'false') return false;
+  const entries = value.split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (entries.length === 0) throw new InvalidEnvironmentError(['TRUST_PROXY: must be true, false, or a comma-separated allowlist']);
+  return entries;
+}

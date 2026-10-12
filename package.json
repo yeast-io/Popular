@@ -1,0 +1,11 @@
+{
+  "name": "movie-hub",
+  "private": true,
+  "packageManager": "pnpm@12.10.1",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --parallel --filter @movie-hub/api --filter @movie-hub/web dev",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm --filter @movie-hub/contract build && pnpm -r typecheck"
+  }
+}

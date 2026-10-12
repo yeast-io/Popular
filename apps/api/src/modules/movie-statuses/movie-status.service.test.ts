@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import type { MovieRecord, MovieStatusRecord } from '../movies/movie.types.js';
+import { MovieStatusService } from './movie-status.service.js';
+
+const movies = new Map<number, MovieRecord>([[7, { tmdbId: 7, title: '七号电影', posterPath: '/seven.jpg', genreIds: [] }]]);
+const rows: MovieStatusRecord[] = [];
+const catalog = {
+  upsertMovies: async () => undefined,
+  readMovies: async (ids: number[]) => ids.flatMap((id) => { const movie = movies.get(id); return movie ? [movie] : []; }),
+  hasMovie: async (id: number) => movies.has(id),
+  writeMovieDetail: async () => undefined,
+  readMovieDetail: async () => null,
+  publishSearch: async () => undefined,
+  readSearch: async () => null,
+};
+const store = {
+  set: async (_ownerId: string, tmdbId: number, status: MovieStatusRecord['status']) => {
+    const existing = rows.find((row) => row.tmdbId === tmdbId);
+    if (existing) existing.status = status; else rows.push({ tmdbId, status, updatedAt: new Date() });
+  },
+  delete: async (_ownerId: string, tmdbId: number) => { const index = rows.findIndex((row) => row.tmdbId === tmdbId); if (index >= 0) rows.splice(index, 1); },
+  readForMovies: async () => rows,
+  list: async () => ({ items: rows, total: rows.length }),
+};
+
+test('set, list, and clear form a complete personal movie-state flow', async () => {
+  rows.length = 0;
+  const service = new MovieStatusService(store, catalog, 'zh-CN');
+  assert.deepEqual(await service.set('owner-a', 7, 'watched'), { tmdbId: 7, status: 'watched' });
+  const list = await service.list('owner-a', 'watched', 1, 20);
+  assert.equal(list.items[0]?.title, '七号电影');
+  assert.equal(list.items[0]?.userStatus, 'watched');
+  assert.equal(list.locale, 'zh-CN');
+  assert.deepEqual(await service.clear('owner-a', 7), { tmdbId: 7, status: 'unwatched' });
+});
+
+test('cannot create a dangling status for an unknown movie', async () => {
+  const service = new MovieStatusService(store, catalog, 'zh-CN');
+  await assert.rejects(() => service.set('owner-a', 999, 'interested'), { statusCode: 404, code: 'NOT_FOUND' });
+});
+
+test('My Movies requests localized movie records without changing saved states', async () => {
+  let requestedLocale = '';
+  const localizedCatalog = {
+    ...catalog,
+    readMovies: async (_ids: number[], locale: string) => {
+      requestedLocale = locale;
+      return [{ tmdbId: 7, title: 'Movie Seven', genreIds: [], localizationLocale: 'en-US' as const }];
+    },
+  };
+  rows.length = 0;
+  rows.push({ tmdbId: 7, status: 'interested', updatedAt: new Date() });
+
+  const result = await new MovieStatusService(store, localizedCatalog, 'zh-CN')
+    .list('owner-a', 'interested', 1, 20, 'en-US');
+
+  assert.equal(requestedLocale, 'en-US');
+  assert.equal(result.locale, 'en-US');
+  assert.equal(result.items[0]?.title, 'Movie Seven');
+  assert.equal(result.items[0]?.userStatus, 'interested');
+});

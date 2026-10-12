@@ -1,0 +1,21 @@
+import { supportedLocales, type Locale } from '@movie-hub/contract';
+
+export { supportedLocales };
+export type SupportedLocale = Locale;
+
+export const defaultLocale: SupportedLocale = 'zh-CN';
+export const localeStorageKey = 'movie-hub.locale';
+
+export function resolveSupportedLocale(value: string | null | undefined): SupportedLocale | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'zh' || normalized.startsWith('zh-')) return 'zh-CN';
+  if (normalized === 'en' || normalized.startsWith('en-')) return 'en-US';
+  return null;
+}
+
+export function selectInitialLocale(savedLocale: string | null, browserLocales: readonly string[]): SupportedLocale {
+  return resolveSupportedLocale(savedLocale)
+    ?? browserLocales.map(resolveSupportedLocale).find((locale): locale is SupportedLocale => locale !== null)
+    ?? defaultLocale;
+}

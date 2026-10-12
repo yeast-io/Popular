@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+.pnpm-store/
+.cache/
+.vite/
+pnpm-lock.yaml
+.env
+.env.*
+*.pem
+*.key
+*.p8
+*.p12
+data/private/
+.agents/
+.codex/
+shared/
