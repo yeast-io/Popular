@@ -443,8 +443,8 @@ function syncedAtLabel(syncedAt: string): string {
                 <h3>{{ release.title }}</h3>
                 <dl class="release-facts">
                   <div v-if="release.sizeBytes !== undefined"><dt>{{ t('movie.releases.size') }}</dt><dd>{{ formatBytes(release.sizeBytes) }}</dd></div>
-                  <div><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(release.seeders) }}</dd></div>
-                  <div v-if="release.leechers !== undefined"><dt>{{ t('movie.releases.leechers') }}</dt><dd>{{ formatNumber(release.leechers) }}</dd></div>
+                  <div class="release-fact-highlight"><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(release.seeders) }}</dd></div>
+                  <div v-if="release.leechers !== undefined" class="release-fact-highlight"><dt>{{ t('movie.releases.leechers') }}</dt><dd>{{ formatNumber(release.leechers) }}</dd></div>
                   <div v-if="release.publishedAt"><dt>{{ t('movie.releases.publishedAt') }}</dt><dd>{{ release.publishedAt }}</dd></div>
                   <div v-if="release.discount"><dt>{{ t('movie.releases.discount') }}</dt><dd>{{ discountLabel(release.discount) }}</dd></div>
                   <div v-if="release.resolution"><dt>{{ t('movie.releases.resolution') }}</dt><dd>{{ release.resolution }}</dd></div>

@@ -996,6 +996,19 @@ label small {
   font-size: 0.7rem;
   overflow-wrap: anywhere;
 }
+.release-fact-highlight {
+  border-left: 2px solid var(--amber);
+  padding: 6px 8px;
+  background: rgba(242, 169, 0, 0.08);
+}
+.release-fact-highlight dt {
+  color: #d6af61;
+}
+.release-fact-highlight dd {
+  color: #f7f4ed;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
 .release-tags {
   display: flex;
   flex-wrap: wrap;

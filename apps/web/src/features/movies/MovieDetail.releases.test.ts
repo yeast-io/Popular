@@ -53,6 +53,12 @@ describe('Movie Detail live releases', () => {
     expect(dialog?.textContent).toContain('免费');
     expect(dialog?.textContent).toContain('DTS-HD MA');
     expect(dialog?.textContent).toContain('中字');
+    const highlightedFacts = [...dialog!.querySelectorAll<HTMLElement>('.release-fact-highlight')];
+    expect(highlightedFacts).toHaveLength(2);
+    expect(highlightedFacts.map((fact) => fact.textContent)).toEqual([
+      expect.stringContaining('做种人数12'),
+      expect.stringContaining('下载人数4'),
+    ]);
     expect(document.body.style.overflow).toBe('hidden');
 
     dialog?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
