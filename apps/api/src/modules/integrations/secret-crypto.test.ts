@@ -19,7 +19,10 @@ test('encrypts the same API key to different authenticated ciphertexts', () => {
 test('rejects ciphertext moved to another owner, tampered ciphertext, or the wrong key', () => {
   const crypto = new SecretCrypto(key);
   const encrypted = crypto.encrypt('top-secret', ownerContext);
-  const tampered = `${encrypted.slice(0, -1)}${encrypted.endsWith('A') ? 'B' : 'A'}`;
+  const parts = encrypted.split('.');
+  const tag = parts[2] ?? '';
+  parts[2] = `${tag.startsWith('A') ? 'B' : 'A'}${tag.slice(1)}`;
+  const tampered = parts.join('.');
 
   assert.throws(() => crypto.decrypt(encrypted, `${ownerContext}-other`));
   assert.throws(() => crypto.decrypt(tampered, ownerContext));

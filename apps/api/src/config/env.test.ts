@@ -21,10 +21,12 @@ test('loads and normalizes valid environment', () => {
   assert.equal(config.PORT, 3000);
   assert.equal(config.INTEGRATION_SECRET_KEY, valid.INTEGRATION_SECRET_KEY);
   assert.deepEqual(config.MTEAM_ALLOWED_HOSTS, ['api.m-team.cc', 'api.m-team.io']);
-  assert.equal(config.MTEAM_RESOURCE_CHECK_TTL_SECONDS, 86_400);
-  assert.equal(config.MTEAM_RESOURCE_RETRY_DELAY_SECONDS, 300);
+  assert.equal(config.MTEAM_RESOURCE_AVAILABLE_TTL_SECONDS, 86_400);
+  assert.equal(config.MTEAM_RESOURCE_UNAVAILABLE_TTL_SECONDS, 21_600);
+  assert.equal(config.MTEAM_RESOURCE_RETRY_DELAY_SECONDS, 900);
   assert.equal(config.MTEAM_RESOURCE_CHECK_LEASE_SECONDS, 120);
   assert.equal(config.MTEAM_SEARCH_MIN_INTERVAL_MS, 2_500);
+  assert.equal(config.MTEAM_RELEASE_CACHE_TTL_SECONDS, 120);
 });
 
 test('requires a dedicated integration encryption key', () => {

@@ -249,15 +249,72 @@ export function parseSearchReleases(payload: unknown): MTeamRelease[] {
 
 function parseRelease(value: unknown): MTeamRelease {
   if (!value || typeof value !== 'object') throw invalidSearchResponse();
-  const row = value as { imdb?: unknown; status?: unknown };
+  const row = value as Record<string, unknown>;
   if (!row.status || typeof row.status !== 'object') throw invalidSearchResponse();
-  const status = row.status as { visible?: unknown; banned?: unknown; seeders?: unknown; status?: unknown };
+  const status = row.status as Record<string, unknown>;
   const seeders = parseNonNegativeInteger(status.seeders);
+  const leechers = parseNonNegativeInteger(status.leechers);
   const visible = parseBoolean(status.visible);
   const banned = parseBoolean(status.banned);
   if (seeders === null || visible === null || banned === null) throw invalidSearchResponse();
   const imdbId = typeof row.imdb === 'string' ? extractImdbId(row.imdb) : undefined;
-  return { ...(imdbId ? { imdbId } : {}), visible, banned, seeders };
+  const sizeBytes = parseNonNegativeInteger(row.size);
+  const id = readString(row.id);
+  const title = readString(row.name);
+  const publishedAt = readString(row.createdDate);
+  const discount = readString(status.discount);
+  const resolution = describeCode(readString(row.standard), resolutionNames);
+  const medium = describeCode(readString(row.medium), mediumNames);
+  const videoCodec = describeCode(readString(row.videoCodec), videoCodecNames);
+  const audioCodec = describeCode(readString(row.audioCodec), audioCodecNames);
+  if (!id || !title) throw invalidSearchResponse();
+  const tags = Array.isArray(row.labelsNew)
+    ? row.labelsNew.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0).map((tag) => tag.trim())
+    : undefined;
+  return {
+    id,
+    title,
+    ...(imdbId ? { imdbId } : {}),
+    visible,
+    banned,
+    seeders,
+    ...(leechers !== null ? { leechers } : {}),
+    ...(sizeBytes !== null ? { sizeBytes } : {}),
+    ...(publishedAt ? { publishedAt } : {}),
+    ...(discount ? { discount } : {}),
+    ...(resolution ? { resolution } : {}),
+    ...(medium ? { medium } : {}),
+    ...(videoCodec ? { videoCodec } : {}),
+    ...(audioCodec ? { audioCodec } : {}),
+    ...(tags ? { tags } : {}),
+  };
+}
+
+const resolutionNames: Readonly<Record<string, string>> = {
+  '1': '1080p', '2': '1080i', '3': '720p', '5': 'SD', '6': '4K', '7': '8K',
+};
+const mediumNames: Readonly<Record<string, string>> = {
+  '1': 'Blu-ray', '2': 'HD DVD', '3': 'Remux', '4': 'Blu-ray', '5': 'HDTV',
+  '6': 'DVD', '7': 'Encode', '8': 'CD', '10': 'WEB',
+};
+const videoCodecNames: Readonly<Record<string, string>> = {
+  '1': 'H.264', '2': 'VC-1', '3': 'Xvid', '4': 'MPEG-2', '16': 'H.265',
+  '19': 'AV1', '21': 'VP8/9', '22': 'AVS',
+};
+const audioCodecNames: Readonly<Record<string, string>> = {
+  '1': 'FLAC', '2': 'APE', '3': 'DTS', '4': 'MP2/3', '5': 'OGG', '6': 'AAC',
+  '7': 'Other', '8': 'AC3', '9': 'TrueHD', '10': 'TrueHD Atmos', '11': 'DTS-HD MA',
+  '12': 'E-AC3', '13': 'E-AC3 Atmos', '14': 'LPCM/PCM', '15': 'WAV',
+};
+
+function readString(value: unknown): string | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const result = String(value).trim();
+  return result || undefined;
+}
+
+function describeCode(value: string | undefined, names: Readonly<Record<string, string>>): string | undefined {
+  return value ? names[value] ?? value : undefined;
 }
 
 function parseNonNegativeInteger(value: unknown): number | null {

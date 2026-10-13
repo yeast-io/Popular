@@ -16,6 +16,7 @@ import { registerMovieStatusRoutes } from './modules/movie-statuses/movie-status
 import type { MovieStatusService } from './modules/movie-statuses/movie-status.service.js';
 import { registerIntegrationRoutes } from './modules/integrations/integration.routes.js';
 import type { IntegrationService } from './modules/integrations/integration.service.js';
+import type { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
 
 export interface BuildAppOptions {
   config: AppConfig;
@@ -25,9 +26,10 @@ export interface BuildAppOptions {
   movieService?: MovieService;
   movieStatusService?: MovieStatusService;
   integrationService?: IntegrationService;
+  movieResourceSyncService?: MovieResourceSyncService;
 }
 
-export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
@@ -42,7 +44,7 @@ export async function buildApp({ config, healthDependencies, authService, userSe
     if (authService) registerAuthRoutes(api, authService, config);
     if (userService) registerUserRoutes(api, userService, config);
     if (movieService) registerMovieRoutes(api, movieService, authService, config);
-    if (movieStatusService && authService) registerMovieStatusRoutes(api, movieStatusService, authService, config);
+    if (movieStatusService && authService) registerMovieStatusRoutes(api, movieStatusService, authService, config, movieResourceSyncService);
     if (integrationService) registerIntegrationRoutes(api, integrationService, config);
   }, { prefix: '/api/v1' });
 

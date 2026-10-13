@@ -22,6 +22,7 @@ const movieResourceCheckSchema = new Schema({
       'invalid_response', 'remote_error', 'internal_error',
     ],
   },
+  identityFingerprint: { type: String },
 }, { timestamps: true, collection: 'movie_resource_checks', versionKey: false });
 
 movieResourceCheckSchema.index({ ownerId: 1, tmdbId: 1, provider: 1 }, { unique: true });

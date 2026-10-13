@@ -22,6 +22,8 @@ import { IntegrationService } from './modules/integrations/integration.service.j
 import { SecretCrypto } from './modules/integrations/secret-crypto.js';
 import { MongoMovieResourceCheckStore } from './infrastructure/mongodb/movie-resource-check.store.js';
 import { MovieResourceCheckService } from './modules/integrations/movie-resource-check.service.js';
+import { MongoMovieResourceSyncBatchStore } from './infrastructure/mongodb/movie-resource-sync-batch.store.js';
+import { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
 
 const config = loadConfig();
 const loggers = createLoggers(config.LOG_LEVEL);
@@ -68,10 +70,12 @@ try {
     tmdb,
     config.TMDB_LANGUAGE,
     {
-      resultTtlMs: config.MTEAM_RESOURCE_CHECK_TTL_SECONDS * 1_000,
+      availableTtlMs: config.MTEAM_RESOURCE_AVAILABLE_TTL_SECONDS * 1_000,
+      unavailableTtlMs: config.MTEAM_RESOURCE_UNAVAILABLE_TTL_SECONDS * 1_000,
       retryDelayMs: config.MTEAM_RESOURCE_RETRY_DELAY_SECONDS * 1_000,
       leaseMs: config.MTEAM_RESOURCE_CHECK_LEASE_SECONDS * 1_000,
       minimumIntervalMs: config.MTEAM_SEARCH_MIN_INTERVAL_MS,
+      releaseListTtlMs: config.MTEAM_RELEASE_CACHE_TTL_SECONDS * 1_000,
     },
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
@@ -84,6 +88,18 @@ try {
   const movieStatusService = new MovieStatusService(
     movieStatusStore, trendingStore, config.TMDB_LANGUAGE, movieResourceChecks, movieResourceCheckStore,
   );
+  const movieResourceSyncService = new MovieResourceSyncService(
+    movieStatusStore,
+    movieResourceCheckStore,
+    movieResourceChecks,
+    new MongoMovieResourceSyncBatchStore(models.movieResourceSyncBatches),
+    config.MTEAM_RESOURCE_RETRY_DELAY_SECONDS * 1_000,
+    config.MTEAM_RESOURCE_CHECK_LEASE_SECONDS * 1_000,
+    {
+      info: (bindings, message) => loggers.app.info(bindings, message),
+      error: (bindings, message) => loggers.error.error(bindings, message),
+    },
+  );
   const integrationService = new IntegrationService(
     authService,
     integrationConfigStore,
@@ -94,7 +110,9 @@ try {
 
   const app = await buildApp({
     config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
+    movieResourceSyncService,
   });
+  await movieResourceSyncService.resumePending();
   app.addHook('onClose', async () => closeInfrastructure(infrastructure));
 
   const shutdown = async (signal: NodeJS.Signals) => {

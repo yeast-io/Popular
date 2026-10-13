@@ -65,6 +65,7 @@ test('movie resource checks use the complete task identity as their unique key',
       'checkedAt',
       'createdAt',
       'expiresAt',
+      'identityFingerprint',
       'lastAttemptAt',
       'lastAttemptStatus',
       'lastErrorCode',
@@ -77,6 +78,16 @@ test('movie resource checks use the complete task identity as their unique key',
   );
   assert.ok(models.movieResourceCheckTasks.schema.indexes().some(([fields, options]) =>
     fields.ownerId === 1 && fields.tmdbId === 1 && fields.provider === 1 && options.unique === true,
+  ));
+  void connection.destroy();
+});
+
+test('movie resource sync permits only one active batch per owner', () => {
+  const connection = mongoose.createConnection();
+  const models = createModels(connection);
+  assert.ok(models.movieResourceSyncBatches.schema.indexes().some(([fields, options]) =>
+    fields.ownerId === 1 && fields.active === 1 && options.unique === true
+      && options.partialFilterExpression?.active === true,
   ));
   void connection.destroy();
 });

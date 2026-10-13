@@ -51,11 +51,21 @@ test('parses the M-Team movie search fields used by availability checks', () => 
     code: 0,
     data: {
       data: [{
+        id: '991',
+        name: 'The.Matrix.1999.2160p.UHD.BluRay',
+        size: '2147483648',
+        createdDate: '2026-10-13 08:30:00',
         imdb: 'https://www.imdb.com/title/tt0133093/',
-        status: { visible: true, banned: false, seeders: '12' },
+        standard: '6', medium: '3', videoCodec: '16', audioCodec: '11', labelsNew: ['中字', 'DoVi'],
+        status: { visible: true, banned: false, seeders: '12', leechers: '4', discount: 'FREE' },
       }],
     },
-  }), [{ imdbId: 'tt0133093', visible: true, banned: false, seeders: 12 }]);
+  }), [{
+    id: '991', title: 'The.Matrix.1999.2160p.UHD.BluRay', imdbId: 'tt0133093',
+    visible: true, banned: false, seeders: 12, leechers: 4, sizeBytes: 2147483648,
+    publishedAt: '2026-10-13 08:30:00', discount: 'FREE', resolution: '4K', medium: 'Remux',
+    videoCodec: 'H.265', audioCodec: 'DTS-HD MA', tags: ['中字', 'DoVi'],
+  }]);
 });
 
 test('rejects a search response that cannot prove visibility or seeder count', () => {

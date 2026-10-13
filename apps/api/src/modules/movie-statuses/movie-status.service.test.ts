@@ -88,6 +88,11 @@ test('listing interested movies schedules checks without awaiting remote work', 
 
   assert.equal(result.items.length, 1);
   assert.deepEqual(calls, [7]);
+  assert.deepEqual(result.items[0]?.resourceCheck, {
+    provider: 'mteam',
+    checking: false,
+    availability: 'unchecked',
+  });
 });
 
 test('My Movies exposes a failed refresh while preserving the last successful availability', async () => {
@@ -96,10 +101,12 @@ test('My Movies exposes a failed refresh while preserving the last successful av
   const checkedAt = new Date('2026-10-12T00:00:00.000Z');
   const attemptedAt = new Date('2026-10-13T00:00:00.000Z');
   const service = new MovieStatusService(store, catalog, 'zh-CN', undefined, {
+    readOne: async () => null,
     readForMovies: async () => [{
       ownerId: 'owner-a',
       tmdbId: 7,
       provider: 'mteam',
+      checking: false,
       availability: 'available',
       checkedAt,
       expiresAt: new Date('2026-10-12T12:00:00.000Z'),
@@ -113,11 +120,12 @@ test('My Movies exposes a failed refresh while preserving the last successful av
 
   assert.deepEqual(result.items[0]?.resourceCheck, {
     provider: 'mteam',
+    checking: false,
     availability: 'available',
     checkedAt: checkedAt.toISOString(),
     expiresAt: '2026-10-12T12:00:00.000Z',
     lastAttemptAt: attemptedAt.toISOString(),
     lastAttemptStatus: 'error',
-    lastErrorCode: 'timeout',
+    lastErrorCode: 'MTEAM_TIMEOUT',
   });
 });

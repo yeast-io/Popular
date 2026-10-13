@@ -86,7 +86,7 @@ test('failed replacement preserves the existing URL and secret while recording f
 
   await assert.rejects(
     service.saveMTeam('session', { baseUrl: 'https://api.m-team.io', apiKey: 'bad-key' }),
-    (error: unknown) => error instanceof AppError && error.code === 'INTEGRATION_VALIDATION_FAILED',
+    (error: unknown) => error instanceof AppError && error.code === 'MTEAM_AUTH_FAILED',
   );
   assert.equal(store.record?.baseUrl, 'https://api.m-team.cc');
   assert.equal(store.record?.encryptedApiKey, encryptedBefore);

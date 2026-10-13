@@ -11,7 +11,10 @@ import type { IntegrationService } from './integration.service.js';
 
 export function registerIntegrationRoutes(app: FastifyInstance, service: IntegrationService, config: AppConfig): void {
   const token = (request: FastifyRequest) => readSessionToken(request, config.SESSION_COOKIE_NAME);
-  const errorResponses = { 400: ApiErrorSchema, 401: ApiErrorSchema, 404: ApiErrorSchema, 502: ApiErrorSchema };
+  const errorResponses = {
+    400: ApiErrorSchema, 401: ApiErrorSchema, 404: ApiErrorSchema, 429: ApiErrorSchema,
+    502: ApiErrorSchema, 503: ApiErrorSchema, 504: ApiErrorSchema,
+  };
 
   app.get('/me/integrations/mteam', {
     schema: { response: { 200: MTeamConfigurationSchema, 401: ApiErrorSchema } },

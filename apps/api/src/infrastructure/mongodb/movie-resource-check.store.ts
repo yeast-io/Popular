@@ -16,11 +16,16 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
 
   async readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieResourceCheckRecord[]> {
     if (tmdbIds.length === 0) return [];
-    const rows = await this.checks.find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam' }).lean().exec();
-    return rows.map((row) => ({
+    const [rows, tasks] = await Promise.all([
+      this.checks.find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam' }).lean().exec(),
+      this.tasks.find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam', leaseExpiresAt: { $gt: new Date() } }).lean().exec(),
+    ]);
+    const checkingIds = new Set(tasks.map((task) => task.tmdbId));
+    const results: MovieResourceCheckRecord[] = rows.map((row) => ({
       ownerId: String(row.ownerId),
       tmdbId: row.tmdbId,
       provider: 'mteam',
+      checking: checkingIds.has(row.tmdbId),
       availability: row.availability,
       ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
       ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
@@ -28,7 +33,36 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
       ...(row.lastAttemptAt ? { lastAttemptAt: row.lastAttemptAt } : {}),
       ...(row.lastAttemptStatus ? { lastAttemptStatus: row.lastAttemptStatus } : {}),
       ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+      ...(row.identityFingerprint ? { identityFingerprint: row.identityFingerprint } : {}),
     }));
+    const resultIds = new Set(results.map((result) => result.tmdbId));
+    for (const task of tasks) {
+      if (!resultIds.has(task.tmdbId)) {
+        results.push({ ownerId, tmdbId: task.tmdbId, provider: 'mteam', checking: true, availability: 'unchecked' });
+      }
+    }
+    return results;
+  }
+
+  async readOne(key: MovieResourceCheckKey): Promise<MovieResourceCheckRecord | null> {
+    const [row, task] = await Promise.all([
+      this.checks.findOne(key).lean().exec(),
+      this.tasks.findOne({ ...key, leaseExpiresAt: { $gt: new Date() } }).lean().exec(),
+    ]);
+    if (!row) {
+      return task ? { ...key, availability: 'unchecked', checking: true } : null;
+    }
+    return {
+      ownerId: String(row.ownerId), tmdbId: row.tmdbId, provider: 'mteam', checking: Boolean(task),
+      availability: row.availability,
+      ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
+      ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
+      ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+      ...(row.lastAttemptAt ? { lastAttemptAt: row.lastAttemptAt } : {}),
+      ...(row.lastAttemptStatus ? { lastAttemptStatus: row.lastAttemptStatus } : {}),
+      ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+      ...(row.identityFingerprint ? { identityFingerprint: row.identityFingerprint } : {}),
+    };
   }
 
   async tryAcquire(
@@ -36,9 +70,13 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     attemptedAt: Date,
     leaseExpiresAt: Date,
     failedAttemptBefore: Date,
+    identityFingerprint: string | undefined,
+    credentialsVerifiedAt: Date | undefined,
     force: boolean,
   ): Promise<boolean> {
-    if (!force && !await this.isDue(key, attemptedAt, failedAttemptBefore)) return false;
+    if (!await this.isDue(
+      key, attemptedAt, failedAttemptBefore, identityFingerprint, credentialsVerifiedAt, force,
+    )) return false;
 
     try {
       const acquired = await this.tasks.findOneAndUpdate(
@@ -82,30 +120,88 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     const task = await this.tasks.findOneAndDelete({ ...key, attemptedAt }).lean().exec();
     if (!task) return;
     await this.checks.updateOne(
-      key,
+      {
+        ...key,
+        $or: [
+          { lastAttemptAt: { $exists: false } },
+          { lastAttemptAt: { $lte: attemptedAt } },
+        ],
+      },
       result.lastAttemptStatus === 'success'
         ? {
             $set: { ...result, lastAttemptAt: attemptedAt },
             $unset: {
               lastErrorCode: 1,
               ...(!('matchedBy' in result) ? { matchedBy: 1 } : {}),
+              ...(!('expiresAt' in result) ? { expiresAt: 1 } : {}),
+              ...(!('identityFingerprint' in result) ? { identityFingerprint: 1 } : {}),
             },
           }
         : { $set: { ...result, lastAttemptAt: attemptedAt } },
     ).exec();
   }
 
+  async recordAttempt(
+    key: MovieResourceCheckKey,
+    attemptedAt: Date,
+    result: MovieResourceCheckCompletion,
+  ): Promise<void> {
+    const update = result.lastAttemptStatus === 'success'
+      ? {
+          $set: { ...result, lastAttemptAt: attemptedAt },
+          $unset: {
+            lastErrorCode: 1,
+            ...(!('matchedBy' in result) ? { matchedBy: 1 } : {}),
+            ...(!('expiresAt' in result) ? { expiresAt: 1 } : {}),
+            ...(!('identityFingerprint' in result) ? { identityFingerprint: 1 } : {}),
+          },
+          $setOnInsert: { ...key },
+        }
+      : {
+          $set: { ...result, lastAttemptAt: attemptedAt },
+          $setOnInsert: { ...key, availability: 'unchecked' as const },
+        };
+    try {
+      await this.checks.updateOne(
+        {
+          ...key,
+          $or: [
+            { lastAttemptAt: { $exists: false } },
+            { lastAttemptAt: { $lte: attemptedAt } },
+          ],
+        },
+        update,
+        { upsert: true },
+      ).exec();
+    } catch (error) {
+      // A newer result can win the unique-key race between app instances.
+      if (!isDuplicateKeyError(error)) throw error;
+    }
+  }
+
   private async isDue(
     key: MovieResourceCheckKey,
     attemptedAt: Date,
     failedAttemptBefore: Date,
+    identityFingerprint: string | undefined,
+    credentialsVerifiedAt: Date | undefined,
+    force: boolean,
   ): Promise<boolean> {
     const state = await this.checks.findOne(key).lean().exec();
     if (!state || !state.lastAttemptAt) return true;
+    if (state.lastAttemptStatus === 'error' && state.lastErrorCode === 'authentication') {
+      return Boolean(credentialsVerifiedAt && credentialsVerifiedAt > state.lastAttemptAt);
+    }
+    if (force) return true;
+    if (state.lastAttemptStatus === 'error') {
+      return ['network', 'timeout', 'rate_limited', 'remote_error', 'internal_error'].includes(state.lastErrorCode ?? '')
+        && state.lastAttemptAt <= failedAttemptBefore;
+    }
+    if (state.availability === 'unmatchable') {
+      return Boolean(identityFingerprint && state.identityFingerprint !== identityFingerprint);
+    }
     if (state.expiresAt && state.expiresAt <= attemptedAt) return true;
-    return state.lastAttemptStatus === 'error'
-      && ['network', 'timeout', 'rate_limited', 'remote_error', 'internal_error'].includes(state.lastErrorCode ?? '')
-      && state.lastAttemptAt <= failedAttemptBefore;
+    return false;
   }
 
   private async releaseTask(key: MovieResourceCheckKey, attemptedAt: Date): Promise<void> {

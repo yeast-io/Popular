@@ -13,6 +13,17 @@ const errorKeys = {
   TRENDING_NOT_SYNCED: 'errors.trendingNotSynced',
   TRENDING_SYNC_IN_PROGRESS: 'errors.trendingSyncInProgress',
   INTEGRATION_VALIDATION_FAILED: 'errors.mteamValidation',
+  MTEAM_NOT_CONFIGURED: 'errors.mteamNotConfigured',
+  MTEAM_INVALID_URL: 'errors.mteamInvalidUrl',
+  MTEAM_AUTH_FAILED: 'errors.mteamAuthFailed',
+  MTEAM_UNREACHABLE: 'errors.mteamUnreachable',
+  MTEAM_TIMEOUT: 'errors.mteamTimeout',
+  MTEAM_RATE_LIMITED: 'errors.mteamRateLimited',
+  MTEAM_UNEXPECTED_RESPONSE: 'errors.mteamUnexpectedResponse',
+  MTEAM_MOVIE_UNMATCHABLE: 'errors.mteamMovieUnmatchable',
+  MTEAM_CHECK_IN_PROGRESS: 'errors.mteamCheckInProgress',
+  MTEAM_SYNC_IN_PROGRESS: 'errors.mteamSyncInProgress',
+  MTEAM_SYNC_NOT_FOUND: 'errors.mteamSyncNotFound',
 } as const satisfies Record<ErrorCode, TranslationKey>;
 
 export class LocalizedApiError extends Error {

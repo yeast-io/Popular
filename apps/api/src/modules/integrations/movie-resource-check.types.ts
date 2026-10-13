@@ -1,4 +1,4 @@
-import type { IntegrationFailureType } from '@movie-hub/contract';
+import type { IntegrationFailureType, MovieRelease } from '@movie-hub/contract';
 
 export type MovieResourceProvider = 'mteam';
 export type MovieResourceAvailability = 'available' | 'unavailable' | 'unchecked' | 'unmatchable';
@@ -12,6 +12,7 @@ export interface MovieResourceCheckKey {
 }
 
 export interface MovieResourceCheckRecord extends MovieResourceCheckKey {
+  checking: boolean;
   availability: MovieResourceAvailability;
   matchedBy?: MovieResourceMatchMethod;
   checkedAt?: Date;
@@ -19,17 +20,20 @@ export interface MovieResourceCheckRecord extends MovieResourceCheckKey {
   lastAttemptAt?: Date;
   lastAttemptStatus?: 'success' | 'error';
   lastErrorCode?: MovieResourceCheckErrorCode;
+  identityFingerprint?: string;
 }
 
-type SuccessfulMovieResourceCheck = {
+type SuccessfulMovieResourceCheck = ({
   lastAttemptStatus: 'success';
   checkedAt: Date;
   expiresAt: Date;
-} & ({
   availability: 'available' | 'unavailable';
   matchedBy: MovieResourceMatchMethod;
 } | {
+  lastAttemptStatus: 'success';
+  checkedAt: Date;
   availability: 'unmatchable';
+  identityFingerprint: string;
 });
 
 export type MovieResourceCheckCompletion = SuccessfulMovieResourceCheck | {
@@ -39,11 +43,14 @@ export type MovieResourceCheckCompletion = SuccessfulMovieResourceCheck | {
 
 export interface MovieResourceCheckStore {
   readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieResourceCheckRecord[]>;
+  readOne(key: MovieResourceCheckKey): Promise<MovieResourceCheckRecord | null>;
   tryAcquire(
     key: MovieResourceCheckKey,
     attemptedAt: Date,
     leaseExpiresAt: Date,
     failedAttemptBefore: Date,
+    identityFingerprint: string | undefined,
+    credentialsVerifiedAt: Date | undefined,
     force: boolean,
   ): Promise<boolean>;
   complete(
@@ -51,14 +58,32 @@ export interface MovieResourceCheckStore {
     attemptedAt: Date,
     result: MovieResourceCheckCompletion,
   ): Promise<void>;
+  recordAttempt(
+    key: MovieResourceCheckKey,
+    attemptedAt: Date,
+    result: MovieResourceCheckCompletion,
+  ): Promise<void>;
 }
 
 export interface MTeamRelease {
+  id?: string;
+  title?: string;
   imdbId?: string;
   visible: boolean;
   banned: boolean;
   seeders: number;
+  leechers?: number;
+  sizeBytes?: number;
+  publishedAt?: string;
+  discount?: string;
+  resolution?: string;
+  medium?: string;
+  videoCodec?: string;
+  audioCodec?: string;
+  tags?: string[];
 }
+
+export type ActiveMovieRelease = MovieRelease;
 
 export interface MTeamResourceSearcher {
   searchMovies(

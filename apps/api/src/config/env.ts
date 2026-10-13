@@ -62,10 +62,12 @@ const EnvSchema = z.object({
     return [...new Set(hosts)];
   }),
   MTEAM_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
-  MTEAM_RESOURCE_CHECK_TTL_SECONDS: z.coerce.number().int().min(60).max(604_800).default(86_400),
-  MTEAM_RESOURCE_RETRY_DELAY_SECONDS: z.coerce.number().int().min(10).max(86_400).default(300),
+  MTEAM_RESOURCE_AVAILABLE_TTL_SECONDS: z.coerce.number().int().min(60).max(604_800).default(86_400),
+  MTEAM_RESOURCE_UNAVAILABLE_TTL_SECONDS: z.coerce.number().int().min(60).max(604_800).default(21_600),
+  MTEAM_RESOURCE_RETRY_DELAY_SECONDS: z.coerce.number().int().min(10).max(86_400).default(900),
   MTEAM_RESOURCE_CHECK_LEASE_SECONDS: z.coerce.number().int().min(30).max(3_600).default(120),
   MTEAM_SEARCH_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(60_000).default(2_500),
+  MTEAM_RELEASE_CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(300).default(120),
   ...trendingFields,
 });
 

@@ -61,7 +61,8 @@ test('M-Team routes require authentication and never serialize the API key', asy
     headers: { cookie: `${config.SESSION_COOKIE_NAME}=valid-session` },
     payload: { baseUrl: 'https://api.m-team.cc/', apiKey: 'must-not-leak-on-failure' },
   });
-  assert.equal(failed.statusCode, 502);
+  assert.equal(failed.statusCode, 503);
+  assert.equal(failed.json().error.code, 'MTEAM_UNREACHABLE');
   assert.equal(failed.body.includes('must-not-leak-on-failure'), false);
 
   await app.close();

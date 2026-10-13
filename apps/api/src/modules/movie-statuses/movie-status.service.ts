@@ -1,4 +1,4 @@
-import type { Locale, MyMoviesResponse, TrackedMovieStatus } from '@movie-hub/contract';
+import type { Locale, MovieReleaseListResponse, MovieResourceCheckResponse, MyMoviesResponse, TrackedMovieStatus } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieCatalogStore, MovieStatusStore } from '../movies/movie.types.js';
 import { toMovieSummary } from '../movies/movie.service.js';
@@ -6,6 +6,8 @@ import type { MovieResourceCheckStore } from '../integrations/movie-resource-che
 
 export interface MovieResourceCheckDispatcher {
   schedule(ownerId: string, tmdbId: number, options?: { force?: boolean }): void;
+  request?(ownerId: string, tmdbId: number, force?: boolean): Promise<boolean>;
+  listReleases?(ownerId: string, tmdbId: number): Promise<MovieReleaseListResponse>;
 }
 
 export class MovieStatusService {
@@ -14,7 +16,7 @@ export class MovieStatusService {
     private readonly movies: MovieCatalogStore,
     private readonly defaultLocale: Locale,
     private readonly resourceChecks?: MovieResourceCheckDispatcher,
-    private readonly resourceCheckStore?: Pick<MovieResourceCheckStore, 'readForMovies'>,
+    private readonly resourceCheckStore?: Pick<MovieResourceCheckStore, 'readForMovies' | 'readOne'>,
   ) {}
 
   async set(ownerId: string, tmdbId: number, status: TrackedMovieStatus) {
@@ -29,6 +31,26 @@ export class MovieStatusService {
   async clear(ownerId: string, tmdbId: number) {
     await this.statuses.delete(ownerId, tmdbId);
     return { tmdbId, status: 'unwatched' as const };
+  }
+
+  async resourceCheck(ownerId: string, tmdbId: number): Promise<MovieResourceCheckResponse> {
+    if (!this.resourceCheckStore) return emptyResourceCheck();
+    return toResourceCheckResponse(await this.resourceCheckStore.readOne({ ownerId, tmdbId, provider: 'mteam' }));
+  }
+
+  async recheckResource(ownerId: string, tmdbId: number): Promise<MovieResourceCheckResponse> {
+    if (!this.resourceChecks?.request || !this.resourceCheckStore) {
+      throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Movie resource checks are unavailable.');
+    }
+    await this.resourceChecks.request(ownerId, tmdbId, true);
+    return this.resourceCheck(ownerId, tmdbId);
+  }
+
+  async releases(ownerId: string, tmdbId: number): Promise<MovieReleaseListResponse> {
+    if (!this.resourceChecks?.listReleases) {
+      throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Movie release queries are unavailable.');
+    }
+    return this.resourceChecks.listReleases(ownerId, tmdbId);
   }
 
   async list(
@@ -58,21 +80,41 @@ export class MovieStatusService {
         return movieStatus ? [{
           ...toMovieSummary(movie, movieStatus),
           userStatus: movieStatus,
-          ...(resourceCheck ? {
-            resourceCheck: {
-              provider: resourceCheck.provider,
-              availability: resourceCheck.availability,
-              ...(resourceCheck.checkedAt ? { checkedAt: resourceCheck.checkedAt.toISOString() } : {}),
-              ...(resourceCheck.expiresAt ? { expiresAt: resourceCheck.expiresAt.toISOString() } : {}),
-              ...(resourceCheck.lastAttemptAt ? { lastAttemptAt: resourceCheck.lastAttemptAt.toISOString() } : {}),
-              ...(resourceCheck.lastAttemptStatus ? { lastAttemptStatus: resourceCheck.lastAttemptStatus } : {}),
-              ...(resourceCheck.lastErrorCode ? { lastErrorCode: resourceCheck.lastErrorCode } : {}),
-            },
-          } : {}),
+          ...(movieStatus === 'interested' ? { resourceCheck: toResourceCheckResponse(resourceCheck ?? null) } : {}),
         }] : [];
       }),
       pagination: { page, pageSize, total: result.total, hasMore: page * pageSize < result.total },
       locale,
     };
   }
+}
+
+function emptyResourceCheck(): MovieResourceCheckResponse {
+  return { provider: 'mteam', checking: false, availability: 'unchecked' };
+}
+
+function toResourceCheckResponse(
+  resourceCheck: Awaited<ReturnType<MovieResourceCheckStore['readOne']>>,
+): MovieResourceCheckResponse {
+  if (!resourceCheck) return emptyResourceCheck();
+  return {
+    provider: resourceCheck.provider,
+    checking: resourceCheck.checking,
+    availability: resourceCheck.availability,
+    ...(resourceCheck.checkedAt ? { checkedAt: resourceCheck.checkedAt.toISOString() } : {}),
+    ...(resourceCheck.expiresAt ? { expiresAt: resourceCheck.expiresAt.toISOString() } : {}),
+    ...(resourceCheck.lastAttemptAt ? { lastAttemptAt: resourceCheck.lastAttemptAt.toISOString() } : {}),
+    ...(resourceCheck.lastAttemptStatus ? { lastAttemptStatus: resourceCheck.lastAttemptStatus } : {}),
+    ...(resourceCheck.lastErrorCode ? { lastErrorCode: publicMTeamErrorCode(resourceCheck.lastErrorCode) } : {}),
+  };
+}
+
+function publicMTeamErrorCode(code: string) {
+  const codes = {
+    authentication: 'MTEAM_AUTH_FAILED', permission: 'MTEAM_AUTH_FAILED',
+    network: 'MTEAM_UNREACHABLE', timeout: 'MTEAM_TIMEOUT', rate_limited: 'MTEAM_RATE_LIMITED',
+    invalid_response: 'MTEAM_UNEXPECTED_RESPONSE', remote_error: 'MTEAM_UNEXPECTED_RESPONSE',
+    internal_error: 'MTEAM_UNEXPECTED_RESPONSE',
+  } as const;
+  return codes[code as keyof typeof codes] ?? 'MTEAM_UNEXPECTED_RESPONSE';
 }

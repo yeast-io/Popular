@@ -180,6 +180,7 @@ describe('localized movie page flows', () => {
     expect(wrapper.text()).toContain('Interested');
     expect(urls).toEqual([
       '/api/v1/me/movies?status=interested&page=1&pageSize=50&locale=zh-CN',
+      '/api/v1/me/integrations/mteam',
       '/api/v1/me/movies?status=interested&page=1&pageSize=50&locale=en-US',
     ]);
     wrapper.unmount();
