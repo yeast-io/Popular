@@ -1321,7 +1321,14 @@ label small {
 .release-fact-highlight.healthy dd {
   color: #a4e5bd;
 }
-.release-fact-highlight.low-seeders dd,
+.release-fact-highlight.low-seeders {
+  border-left-color: #9f2119;
+  background: rgba(230, 72, 63, 0.2);
+}
+.release-fact-highlight.low-seeders dt,
+.release-fact-highlight.low-seeders dd {
+  color: #fff;
+}
 .confirmation-facts .low-seeders dd {
   color: #ff6b61;
 }
