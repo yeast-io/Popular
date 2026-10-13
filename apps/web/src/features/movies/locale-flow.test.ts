@@ -123,6 +123,73 @@ describe('localized movie page flows', () => {
     wrapper.unmount();
   });
 
+  it('does not render a trending movie twice when the next page overlaps', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => Response.json(
+      init?.method === 'POST'
+        ? {
+            items: [
+              { tmdbId: 42, title: '重复电影', userStatus: 'unwatched' },
+              { tmdbId: 43, title: '第二页电影', userStatus: 'unwatched' },
+            ],
+            page: 2, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'zh-CN',
+          }
+        : {
+            items: [{ tmdbId: 42, title: '重复电影', userStatus: 'unwatched' }],
+            page: 1, hasMore: true, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'zh-CN',
+          },
+    )));
+
+    const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
+    await flushPromises();
+    await wrapper.get('button.load-more').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.findAll('.movie-card')).toHaveLength(2);
+    expect(wrapper.findAll('.movie-card').map((card) => card.text())).toEqual([
+      expect.stringContaining('重复电影'),
+      expect.stringContaining('第二页电影'),
+    ]);
+    wrapper.unmount();
+  });
+
+  it('does not render a search result twice when the next page overlaps', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.includes('/movies/search')) {
+        return Response.json({
+          items: [], page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'zh-CN',
+        });
+      }
+      return Response.json(url.includes('page=2')
+        ? {
+            items: [
+              { tmdbId: 42, title: '重复搜索结果', userStatus: 'unwatched' },
+              { tmdbId: 43, title: '新搜索结果', userStatus: 'unwatched' },
+            ],
+            page: 2, hasMore: false, source: 'tmdb', resultCompleteness: 'complete', locale: 'zh-CN',
+          }
+        : {
+            items: [{ tmdbId: 42, title: '重复搜索结果', userStatus: 'unwatched' }],
+            page: 1, hasMore: true, source: 'tmdb', resultCompleteness: 'complete', locale: 'zh-CN',
+          });
+    }));
+
+    const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
+    await flushPromises();
+    await wrapper.get('input[type="search"]').setValue('galaxy');
+    await vi.advanceTimersByTimeAsync(300);
+    await flushPromises();
+    await wrapper.get('button.load-more').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.findAll('.movie-card')).toHaveLength(2);
+    expect(wrapper.findAll('.movie-card').map((card) => card.text())).toEqual([
+      expect.stringContaining('重复搜索结果'),
+      expect.stringContaining('新搜索结果'),
+    ]);
+    wrapper.unmount();
+  });
+
   it('reloads Detail without falling back to the other locale', async () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {

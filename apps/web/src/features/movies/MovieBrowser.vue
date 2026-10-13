@@ -157,12 +157,22 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function applyTrending(result: TrendingMoviesResponse, append: boolean) {
-  movies.value = append ? [...movies.value, ...result.items] : result.items;
+  movies.value = append ? mergeUniqueMovies(movies.value, result.items) : result.items;
   page.value = result.page; hasMore.value = result.hasMore; fetchedAt.value = result.fetchedAt;
 }
 function applySearch(result: SearchMoviesResponse, append: boolean) {
-  movies.value = append ? [...movies.value, ...result.items] : result.items;
+  movies.value = append ? mergeUniqueMovies(movies.value, result.items) : result.items;
   page.value = result.page; hasMore.value = result.hasMore; fetchedAt.value = '';
+}
+function mergeUniqueMovies(current: MovieSummary[], incoming: MovieSummary[]): MovieSummary[] {
+  const seen = new Set(current.map(({ tmdbId }) => tmdbId));
+  const merged = [...current];
+  for (const movie of incoming) {
+    if (seen.has(movie.tmdbId)) continue;
+    seen.add(movie.tmdbId);
+    merged.push(movie);
+  }
+  return merged;
 }
 function markPosterFailed(tmdbId: number) { failedPosters.value = new Set(failedPosters.value).add(tmdbId); }
 function releaseDateLabel(releaseDate?: string): string {
