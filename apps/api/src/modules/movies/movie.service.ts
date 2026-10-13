@@ -2,6 +2,7 @@ import type { Locale, MovieDetail, MovieStatus, MovieSummary, SearchMoviesRespon
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieCatalogStore, MovieRecord, MovieSearchProvider, MovieStatusStore, TrendingStore } from './movie.types.js';
 import type { TrendingSyncService } from './trending-sync.service.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
 
 export class MovieService {
   constructor(
@@ -56,7 +57,9 @@ export class MovieService {
     let resultCompleteness: SearchMoviesResponse['resultCompleteness'] = 'complete';
     if (!allSummariesFresh) {
       try {
-        const fetched = await this.provider.search(normalized, page, locale);
+        const fetched = await this.provider.search(
+          normalized, page, locale, userExternalRequestContext(ownerId, 'api_request'),
+        );
         result = { ...fetched, fetchedAt: new Date() };
         await this.catalog.publishSearch(normalized, result, locale);
         source = 'tmdb';
@@ -89,7 +92,9 @@ export class MovieService {
     let stale = false;
     if (!fresh) {
       try {
-        movie = await this.provider.fetchDetails(tmdbId, locale);
+        movie = await this.provider.fetchDetails(
+          tmdbId, locale, userExternalRequestContext(ownerId, 'api_request'),
+        );
         const syncedAt = new Date();
         await this.catalog.writeMovieDetail(movie, syncedAt, locale);
         movie.detailSyncedAt = syncedAt;

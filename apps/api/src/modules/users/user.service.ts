@@ -3,6 +3,7 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import { toAuthUser, type AuthService } from '../auth/auth.service.js';
 import type { AuthUserStore } from '../auth/auth.types.js';
 import type { AvatarObject, AvatarStore } from './user.types.js';
+import { inspectAvatarImage } from './avatar-image.js';
 
 export class UserService {
   constructor(
@@ -10,6 +11,7 @@ export class UserService {
     private readonly users: AuthUserStore,
     private readonly avatars: AvatarStore,
     private readonly maxAvatarBytes: number,
+    private readonly maxAvatarPixels: number,
   ) {}
 
   async updateProfile(token: string | undefined, input: UpdateProfileRequest): Promise<AuthUser> {
@@ -27,13 +29,16 @@ export class UserService {
     if (bytes.length > this.maxAvatarBytes) {
       throw new AppError(413, 'BAD_REQUEST', `Avatar must be no larger than ${this.maxAvatarBytes} bytes`);
     }
-    const contentType = detectImageType(bytes);
-    if (!contentType) throw new AppError(400, 'VALIDATION_ERROR', 'Avatar must be a JPEG, PNG, or WebP image');
+    const image = inspectAvatarImage(bytes);
+    if (!image) throw new AppError(400, 'VALIDATION_ERROR', 'Avatar must be a valid JPEG, PNG, or WebP image');
+    if (image.width > Math.floor(this.maxAvatarPixels / image.height)) {
+      throw new AppError(400, 'VALIDATION_ERROR', `Avatar must contain no more than ${this.maxAvatarPixels} pixels`);
+    }
 
     const previousUser = await this.users.findById(ownerId);
     if (!previousUser) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const previousObjectKey = previousUser.avatarObjectKey;
-    const objectKey = await this.avatars.put(ownerId, bytes, contentType);
+    const objectKey = await this.avatars.put(ownerId, bytes, image.contentType);
     let user;
     try {
       user = await this.users.updateAvatarObjectKey(ownerId, objectKey);
@@ -69,11 +74,4 @@ export class UserService {
     if (!user) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     await this.avatars.delete(objectKey).catch(() => undefined);
   }
-}
-
-function detectImageType(bytes: Buffer): 'image/jpeg' | 'image/png' | 'image/webp' | undefined {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
-  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
-  if (bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
-  return undefined;
 }

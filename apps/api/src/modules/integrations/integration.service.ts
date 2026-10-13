@@ -8,6 +8,7 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier } from './integration.types.js';
 import { SecretCrypto } from './secret-crypto.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
 
 export class IntegrationValidationError extends Error {
   constructor(
@@ -48,7 +49,7 @@ export class IntegrationService {
     const attemptedAt = this.now();
 
     try {
-      await this.mteam.verify(baseUrl, apiKey);
+      await this.mteam.verify(baseUrl, apiKey, userExternalRequestContext(ownerId, 'manual_refresh'));
     } catch (error) {
       const failureType = error instanceof IntegrationValidationError
         ? error.failureType === 'permission' || error.failureType === 'rate_limited' ? 'remote_error' : error.failureType
@@ -79,6 +80,7 @@ export class IntegrationService {
       await this.mteam.verify(
         existing.baseUrl,
         this.secrets.decrypt(existing.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
+        userExternalRequestContext(ownerId, 'manual_refresh'),
       );
     } catch (error) {
       const failureType = error instanceof IntegrationValidationError

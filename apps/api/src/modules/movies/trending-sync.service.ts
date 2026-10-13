@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Locale } from '@movie-hub/contract';
 import type { MovieRecord, SyncLock, TrendingPageRecord, TrendingProvider, TrendingSnapshotRecord, TrendingStore } from './movie.types.js';
+import { systemExternalRequestContext } from '../external-usage/external-usage.types.js';
 
 export interface TrendingSyncResult {
   status: 'completed' | 'skipped';
@@ -70,7 +71,10 @@ export class TrendingSyncService {
     const fields = { operation: 'tmdb.trending.fetch', ...context, language: locale, page };
     this.logger.info(fields, 'TMDB trending page fetch started');
     try {
-      const result = await this.provider.fetchPage(page, locale);
+      const trigger = context.trigger === 'scheduler' ? 'scheduled_sync'
+        : context.trigger === 'request' ? 'api_request'
+          : 'manual_refresh';
+      const result = await this.provider.fetchPage(page, locale, systemExternalRequestContext(trigger));
       this.logger.info({ ...fields, movies: result.movies.length, durationMs: Date.now() - startedAt }, 'TMDB trending page fetched');
       return result;
     } catch (error) {

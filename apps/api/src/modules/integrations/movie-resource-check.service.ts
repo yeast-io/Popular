@@ -12,6 +12,7 @@ import type {
   MovieResourceCheckCompletion,
   MovieResourceCheckStore,
 } from './movie-resource-check.types.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
 import type { SecretCrypto } from './secret-crypto.js';
 
 interface CheckLogger {
@@ -129,7 +130,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       } catch (error) {
         throw new IntegrationValidationError('invalid_response', 'Stored M-Team credentials could not be decrypted', { cause: error });
       }
-      const lookup = await this.withMTeamRequestSlot(() => this.lookupReleases(baseUrl, apiKey, tmdbId));
+      const lookup = await this.withMTeamRequestSlot(() => this.lookupReleases(ownerId, baseUrl, apiKey, tmdbId));
       const completion = this.toSuccessfulCompletion(lookup);
       await this.checks.recordAttempt(key, attemptedAt, completion);
       this.logger.info(
@@ -213,7 +214,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       } catch (error) {
         throw new IntegrationValidationError('invalid_response', 'Stored M-Team credentials could not be decrypted', { cause: error });
       }
-      const result = await this.withMTeamRequestSlot(() => this.lookup(config.baseUrl, apiKey, key.tmdbId));
+      const result = await this.withMTeamRequestSlot(() => this.lookup(key.ownerId, config.baseUrl, apiKey, key.tmdbId));
       await this.checks.complete(key, attemptedAt, result);
       this.logger.info(
         { ownerId: key.ownerId, tmdbId: key.tmdbId, provider: 'mteam', availability: result.availability, durationMs: Date.now() - startedAt },
@@ -270,14 +271,16 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }
 
   private async lookup(
+    ownerId: string,
     baseUrl: string,
     apiKey: string,
     tmdbId: number,
   ): Promise<Extract<MovieResourceCheckCompletion, { lastAttemptStatus: 'success' }>> {
-    return this.toSuccessfulCompletion(await this.lookupReleases(baseUrl, apiKey, tmdbId));
+    return this.toSuccessfulCompletion(await this.lookupReleases(ownerId, baseUrl, apiKey, tmdbId));
   }
 
   private async lookupReleases(
+    ownerId: string,
     baseUrl: string,
     apiKey: string,
     tmdbId: number,
@@ -289,14 +292,18 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }> {
     let identity = await this.movies.readMovieIdentity?.(tmdbId, this.locale) ?? null;
     if (!identity?.imdbId) {
-      const detail = await this.tmdb.fetchDetails(tmdbId, this.locale);
+      const detail = await this.tmdb.fetchDetails(
+        tmdbId, this.locale, userExternalRequestContext(ownerId, 'background_check'),
+      );
       await this.movies.writeMovieDetail(detail, this.now(), this.locale);
       identity = { title: detail.title, ...(detail.imdbId ? { imdbId: detail.imdbId } : {}) };
     }
 
     if (identity.imdbId) {
       const imdbId = normalizeImdbId(identity.imdbId);
-      const releases = await this.mteam.searchMovies(baseUrl, apiKey, { imdbId });
+      const releases = await this.mteam.searchMovies(
+        baseUrl, apiKey, { imdbId }, userExternalRequestContext(ownerId, 'background_check'),
+      );
       const exact = releases.filter((release) => release.imdbId === imdbId);
       const checkedAt = this.now();
       return {
@@ -308,7 +315,9 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
 
     // A title query is only candidate discovery. Phase one cannot promote a
     // title-only candidate to a reliable match or an available resource.
-    await this.mteam.searchMovies(baseUrl, apiKey, { title: identity.title });
+    await this.mteam.searchMovies(
+      baseUrl, apiKey, { title: identity.title }, userExternalRequestContext(ownerId, 'background_check'),
+    );
     const checkedAt = this.now();
     return {
       availability: 'unmatchable',

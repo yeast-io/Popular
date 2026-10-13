@@ -1,24 +1,32 @@
 import type { LookupAddress } from 'node:dns';
+import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { request } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
 import type { MTeamRelease, MTeamResourceSearcher, MTeamTorrentDownloader } from '../../modules/integrations/movie-resource-check.types.js';
 import type { MTeamVerifier } from '../../modules/integrations/integration.types.js';
+import type {
+  ExternalRequestContext, ExternalRequestErrorCode, ExternalRequestRecorder,
+} from '../../modules/external-usage/external-usage.types.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_SEARCH_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamTorrentDownloader {
-  constructor(private readonly timeoutMs: number) {}
+  constructor(
+    private readonly timeoutMs: number,
+    private readonly usage?: ExternalRequestRecorder,
+  ) {}
 
-  async verify(baseUrl: string, apiKey: string): Promise<void> {
+  async verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void> {
     const body = await withAbsoluteTimeout(this.timeoutMs, async (signal) => {
       const url = verificationUrl(baseUrl);
       const addresses = await resolvePublicAddresses(url.hostname);
       const address = addresses[0];
       if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
-      return postJson(url, apiKey, address, undefined, signal, MAX_RESPONSE_BYTES);
+      return this.observe('connection.test', context, () =>
+        postJson(url, apiKey, address, undefined, signal, MAX_RESPONSE_BYTES));
     });
 
     let payload: unknown;
@@ -39,13 +47,14 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     baseUrl: string,
     apiKey: string,
     query: { imdbId: string } | { title: string },
+    context?: ExternalRequestContext,
   ): Promise<MTeamRelease[]> {
     const body = await withAbsoluteTimeout(this.timeoutMs, async (signal) => {
       const url = apiUrl(baseUrl, 'torrent/search');
       const addresses = await resolvePublicAddresses(url.hostname);
       const address = addresses[0];
       if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
-      return postJson(url, apiKey, address, {
+      return this.observe('release.search', context, () => postJson(url, apiKey, address, {
         pageNumber: 1,
         pageSize: 100,
         mode: 'movie',
@@ -55,7 +64,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
         ...('imdbId' in query
           ? { imdb: `https://www.imdb.com/title/${normalizeImdbId(query.imdbId)}/` }
           : { keyword: query.title }),
-      }, signal, MAX_SEARCH_RESPONSE_BYTES);
+      }, signal, MAX_SEARCH_RESPONSE_BYTES));
     });
 
     let payload: unknown;
@@ -73,13 +82,19 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     return parseSearchReleases(payload);
   }
 
-  async downloadTorrent(baseUrl: string, apiKey: string, releaseId: string): Promise<Uint8Array> {
+  async downloadTorrent(
+    baseUrl: string,
+    apiKey: string,
+    releaseId: string,
+    context?: ExternalRequestContext,
+  ): Promise<Uint8Array> {
     const tokenBody = await withAbsoluteTimeout(this.timeoutMs, async (signal) => {
       const url = apiUrl(baseUrl, 'torrent/genDlToken');
       const addresses = await resolvePublicAddresses(url.hostname);
       const address = addresses[0];
       if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
-      return postForm(url, apiKey, address, new URLSearchParams({ id: releaseId }).toString(), signal, MAX_RESPONSE_BYTES);
+      return this.observe('torrent.download_token', context, () =>
+        postForm(url, apiKey, address, new URLSearchParams({ id: releaseId }).toString(), signal, MAX_RESPONSE_BYTES));
     });
     let payload: unknown;
     try { payload = JSON.parse(tokenBody); } catch (error) {
@@ -92,10 +107,56 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     if (!downloadUrl || downloadUrl.protocol !== 'https:' || downloadUrl.username || downloadUrl.password) {
       throw new IntegrationValidationError('invalid_response', 'M-Team returned an invalid torrent URL');
     }
-    return withAbsoluteTimeout(this.timeoutMs, async (signal) => {
-      return downloadPublicBytes(downloadUrl, signal, 10 * 1024 * 1024, 3);
-    });
+    return withAbsoluteTimeout(this.timeoutMs, async (signal) => this.observe(
+      'torrent.download', context, () => downloadPublicBytes(downloadUrl, signal, 10 * 1024 * 1024, 3),
+    ));
   }
+
+  private async observe<T>(
+    operation: string,
+    context: ExternalRequestContext | undefined,
+    requestOperation: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = Date.now();
+    const operationId = randomUUID();
+    try {
+      const result = await requestOperation();
+      await this.record(context, {
+        operation, operationId, outcome: 'success', durationMs: Date.now() - startedAt,
+      });
+      return result;
+    } catch (error) {
+      await this.record(context, {
+        operation, operationId, outcome: 'failure', durationMs: Date.now() - startedAt,
+        errorCode: mteamErrorCode(error),
+      });
+      throw error;
+    }
+  }
+
+  private async record(
+    context: ExternalRequestContext | undefined,
+    event: {
+      operation: string;
+      operationId: string;
+      outcome: 'success' | 'failure';
+      durationMs: number;
+      errorCode?: ExternalRequestErrorCode;
+    },
+  ): Promise<void> {
+    if (!context || !this.usage) return;
+    try {
+      await this.usage.record({
+        ...context, ...event, provider: 'mteam', attempt: 1, occurredAt: new Date(),
+      });
+    } catch {
+      // Usage telemetry must never change the upstream request result.
+    }
+  }
+}
+
+function mteamErrorCode(error: unknown): ExternalRequestErrorCode {
+  return error instanceof IntegrationValidationError ? error.failureType : 'internal_error';
 }
 
 export async function withAbsoluteTimeout<T>(timeoutMs: number, operation: (signal: AbortSignal) => Promise<T>): Promise<T> {

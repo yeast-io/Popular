@@ -80,12 +80,12 @@ export interface MovieStatusStore {
 }
 
 export interface TrendingProvider {
-  fetchPage(page: number, locale: Locale): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
+  fetchPage(page: number, locale: Locale, context?: import('../external-usage/external-usage.types.js').ExternalRequestContext): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
 }
 
 export interface MovieSearchProvider {
-  search(query: string, page: number, locale: Locale): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
-  fetchDetails(tmdbId: number, locale: Locale): Promise<MovieDetailRecord>;
+  search(query: string, page: number, locale: Locale, context?: import('../external-usage/external-usage.types.js').ExternalRequestContext): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
+  fetchDetails(tmdbId: number, locale: Locale, context?: import('../external-usage/external-usage.types.js').ExternalRequestContext): Promise<MovieDetailRecord>;
 }
 
 export interface SyncLock {

@@ -105,3 +105,65 @@ test('movie resource sync permits only one active batch per owner', () => {
   ));
   void connection.destroy();
 });
+
+test('external usage keeps idempotent request events and expires both collections', () => {
+  const connection = mongoose.createConnection();
+  const models = createModels(connection);
+
+  assert.ok(models.externalRequestEvents.schema.indexes().some(([fields, options]) =>
+    fields.operationId === 1 && fields.provider === 1 && fields.operation === 1
+      && fields.attempt === 1 && options.unique === true,
+  ));
+  assert.ok(models.externalRequestEvents.schema.indexes().some(([fields, options]) =>
+    fields.expiresAt === 1 && options.expireAfterSeconds === 0,
+  ));
+  assert.ok(models.externalUsageDaily.schema.indexes().some(([fields, options]) =>
+    fields.bucketDate === 1 && fields.scopeKey === 1 && fields.provider === 1
+      && fields.operation === 1 && options.unique === true,
+  ));
+  assert.ok(models.externalUsageDaily.schema.indexes().some(([fields, options]) =>
+    fields.expiresAt === 1 && options.expireAfterSeconds === 0,
+  ));
+  void connection.destroy();
+});
+
+test('external usage accepts new provider ids without a schema change', () => {
+  const connection = mongoose.createConnection();
+  const models = createModels(connection);
+  const common = {
+    provider: 'future_tracker',
+    operation: 'release.search',
+    expiresAt: new Date('2027-01-11T00:00:00.000Z'),
+  };
+
+  const event = new models.externalRequestEvents({
+    ...common,
+    actorType: 'system',
+    trigger: 'scheduled_sync',
+    outcome: 'success',
+    durationMs: 10,
+    operationId: 'operation-1',
+    attempt: 1,
+    occurredAt: new Date('2026-10-13T00:00:00.000Z'),
+  });
+  const daily = new models.externalUsageDaily({
+    ...common,
+    bucketDate: new Date('2026-10-13T00:00:00.000Z'),
+    scopeKey: 'global',
+    successCount: 1,
+    failureCount: 0,
+    totalDurationMs: 10,
+    maxDurationMs: 10,
+    updatedAt: new Date('2026-10-13T00:05:00.000Z'),
+  });
+  const invalid = new models.externalRequestEvents({
+    ...event.toObject(),
+    _id: undefined,
+    provider: 'invalid provider!',
+  });
+
+  assert.equal(event.validateSync(), undefined);
+  assert.equal(daily.validateSync(), undefined);
+  assert.match(invalid.validateSync()?.message ?? '', /provider/);
+  void connection.destroy();
+});

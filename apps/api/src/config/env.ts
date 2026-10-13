@@ -51,7 +51,8 @@ const EnvSchema = z.object({
   MINIO_BUCKET: z.string().min(3),
   MINIO_REGION: z.string().optional(),
   MINIO_PUBLIC_BASE_URL: optionalUrl,
-  AVATAR_MAX_BYTES: z.coerce.number().int().min(1).max(20 * 1024 * 1024).default(5 * 1024 * 1024),
+  AVATAR_MAX_BYTES: z.coerce.number().int().min(1).max(50 * 1024 * 1024).default(50 * 1024 * 1024),
+  AVATAR_MAX_PIXELS: z.coerce.number().int().min(1).max(100_000_000).default(16_777_216),
   INTEGRATION_SECRET_KEY: z.string().min(32),
   MTEAM_ALLOWED_HOSTS: z.string().default('api.m-team.cc,api.m-team.io').transform((value, context) => {
     const hosts = value.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean);

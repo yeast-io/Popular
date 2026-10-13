@@ -27,6 +27,8 @@ test('loads and normalizes valid environment', () => {
   assert.equal(config.MTEAM_RESOURCE_CHECK_LEASE_SECONDS, 120);
   assert.equal(config.MTEAM_SEARCH_MIN_INTERVAL_MS, 2_500);
   assert.equal(config.MTEAM_RELEASE_CACHE_TTL_SECONDS, 120);
+  assert.equal(config.AVATAR_MAX_BYTES, 50 * 1024 * 1024);
+  assert.equal(config.AVATAR_MAX_PIXELS, 16_777_216);
 });
 
 test('requires a dedicated integration encryption key', () => {
@@ -73,4 +75,9 @@ test('rejects an unsupported configured TMDB locale', () => {
     TMDB_READ_ACCESS_TOKEN: valid.TMDB_READ_ACCESS_TOKEN,
     TMDB_LANGUAGE: 'fr-FR',
   }), /TMDB_LANGUAGE/);
+});
+
+test('accepts a 50 MB avatar limit and rejects larger values', () => {
+  assert.equal(loadConfig({ ...valid, AVATAR_MAX_BYTES: String(50 * 1024 * 1024) }).AVATAR_MAX_BYTES, 50 * 1024 * 1024);
+  assert.throws(() => loadConfig({ ...valid, AVATAR_MAX_BYTES: String(50 * 1024 * 1024 + 1) }), /AVATAR_MAX_BYTES/);
 });

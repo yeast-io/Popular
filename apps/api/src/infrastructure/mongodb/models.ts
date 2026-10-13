@@ -15,6 +15,8 @@ import { createMovieResourceSyncBatchModel } from './movie-resource-sync-batch.s
 import { createTrendingStateModel } from './trending-state.schema.js';
 import { createQBittorrentConfigModel } from './qbittorrent-config.schema.js';
 import { createMovieDownloadModel } from './movie-download.schema.js';
+import { createExternalRequestEventModel } from './external-request-event.schema.js';
+import { createExternalUsageDailyModel } from './external-usage-daily.schema.js';
 
 export function createModels(connection: Connection) {
   return {
@@ -34,6 +36,8 @@ export function createModels(connection: Connection) {
     trendingStates: createTrendingStateModel(connection),
     qbittorrentConfigs: createQBittorrentConfigModel(connection),
     movieDownloads: createMovieDownloadModel(connection),
+    externalRequestEvents: createExternalRequestEventModel(connection),
+    externalUsageDaily: createExternalUsageDailyModel(connection),
   };
 }
 

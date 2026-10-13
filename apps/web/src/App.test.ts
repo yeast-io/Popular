@@ -133,6 +133,89 @@ describe('account routes', () => {
     expect(saveButton.element.disabled).toBe(false);
     wrapper.unmount();
   });
+
+  it('loads the avatar byte limit from the API configuration', async () => {
+    window.history.replaceState({}, '', '/settings');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return Response.json({ user: authenticatedUser });
+      if (url.endsWith('/config')) return Response.json({ avatar: { maxBytes: 50 * 1024 * 1024, maxPixels: 16_777_216 } });
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.get('.profile-avatar-actions small').text()).toContain('50 MB');
+    const input = wrapper.get<HTMLInputElement>('.profile-avatar-actions input[type="file"]');
+    const oversizedFile = new File([new Uint8Array([137, 80, 78, 71])], 'large.png', { type: 'image/png' });
+    Object.defineProperty(oversizedFile, 'size', { value: 50 * 1024 * 1024 + 1 });
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [oversizedFile],
+    });
+    await input.trigger('change');
+    expect(wrapper.text()).toContain('50 MB or smaller');
+    wrapper.unmount();
+  });
+
+  it('opens personal usage from the account menu and renders an unknown provider', async () => {
+    window.history.replaceState({}, '', '/settings');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return Response.json({ user: authenticatedUser });
+      if (url.endsWith('/me/external-usage?days=30')) {
+        return Response.json({
+          range: { days: 30, from: '2026-09-14', to: '2026-10-13', timezone: 'UTC', retentionDays: 90 },
+          totals: { requests: 3, successes: 2, failures: 1, averageDurationMs: 400 },
+          providers: [
+            { provider: 'future_tracker', requests: 3, successes: 2, failures: 1, averageDurationMs: 400 },
+          ],
+          daily: Array.from({ length: 30 }, (_, index) => {
+            const date = new Date('2026-09-14T00:00:00.000Z');
+            date.setUTCDate(date.getUTCDate() + index);
+            return {
+              date: date.toISOString().slice(0, 10),
+              providers: index === 29
+                ? [{ provider: 'future_tracker', requests: 3, successes: 2, failures: 1 }]
+                : [],
+            };
+          }),
+          operations: [
+            {
+              provider: 'future_tracker', operation: 'torrent.search', requests: 3,
+              successes: 2, failures: 1, averageDurationMs: 400,
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const menu = wrapper.get<HTMLDetailsElement>('.account-menu');
+    expect(menu.element.open).toBe(false);
+    expect(menu.get('.account-trigger').find('.account-chevron').exists()).toBe(false);
+    expect(menu.get('.account-tooltip').text()).toBe('Daniel');
+    expect(menu.get('.account-identity-copy strong').text()).toBe('Daniel');
+    expect(menu.get('.account-identity-copy small').text()).toBe('daniel@example.com');
+    menu.element.open = true;
+    await menu.get('.account-options button:nth-child(2)').trigger('click');
+    await flushPromises();
+
+    expect(window.location.pathname).toBe('/usage');
+    expect(menu.element.open).toBe(false);
+    expect(wrapper.get('#usage-title').text()).toBe('Usage statistics');
+    expect(wrapper.text()).toContain('future_tracker');
+    expect(wrapper.text()).toContain('torrent.search');
+    const dateTicks = wrapper.findAll('.usage-day time');
+    expect(dateTicks).toHaveLength(7);
+    expect(dateTicks[0]?.attributes('datetime')).toBe('2026-09-14');
+    expect(dateTicks.at(-1)?.attributes('datetime')).toBe('2026-10-13');
+    wrapper.unmount();
+  });
 });
 
 describe('language menu', () => {

@@ -29,6 +29,9 @@ import { QBittorrentClient } from './infrastructure/qbittorrent/client.js';
 import { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
 import { MongoMovieDownloadStore } from './infrastructure/mongodb/movie-download.store.js';
 import { MovieDownloadService } from './modules/downloads/movie-download.service.js';
+import { MongoExternalUsageStore } from './infrastructure/mongodb/external-usage.store.js';
+import { ExternalUsageAggregationService } from './modules/external-usage/external-usage-aggregation.service.js';
+import { ExternalUsageService } from './modules/external-usage/external-usage.service.js';
 
 const config = loadConfig();
 const loggers = createLoggers(config.LOG_LEVEL);
@@ -37,6 +40,16 @@ const infrastructure = createInfrastructure(config);
 try {
   await connectInfrastructure(infrastructure);
   const models = createModels(infrastructure.mongodb.getConnection());
+  await Promise.all([models.externalRequestEvents.init(), models.externalUsageDaily.init()]);
+  const externalUsageStore = new MongoExternalUsageStore(
+    models.externalRequestEvents,
+    models.externalUsageDaily,
+    { error: (bindings, message) => loggers.error.error(bindings, message) },
+  );
+  const externalUsageAggregation = new ExternalUsageAggregationService(
+    externalUsageStore,
+    { error: (bindings, message) => loggers.error.error(bindings, message) },
+  );
   const userStore = new MongoAuthUserStore(models.users, models.authIdentities);
   const sessionStore = new RedisSessionStore(
     infrastructure.redis.getClient(),
@@ -44,12 +57,19 @@ try {
     config.SESSION_TTL_SECONDS,
   );
   const authService = new AuthService(userStore, sessionStore);
+  const externalUsageService = new ExternalUsageService(authService, externalUsageStore);
   const avatarStore = new MinioAvatarStore(infrastructure.minio.getClient(), config.MINIO_BUCKET);
-  const userService = new UserService(authService, userStore, avatarStore, config.AVATAR_MAX_BYTES);
+  const userService = new UserService(authService, userStore, avatarStore, config.AVATAR_MAX_BYTES, config.AVATAR_MAX_PIXELS);
   const trendingStore = new MongoTrendingStore(
     models.movies, models.movieLocalizations, models.movieResultSets, models.people, models.movieCredits, models.trendingStates,
   );
-  const tmdb = new TmdbClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS);
+  const tmdb = new TmdbClient(
+    config.TMDB_READ_ACCESS_TOKEN,
+    config.TMDB_REQUEST_TIMEOUT_MS,
+    undefined,
+    undefined,
+    externalUsageStore,
+  );
   const trendingSync = new TrendingSyncService(
     tmdb, trendingStore, new RedisSyncLock(infrastructure.redis.getClient()),
     config.TMDB_LANGUAGE, config.TRENDING_SYNC_LOCK_TTL_SECONDS,
@@ -60,7 +80,7 @@ try {
   );
   const movieStatusStore = new MongoMovieStatusStore(models.userMovieStates);
   const integrationConfigStore = new MongoIntegrationConfigStore(models.integrationConfigs);
-  const mteam = new MTeamClient(config.MTEAM_REQUEST_TIMEOUT_MS);
+  const mteam = new MTeamClient(config.MTEAM_REQUEST_TIMEOUT_MS, externalUsageStore);
   const secrets = new SecretCrypto(config.INTEGRATION_SECRET_KEY);
   const movieResourceCheckStore = new MongoMovieResourceCheckStore(
     models.movieResourceChecks,
@@ -133,10 +153,14 @@ try {
 
   const app = await buildApp({
     config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
-    movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService,
+    movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService, externalUsageService,
   });
   await movieResourceSyncService.resumePending();
-  app.addHook('onClose', async () => closeInfrastructure(infrastructure));
+  externalUsageAggregation.start();
+  app.addHook('onClose', async () => {
+    externalUsageAggregation.stop();
+    await closeInfrastructure(infrastructure);
+  });
 
   const shutdown = async (signal: NodeJS.Signals) => {
     loggers.app.info({ signal }, 'Shutting down');

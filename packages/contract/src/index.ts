@@ -8,3 +8,5 @@ export * from './movies/movie.schema.js';
 export * from './users/user.schema.js';
 export * from './integrations/integration.schema.js';
 export * from './downloads/movie-download.schema.js';
+export * from './external_usage/external-usage.schema.js';
+export * from './config/public-config.schema.js';

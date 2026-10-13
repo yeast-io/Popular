@@ -1,4 +1,5 @@
 import type { IntegrationFailureType } from '@movie-hub/contract';
+import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
 
 export interface IntegrationConfigRecord {
   ownerId: string;
@@ -19,5 +20,5 @@ export interface IntegrationConfigStore {
 }
 
 export interface MTeamVerifier {
-  verify(baseUrl: string, apiKey: string): Promise<void>;
+  verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void>;
 }

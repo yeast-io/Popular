@@ -22,6 +22,7 @@ const config = loadConfig({
   TMDB_READ_ACCESS_TOKEN: 'test-token',
   ACCESS_LOG_ENABLED: 'false',
   AVATAR_MAX_BYTES: '1024',
+  AVATAR_MAX_PIXELS: '4',
 });
 
 class MemoryUsers implements AuthUserStore {
@@ -71,7 +72,7 @@ async function fixture() {
   const sessions = new MemorySessions();
   const avatars = new MemoryAvatars();
   const auth = new AuthService(users, sessions);
-  const userService = new UserService(auth, users, avatars, config.AVATAR_MAX_BYTES);
+  const userService = new UserService(auth, users, avatars, config.AVATAR_MAX_BYTES, config.AVATAR_MAX_PIXELS);
   const app = await buildApp({ config, healthDependencies: [], authService: auth, userService });
   const registration = await app.inject({
     method: 'POST', url: '/api/v1/auth/register',
@@ -95,7 +96,7 @@ test('authenticated user updates only their own display name', async () => {
 
 test('avatar upload validates file bytes and supports authenticated read and delete', async () => {
   const { app, avatars, cookie } = await fixture();
-  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+  const png = pngHeader(1, 1);
   const upload = await app.inject({
     method: 'PUT', url: '/api/v1/users/me/avatar', headers: { cookie, 'content-type': 'image/png' }, payload: png,
   });
@@ -126,6 +127,16 @@ test('avatar upload rejects content that is not a supported image', async () => 
   await app.close();
 });
 
+test('avatar upload enforces the configured pixel limit', async () => {
+  const { app, cookie } = await fixture();
+  const response = await app.inject({
+    method: 'PUT', url: '/api/v1/users/me/avatar', headers: { cookie, 'content-type': 'image/png' }, payload: pngHeader(3, 2),
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error.code, 'VALIDATION_ERROR');
+  await app.close();
+});
+
 test('avatar upload enforces the configured byte limit', async () => {
   const { app, cookie } = await fixture();
   const oversized = Buffer.alloc(1025);
@@ -137,3 +148,13 @@ test('avatar upload enforces the configured byte limit', async () => {
   assert.equal(response.json().error.code, 'BAD_REQUEST');
   await app.close();
 });
+
+function pngHeader(width: number, height: number): Buffer {
+  const bytes = Buffer.alloc(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes;
+}

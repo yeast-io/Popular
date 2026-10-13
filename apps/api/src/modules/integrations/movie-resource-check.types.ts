@@ -1,4 +1,5 @@
 import type { IntegrationFailureType, MovieRelease } from '@movie-hub/contract';
+import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
 
 export type MovieResourceProvider = 'mteam';
 export type MovieResourceAvailability = 'available' | 'unavailable' | 'unchecked' | 'unmatchable';
@@ -90,9 +91,10 @@ export interface MTeamResourceSearcher {
     baseUrl: string,
     apiKey: string,
     query: { imdbId: string } | { title: string },
+    context?: ExternalRequestContext,
   ): Promise<MTeamRelease[]>;
 }
 
 export interface MTeamTorrentDownloader {
-  downloadTorrent(baseUrl: string, apiKey: string, releaseId: string): Promise<Uint8Array>;
+  downloadTorrent(baseUrl: string, apiKey: string, releaseId: string, context?: ExternalRequestContext): Promise<Uint8Array>;
 }

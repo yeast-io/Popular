@@ -32,6 +32,16 @@ test('liveness does not depend on external services', async () => {
   await app.close();
 });
 
+test('public config exposes avatar limits from the environment', async () => {
+  const app = await buildApp({ config, healthDependencies: [] });
+  const response = await app.inject({ method: 'GET', url: '/api/v1/config' });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    avatar: { maxBytes: config.AVATAR_MAX_BYTES, maxPixels: config.AVATAR_MAX_PIXELS },
+  });
+  await app.close();
+});
+
 test('readiness returns 503 if any dependency is down', async () => {
   const app = await buildApp({ config, healthDependencies: [
     dependency('mongodb', 'up'), dependency('redis', 'down'), dependency('minio', 'up'),

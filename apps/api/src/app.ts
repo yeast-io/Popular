@@ -20,6 +20,9 @@ import type { MovieResourceSyncService } from './modules/integrations/movie-reso
 import type { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
 import { registerMovieDownloadRoutes } from './modules/downloads/movie-download.routes.js';
 import type { MovieDownloadService } from './modules/downloads/movie-download.service.js';
+import { registerExternalUsageRoutes } from './modules/external-usage/external-usage.routes.js';
+import type { ExternalUsageService } from './modules/external-usage/external-usage.service.js';
+import { registerPublicConfigRoutes } from './modules/config/public-config.routes.js';
 
 export interface BuildAppOptions {
   config: AppConfig;
@@ -32,9 +35,10 @@ export interface BuildAppOptions {
   movieResourceSyncService?: MovieResourceSyncService;
   qbittorrentIntegrationService?: QBittorrentIntegrationService;
   movieDownloadService?: MovieDownloadService;
+  externalUsageService?: ExternalUsageService;
 }
 
-export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService, externalUsageService }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
@@ -45,6 +49,7 @@ export async function buildApp({ config, healthDependencies, authService, userSe
   registerErrorHandler(app, loggers);
 
   await app.register(async (api) => {
+    registerPublicConfigRoutes(api, config);
     registerHealthRoutes(api, healthDependencies);
     if (authService) registerAuthRoutes(api, authService, config);
     if (userService) registerUserRoutes(api, userService, config);
@@ -52,6 +57,7 @@ export async function buildApp({ config, healthDependencies, authService, userSe
     if (movieStatusService && authService) registerMovieStatusRoutes(api, movieStatusService, authService, config, movieResourceSyncService);
     if (integrationService) registerIntegrationRoutes(api, integrationService, config, qbittorrentIntegrationService);
     if (movieDownloadService) registerMovieDownloadRoutes(api, movieDownloadService, config);
+    if (externalUsageService) registerExternalUsageRoutes(api, externalUsageService, config);
   }, { prefix: '/api/v1' });
 
   return app;

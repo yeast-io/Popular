@@ -1,5 +1,9 @@
 import type { Locale } from '@movie-hub/contract';
+import { randomUUID } from 'node:crypto';
 import type { CreditRecord, MovieDetailRecord, MovieRecord, TrendingProvider } from '../../modules/movies/movie.types.js';
+import type {
+  ExternalRequestContext, ExternalRequestErrorCode, ExternalRequestRecorder,
+} from '../../modules/external-usage/external-usage.types.js';
 
 interface TmdbMovie {
   id: number;
@@ -45,13 +49,14 @@ export class TmdbClient implements TrendingProvider {
     private readonly timeoutMs: number,
     private readonly baseUrl = 'https://api.themoviedb.org/3',
     private readonly fetcher: typeof fetch = globalThis.fetch,
+    private readonly usage?: ExternalRequestRecorder,
   ) {}
 
-  async fetchPage(page: number, locale: Locale) {
+  async fetchPage(page: number, locale: Locale, context?: ExternalRequestContext) {
     const url = new URL(`${this.baseUrl}/trending/movie/week`);
     url.searchParams.set('language', locale);
     url.searchParams.set('page', String(page));
-    const response = await this.request(url);
+    const response = await this.request(url, 'movie.trending', context);
     const payload = await response.json() as TmdbTrendingResponse;
     if (!isTrendingResponse(payload) || payload.page !== page) throw new Error('TMDB returned an invalid trending response');
     return {
@@ -62,13 +67,13 @@ export class TmdbClient implements TrendingProvider {
     };
   }
 
-  async search(query: string, page: number, locale: Locale) {
+  async search(query: string, page: number, locale: Locale, context?: ExternalRequestContext) {
     const url = new URL(`${this.baseUrl}/search/movie`);
     url.searchParams.set('query', query);
     url.searchParams.set('language', locale);
     url.searchParams.set('page', String(page));
     url.searchParams.set('include_adult', 'false');
-    const response = await this.request(url);
+    const response = await this.request(url, 'movie.search', context);
     const payload = await response.json() as TmdbTrendingResponse;
     if (!isTrendingResponse(payload) || payload.page !== page) throw new Error('TMDB returned an invalid movie search response');
     return {
@@ -79,11 +84,11 @@ export class TmdbClient implements TrendingProvider {
     };
   }
 
-  async fetchDetails(tmdbId: number, locale: Locale): Promise<MovieDetailRecord> {
+  async fetchDetails(tmdbId: number, locale: Locale, context?: ExternalRequestContext): Promise<MovieDetailRecord> {
     const url = new URL(`${this.baseUrl}/movie/${tmdbId}`);
     url.searchParams.set('language', locale);
     url.searchParams.set('append_to_response', 'credits,translations');
-    const response = await this.request(url);
+    const response = await this.request(url, 'movie.details', context);
     const payload = await response.json() as TmdbDetail;
     const localized = selectRequestedTranslation(payload, locale);
     const [summary] = mapMovie({
@@ -114,16 +119,35 @@ export class TmdbClient implements TrendingProvider {
     };
   }
 
-  private async request(url: URL): Promise<Response> {
+  private async request(url: URL, operation: string, context?: ExternalRequestContext): Promise<Response> {
     const isV3ApiKey = /^[0-9a-f]{32}$/i.test(this.credential);
     if (isV3ApiKey) url.searchParams.set('api_key', this.credential);
+    const operationId = randomUUID();
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const response = await this.fetcher(url, {
-        headers: {
-          accept: 'application/json',
-          ...(isV3ApiKey ? {} : { authorization: `Bearer ${this.credential}` }),
-        },
-        signal: AbortSignal.timeout(this.timeoutMs),
+      const startedAt = Date.now();
+      let response: Response;
+      try {
+        response = await this.fetcher(url, {
+          headers: {
+            accept: 'application/json',
+            ...(isV3ApiKey ? {} : { authorization: `Bearer ${this.credential}` }),
+          },
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+      } catch (error) {
+        await this.record(context, {
+          operation, operationId, attempt: attempt + 1, outcome: 'failure',
+          errorCode: isTimeoutError(error) ? 'timeout' : 'network',
+          durationMs: Date.now() - startedAt,
+        });
+        throw error;
+      }
+      await this.record(context, {
+        operation, operationId, attempt: attempt + 1,
+        outcome: response.ok ? 'success' : 'failure',
+        ...(response.ok ? {} : { errorCode: tmdbHttpErrorCode(response.status) }),
+        httpStatus: response.status,
+        durationMs: Date.now() - startedAt,
       });
       if (response.ok) return response;
       if (response.status !== 429 || attempt === 2) throw new Error(`TMDB request failed with status ${response.status}`);
@@ -135,6 +159,43 @@ export class TmdbClient implements TrendingProvider {
     }
     throw new Error('TMDB retry loop ended unexpectedly');
   }
+
+  private async record(
+    context: ExternalRequestContext | undefined,
+    event: {
+      operation: string;
+      operationId: string;
+      attempt: number;
+      outcome: 'success' | 'failure';
+      durationMs: number;
+      httpStatus?: number;
+      errorCode?: ExternalRequestErrorCode;
+    },
+  ): Promise<void> {
+    if (!context || !this.usage) return;
+    try {
+      await this.usage.record({
+        ...context,
+        ...event,
+        trigger: event.attempt > 1 ? 'retry' : context.trigger,
+        provider: 'tmdb',
+        occurredAt: new Date(),
+      });
+    } catch {
+      // Usage telemetry must never change the upstream request result.
+    }
+  }
+}
+
+function tmdbHttpErrorCode(status: number): ExternalRequestErrorCode {
+  if (status === 401) return 'authentication';
+  if (status === 403) return 'permission';
+  if (status === 429) return 'rate_limited';
+  return 'remote_error';
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
 }
 
 function selectRequestedTranslation(

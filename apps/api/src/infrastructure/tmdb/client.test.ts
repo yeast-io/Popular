@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { TmdbClient } from './client.js';
+import type { ExternalRequestEventInput } from '../../modules/external-usage/external-usage.types.js';
 
 const responseBody = { page: 1, results: [{ id: 42, title: 'Movie' }], total_pages: 1, total_results: 1 };
 
@@ -86,4 +87,35 @@ test('uses TMDB top-level fallback when the requested detail translation is miss
   const detail = await new TmdbClient('eyJ.token', 1_000, 'https://example.test/3', fetcher).fetchDetails(42, 'zh-CN');
   assert.equal(detail.title, 'Original title');
   assert.equal(detail.overview, 'Original overview');
+});
+
+test('records every real TMDB retry with user attribution', async () => {
+  const events: ExternalRequestEventInput[] = [];
+  let attempts = 0;
+  const fetcher: typeof fetch = async () => {
+    attempts += 1;
+    return attempts === 1
+      ? new Response(null, { status: 429, headers: { 'retry-after': '0' } })
+      : Response.json(responseBody);
+  };
+  const client = new TmdbClient(
+    'eyJ.token',
+    1_000,
+    'https://example.test/3',
+    fetcher,
+    { record: async (event) => { events.push(event); } },
+  );
+
+  await client.fetchPage(1, 'zh-CN', { actorType: 'user', ownerId: 'owner-1', trigger: 'api_request' });
+
+  assert.equal(events.length, 2);
+  assert.deepEqual(events.map(({ outcome, attempt, trigger, httpStatus, errorCode }) => ({
+    outcome, attempt, trigger, httpStatus, errorCode,
+  })), [
+    { outcome: 'failure', attempt: 1, trigger: 'api_request', httpStatus: 429, errorCode: 'rate_limited' },
+    { outcome: 'success', attempt: 2, trigger: 'retry', httpStatus: 200, errorCode: undefined },
+  ]);
+  assert.equal(events[0]?.operationId, events[1]?.operationId);
+  assert.equal(events[0]?.ownerId, 'owner-1');
+  assert.equal(events[0]?.operation, 'movie.trending');
 });

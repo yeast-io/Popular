@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ApiError, AuthResponse, AuthUser, LoginRequest, RegisterRequest } from '@movie-hub/contract';
+import type { ApiError, AuthResponse, AuthUser, LoginRequest, PublicConfig, RegisterRequest } from '@movie-hub/contract';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { loadWebConfig } from './config/env';
 import MovieBrowser from './features/movies/MovieBrowser.vue';
@@ -9,10 +9,12 @@ import { useI18n } from './i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
 import QBittorrentSettings from './features/integrations/QBittorrentSettings.vue';
+import UsageStatistics from './features/usage/UsageStatistics.vue';
 
 const { apiBaseUrl } = loadWebConfig();
 const { locale, setLocale, t } = useI18n();
 const localeMenu = ref<HTMLDetailsElement | null>(null);
+const accountMenu = ref<HTMLDetailsElement | null>(null);
 const mode = ref<'login' | 'register'>(window.location.pathname === '/register' ? 'register' : 'login');
 const email = ref('');
 const password = ref('');
@@ -26,10 +28,11 @@ const profileName = ref('');
 const avatarFile = ref<File | null>(null);
 const avatarRemoved = ref(false);
 const avatarPreview = ref('');
+const avatarLimits = ref<PublicConfig['avatar'] | null>(null);
 type AuthField = 'displayName' | 'email' | 'password';
 const authFieldErrors = ref<Partial<Record<AuthField, string>>>({});
 const profileNameError = ref('');
-type Page = 'home' | 'my-movies' | 'settings' | 'movie-detail' | 'login' | 'register';
+type Page = 'home' | 'my-movies' | 'settings' | 'usage' | 'movie-detail' | 'login' | 'register';
 const currentPage = ref<Page>(pageFromPath());
 const selectedMovieId = ref(movieIdFromPath());
 const atTop = ref(true);
@@ -41,6 +44,9 @@ let previousScrollRestoration: ScrollRestoration | undefined;
 const avatarSource = computed(() => avatarPreview.value || (!avatarRemoved.value && user.value?.avatarUrl
   ? resolveApiUrl(user.value.avatarUrl)
   : ''));
+const avatarHint = computed(() => avatarLimits.value
+  ? t('profile.avatarHint', { maxSize: formatBytes(avatarLimits.value.maxBytes) })
+  : t('profile.avatarHintUnavailable'));
 const profileDirty = computed(() => Boolean(user.value) && (
   profileName.value.trim() !== user.value?.displayName
   || Boolean(avatarFile.value)
@@ -53,9 +59,11 @@ onMounted(async () => {
   window.addEventListener('popstate', syncPageFromLocation);
   window.addEventListener('scroll', scheduleScrollControlsUpdate, { passive: true });
   window.addEventListener('resize', scheduleScrollControlsUpdate);
+  document.addEventListener('pointerdown', closeMenusOnOutside);
   contentObserver = new MutationObserver(scheduleScrollControlsUpdate);
   contentObserver.observe(document.querySelector('#app') ?? document.body, { childList: true, subtree: true });
   scheduleScrollControlsUpdate();
+  void loadPublicConfig();
   try {
     const response = await fetch(`${apiBaseUrl}/auth/me`, { credentials: 'include' });
     if (response.ok) {
@@ -66,11 +74,20 @@ onMounted(async () => {
     errorMessage.value = t('errors.serviceUnavailable');
   } finally {
     loading.value = false;
-    if (!user.value && (currentPage.value === 'settings' || currentPage.value === 'my-movies')) {
+    if (!user.value && ['settings', 'usage', 'my-movies'].includes(currentPage.value)) {
       openAuth('login', true);
     }
   }
 });
+
+async function loadPublicConfig() {
+  try {
+    const response = await fetch(`${apiBaseUrl}/config`);
+    if (response.ok) avatarLimits.value = (await response.json() as PublicConfig).avatar;
+  } catch {
+    // The API remains the source of truth and will enforce the limit during upload.
+  }
+}
 
 async function submit() {
   errorMessage.value = '';
@@ -146,8 +163,8 @@ function chooseAvatar(event: Event) {
     input.value = '';
     return;
   }
-  if (file.size > 5 * 1024 * 1024) {
-    errorMessage.value = t('validation.avatarSize');
+  if (avatarLimits.value && file.size > avatarLimits.value.maxBytes) {
+    errorMessage.value = t('validation.avatarSize', { maxSize: formatBytes(avatarLimits.value.maxBytes) });
     input.value = '';
     return;
   }
@@ -218,6 +235,11 @@ function resolveApiUrl(path: string): string {
   return path;
 }
 
+function formatBytes(bytes: number): string {
+  const mebibytes = bytes / (1024 * 1024);
+  return `${Number.isInteger(mebibytes) ? mebibytes : mebibytes.toFixed(1)} MB`;
+}
+
 function clearPreview() {
   if (avatarPreview.value) URL.revokeObjectURL(avatarPreview.value);
   avatarPreview.value = '';
@@ -228,12 +250,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('popstate', syncPageFromLocation);
   window.removeEventListener('scroll', scheduleScrollControlsUpdate);
   window.removeEventListener('resize', scheduleScrollControlsUpdate);
+  document.removeEventListener('pointerdown', closeMenusOnOutside);
   contentObserver?.disconnect();
   if (scrollUpdateFrame !== undefined) window.cancelAnimationFrame(scrollUpdateFrame);
   if (previousScrollRestoration) window.history.scrollRestoration = previousScrollRestoration;
 });
 
 async function logout() {
+  accountMenu.value?.removeAttribute('open');
   errorMessage.value = '';
   try {
     const response = await fetch(`${apiBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
@@ -252,7 +276,8 @@ function pageFromPath(): Page {
   if (window.location.pathname === '/login') return 'login';
   if (window.location.pathname === '/register') return 'register';
   if (window.location.pathname === '/my-movies') return 'my-movies';
-  return window.location.pathname === '/settings' ? 'settings' : 'home';
+  if (window.location.pathname === '/settings') return 'settings';
+  return window.location.pathname === '/usage' ? 'usage' : 'home';
 }
 
 function movieIdFromPath(): number | null {
@@ -286,7 +311,9 @@ function backFromMovieDetail() {
 }
 
 function navigate(page: Page) {
-  const path = page === 'settings' ? '/settings' : page === 'my-movies' ? '/my-movies' : '/';
+  const path = page === 'settings' ? '/settings'
+    : page === 'usage' ? '/usage'
+      : page === 'my-movies' ? '/my-movies' : '/';
   if (window.location.pathname !== path) window.history.pushState({}, '', path);
   currentPage.value = page;
   errorMessage.value = '';
@@ -355,6 +382,25 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
   setLocale(nextLocale);
   localeMenu.value?.removeAttribute('open');
 }
+
+function navigateFromAccount(page: 'settings' | 'usage') {
+  accountMenu.value?.removeAttribute('open');
+  navigate(page);
+}
+
+function closeMenusOnOutside(event: PointerEvent) {
+  if (!(event.target instanceof Node)) return;
+  for (const menu of [localeMenu.value, accountMenu.value]) {
+    if (menu?.open && !menu.contains(event.target)) menu.removeAttribute('open');
+  }
+}
+
+function closeAccountMenu() {
+  const menu = accountMenu.value;
+  if (!menu?.open) return;
+  menu.removeAttribute('open');
+  menu.querySelector<HTMLElement>('summary')?.focus();
+}
 </script>
 
 <template>
@@ -396,13 +442,41 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
             </button>
           </div>
         </details>
-        <button class="account-link" type="button" :disabled="loading" :aria-label="t('a11y.accountMenu')" @click="user ? navigate('settings') : openAuth('login')">
-          <span v-if="user" class="nav-avatar"
-            ><img v-if="user.avatarUrl" :src="resolveApiUrl(user.avatarUrl)" :alt="t('a11y.currentAvatar', { name: user.displayName })" /><span v-else>{{ user.displayName.slice(0, 1).toUpperCase() }}</span></span
-          >
-          {{ loading ? '…' : user ? user.displayName : t('nav.loginOrRegister') }}
+        <details v-if="user" ref="accountMenu" class="account-menu" @keydown.esc.prevent="closeAccountMenu">
+          <summary class="account-trigger" :aria-label="t('a11y.accountMenu')">
+            <span class="nav-avatar"
+              ><img v-if="user.avatarUrl" :src="resolveApiUrl(user.avatarUrl)" :alt="t('a11y.currentAvatar', { name: user.displayName })" /><span v-else>{{ user.displayName.slice(0, 1).toUpperCase() }}</span></span
+            >
+            <span class="account-tooltip" role="tooltip">{{ user.displayName }}</span>
+          </summary>
+          <div class="account-options">
+            <div class="account-identity">
+              <span class="nav-avatar menu-avatar"
+                ><img v-if="user.avatarUrl" :src="resolveApiUrl(user.avatarUrl)" alt="" /><span v-else>{{ user.displayName.slice(0, 1).toUpperCase() }}</span></span
+              >
+              <span class="account-identity-copy"><strong>{{ user.displayName }}</strong><small>{{ user.email }}</small></span>
+            </div>
+            <div class="account-action-group">
+              <button type="button" :class="{ active: currentPage === 'settings' }" @click="navigateFromAccount('settings')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 9 19.37a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15 1.7 1.7 0 0 0 3.07 14H3v-4h.08A1.7 1.7 0 0 0 4.63 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1-1.56V3h4v.08A1.7 1.7 0 0 0 15 4.63a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9 1.7 1.7 0 0 0 20.93 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z" /></svg>
+                <span>{{ t('nav.settings') }}</span>
+              </button>
+              <button type="button" :class="{ active: currentPage === 'usage' }" @click="navigateFromAccount('usage')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3" /></svg>
+                <span>{{ t('nav.usage') }}</span>
+              </button>
+            </div>
+            <div class="account-action-group account-signout-group">
+              <button class="danger" type="button" @click="logout">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m11-9h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></svg>
+                <span>{{ t('nav.logout') }}</span>
+              </button>
+            </div>
+          </div>
+        </details>
+        <button v-else class="account-link" type="button" :disabled="loading" :aria-label="t('nav.loginOrRegister')" @click="openAuth('login')">
+          {{ loading ? '…' : t('nav.loginOrRegister') }}
         </button>
-        <button v-if="user" class="nav-logout" type="button" @click="logout">{{ t('nav.logout') }}</button>
       </nav>
     </header>
 
@@ -425,6 +499,7 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
       @back="backFromMovieDetail"
       @require-login="openAuth('login')"
     />
+    <UsageStatistics v-if="currentPage === 'usage' && user" />
 
     <section v-if="currentPage === 'login' || currentPage === 'register'" class="auth-page">
       <div class="page-toolbar">
@@ -505,7 +580,7 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
                     <input class="file-input" type="file" accept="image/jpeg,image/png,image/webp" :aria-label="t('a11y.chooseAvatar')" @change="chooseAvatar" />
                   </label>
                   <button v-if="avatarSource || user.avatarUrl" class="text-button danger" type="button" @click="removeAvatar">{{ t('profile.avatarRemove') }}</button>
-                  <small>{{ t('profile.avatarHint') }}</small>
+                  <small>{{ avatarHint }}</small>
                 </div>
               </div>
             </div>
