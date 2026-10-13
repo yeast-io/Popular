@@ -989,27 +989,28 @@ label small {
   font: 700 0.78rem/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .release-detail-link {
+  position: relative;
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   place-items: center;
-  border: 1px solid #383a3b;
-  border-radius: 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 50%;
   color: #858682;
-  background: #151617;
+  background: #3a3b3c;
+  isolation: isolate;
 }
 .release-detail-link:hover {
-  border-color: #62635f;
   color: #e2e0d9;
-  background: #1d1e1f;
 }
 .release-detail-link:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
 .release-detail-link svg {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   fill: none;
   stroke: currentcolor;
   stroke-linecap: round;
@@ -1076,23 +1077,24 @@ label small {
   margin-top: 14px;
 }
 .release-download-button {
+  position: relative;
   display: inline-flex;
   width: auto;
   align-items: center;
   gap: 7px;
   margin: 0;
-  border: 1px solid #3b3d3e;
+  overflow: hidden;
+  border: 0;
   border-radius: 4px;
-  padding: 7px 11px;
+  padding: 8px 12px;
   color: #c9c7c1;
-  background: #18191a;
+  background: #3a3b3c;
   font-size: 0.7rem;
   font-weight: 700;
+  isolation: isolate;
 }
 .release-download-button:hover:not(:disabled) {
-  border-color: #696a67;
   color: #fff;
-  background: #222324;
 }
 .release-download-button:focus-visible {
   outline: 2px solid var(--amber);
@@ -1100,8 +1102,57 @@ label small {
 }
 .release-download-button:disabled {
   color: #666763;
-  background: #141516;
   cursor: not-allowed;
+}
+.release-detail-link::before,
+.release-download-button::before {
+  position: absolute;
+  z-index: -2;
+  top: 50%;
+  left: 50%;
+  width: 180%;
+  aspect-ratio: 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 34%,
+    #f0522d 42%,
+    #f2a900 50%,
+    #d54872 58%,
+    transparent 66% 100%
+  );
+  transform: translate(-50%, -50%);
+  animation: search-border-spin 3.2s linear infinite;
+  content: '';
+}
+.release-detail-link::before {
+  opacity: 0.72;
+}
+.release-detail-link:hover::before {
+  opacity: 1;
+}
+.release-detail-link::after,
+.release-download-button::after {
+  position: absolute;
+  z-index: -1;
+  inset: 1px;
+  border-radius: 3px;
+  background: #151617;
+  content: '';
+  transition: background 0.2s ease;
+}
+.release-detail-link::after {
+  border-radius: 50%;
+}
+.release-detail-link:hover::after,
+.release-download-button:hover:not(:disabled)::after {
+  background: #1d1e1f;
+}
+.release-download-button:disabled::before {
+  background: #323334;
+  animation: none;
+}
+.release-download-button:disabled::after {
+  background: #141516;
 }
 .release-download-button svg {
   width: 14px;
