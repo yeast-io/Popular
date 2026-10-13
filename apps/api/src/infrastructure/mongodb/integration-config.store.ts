@@ -17,6 +17,7 @@ export class MongoIntegrationConfigStore implements IntegrationConfigStore {
       {
         $set: {
           baseUrl: input.baseUrl,
+          webBaseUrl: input.webBaseUrl,
           encryptedApiKey: input.encryptedApiKey,
           verifiedAt: input.verifiedAt,
           lastValidationAt: input.lastValidationAt,
@@ -46,6 +47,7 @@ function toRecord(row: IntegrationConfigDocument & { _id: unknown }): Integratio
     ownerId: row.ownerId.toString(),
     provider: row.provider as 'mteam',
     baseUrl: row.baseUrl,
+    ...(row.webBaseUrl ? { webBaseUrl: row.webBaseUrl } : {}),
     encryptedApiKey: row.encryptedApiKey,
     ...(row.verifiedAt ? { verifiedAt: row.verifiedAt } : {}),
     ...(row.lastValidationAt ? { lastValidationAt: row.lastValidationAt } : {}),

@@ -23,6 +23,13 @@ export const errorCodes = [
   'MTEAM_CHECK_IN_PROGRESS',
   'MTEAM_SYNC_IN_PROGRESS',
   'MTEAM_SYNC_NOT_FOUND',
+  'QBITTORRENT_NOT_CONFIGURED',
+  'QBITTORRENT_INVALID_URL',
+  'QBITTORRENT_AUTH_FAILED',
+  'QBITTORRENT_UNREACHABLE',
+  'QBITTORRENT_TIMEOUT',
+  'QBITTORRENT_UNEXPECTED_RESPONSE',
+  'MOVIE_DOWNLOAD_FAILED',
 ] as const;
 
 export const ErrorCodeSchema = Type.Union(errorCodes.map((code) => Type.Literal(code)));

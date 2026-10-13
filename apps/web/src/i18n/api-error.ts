@@ -24,6 +24,13 @@ const errorKeys = {
   MTEAM_CHECK_IN_PROGRESS: 'errors.mteamCheckInProgress',
   MTEAM_SYNC_IN_PROGRESS: 'errors.mteamSyncInProgress',
   MTEAM_SYNC_NOT_FOUND: 'errors.mteamSyncNotFound',
+  QBITTORRENT_NOT_CONFIGURED: 'errors.qbittorrentNotConfigured',
+  QBITTORRENT_INVALID_URL: 'errors.qbittorrentInvalidUrl',
+  QBITTORRENT_AUTH_FAILED: 'errors.qbittorrentAuthFailed',
+  QBITTORRENT_UNREACHABLE: 'errors.qbittorrentUnreachable',
+  QBITTORRENT_TIMEOUT: 'errors.qbittorrentTimeout',
+  QBITTORRENT_UNEXPECTED_RESPONSE: 'errors.qbittorrentUnexpectedResponse',
+  MOVIE_DOWNLOAD_FAILED: 'errors.movieDownloadFailed',
 } as const satisfies Record<ErrorCode, TranslationKey>;
 
 export class LocalizedApiError extends Error {

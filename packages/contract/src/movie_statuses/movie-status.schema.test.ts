@@ -29,7 +29,7 @@ test('live M-Team releases contain display data without exposing credentials', (
   assert.equal(Value.Check(MovieReleaseListResponseSchema, {
     provider: 'mteam', availability: 'available', queriedAt: '2026-10-13T00:00:00.000Z', cached: false,
     releases: [{
-      id: '991', title: 'The.Matrix.1999.2160p', sizeBytes: 1024, seeders: 8, leechers: 2,
+      id: '991', title: 'The.Matrix.1999.2160p', detailsUrl: 'https://kp.m-team.cc/detail/991', sizeBytes: 1024, seeders: 8, leechers: 2,
       publishedAt: '2026-10-13 08:30:00', discount: 'FREE', resolution: '4K', medium: 'Remux',
       videoCodec: 'H.265', audioCodec: 'DTS-HD MA', tags: ['中字'],
     }],

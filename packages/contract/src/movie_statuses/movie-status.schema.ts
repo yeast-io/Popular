@@ -59,6 +59,7 @@ export const MovieResourceCheckResponseSchema = MovieResourceCheckSchema;
 export const MovieReleaseSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
   title: Type.String({ minLength: 1 }),
+  detailsUrl: Type.String({ minLength: 1, maxLength: 2048 }),
   sizeBytes: Type.Optional(Type.Integer({ minimum: 0 })),
   seeders: Type.Integer({ minimum: 0 }),
   leechers: Type.Optional(Type.Integer({ minimum: 0 })),

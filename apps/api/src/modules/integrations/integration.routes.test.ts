@@ -53,6 +53,7 @@ test('M-Team routes require authentication and never serialize the API key', asy
   });
   assert.equal(saved.statusCode, 200);
   assert.equal(saved.json().baseUrl, 'https://api.m-team.cc');
+  assert.equal(saved.json().webBaseUrl, 'https://kp.m-team.cc');
   assert.equal(JSON.stringify(saved.json()).includes('must-not-leak'), false);
   assert.equal('apiKey' in saved.json(), false);
 

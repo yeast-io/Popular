@@ -48,6 +48,20 @@ test('integration configurations are unique per owner and provider and hide secr
     fields.ownerId === 1 && fields.provider === 1 && options.unique === true,
   ));
   assert.equal(models.integrationConfigs.schema.path('encryptedApiKey').options.select, false);
+  assert.ok(models.qbittorrentConfigs.schema.indexes().some(([fields, options]) =>
+    fields.ownerId === 1 && options.unique === true,
+  ));
+  assert.equal(models.qbittorrentConfigs.schema.path('encryptedCredential').options.select, false);
+  void connection.destroy();
+});
+
+test('movie downloads are unique per owner, movie, source, and release', () => {
+  const connection = mongoose.createConnection();
+  const models = createModels(connection);
+  assert.ok(models.movieDownloads.schema.indexes().some(([fields, options]) =>
+    fields.ownerId === 1 && fields.tmdbId === 1 && fields.sourceProvider === 1 &&
+    fields.sourceReleaseId === 1 && options.unique === true,
+  ));
   void connection.destroy();
 });
 

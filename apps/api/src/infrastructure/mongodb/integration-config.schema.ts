@@ -4,6 +4,7 @@ const integrationConfigSchema = new Schema({
   ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
   provider: { type: String, required: true },
   baseUrl: { type: String, required: true },
+  webBaseUrl: { type: String },
   encryptedApiKey: { type: String, required: true, select: false },
   verifiedAt: { type: Date },
   lastValidationAt: { type: Date },

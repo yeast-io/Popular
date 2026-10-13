@@ -1,4 +1,4 @@
-import type { Locale, MovieRelease, MovieReleaseListResponse } from '@movie-hub/contract';
+import { MTEAM_DEFAULT_WEB_BASE_URL, type Locale, type MovieRelease, type MovieReleaseListResponse } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieResourceCheckDispatcher } from '../movie-statuses/movie-status.service.js';
 import type { MovieCatalogStore, MovieSearchProvider } from '../movies/movie.types.js';
@@ -96,7 +96,13 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
 
     const pending = this.releaseRequests.get(cacheKey);
     if (pending) return pending;
-    const request = this.fetchReleases(ownerId, tmdbId, config.baseUrl, config.encryptedApiKey)
+    const request = this.fetchReleases(
+      ownerId,
+      tmdbId,
+      config.baseUrl,
+      config.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,
+      config.encryptedApiKey,
+    )
       .then((value) => {
         this.releaseCache.set(cacheKey, { expiresAt: Date.now() + this.options.releaseListTtlMs, value });
         return value;
@@ -110,6 +116,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     ownerId: string,
     tmdbId: number,
     baseUrl: string,
+    webBaseUrl: string,
     encryptedApiKey: string,
   ): Promise<MovieReleaseListResponse> {
     const key: MovieResourceCheckKey = { ownerId, tmdbId, provider: 'mteam' };
@@ -134,7 +141,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
         availability: completion.availability,
         queriedAt: completion.checkedAt.toISOString(),
         cached: false,
-        releases: lookup.releases.flatMap(toDisplayRelease),
+        releases: lookup.releases.flatMap((release) => toDisplayRelease(release, webBaseUrl)),
       };
     } catch (error) {
       const failure = this.failureResult(error);
@@ -395,11 +402,12 @@ function taskKey(ownerId: string, tmdbId: number, provider: 'mteam'): string {
   return `${ownerId}:${tmdbId}:${provider}`;
 }
 
-function toDisplayRelease(release: MTeamRelease): MovieRelease[] {
+function toDisplayRelease(release: MTeamRelease, webBaseUrl: string): MovieRelease[] {
   if (!release.id || !release.title) return [];
   return [{
     id: release.id,
     title: release.title,
+    detailsUrl: new URL(`/detail/${encodeURIComponent(release.id)}`, `${webBaseUrl}/`).toString(),
     seeders: release.seeders,
     ...(release.sizeBytes !== undefined ? { sizeBytes: release.sizeBytes } : {}),
     ...(release.leechers !== undefined ? { leechers: release.leechers } : {}),

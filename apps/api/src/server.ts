@@ -24,6 +24,11 @@ import { MongoMovieResourceCheckStore } from './infrastructure/mongodb/movie-res
 import { MovieResourceCheckService } from './modules/integrations/movie-resource-check.service.js';
 import { MongoMovieResourceSyncBatchStore } from './infrastructure/mongodb/movie-resource-sync-batch.store.js';
 import { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
+import { MongoQBittorrentConfigStore } from './infrastructure/mongodb/qbittorrent-config.store.js';
+import { QBittorrentClient } from './infrastructure/qbittorrent/client.js';
+import { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
+import { MongoMovieDownloadStore } from './infrastructure/mongodb/movie-download.store.js';
+import { MovieDownloadService } from './modules/downloads/movie-download.service.js';
 
 const config = loadConfig();
 const loggers = createLoggers(config.LOG_LEVEL);
@@ -107,10 +112,28 @@ try {
     secrets,
     new Set(config.MTEAM_ALLOWED_HOSTS),
   );
+  const qbittorrentConfigStore = new MongoQBittorrentConfigStore(models.qbittorrentConfigs);
+  const qbittorrent = new QBittorrentClient(config.QBITTORRENT_REQUEST_TIMEOUT_MS);
+  const qbittorrentIntegrationService = new QBittorrentIntegrationService(
+    authService,
+    qbittorrentConfigStore,
+    qbittorrent,
+    secrets,
+  );
+  const movieDownloadService = new MovieDownloadService(
+    authService,
+    new MongoMovieDownloadStore(models.movieDownloads),
+    qbittorrentConfigStore,
+    integrationConfigStore,
+    secrets,
+    qbittorrent,
+    mteam,
+    movieResourceChecks,
+  );
 
   const app = await buildApp({
     config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
-    movieResourceSyncService,
+    movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService,
   });
   await movieResourceSyncService.resumePending();
   app.addHook('onClose', async () => closeInfrastructure(infrastructure));

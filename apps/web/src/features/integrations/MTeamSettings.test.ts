@@ -22,6 +22,7 @@ describe('M-Team settings', () => {
     await flushPromises();
 
     expect(wrapper.get<HTMLInputElement>('#mteam-base-url').element.value).toBe('https://api.m-team.cc');
+    expect(wrapper.get<HTMLInputElement>('#mteam-web-base-url').element.value).toBe('https://kp.m-team.cc');
     expect(wrapper.get<HTMLInputElement>('#mteam-api-key').element.value).toBe('');
     expect(wrapper.text()).not.toContain('saved-secret');
     expect(wrapper.text()).toContain('Configured, last validation succeeded');
@@ -44,7 +45,9 @@ describe('M-Team settings', () => {
     await flushPromises();
 
     const saveCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT');
-    expect(JSON.parse(String(saveCall?.[1]?.body))).toEqual({ baseUrl: 'https://api.m-team.cc', apiKey: 'new-secret' });
+    expect(JSON.parse(String(saveCall?.[1]?.body))).toEqual({
+      baseUrl: 'https://api.m-team.cc', webBaseUrl: 'https://kp.m-team.cc', apiKey: 'new-secret',
+    });
     expect(wrapper.get<HTMLInputElement>('#mteam-api-key').element.value).toBe('');
     expect(wrapper.text()).toContain('validated and saved');
   });

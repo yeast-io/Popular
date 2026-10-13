@@ -17,6 +17,9 @@ import type { MovieStatusService } from './modules/movie-statuses/movie-status.s
 import { registerIntegrationRoutes } from './modules/integrations/integration.routes.js';
 import type { IntegrationService } from './modules/integrations/integration.service.js';
 import type { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
+import type { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
+import { registerMovieDownloadRoutes } from './modules/downloads/movie-download.routes.js';
+import type { MovieDownloadService } from './modules/downloads/movie-download.service.js';
 
 export interface BuildAppOptions {
   config: AppConfig;
@@ -27,9 +30,11 @@ export interface BuildAppOptions {
   movieStatusService?: MovieStatusService;
   integrationService?: IntegrationService;
   movieResourceSyncService?: MovieResourceSyncService;
+  qbittorrentIntegrationService?: QBittorrentIntegrationService;
+  movieDownloadService?: MovieDownloadService;
 }
 
-export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
@@ -45,7 +50,8 @@ export async function buildApp({ config, healthDependencies, authService, userSe
     if (userService) registerUserRoutes(api, userService, config);
     if (movieService) registerMovieRoutes(api, movieService, authService, config);
     if (movieStatusService && authService) registerMovieStatusRoutes(api, movieStatusService, authService, config, movieResourceSyncService);
-    if (integrationService) registerIntegrationRoutes(api, integrationService, config);
+    if (integrationService) registerIntegrationRoutes(api, integrationService, config, qbittorrentIntegrationService);
+    if (movieDownloadService) registerMovieDownloadRoutes(api, movieDownloadService, config);
   }, { prefix: '/api/v1' });
 
   return app;

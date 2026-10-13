@@ -7,3 +7,4 @@ export * from './movie_statuses/movie-status.schema.js';
 export * from './movies/movie.schema.js';
 export * from './users/user.schema.js';
 export * from './integrations/integration.schema.js';
+export * from './downloads/movie-download.schema.js';

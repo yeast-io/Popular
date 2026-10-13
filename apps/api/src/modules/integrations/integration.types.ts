@@ -4,6 +4,7 @@ export interface IntegrationConfigRecord {
   ownerId: string;
   provider: 'mteam';
   baseUrl: string;
+  webBaseUrl?: string;
   encryptedApiKey: string;
   verifiedAt?: Date;
   lastValidationAt?: Date;

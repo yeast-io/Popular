@@ -262,7 +262,7 @@ test('live release queries return only active exact matches and reuse the short-
   assert.equal(duplicate.cached, false);
   assert.equal(cached.cached, true);
   assert.deepEqual(first.releases, [{
-    id: '1', title: 'The.Matrix.1999.2160p', seeders: 8, leechers: 2,
+    id: '1', title: 'The.Matrix.1999.2160p', detailsUrl: 'https://kp.m-team.cc/detail/1', seeders: 8, leechers: 2,
     sizeBytes: 1024, resolution: '4K', tags: ['中字'],
   }]);
   const completion = checks.completed.at(-1);

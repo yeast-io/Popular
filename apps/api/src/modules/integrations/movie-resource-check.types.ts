@@ -92,3 +92,7 @@ export interface MTeamResourceSearcher {
     query: { imdbId: string } | { title: string },
   ): Promise<MTeamRelease[]>;
 }
+
+export interface MTeamTorrentDownloader {
+  downloadTorrent(baseUrl: string, apiKey: string, releaseId: string): Promise<Uint8Array>;
+}

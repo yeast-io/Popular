@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   MTEAM_DEFAULT_BASE_URL,
+  MTEAM_DEFAULT_WEB_BASE_URL,
   type ApiError,
   type IntegrationFailureType,
   type IntegrationStatus,
@@ -14,6 +15,7 @@ import { localizedApiError, localizedErrorMessage } from '../../i18n/api-error';
 const { apiBaseUrl } = loadWebConfig();
 const config = ref<MTeamConfiguration>({ provider: 'mteam', status: 'unconfigured' });
 const baseUrl = ref(MTEAM_DEFAULT_BASE_URL);
+const webBaseUrl = ref(MTEAM_DEFAULT_WEB_BASE_URL);
 const apiKey = ref('');
 const loading = ref(true);
 const submitting = ref(false);
@@ -53,7 +55,11 @@ async function testAndSave() {
       method: 'PUT',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ baseUrl: baseUrl.value.trim(), ...(apiKey.value ? { apiKey: apiKey.value } : {}) }),
+      body: JSON.stringify({
+        baseUrl: baseUrl.value.trim(),
+        webBaseUrl: webBaseUrl.value.trim(),
+        ...(apiKey.value ? { apiKey: apiKey.value } : {}),
+      }),
     }, ACTION_TIMEOUT_MS);
     const result = await response.json() as MTeamConfiguration | ApiError;
     if (!response.ok) {
@@ -135,6 +141,7 @@ function applyFailureState(result: MTeamConfiguration | ApiError) {
 function applyConfiguration(next: MTeamConfiguration) {
   config.value = next;
   baseUrl.value = next.baseUrl ?? MTEAM_DEFAULT_BASE_URL;
+  webBaseUrl.value = next.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL;
 }
 
 function clearMessages() {
@@ -168,6 +175,7 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
     <template v-else>
       <dl v-if="configured" class="integration-summary">
         <div><dt>{{ t('mteam.currentBaseUrl') }}</dt><dd>{{ config.baseUrl }}</dd></div>
+        <div><dt>{{ t('mteam.currentWebBaseUrl') }}</dt><dd>{{ config.webBaseUrl }}</dd></div>
         <div><dt>{{ t('mteam.lastValidation') }}</dt><dd>{{ config.lastValidationAt ? formatDate(config.lastValidationAt, { dateStyle: 'medium', timeStyle: 'short' }) : t('mteam.neverValidated') }}</dd></div>
         <div v-if="config.lastFailureType"><dt>{{ t('mteam.lastFailure') }}</dt><dd>{{ failureLabel }}</dd></div>
       </dl>
@@ -178,6 +186,11 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
             {{ t('mteam.baseUrl') }}
             <input id="mteam-base-url" v-model="baseUrl" type="url" inputmode="url" maxlength="2048" required autocomplete="url" />
             <small>{{ t('mteam.baseUrlHint') }}</small>
+          </label>
+          <label for="mteam-web-base-url">
+            {{ t('mteam.webBaseUrl') }}
+            <input id="mteam-web-base-url" v-model="webBaseUrl" type="url" inputmode="url" maxlength="2048" required autocomplete="url" />
+            <small>{{ t('mteam.webBaseUrlHint') }}</small>
           </label>
           <label for="mteam-api-key">
             {{ t('mteam.apiKey') }}
@@ -194,7 +207,7 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
             <button v-if="configured" class="secondary" type="button" :disabled="submitting || deleting" @click="retest">
               {{ submitting ? t('mteam.testing') : t('mteam.retest') }}
             </button>
-            <button class="primary" type="submit" :disabled="submitting || deleting || !baseUrl.trim() || (!configured && !apiKey)">
+            <button class="primary" type="submit" :disabled="submitting || deleting || !baseUrl.trim() || !webBaseUrl.trim() || (!configured && !apiKey)">
               {{ submitting ? t('mteam.testing') : t('mteam.testAndSave') }}
             </button>
           </div>

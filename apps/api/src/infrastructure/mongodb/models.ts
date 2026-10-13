@@ -13,6 +13,8 @@ import { createMovieResourceCheckModel } from './movie-resource-check.schema.js'
 import { createMovieResourceCheckTaskModel } from './movie-resource-check-task.schema.js';
 import { createMovieResourceSyncBatchModel } from './movie-resource-sync-batch.schema.js';
 import { createTrendingStateModel } from './trending-state.schema.js';
+import { createQBittorrentConfigModel } from './qbittorrent-config.schema.js';
+import { createMovieDownloadModel } from './movie-download.schema.js';
 
 export function createModels(connection: Connection) {
   return {
@@ -30,6 +32,8 @@ export function createModels(connection: Connection) {
     movieResourceCheckTasks: createMovieResourceCheckTaskModel(connection),
     movieResourceSyncBatches: createMovieResourceSyncBatchModel(connection),
     trendingStates: createTrendingStateModel(connection),
+    qbittorrentConfigs: createQBittorrentConfigModel(connection),
+    movieDownloads: createMovieDownloadModel(connection),
   };
 }
 

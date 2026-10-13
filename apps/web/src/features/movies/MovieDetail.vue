@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
-  ApiError, MovieDetail, MovieRelease, MovieReleaseListResponse, MovieResourceCheckResponse, MovieStatus, TrackedMovieStatus,
+  ApiError, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MovieReleaseListResponse,
+  MovieResourceCheckResponse, MovieStatus, QBittorrentConfiguration, TrackedMovieStatus,
 } from '@movie-hub/contract';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
@@ -23,8 +24,14 @@ const releasesLoading = ref(false);
 const releasesError = ref('');
 const releaseDialog = ref<HTMLElement | null>(null);
 const releaseCloseButton = ref<HTMLButtonElement | null>(null);
+const downloads = ref<MovieDownload[]>([]);
+const qbittorrentConfigured = ref(false);
+const confirmingRelease = ref<MovieRelease | null>(null);
+const submittingReleaseId = ref('');
+const downloadErrors = ref<Record<string, string>>({});
 let requestController: AbortController | undefined;
 let resourcePoll: number | undefined;
+let downloadPoll: number | undefined;
 let releaseTrigger: HTMLElement | null = null;
 let previousBodyOverflow = '';
 const detailStyle = computed(() => {
@@ -37,14 +44,21 @@ const statusOptions = computed(() => [
   ['not_interested', t('movie.status.notInterested')],
 ] as const);
 
-onMounted(() => { void load(); if (props.authenticated) void loadResourceCheck(); });
+onMounted(() => {
+  void load();
+  if (props.authenticated) void loadResourceCheck();
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+});
 onBeforeUnmount(() => {
   requestController?.abort();
   stopResourcePolling();
+  stopDownloadPolling();
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   unlockPageScroll();
 });
 watch([() => props.tmdbId, locale], () => {
   releases.value = [];
+  downloads.value = [];
   closeReleases(false);
   releasesError.value = '';
   void load();
@@ -165,6 +179,7 @@ async function showReleases() {
       provider: 'mteam', checking: false, availability: result.availability,
       lastAttemptStatus: 'success', checkedAt: result.queriedAt,
     };
+    await Promise.all([loadQBittorrentConfiguration(), loadDownloads()]);
   } catch (error) {
     releases.value = [];
     releasesError.value = localizedErrorMessage(error, 'errors.loadMovieReleases');
@@ -176,10 +191,90 @@ async function showReleases() {
 function closeReleases(restoreFocus = true) {
   if (!releasesOpen.value) return;
   releasesOpen.value = false;
+  confirmingRelease.value = null;
+  stopDownloadPolling();
   unlockPageScroll();
   if (restoreFocus) {
     void nextTick(() => releaseTrigger?.focus());
   }
+}
+
+async function loadQBittorrentConfiguration() {
+  try {
+    const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, { credentials: 'include' });
+    if (!response.ok) return;
+    const result = await response.json() as QBittorrentConfiguration;
+    qbittorrentConfigured.value = ['configured_valid', 'configured_invalid', 'configured_unverified'].includes(result.status);
+  } catch {
+    qbittorrentConfigured.value = false;
+  }
+}
+
+async function loadDownloads() {
+  if (!releasesOpen.value || document.visibilityState === 'hidden') return;
+  try {
+    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/downloads`, { credentials: 'include' });
+    const body = await response.json() as MovieDownloadListResponse | ApiError;
+    if (!response.ok) throw localizedApiError(body, 'errors.movieDownloadFailed');
+    const items = (body as MovieDownloadListResponse).items;
+    downloads.value = Array.isArray(items) ? items : [];
+    scheduleDownloadPoll();
+  } catch {
+    stopDownloadPolling();
+  }
+}
+
+function downloadFor(releaseId: string): MovieDownload | undefined {
+  return downloads.value.find((download) => download.sourceReleaseId === releaseId);
+}
+
+function requestDownload(release: MovieRelease) {
+  if (!qbittorrentConfigured.value || submittingReleaseId.value) return;
+  confirmingRelease.value = release;
+}
+
+async function confirmDownload() {
+  const release = confirmingRelease.value;
+  if (!release || submittingReleaseId.value) return;
+  confirmingRelease.value = null;
+  submittingReleaseId.value = release.id;
+  downloadErrors.value = { ...downloadErrors.value, [release.id]: '' };
+  try {
+    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/downloads`, {
+      method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sourceReleaseId: release.id }),
+    });
+    const body = await response.json() as MovieDownload | ApiError;
+    if (!response.ok) throw localizedApiError(body, 'errors.movieDownloadFailed');
+    const created = body as MovieDownload;
+    downloads.value = [...downloads.value.filter((item) => item.sourceReleaseId !== release.id), created];
+    scheduleDownloadPoll();
+  } catch (error) {
+    downloadErrors.value = { ...downloadErrors.value, [release.id]: localizedErrorMessage(error, 'errors.movieDownloadFailed') };
+  } finally {
+    submittingReleaseId.value = '';
+  }
+}
+
+function scheduleDownloadPoll() {
+  stopDownloadPolling();
+  if (!releasesOpen.value || document.visibilityState === 'hidden') return;
+  if (!downloads.value.some((download) => ['submitting', 'downloading', 'paused'].includes(download.status))) return;
+  downloadPoll = window.setTimeout(() => void loadDownloads(), 2_000);
+}
+
+function stopDownloadPolling() {
+  if (downloadPoll !== undefined) window.clearTimeout(downloadPoll);
+  downloadPoll = undefined;
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'hidden') stopDownloadPolling();
+  else if (releasesOpen.value) void loadDownloads();
+}
+
+function downloadStatus(download: MovieDownload): string {
+  return t(`movie.download.status.${download.status}` as `movie.download.status.${MovieDownload['status']}`);
 }
 
 function lockPageScroll() {
@@ -195,6 +290,10 @@ function unlockPageScroll() {
 function handleReleaseDialogKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     event.preventDefault();
+    if (confirmingRelease.value) {
+      confirmingRelease.value = null;
+      return;
+    }
     closeReleases();
     return;
   }
@@ -440,10 +539,24 @@ function syncedAtLabel(syncedAt: string): string {
             <p v-else-if="!releases.length" class="muted-copy" role="status">{{ t('movie.releases.empty') }}</p>
             <ol v-else class="release-list">
               <li v-for="release in releases" :key="release.id" class="release-card">
-                <h3>{{ release.title }}</h3>
+                <div class="release-title-row">
+                  <h3>{{ release.title }}</h3>
+                  <a
+                    class="release-detail-link"
+                    :href="release.detailsUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    :aria-label="t('movie.releases.openDetails')"
+                    :title="t('movie.releases.openDetails')"
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                      <path d="M14 5h5v5M19 5l-9 9M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+                    </svg>
+                  </a>
+                </div>
                 <dl class="release-facts">
                   <div v-if="release.sizeBytes !== undefined"><dt>{{ t('movie.releases.size') }}</dt><dd>{{ formatBytes(release.sizeBytes) }}</dd></div>
-                  <div class="release-fact-highlight"><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(release.seeders) }}</dd></div>
+                  <div class="release-fact-highlight" :class="{ healthy: release.seeders > 50 }"><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(release.seeders) }}</dd></div>
                   <div v-if="release.leechers !== undefined" class="release-fact-highlight"><dt>{{ t('movie.releases.leechers') }}</dt><dd>{{ formatNumber(release.leechers) }}</dd></div>
                   <div v-if="release.publishedAt"><dt>{{ t('movie.releases.publishedAt') }}</dt><dd>{{ release.publishedAt }}</dd></div>
                   <div v-if="release.discount"><dt>{{ t('movie.releases.discount') }}</dt><dd>{{ discountLabel(release.discount) }}</dd></div>
@@ -455,8 +568,58 @@ function syncedAtLabel(syncedAt: string): string {
                 <div v-if="release.tags.length" class="release-tags">
                   <span v-for="tag in release.tags" :key="tag">{{ tag }}</span>
                 </div>
+                <div class="release-download-actions">
+                  <span v-if="!qbittorrentConfigured" class="muted-copy">{{ t('movie.download.unconfigured') }}</span>
+                  <button
+                    v-if="!downloadFor(release.id) || ['failed', 'missing'].includes(downloadFor(release.id)!.status)"
+                    class="release-download-button"
+                    type="button"
+                    :disabled="!qbittorrentConfigured || Boolean(submittingReleaseId)"
+                    :title="qbittorrentConfigured ? undefined : t('movie.download.unconfigured')"
+                    @click="requestDownload(release)"
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                      <path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" />
+                    </svg>
+                    {{ submittingReleaseId === release.id
+                      ? t('movie.download.submitting')
+                      : downloadFor(release.id) ? t('movie.download.retry') : t('movie.download.action') }}
+                  </button>
+                </div>
+                <div
+                  v-if="downloadFor(release.id)"
+                  class="release-download-progress"
+                  :class="{ downloading: downloadFor(release.id)!.status === 'downloading' }"
+                  role="status"
+                >
+                  <div>
+                    <span>{{ downloadStatus(downloadFor(release.id)!) }}</span>
+                    <strong>{{ Math.round(downloadFor(release.id)!.progress) }}%</strong>
+                  </div>
+                  <progress :value="downloadFor(release.id)!.progress" max="100" :aria-label="t('movie.download.progress', { progress: Math.round(downloadFor(release.id)!.progress) })"></progress>
+                </div>
+                <p v-if="downloadErrors[release.id]" class="browse-error" role="alert">{{ downloadErrors[release.id] }}</p>
               </li>
             </ol>
+          </div>
+          <div v-if="confirmingRelease" class="download-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="download-confirm-title">
+            <div>
+              <h3 id="download-confirm-title">{{ t('movie.download.confirmTitle') }}</h3>
+              <p>{{ t('movie.download.confirmDescription') }}</p>
+              <strong>{{ confirmingRelease.title }}</strong>
+              <dl class="release-facts confirmation-facts">
+                <div v-if="confirmingRelease.sizeBytes !== undefined"><dt>{{ t('movie.releases.size') }}</dt><dd>{{ formatBytes(confirmingRelease.sizeBytes) }}</dd></div>
+                <div v-if="confirmingRelease.resolution"><dt>{{ t('movie.releases.resolution') }}</dt><dd>{{ confirmingRelease.resolution }}</dd></div>
+                <div v-if="confirmingRelease.medium"><dt>{{ t('movie.releases.medium') }}</dt><dd>{{ confirmingRelease.medium }}</dd></div>
+                <div v-if="confirmingRelease.videoCodec"><dt>{{ t('movie.releases.videoCodec') }}</dt><dd>{{ confirmingRelease.videoCodec }}</dd></div>
+                <div v-if="confirmingRelease.audioCodec"><dt>{{ t('movie.releases.audioCodec') }}</dt><dd>{{ confirmingRelease.audioCodec }}</dd></div>
+                <div><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(confirmingRelease.seeders) }}</dd></div>
+              </dl>
+              <div class="download-confirm-actions">
+                <button class="secondary" type="button" @click="confirmingRelease = null">{{ t('movie.download.cancel') }}</button>
+                <button class="primary" type="button" @click="confirmDownload">{{ t('movie.download.confirm') }}</button>
+              </div>
+            </div>
           </div>
         </section>
       </div>

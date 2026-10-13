@@ -6,6 +6,7 @@ import {
   IntegrationService,
   IntegrationValidationError,
   normalizeMTeamBaseUrl,
+  normalizeMTeamWebBaseUrl,
 } from './integration.service.js';
 import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier } from './integration.types.js';
 import { SecretCrypto } from './secret-crypto.js';
@@ -64,11 +65,23 @@ test('normalizes only allowed HTTPS M-Team base URLs', () => {
   ]) assert.throws(() => normalizeMTeamBaseUrl(url, allowedHosts), AppError);
 });
 
+test('normalizes only HTTPS M-Team web origins', () => {
+  assert.equal(normalizeMTeamWebBaseUrl(' https://KP.M-TEAM.CC/ '), 'https://kp.m-team.cc');
+  for (const url of [
+    'http://kp.m-team.cc',
+    'https://user:pass@kp.m-team.cc',
+    'https://kp.m-team.cc/detail',
+    'https://kp.m-team.cc?apiKey=secret',
+    'https://evil.example',
+  ]) assert.throws(() => normalizeMTeamWebBaseUrl(url), AppError);
+});
+
 test('validates before saving and never returns the API key', async () => {
   const { store, verifier, service } = fixture();
   const response = await service.saveMTeam('session', { baseUrl: 'https://api.m-team.cc/', apiKey: '  top-secret  ' });
   assert.deepEqual(verifier.calls, [{ baseUrl: 'https://api.m-team.cc', apiKey: 'top-secret' }]);
   assert.equal(response.status, 'configured_valid');
+  assert.equal(response.webBaseUrl, 'https://kp.m-team.cc');
   assert.equal(response.lastValidationAt, now.toISOString());
   assert.equal('apiKey' in response, false);
   assert.notEqual(store.record?.encryptedApiKey, 'top-secret');

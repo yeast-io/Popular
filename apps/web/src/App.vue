@@ -8,6 +8,7 @@ import MovieDetail from './features/movies/MovieDetail.vue';
 import { useI18n } from './i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
+import QBittorrentSettings from './features/integrations/QBittorrentSettings.vue';
 
 const { apiBaseUrl } = loadWebConfig();
 const { locale, setLocale, t } = useI18n();
@@ -553,6 +554,7 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
           </div>
           <div class="settings-form">
             <MTeamSettings />
+            <QBittorrentSettings />
           </div>
         </section>
       </template>

@@ -1,4 +1,5 @@
 import {
+  MTEAM_DEFAULT_WEB_BASE_URL,
   type IntegrationFailureType,
   type MTeamConfiguration,
   type SaveMTeamConfigurationRequest,
@@ -38,6 +39,9 @@ export class IntegrationService {
     const ownerId = await this.auth.requireOwnerId(token);
     const baseUrl = normalizeMTeamBaseUrl(input.baseUrl, this.allowedMTeamHosts);
     const existing = await this.configs.find(ownerId, 'mteam');
+    const webBaseUrl = normalizeMTeamWebBaseUrl(
+      input.webBaseUrl ?? existing?.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,
+    );
     const secretContext = integrationSecretContext(ownerId, 'mteam');
     const apiKey = input.apiKey?.trim() || (existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : '');
     if (!apiKey) throw new AppError(400, 'VALIDATION_ERROR', 'M-Team API key is required for the first configuration');
@@ -57,6 +61,7 @@ export class IntegrationService {
       ownerId,
       provider: 'mteam',
       baseUrl,
+      webBaseUrl,
       encryptedApiKey: this.secrets.encrypt(apiKey, secretContext),
       verifiedAt: attemptedAt,
       lastValidationAt: attemptedAt,
@@ -115,6 +120,25 @@ export function normalizeMTeamBaseUrl(raw: string, allowedHosts: ReadonlySet<str
   return `${url.protocol}//${hostname}${pathname}`;
 }
 
+export function normalizeMTeamWebBaseUrl(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL is invalid');
+  }
+  const hostname = url.hostname.toLowerCase();
+  const trustedHost = hostname === 'm-team.cc' || hostname.endsWith('.m-team.cc')
+    || hostname === 'm-team.io' || hostname.endsWith('.m-team.io');
+  if (url.protocol !== 'https:') throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL must use HTTPS');
+  if (url.username || url.password) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL cannot contain credentials');
+  if (url.search || url.hash) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL cannot contain a query or fragment');
+  if (url.port && url.port !== '443') throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL must use the default HTTPS port');
+  if (!trustedHost) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL host is not allowed');
+  if (url.pathname.replace(/\/+$/, '')) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL path must be empty');
+  return `${url.protocol}//${hostname}`;
+}
+
 function mteamValidationAppError(error: unknown): AppError {
   const failure = error instanceof IntegrationValidationError ? error.failureType : 'network';
   const mapping = {
@@ -136,6 +160,7 @@ function toResponse(record: IntegrationConfigRecord | null): MTeamConfiguration 
     provider: 'mteam',
     status,
     baseUrl: record.baseUrl,
+    webBaseUrl: record.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,
     ...(record.lastValidationAt ? { lastValidationAt: record.lastValidationAt.toISOString() } : {}),
     ...(record.lastFailureType ? { lastFailureType: record.lastFailureType } : {}),
   };

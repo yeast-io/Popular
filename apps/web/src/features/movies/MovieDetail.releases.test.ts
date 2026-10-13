@@ -6,6 +6,7 @@ import MovieDetail from './MovieDetail.vue';
 
 describe('Movie Detail live releases', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     document.body.innerHTML = '';
     document.body.style.overflow = '';
@@ -24,12 +25,16 @@ describe('Movie Detail live releases', () => {
         return Response.json({
           provider: 'mteam', availability: 'available', queriedAt: '2026-10-13T00:00:00.000Z', cached: false,
           releases: [{
-            id: '991', title: 'The.Matrix.1999.2160p.UHD.BluRay', sizeBytes: 2147483648,
-            seeders: 12, leechers: 4, publishedAt: '2026-10-13 08:30:00', discount: 'FREE',
+            id: '991', title: 'The.Matrix.1999.2160p.UHD.BluRay', detailsUrl: 'https://kp.m-team.cc/detail/991', sizeBytes: 2147483648,
+            seeders: 51, leechers: 4, publishedAt: '2026-10-13 08:30:00', discount: 'FREE',
             resolution: '4K', medium: 'Remux', videoCodec: 'H.265', audioCodec: 'DTS-HD MA', tags: ['中字'],
           }],
         });
       }
+      if (url.endsWith('/integrations/qbittorrent')) {
+        return Response.json({ provider: 'qbittorrent', status: 'unconfigured' });
+      }
+      if (url.endsWith('/downloads')) return Response.json({ items: [] });
       return Response.json({
         tmdbId: 603, title: '黑客帝国', genres: [], cast: [], directors: [], userStatus: 'interested',
         detailSyncedAt: '2026-10-13T00:00:00.000Z', stale: false, locale: 'zh-CN',
@@ -49,16 +54,23 @@ describe('Movie Detail live releases', () => {
     expect(urls).toContain('/api/v1/me/movies/603/resources/mteam/releases');
     expect(dialog?.textContent).toContain('The.Matrix.1999.2160p.UHD.BluRay');
     expect(dialog?.textContent).toContain('2 GB');
-    expect(dialog?.textContent).toContain('12');
+    expect(dialog?.textContent).toContain('51');
     expect(dialog?.textContent).toContain('免费');
     expect(dialog?.textContent).toContain('DTS-HD MA');
     expect(dialog?.textContent).toContain('中字');
+    const detailLink = dialog?.querySelector<HTMLAnchorElement>('.release-detail-link');
+    expect(detailLink?.href).toBe('https://kp.m-team.cc/detail/991');
+    expect(detailLink?.target).toBe('_blank');
+    expect(detailLink?.rel).toBe('noopener noreferrer');
+    expect(detailLink?.getAttribute('aria-label')).toBe('在 M-Team 打开资源详情');
     const highlightedFacts = [...dialog!.querySelectorAll<HTMLElement>('.release-fact-highlight')];
     expect(highlightedFacts).toHaveLength(2);
     expect(highlightedFacts.map((fact) => fact.textContent)).toEqual([
-      expect.stringContaining('做种人数12'),
+      expect.stringContaining('做种人数51'),
       expect.stringContaining('下载人数4'),
     ]);
+    expect(highlightedFacts[0]?.classList.contains('healthy')).toBe(true);
+    expect(highlightedFacts[1]?.classList.contains('healthy')).toBe(false);
     expect(document.body.style.overflow).toBe('hidden');
 
     dialog?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -66,6 +78,74 @@ describe('Movie Detail live releases', () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     expect(document.body.style.overflow).toBe('');
     wrapper.unmount();
+  });
+
+  it('requires confirmation, creates one download, and polls only while the release dialog is open', async () => {
+    vi.useFakeTimers();
+    setLocale('zh-CN');
+    let downloadGets = 0;
+    let downloadPosts = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/resources/mteam')) {
+        return Response.json({ provider: 'mteam', checking: false, availability: 'available', lastAttemptStatus: 'success' });
+      }
+      if (url.endsWith('/resources/mteam/releases')) {
+        return Response.json({
+          provider: 'mteam', availability: 'available', queriedAt: '2026-10-13T00:00:00.000Z', cached: false,
+          releases: [{ id: '991', title: 'Movie.Release', detailsUrl: 'https://kp.m-team.cc/detail/991', sizeBytes: 1000, seeders: 3, resolution: '4K', videoCodec: 'H.265', tags: [] }],
+        });
+      }
+      if (url.endsWith('/integrations/qbittorrent')) {
+        return Response.json({ provider: 'qbittorrent', status: 'configured_valid', baseUrl: 'http://nas:8080' });
+      }
+      if (url.endsWith('/downloads') && init?.method === 'POST') {
+        downloadPosts += 1;
+        return Response.json({
+          id: 'd1', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: '991', provider: 'qbittorrent',
+          status: 'downloading', progress: 20,
+        }, { status: 201 });
+      }
+      if (url.endsWith('/downloads')) {
+        downloadGets += 1;
+        return Response.json({ items: downloadPosts ? [{
+          id: 'd1', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: '991', provider: 'qbittorrent',
+          status: 'downloading', progress: 25,
+        }] : [] });
+      }
+      return Response.json({
+        tmdbId: 603, title: '电影', genres: [], cast: [], directors: [], userStatus: 'interested',
+        detailSyncedAt: '2026-10-13T00:00:00.000Z', stale: false, locale: 'zh-CN',
+      });
+    }));
+
+    const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
+    await flushPromises();
+    await wrapper.get('.poster-resource-badge').trigger('click');
+    await flushPromises();
+
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    dialog.querySelector<HTMLButtonElement>('.release-download-button')!.click();
+    await flushPromises();
+    expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(downloadPosts).toBe(0);
+
+    document.body.querySelector<HTMLButtonElement>('.download-confirm-actions .primary')!.click();
+    await flushPromises();
+    expect(downloadPosts).toBe(1);
+    expect(dialog.querySelector<HTMLProgressElement>('progress')?.value).toBe(20);
+    expect(dialog.querySelector('.release-download-progress')?.classList.contains('downloading')).toBe(true);
+    expect(dialog.querySelector('.release-download-button')).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await flushPromises();
+    expect(downloadGets).toBeGreaterThanOrEqual(2);
+    const getsBeforeClose = downloadGets;
+    dialog.querySelector<HTMLButtonElement>('.release-panel-heading button')!.click();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(downloadGets).toBe(getsBeforeClose);
+    wrapper.unmount();
+    vi.useRealTimers();
   });
 
   it('keeps the list empty and shows an explicit error when the live query fails', async () => {
