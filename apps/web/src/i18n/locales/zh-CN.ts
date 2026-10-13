@@ -240,6 +240,7 @@ const zhCN = {
   'movie.resource.mteamUnconfigured': '未配置 M-Team',
   'movie.resource.configureMTeam': '前往设置',
   'movie.resource.lastSuccessfulCheck': '最近一次成功检查：{date}',
+  'movie.resource.check': '检查',
   'movie.resource.recheck': '重新检查',
   'movie.resource.sectionTitle': '资源状态',
   'movie.releases.title': '当前活跃发布版本',

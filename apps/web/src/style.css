@@ -1136,20 +1136,53 @@ label small {
   font-weight: 700;
 }
 .resource-check-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
+  display: grid;
+  justify-items: start;
+  gap: 5px;
   margin-top: 18px;
   border-top: 1px solid #303132;
-  padding-top: 18px;
+  padding-top: 14px;
 }
 .resource-check-panel strong {
   color: #dedbd4;
   font-size: 0.8rem;
 }
+.resource-check-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
 .resource-check-panel .resource-status {
-  margin-top: 5px;
+  margin-top: 0;
+}
+.resource-check-button {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 30px;
+  border: 1px solid rgba(222, 219, 212, 0.24);
+  border-radius: 999px;
+  padding: 6px 11px;
+  color: #d8d6d0;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+.resource-check-button:hover:not(:disabled) {
+  border-color: rgba(var(--movie-accent-rgb), 0.62);
+  color: #fff;
+  background: rgba(var(--movie-accent-rgb), 0.1);
+}
+.resource-check-button:focus-visible {
+  outline: 2px solid var(--movie-accent);
+  outline-offset: 3px;
+}
+.resource-check-button:disabled {
+  cursor: wait;
+  opacity: 0.62;
 }
 .resource-status-button {
   display: block;

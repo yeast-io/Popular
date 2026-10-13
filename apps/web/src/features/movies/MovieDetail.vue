@@ -461,8 +461,8 @@ function syncedAtLabel(syncedAt: string): string {
             </button>
           </div>
           <div class="resource-check-panel">
-            <div>
-              <strong>{{ t('movie.resource.sectionTitle') }}</strong>
+            <strong>{{ t('movie.resource.sectionTitle') }}</strong>
+            <div class="resource-check-row">
               <button
                 v-if="resourceCheck?.availability === 'available' && !resourceCheck.checking"
                 class="resource-status resource-status-button"
@@ -476,10 +476,18 @@ function syncedAtLabel(syncedAt: string): string {
               <p v-else class="resource-status" :class="{ error: resourceCheck?.lastAttemptStatus === 'error' }" role="status">
                 {{ resourceStatusLabel() }}
               </p>
+              <button
+                class="resource-check-button"
+                type="button"
+                :disabled="resourceCheck?.checking"
+                :aria-busy="resourceCheck?.checking"
+                @click="recheckResource"
+              >
+                {{ resourceCheck?.checking
+                  ? t('movie.resource.checking')
+                  : t(resourceCheck?.checkedAt ? 'movie.resource.recheck' : 'movie.resource.check') }}
+              </button>
             </div>
-            <button class="outline-button" type="button" :disabled="resourceCheck?.checking" @click="recheckResource">
-              {{ resourceCheck?.checking ? t('movie.resource.checking') : t('movie.resource.recheck') }}
-            </button>
           </div>
           <p v-if="resourceError" class="browse-error" role="alert">{{ resourceError }}</p>
           <p v-if="errorMessage" class="browse-error" role="alert">{{ errorMessage }}</p>

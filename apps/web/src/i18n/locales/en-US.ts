@@ -244,6 +244,7 @@ const enUS = {
   'movie.resource.mteamUnconfigured': 'M-Team is not configured',
   'movie.resource.configureMTeam': 'Go to Settings',
   'movie.resource.lastSuccessfulCheck': 'Last successful check: {date}',
+  'movie.resource.check': 'Check',
   'movie.resource.recheck': 'Check again',
   'movie.resource.sectionTitle': 'Resource status',
   'movie.releases.title': 'Active releases',
