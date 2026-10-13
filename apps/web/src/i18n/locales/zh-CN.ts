@@ -185,7 +185,7 @@ const zhCN = {
   'discover.searchPlaceholder': '搜索电影…',
   'myMovies.eyebrow': '个人片单',
   'myMovies.title': '我的电影',
-  'myMovies.description': '按观影状态整理和查看你保存的电影。',
+  'myMovies.description': '按观影状态整理和查看你保存的电影',
   'myMovies.filterLabel': '按电影状态筛选',
   'myMovies.resultsLabel': '状态为“{status}”的电影',
   'myMovies.sync.start': '一键同步想看电影',

@@ -189,7 +189,7 @@ const enUS = {
   'discover.searchPlaceholder': 'Search movies…',
   'myMovies.eyebrow': 'Personal library',
   'myMovies.title': 'My Movies',
-  'myMovies.description': 'Browse the movies you saved, organized by viewing status.',
+  'myMovies.description': 'Browse the movies you saved, organized by viewing status',
   'myMovies.filterLabel': 'Filter by movie status',
   'myMovies.resultsLabel': 'Movies marked “{status}”',
   'myMovies.sync.start': 'Sync interested movies',
