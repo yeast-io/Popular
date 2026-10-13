@@ -1837,42 +1837,43 @@ label small {
 }
 .integration-actions {
   display: flex;
+  align-items: center;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 .integration-actions .primary,
 .integration-actions .secondary {
   width: auto;
+  min-height: 36px;
   margin: 0;
-  padding: 10px 16px;
-  font-size: 0.78rem;
+  padding: 8px 12px;
+  font-size: 0.74rem;
 }
 .integration-actions .primary {
-  min-width: 132px;
+  min-width: 112px;
 }
 .integration-actions .secondary {
   border: 1px solid #3a3b3c;
   background: transparent;
 }
+.integration-actions .danger {
+  border-color: rgba(225, 132, 114, 0.42);
+  color: #c87868;
+}
+.integration-actions .danger:hover {
+  border-color: #e18472;
+  color: #f09a89;
+}
 .integration-delete {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 14px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid #2b2c2d;
+  gap: 8px;
   color: #8d8e89;
   font-size: 0.72rem;
-}
-.integration-delete > .danger {
-  color: #9d665c;
-  font-size: 0.72rem;
-  font-weight: 600;
-}
-.integration-delete > .danger:hover {
-  color: #e18472;
 }
 .compact-loading {
   min-height: 80px;
@@ -2369,16 +2370,13 @@ button.poster-resource-badge:disabled {
     width: 100%;
   }
   .integration-actions {
-    align-items: stretch;
-    flex-direction: column-reverse;
-  }
-  .integration-actions .primary,
-  .integration-actions .secondary {
-    width: 100%;
+    align-items: center;
+    flex-direction: row;
+    justify-content: flex-start;
   }
   .integration-delete {
-    align-items: flex-end;
-    flex-direction: column;
+    justify-content: flex-start;
+    width: 100%;
   }
   .status-control {
     grid-template-columns: 1fr;

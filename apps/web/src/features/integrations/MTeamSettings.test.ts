@@ -61,7 +61,8 @@ describe('M-Team settings', () => {
     const wrapper = mount(MTeamSettings);
     await flushPromises();
 
-    await wrapper.get('.integration-delete > button').trigger('click');
+    expect(wrapper.get('.integration-delete-trigger').element.closest('.integration-actions')).not.toBeNull();
+    await wrapper.get('.integration-delete-trigger').trigger('click');
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
     await wrapper.get('.integration-delete .danger').trigger('click');
     await flushPromises();

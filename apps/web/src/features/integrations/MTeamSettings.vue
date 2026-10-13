@@ -204,6 +204,12 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
             <p v-if="successMessage" class="success settings-message" role="status" aria-live="polite">{{ successMessage }}</p>
           </div>
           <div class="integration-actions">
+            <div v-if="configured && confirmDelete" class="integration-delete">
+              <span>{{ t('mteam.deleteConfirm') }}</span>
+              <button class="secondary" type="button" :disabled="deleting" @click="confirmDelete = false">{{ t('mteam.cancel') }}</button>
+              <button class="secondary danger" type="button" :disabled="deleting" @click="deleteConfiguration">{{ deleting ? t('mteam.deleting') : t('mteam.confirmDelete') }}</button>
+            </div>
+            <button v-else-if="configured" class="secondary danger integration-delete-trigger" type="button" :disabled="submitting || deleting" @click="confirmDelete = true">{{ t('mteam.delete') }}</button>
             <button v-if="configured" class="secondary" type="button" :disabled="submitting || deleting" @click="retest">
               {{ submitting ? t('mteam.testing') : t('mteam.retest') }}
             </button>
@@ -213,15 +219,6 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
           </div>
         </div>
       </form>
-
-      <div v-if="configured" class="integration-delete">
-        <template v-if="confirmDelete">
-          <span>{{ t('mteam.deleteConfirm') }}</span>
-          <button class="text-button" type="button" :disabled="deleting" @click="confirmDelete = false">{{ t('mteam.cancel') }}</button>
-          <button class="text-button danger" type="button" :disabled="deleting" @click="deleteConfiguration">{{ deleting ? t('mteam.deleting') : t('mteam.confirmDelete') }}</button>
-        </template>
-        <button v-else class="text-button danger" type="button" @click="confirmDelete = true">{{ t('mteam.delete') }}</button>
-      </div>
     </template>
   </section>
 </template>
