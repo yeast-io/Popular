@@ -956,7 +956,24 @@ label small {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 8px;
+  padding-right: 10px;
+  scrollbar-color: #55575a #0f1011;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.release-panel-content::-webkit-scrollbar {
+  width: 8px;
+}
+.release-panel-content::-webkit-scrollbar-track {
+  background: #0f1011;
+}
+.release-panel-content::-webkit-scrollbar-thumb {
+  border: 2px solid #0f1011;
+  border-radius: 999px;
+  background: #55575a;
+}
+.release-panel-content::-webkit-scrollbar-thumb:hover {
+  background: #e84b2c;
 }
 .release-list {
   display: grid;
