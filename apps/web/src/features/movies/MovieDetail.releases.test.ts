@@ -148,6 +148,43 @@ describe('Movie Detail live releases', () => {
     vi.useRealTimers();
   });
 
+  it('marks fewer than 20 seeders red while keeping 20 at the default color', async () => {
+    setLocale('zh-CN');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/resources/mteam')) {
+        return Response.json({ provider: 'mteam', checking: false, availability: 'available', lastAttemptStatus: 'success' });
+      }
+      if (url.endsWith('/resources/mteam/releases')) {
+        return Response.json({
+          provider: 'mteam', availability: 'available', queriedAt: '2026-10-14T00:00:00.000Z', cached: false,
+          releases: [
+            { id: '19', title: 'Low.Seeders', detailsUrl: 'https://kp.m-team.cc/detail/19', seeders: 19, tags: [] },
+            { id: '20', title: 'Boundary.Seeders', detailsUrl: 'https://kp.m-team.cc/detail/20', seeders: 20, tags: [] },
+          ],
+        });
+      }
+      if (url.endsWith('/integrations/qbittorrent')) {
+        return Response.json({ provider: 'qbittorrent', status: 'unconfigured' });
+      }
+      if (url.endsWith('/downloads')) return Response.json({ items: [] });
+      return Response.json({
+        tmdbId: 603, title: '电影', genres: [], cast: [], directors: [], userStatus: 'interested',
+        detailSyncedAt: '2026-10-14T00:00:00.000Z', stale: false, locale: 'zh-CN',
+      });
+    }));
+
+    const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
+    await flushPromises();
+    await wrapper.get('.poster-resource-badge').trigger('click');
+    await flushPromises();
+
+    const cards = document.body.querySelectorAll<HTMLElement>('.release-card');
+    expect(cards[0]?.querySelector('.release-fact-highlight')?.classList.contains('low-seeders')).toBe(true);
+    expect(cards[1]?.querySelector('.release-fact-highlight')?.classList.contains('low-seeders')).toBe(false);
+    wrapper.unmount();
+  });
+
   it('keeps the list empty and shows an explicit error when the live query fails', async () => {
     setLocale('zh-CN');
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {

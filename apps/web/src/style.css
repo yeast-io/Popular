@@ -1321,6 +1321,10 @@ label small {
 .release-fact-highlight.healthy dd {
   color: #a4e5bd;
 }
+.release-fact-highlight.low-seeders dd,
+.confirmation-facts .low-seeders dd {
+  color: #ff6b61;
+}
 .release-tags {
   display: flex;
   flex-wrap: wrap;

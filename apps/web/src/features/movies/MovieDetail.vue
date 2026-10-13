@@ -556,7 +556,10 @@ function syncedAtLabel(syncedAt: string): string {
                 </div>
                 <dl class="release-facts">
                   <div v-if="release.sizeBytes !== undefined"><dt>{{ t('movie.releases.size') }}</dt><dd>{{ formatBytes(release.sizeBytes) }}</dd></div>
-                  <div class="release-fact-highlight" :class="{ healthy: release.seeders > 50 }"><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(release.seeders) }}</dd></div>
+                  <div
+                    class="release-fact-highlight"
+                    :class="{ healthy: release.seeders > 50, 'low-seeders': release.seeders < 20 }"
+                  ><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(release.seeders) }}</dd></div>
                   <div v-if="release.leechers !== undefined" class="release-fact-highlight"><dt>{{ t('movie.releases.leechers') }}</dt><dd>{{ formatNumber(release.leechers) }}</dd></div>
                   <div v-if="release.publishedAt"><dt>{{ t('movie.releases.publishedAt') }}</dt><dd>{{ release.publishedAt }}</dd></div>
                   <div v-if="release.discount"><dt>{{ t('movie.releases.discount') }}</dt><dd>{{ discountLabel(release.discount) }}</dd></div>
@@ -616,7 +619,7 @@ function syncedAtLabel(syncedAt: string): string {
                 <div v-if="confirmingRelease.medium"><dt>{{ t('movie.releases.medium') }}</dt><dd>{{ confirmingRelease.medium }}</dd></div>
                 <div v-if="confirmingRelease.videoCodec"><dt>{{ t('movie.releases.videoCodec') }}</dt><dd>{{ confirmingRelease.videoCodec }}</dd></div>
                 <div v-if="confirmingRelease.audioCodec"><dt>{{ t('movie.releases.audioCodec') }}</dt><dd>{{ confirmingRelease.audioCodec }}</dd></div>
-                <div><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(confirmingRelease.seeders) }}</dd></div>
+                <div :class="{ 'low-seeders': confirmingRelease.seeders < 20 }"><dt>{{ t('movie.releases.seeders') }}</dt><dd>{{ formatNumber(confirmingRelease.seeders) }}</dd></div>
               </dl>
               <div class="download-confirm-actions">
                 <button class="secondary" type="button" @click="confirmingRelease = null">{{ t('movie.download.cancel') }}</button>
