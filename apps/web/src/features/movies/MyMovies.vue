@@ -25,6 +25,7 @@ const skeletons = Array.from({ length: 5 }, (_, index) => index);
 const failedPosters = ref(new Set<number>());
 let requestController: AbortController | undefined;
 let syncPoll: number | undefined;
+let syncDismissTimer: number | undefined;
 const syncJobStorageKey = 'movie-hub:mteam-sync-job';
 const statusOptions = computed(() => [
   ['interested', t('movie.status.interested')],
@@ -33,7 +34,7 @@ const statusOptions = computed(() => [
 ] as const);
 const activeStatusLabel = computed(() => statusOptions.value.find(([status]) => status === filter.value)?.[1] ?? '');
 onMounted(() => { void load(); void loadMTeamConfiguration(); void loadSyncBatch(); });
-onBeforeUnmount(() => { requestController?.abort(); stopSyncPolling(); });
+onBeforeUnmount(() => { requestController?.abort(); stopSyncPolling(); stopSyncDismissTimer(); });
 watch([filter, locale], () => void load());
 
 async function load() {
@@ -107,6 +108,7 @@ async function loadMTeamConfiguration() {
 
 async function startSync() {
   if (isSyncActive(syncBatch.value)) return;
+  stopSyncDismissTimer();
   syncError.value = '';
   try {
     const response = await fetch(`${apiBaseUrl}/me/movies/resources/mteam/sync`, {
@@ -117,7 +119,11 @@ async function startSync() {
     syncBatch.value = body as MovieResourceSyncBatch;
     window.localStorage.setItem(syncJobStorageKey, syncBatch.value.id);
     if (isSyncActive(syncBatch.value)) scheduleSyncPoll();
-    else await load();
+    else {
+      window.localStorage.removeItem(syncJobStorageKey);
+      scheduleSyncDismiss();
+      await load();
+    }
   } catch (error) {
     syncError.value = localizedErrorMessage(error, 'errors.syncMovieResources');
   }
@@ -132,10 +138,14 @@ async function loadSyncBatch() {
     if (!response.ok) throw localizedApiError(body, 'errors.syncMovieResources');
     const wasActive = isSyncActive(syncBatch.value);
     syncBatch.value = isSyncBatch(body) ? body : null;
-    if (isSyncActive(syncBatch.value)) scheduleSyncPoll();
+    if (isSyncActive(syncBatch.value)) {
+      stopSyncDismissTimer();
+      scheduleSyncPoll();
+    }
     else {
       stopSyncPolling();
       window.localStorage.removeItem(syncJobStorageKey);
+      if (syncBatch.value) scheduleSyncDismiss();
       if (wasActive) await load();
     }
   } catch (error) {
@@ -162,6 +172,23 @@ function stopSyncPolling() {
   syncPoll = undefined;
 }
 
+function scheduleSyncDismiss() {
+  stopSyncDismissTimer();
+  syncDismissTimer = window.setTimeout(dismissSyncProgress, 10_000);
+}
+
+function stopSyncDismissTimer() {
+  if (syncDismissTimer !== undefined) window.clearTimeout(syncDismissTimer);
+  syncDismissTimer = undefined;
+}
+
+function dismissSyncProgress() {
+  if (isSyncActive(syncBatch.value)) return;
+  stopSyncDismissTimer();
+  window.localStorage.removeItem(syncJobStorageKey);
+  syncBatch.value = null;
+}
+
 function syncStatusLabel(batch: MovieResourceSyncBatch): string {
   if (batch.needsAction === 'update_api_key') return t('myMovies.sync.updateApiKey');
   const keys = {
@@ -176,19 +203,35 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
 <template>
   <section class="movie-section" aria-labelledby="my-movies-title">
     <div class="section-heading">
-      <div>
+      <div class="my-movies-heading-copy">
         <p class="eyebrow">{{ t('myMovies.eyebrow') }}</p>
-        <h1 id="my-movies-title">{{ t('myMovies.title') }}</h1>
-        <p class="section-description">{{ t('myMovies.description') }}</p>
+        <div class="my-movies-title-line">
+          <h1 id="my-movies-title">{{ t('myMovies.title') }}</h1>
+          <p class="section-description">{{ t('myMovies.description') }}</p>
+        </div>
       </div>
       <button
         v-if="mteamStatus !== 'unconfigured'"
-        class="outline-button"
+        class="resource-sync-button"
         type="button"
         :disabled="isSyncActive(syncBatch)"
+        :aria-label="isSyncActive(syncBatch) ? t('myMovies.sync.inProgress') : t('myMovies.sync.start')"
+        :aria-busy="isSyncActive(syncBatch)"
+        :data-tooltip="isSyncActive(syncBatch) ? t('myMovies.sync.inProgress') : t('myMovies.sync.tooltip')"
         @click="startSync"
       >
-        {{ isSyncActive(syncBatch) ? t('myMovies.sync.inProgress') : t('myMovies.sync.start') }}
+        <svg
+          class="resource-sync-icon"
+          :class="{ spinning: isSyncActive(syncBatch) }"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path d="M19 4.5v4h-4" />
+          <path d="M19 8.5a8 8 0 1 0 .8 5.5" />
+        </svg>
+        <span class="sr-only">
+          {{ isSyncActive(syncBatch) ? t('myMovies.sync.inProgress') : t('myMovies.sync.start') }}
+        </span>
       </button>
     </div>
     <p v-if="mteamStatus === 'unconfigured'" class="integration-guidance" role="status">
@@ -198,7 +241,18 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
     <section v-if="syncBatch" class="sync-progress" :aria-label="t('myMovies.sync.progressLabel')" aria-live="polite">
       <div class="sync-progress-heading">
         <strong>{{ syncStatusLabel(syncBatch) }}</strong>
-        <span>{{ syncBatch.completed }} / {{ syncBatch.total }}</span>
+        <div class="sync-progress-meta">
+          <span>{{ syncBatch.completed }} / {{ syncBatch.total }}</span>
+          <button
+            v-if="!isSyncActive(syncBatch)"
+            type="button"
+            :aria-label="t('myMovies.sync.dismiss')"
+            :title="t('myMovies.sync.dismiss')"
+            @click="dismissSyncProgress"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
       </div>
       <progress :max="Math.max(syncBatch.total, 1)" :value="syncBatch.completed"></progress>
       <dl>

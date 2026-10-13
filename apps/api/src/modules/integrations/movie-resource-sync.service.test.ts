@@ -56,8 +56,9 @@ class MemoryBatchStore implements MovieResourceSyncBatchStore {
 function harness(
   records: MovieResourceCheckRecord[],
   execute: (tmdbId: number, call: number) => MovieResourceCheckExecution,
+  readOne: () => Promise<MovieResourceCheckRecord | null> = async () => null,
+  ids = [1, 2, 3, 4],
 ) {
-  const ids = [1, 2, 3, 4];
   const statuses = {
     list: async (_ownerId: string, _status: string, page: number) => ({
       items: page === 1 ? ids.map((tmdbId) => ({ tmdbId, status: 'interested' as const, updatedAt: now })) : [],
@@ -66,7 +67,7 @@ function harness(
   } as unknown as MovieStatusStore;
   const checks = {
     readForMovies: async () => records,
-    readOne: async () => null,
+    readOne,
   } as unknown as MovieResourceCheckStore;
   const calls: number[] = [];
   const callCounts = new Map<number, number>();
@@ -79,19 +80,23 @@ function harness(
     },
   } as unknown as MovieResourceCheckService;
   const batches = new MemoryBatchStore();
+  const waits: number[] = [];
   const service = new MovieResourceSyncService(
     statuses, checks, checker, batches, 5, 5,
     { info: () => undefined, error: () => undefined }, () => now,
-    async (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    async (milliseconds) => {
+      waits.push(milliseconds);
+      await new Promise((resolve) => setTimeout(resolve, milliseconds));
+    },
   );
-  return { batches, calls, service };
+  return { batches, calls, service, waits };
 }
 
-test('sync prioritizes never checked, expired, and transient failures while skipping fresh results', async () => {
+test('sync includes only never checked movies and movies last checked more than 30 days ago', async () => {
   const records: MovieResourceCheckRecord[] = [
-    successful(2, 'unavailable', new Date('2026-10-12T00:00:00.000Z')),
-    { ...successful(3, 'available', new Date('2026-10-14T00:00:00.000Z')), lastAttemptStatus: 'error', lastErrorCode: 'timeout', lastAttemptAt: new Date('2026-10-12T00:00:00.000Z') },
-    successful(4, 'available', new Date('2026-10-14T00:00:00.000Z')),
+    successful(2, 'unavailable', new Date('2026-09-12T23:59:59.999Z')),
+    successful(3, 'available', new Date('2026-09-13T00:00:00.000Z')),
+    { ...successful(4, 'available', new Date('2026-10-12T00:00:00.000Z')), lastAttemptStatus: 'error', lastErrorCode: 'timeout', lastAttemptAt: now },
   ];
   const { batches, calls, service } = harness(records, () => ({
     started: true,
@@ -101,9 +106,30 @@ test('sync prioritizes never checked, expired, and transient failures while skip
   await service.start('owner-a');
   await eventually(() => batches.batch?.status === 'completed');
 
-  assert.deepEqual(calls, [1, 2, 3]);
-  assert.equal(batches.batch?.total, 3);
-  assert.equal(batches.batch?.available, 3);
+  assert.deepEqual(calls, [1, 2]);
+  assert.equal(batches.batch?.total, 2);
+  assert.equal(batches.batch?.available, 2);
+  assert.equal(batches.batch?.force, true);
+});
+
+test('sync does not wait when no other check task exists for an incomplete legacy result', async () => {
+  const incomplete: MovieResourceCheckRecord = {
+    ownerId: 'owner-a', tmdbId: 1, provider: 'mteam', checking: false,
+    availability: 'unchecked', lastAttemptAt: new Date('2026-10-12T00:00:00.000Z'),
+    lastErrorCode: 'invalid_response',
+  };
+  const { batches, service, waits } = harness(
+    [incomplete],
+    () => ({ started: false }),
+    async () => incomplete,
+    [1],
+  );
+
+  await service.start('owner-a');
+  await eventually(() => batches.batch?.status === 'completed');
+
+  assert.deepEqual(waits, []);
+  assert.equal(batches.batch?.failed, 1);
 });
 
 test('a second start returns the same active batch instead of creating duplicate work', async () => {
@@ -175,11 +201,11 @@ test('sync job lookup is isolated by authenticated owner', async () => {
 function successful(
   tmdbId: number,
   availability: 'available' | 'unavailable',
-  expiresAt: Date,
+  checkedAt: Date,
 ): MovieResourceCheckRecord {
   return {
     ownerId: 'owner-a', tmdbId, provider: 'mteam', checking: false, availability,
-    checkedAt: new Date('2026-10-12T00:00:00.000Z'), expiresAt, lastAttemptAt: new Date('2026-10-12T00:00:00.000Z'),
+    checkedAt, expiresAt: new Date(checkedAt.getTime() + 24 * 60 * 60 * 1_000), lastAttemptAt: checkedAt,
     lastAttemptStatus: 'success', matchedBy: 'imdb',
   };
 }

@@ -61,7 +61,7 @@ export function registerMovieStatusRoutes(
         response: { 202: MovieResourceSyncBatchSchema, 401: ApiErrorSchema },
       },
     }, async (request, reply) => reply.status(202).send(
-      await sync.start(await ownerId(request), request.body.force ?? false),
+      await sync.start(await ownerId(request)),
     ));
 
     app.get<{ Params: MovieResourceSyncParams }>('/me/movies/resources/mteam/sync/:jobId', {

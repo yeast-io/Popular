@@ -4,6 +4,7 @@ export const MovieDownloadStatusSchema = Type.Union([
   Type.Literal('submitting'),
   Type.Literal('downloading'),
   Type.Literal('paused'),
+  Type.Literal('seeding'),
   Type.Literal('completed'),
   Type.Literal('failed'),
   Type.Literal('missing'),

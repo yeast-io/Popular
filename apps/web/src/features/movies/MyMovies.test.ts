@@ -5,7 +5,10 @@ import { setLocale } from '../../i18n';
 import MyMovies from './MyMovies.vue';
 
 describe('My Movies resource check failures', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   it('distinguishes a first failure from failed refreshes with retained results', async () => {
     setLocale('zh-CN');
@@ -112,6 +115,70 @@ describe('My Movies resource check failures', () => {
     expect(wrapper.text()).not.toContain('暂无可下载资源');
     expect(wrapper.get<HTMLAnchorElement>('.integration-guidance a').attributes('href')).toBe('/settings');
     expect(wrapper.text()).not.toContain('一键同步想看电影');
+    wrapper.unmount();
+  });
+
+  it('renders one-click sync as an accessible rotating-arrow control', async () => {
+    setLocale('zh-CN');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/me/integrations/mteam')) {
+        return Response.json({ provider: 'mteam', status: 'configured_valid' });
+      }
+      return Response.json({
+        items: [],
+        pagination: { page: 1, pageSize: 50, total: 0, hasMore: false },
+        locale: 'zh-CN',
+      });
+    }));
+
+    const wrapper = mount(MyMovies);
+    await flushPromises();
+
+    const button = wrapper.get('button.resource-sync-button');
+    expect(button.attributes('aria-label')).toBe('一键同步想看电影');
+    expect(button.attributes('data-tooltip')).toBe('一键同步');
+    expect(button.attributes('title')).toBeUndefined();
+    expect(button.find('svg.resource-sync-icon').exists()).toBe(true);
+    expect(button.text()).toBe('一键同步想看电影');
+    wrapper.unmount();
+  });
+
+  it('allows a completed sync result to close and automatically hides it after 10 seconds', async () => {
+    vi.useFakeTimers();
+    setLocale('zh-CN');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/me/integrations/mteam')) {
+        return Response.json({ provider: 'mteam', status: 'configured_valid' });
+      }
+      if (url.endsWith('/me/movies/resources/mteam/sync') && init?.method === 'POST') {
+        return Response.json({
+          id: 'batch-1', status: 'completed', total: 1, completed: 1,
+          available: 1, unavailable: 0, unmatchable: 0, failed: 0,
+          createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:00:01.000Z',
+        }, { status: 202 });
+      }
+      return Response.json({
+        items: [], pagination: { page: 1, pageSize: 50, total: 0, hasMore: false }, locale: 'zh-CN',
+      });
+    }));
+
+    const wrapper = mount(MyMovies);
+    await flushPromises();
+    await wrapper.get('button.resource-sync-button').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('.sync-progress-meta button').attributes('aria-label')).toBe('关闭同步进度');
+    await wrapper.get('.sync-progress-meta button').trigger('click');
+    expect(wrapper.find('.sync-progress').exists()).toBe(false);
+
+    await wrapper.get('button.resource-sync-button').trigger('click');
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(wrapper.find('.sync-progress').exists()).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(wrapper.find('.sync-progress').exists()).toBe(false);
     wrapper.unmount();
   });
 });

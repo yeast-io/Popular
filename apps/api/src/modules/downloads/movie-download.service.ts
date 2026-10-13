@@ -9,6 +9,7 @@ import { decryptCredential, qbittorrentAppError } from '../integrations/qbittorr
 import type { QBittorrentClientPort, QBittorrentConfigStore, QBittorrentTorrent } from '../integrations/qbittorrent.types.js';
 import { SecretCrypto } from '../integrations/secret-crypto.js';
 import type { MovieDownloadRecord, MovieDownloadStore } from './movie-download.types.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
 
 export class MovieDownloadService {
   private readonly syncs = new Map<string, Promise<MovieDownloadRecord[]>>();
@@ -66,6 +67,7 @@ export class MovieDownloadService {
         mteamConfig.baseUrl,
         this.secrets.decrypt(mteamConfig.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
         releaseId,
+        userExternalRequestContext(ownerId, 'api_request'),
       );
     } catch (error) {
       await this.downloads.markFailed(record.id, 'MOVIE_DOWNLOAD_FAILED', this.now());
@@ -104,7 +106,7 @@ export class MovieDownloadService {
   private async sync(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]> {
     let records = await this.downloads.listForMovie(ownerId, tmdbId);
     const syncable = records.filter((record) => (
-      ['submitting', 'downloading', 'paused', 'failed', 'missing'].includes(record.status)
+      ['submitting', 'downloading', 'paused', 'seeding', 'failed', 'missing'].includes(record.status)
     ));
     if (!syncable.length) return records;
     const config = await this.qbittorrentConfigs.find(ownerId);
@@ -148,8 +150,9 @@ function progressOf(torrent: QBittorrentTorrent, syncedAt: Date, addedAt?: Date)
 }
 
 function statusOf(torrent: QBittorrentTorrent): MovieDownloadStatus {
-  if (torrent.progress >= 1 || /upload|seeding|complete/i.test(torrent.state)) return 'completed';
   if (/error|missing/i.test(torrent.state)) return 'failed';
+  if (/uploading|stalledUP|forcedUP|queuedUP|checkingUP/i.test(torrent.state)) return 'seeding';
+  if (torrent.progress >= 1 || /complete/i.test(torrent.state)) return 'completed';
   if (/paused|stopped/i.test(torrent.state)) return 'paused';
   return 'downloading';
 }

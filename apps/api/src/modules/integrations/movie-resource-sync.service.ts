@@ -16,6 +16,7 @@ interface SyncLogger {
 
 export class MovieResourceSyncService {
   private readonly running = new Set<string>();
+  private static readonly STALE_CHECK_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 
   constructor(
     private readonly statuses: MovieStatusStore,
@@ -30,7 +31,7 @@ export class MovieResourceSyncService {
       new Promise((resolve) => setTimeout(resolve, milliseconds)),
   ) {}
 
-  async start(ownerId: string, force = false): Promise<MovieResourceSyncBatch> {
+  async start(ownerId: string): Promise<MovieResourceSyncBatch> {
     const active = await this.batches.readCurrent(ownerId);
     if (active && ['queued', 'running', 'paused'].includes(active.status)) {
       this.run(active);
@@ -41,13 +42,15 @@ export class MovieResourceSyncService {
     const checks = await this.checks.readForMovies(ownerId, interestedIds);
     const checkById = new Map(checks.map((check) => [check.tmdbId, check]));
     const now = this.now();
-    const retryBefore = new Date(now.getTime() - this.retryDelayMs);
+    const staleBefore = new Date(now.getTime() - MovieResourceSyncService.STALE_CHECK_AGE_MS);
     const prioritized = interestedIds
-      .map((tmdbId) => ({ tmdbId, priority: priority(checkById.get(tmdbId), now, retryBefore, force) }))
+      .map((tmdbId) => ({ tmdbId, priority: priority(checkById.get(tmdbId), staleBefore) }))
       .filter((item): item is { tmdbId: number; priority: number } => item.priority !== null)
       .sort((left, right) => left.priority - right.priority)
       .map(({ tmdbId }) => tmdbId);
-    const batch = await this.batches.createOrGetActive(ownerId, prioritized, force, now);
+    // The batch has already applied its one-month eligibility boundary. Force
+    // the selected records so shorter provider TTL/retry rules cannot skip them.
+    const batch = await this.batches.createOrGetActive(ownerId, prioritized, true, now);
     this.run(batch);
     return publicBatch(batch);
   }
@@ -118,7 +121,11 @@ export class MovieResourceSyncService {
     const deadline = Date.now() + this.busyWaitMs;
     do {
       const record = await this.checks.readOne({ ownerId, tmdbId, provider: 'mteam' });
-      if (record && !record.checking && record.lastAttemptStatus) return completionFromRecord(record);
+      if (!record?.checking) {
+        return record?.lastAttemptStatus
+          ? completionFromRecord(record)
+          : { lastAttemptStatus: 'error', lastErrorCode: 'internal_error' };
+      }
       await this.wait(Math.min(250, Math.max(0, deadline - Date.now())));
     } while (Date.now() < deadline);
     return { lastAttemptStatus: 'error', lastErrorCode: 'internal_error' };
@@ -137,24 +144,10 @@ export class MovieResourceSyncService {
 
 function priority(
   check: MovieResourceCheckRecord | undefined,
-  now: Date,
-  retryBefore: Date,
-  force: boolean,
+  staleBefore: Date,
 ): number | null {
-  if (!check) return 0;
-  if (check.lastAttemptStatus === 'error') {
-    // The checker skips the API call while credentials remain invalid and resumes
-    // after a newer verified configuration is saved.
-    if (check.lastErrorCode === 'authentication') return 1;
-    if (['network', 'timeout', 'rate_limited', 'remote_error', 'internal_error'].includes(check.lastErrorCode ?? '')
-      && (!check.lastAttemptAt || check.lastAttemptAt <= retryBefore)) return 2;
-    return force ? 3 : null;
-  }
-  if (!check.checkedAt) return 0;
-  // Let the checker compare current movie metadata with the stored fingerprint.
-  if (check.availability === 'unmatchable') return 1;
-  if (check.expiresAt && check.expiresAt <= now) return 1;
-  return force ? 3 : null;
+  if (!check?.checkedAt) return 0;
+  return check.checkedAt < staleBefore ? 1 : null;
 }
 
 function completionFromRecord(record: MovieResourceCheckRecord): MovieResourceCheckCompletion {

@@ -113,8 +113,8 @@ test('recovers a failed download while syncing an open release dialog', async ()
   const qbittorrent = {
     async findByTag() {
       return {
-        hash: 'ABC123', name: 'Movie', state: 'downloading', progress: 0.65,
-        downloadedBytes: 650, totalBytes: 1_000, downloadSpeed: 20, etaSeconds: 15,
+        hash: 'ABC123', name: 'Movie', state: 'uploading', progress: 1,
+        downloadedBytes: 1_000, totalBytes: 1_000, downloadSpeed: 0, etaSeconds: 0,
         tags: ['movie-hub-existing'],
       };
     },
@@ -133,7 +133,7 @@ test('recovers a failed download while syncing an open release dialog', async ()
 
   const result = await service.listAndSync('session', 123);
 
-  assert.equal(result.items[0]?.status, 'downloading');
-  assert.equal(result.items[0]?.progress, 65);
+  assert.equal(result.items[0]?.status, 'seeding');
+  assert.equal(result.items[0]?.progress, 100);
   assert.equal(result.items[0]?.lastErrorCode, undefined);
 });

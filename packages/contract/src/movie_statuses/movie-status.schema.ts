@@ -80,9 +80,7 @@ export const MovieReleaseListResponseSchema = Type.Object({
   releases: Type.Array(MovieReleaseSchema),
 }, { additionalProperties: false });
 
-export const StartMovieResourceSyncRequestSchema = Type.Object({
-  force: Type.Optional(Type.Boolean({ default: false })),
-}, { additionalProperties: false });
+export const StartMovieResourceSyncRequestSchema = Type.Object({}, { additionalProperties: false });
 
 export const MovieResourceSyncParamsSchema = Type.Object({
   jobId: Type.String({ minLength: 24, maxLength: 24, pattern: '^[a-fA-F0-9]{24}$' }),

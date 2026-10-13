@@ -9,7 +9,7 @@ const movieDownloadSchema = new Schema({
   lookupTag: { type: String, required: true },
   torrentHash: { type: String },
   name: { type: String },
-  status: { type: String, required: true, enum: ['submitting', 'downloading', 'paused', 'completed', 'failed', 'missing'] },
+  status: { type: String, required: true, enum: ['submitting', 'downloading', 'paused', 'seeding', 'completed', 'failed', 'missing'] },
   progress: { type: Number, required: true, min: 0, max: 100, default: 0 },
   downloadedBytes: { type: Number, min: 0 },
   totalBytes: { type: Number, min: 0 },

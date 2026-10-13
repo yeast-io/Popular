@@ -259,7 +259,7 @@ async function confirmDownload() {
 function scheduleDownloadPoll() {
   stopDownloadPolling();
   if (!releasesOpen.value || document.visibilityState === 'hidden') return;
-  if (!downloads.value.some((download) => ['submitting', 'downloading', 'paused'].includes(download.status))) return;
+  if (!downloads.value.some((download) => ['submitting', 'downloading', 'paused', 'seeding'].includes(download.status))) return;
   downloadPoll = window.setTimeout(() => void loadDownloads(), 2_000);
 }
 
@@ -589,7 +589,10 @@ function syncedAtLabel(syncedAt: string): string {
                 <div
                   v-if="downloadFor(release.id)"
                   class="release-download-progress"
-                  :class="{ downloading: downloadFor(release.id)!.status === 'downloading' }"
+                  :class="{
+                    downloading: downloadFor(release.id)!.status === 'downloading',
+                    seeding: downloadFor(release.id)!.status === 'seeding',
+                  }"
                   role="status"
                 >
                   <div>

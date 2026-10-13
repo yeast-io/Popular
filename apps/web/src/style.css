@@ -586,6 +586,104 @@ label small {
   color: #8f908b;
   line-height: 1.6;
 }
+.my-movies-heading-copy {
+  min-width: 0;
+}
+.my-movies-title-line {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 22px;
+  white-space: nowrap;
+}
+.my-movies-title-line h1,
+.my-movies-title-line .section-description {
+  color: transparent;
+  background: linear-gradient(100deg, #f0522d 0%, #f2a900 52%, #d54872 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+.my-movies-title-line .section-description {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+}
+.resource-sync-button {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #454647;
+  border-radius: 50%;
+  padding: 0;
+  color: #d8d5ce;
+  background: #141516;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.resource-sync-button::after {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 9px);
+  right: 0;
+  padding: 7px 10px;
+  border: 1px solid #3c3d3e;
+  border-radius: 4px;
+  color: #eeeae2;
+  background: #171819;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  content: attr(data-tooltip);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  white-space: nowrap;
+}
+.resource-sync-button:hover::after,
+.resource-sync-button:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+.resource-sync-button:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: #fff;
+}
+.resource-sync-button:hover:not(:disabled) .resource-sync-icon {
+  transform: rotate(24deg);
+}
+.resource-sync-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+.resource-sync-button:disabled {
+  border-color: #343536;
+  color: var(--brand);
+  cursor: wait;
+}
+.resource-sync-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.6;
+  transition: transform 0.2s ease;
+}
+.resource-sync-icon.spinning {
+  animation: resource-sync-spin 0.9s linear infinite;
+}
+@keyframes resource-sync-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
 .freshness {
   margin: 0 0 8px;
   color: #747570;
@@ -1209,6 +1307,16 @@ label small {
 .release-download-progress.downloading progress {
   accent-color: #62c98c;
 }
+.release-download-progress.seeding {
+  border-left-color: #42bfc2;
+  background: rgba(66, 191, 194, 0.08);
+}
+.release-download-progress.seeding > div {
+  color: #7cd9da;
+}
+.release-download-progress.seeding progress {
+  accent-color: #42bfc2;
+}
 .download-confirmation {
   position: absolute;
   z-index: 2;
@@ -1258,10 +1366,37 @@ label small {
 }
 .sync-progress-heading {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   color: #dedbd4;
   font-size: 0.78rem;
+}
+.sync-progress-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sync-progress-meta button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #3c3d3e;
+  border-radius: 50%;
+  padding: 0 0 2px;
+  color: #a5a49f;
+  background: transparent;
+  font-size: 1rem;
+  line-height: 1;
+}
+.sync-progress-meta button:hover {
+  border-color: var(--brand);
+  color: #fff;
+}
+.sync-progress-meta button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 .sync-progress progress {
   width: 100%;
@@ -2207,6 +2342,10 @@ button.poster-resource-badge:disabled {
     align-items: start;
     flex-direction: column;
   }
+  .resource-sync-button {
+    align-self: flex-end;
+    margin-top: -50px;
+  }
   .page-toolbar {
     margin-bottom: 38px;
   }
@@ -2288,6 +2427,9 @@ button.poster-resource-badge:disabled {
     transition-duration: 0.01ms !important;
   }
   .search-box::before {
+    animation: none;
+  }
+  .resource-sync-icon.spinning {
     animation: none;
   }
 }
