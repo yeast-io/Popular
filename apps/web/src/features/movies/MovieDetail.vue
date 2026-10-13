@@ -43,6 +43,15 @@ const statusOptions = computed(() => [
   ['interested', t('movie.status.interested')],
   ['not_interested', t('movie.status.notInterested')],
 ] as const);
+const orderedReleases = computed(() => {
+  const downloadedReleaseIds = new Set(downloads.value.map((download) => download.sourceReleaseId));
+  const downloaded: MovieRelease[] = [];
+  const notDownloaded: MovieRelease[] = [];
+  for (const release of releases.value) {
+    (downloadedReleaseIds.has(release.id) ? downloaded : notDownloaded).push(release);
+  }
+  return [...downloaded, ...notDownloaded];
+});
 
 onMounted(() => {
   void load();
@@ -538,7 +547,7 @@ function syncedAtLabel(syncedAt: string): string {
             <p v-else-if="releasesError" class="browse-error" role="alert">{{ releasesError }}</p>
             <p v-else-if="!releases.length" class="muted-copy" role="status">{{ t('movie.releases.empty') }}</p>
             <ol v-else class="release-list">
-              <li v-for="release in releases" :key="release.id" class="release-card">
+              <li v-for="release in orderedReleases" :key="release.id" class="release-card">
                 <div class="release-title-row">
                   <h3>{{ release.title }}</h3>
                   <a

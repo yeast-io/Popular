@@ -185,6 +185,49 @@ describe('Movie Detail live releases', () => {
     wrapper.unmount();
   });
 
+  it('stably places every release with a download record before releases without one', async () => {
+    setLocale('zh-CN');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/resources/mteam')) {
+        return Response.json({ provider: 'mteam', checking: false, availability: 'available', lastAttemptStatus: 'success' });
+      }
+      if (url.endsWith('/resources/mteam/releases')) {
+        return Response.json({
+          provider: 'mteam', availability: 'available', queriedAt: '2026-10-14T00:00:00.000Z', cached: false,
+          releases: [
+            { id: 'plain-a', title: 'Plain A', detailsUrl: 'https://kp.m-team.cc/detail/plain-a', seeders: 30, tags: [] },
+            { id: 'failed', title: 'Failed Download', detailsUrl: 'https://kp.m-team.cc/detail/failed', seeders: 30, tags: [] },
+            { id: 'plain-b', title: 'Plain B', detailsUrl: 'https://kp.m-team.cc/detail/plain-b', seeders: 30, tags: [] },
+            { id: 'missing', title: 'Missing Download', detailsUrl: 'https://kp.m-team.cc/detail/missing', seeders: 30, tags: [] },
+          ],
+        });
+      }
+      if (url.endsWith('/integrations/qbittorrent')) {
+        return Response.json({ provider: 'qbittorrent', status: 'configured_valid', baseUrl: 'http://nas:8080' });
+      }
+      if (url.endsWith('/downloads')) {
+        return Response.json({ items: [
+          { id: 'd-failed', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: 'failed', provider: 'qbittorrent', status: 'failed', progress: 0 },
+          { id: 'd-missing', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: 'missing', provider: 'qbittorrent', status: 'missing', progress: 0 },
+        ] });
+      }
+      return Response.json({
+        tmdbId: 603, title: '电影', genres: [], cast: [], directors: [], userStatus: 'interested',
+        detailSyncedAt: '2026-10-14T00:00:00.000Z', stale: false, locale: 'zh-CN',
+      });
+    }));
+
+    const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
+    await flushPromises();
+    await wrapper.get('.poster-resource-badge').trigger('click');
+    await flushPromises();
+
+    const titles = [...document.body.querySelectorAll<HTMLElement>('.release-card h3')].map((title) => title.textContent);
+    expect(titles).toEqual(['Failed Download', 'Missing Download', 'Plain A', 'Plain B']);
+    wrapper.unmount();
+  });
+
   it('keeps the list empty and shows an explicit error when the live query fails', async () => {
     setLocale('zh-CN');
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
