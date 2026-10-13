@@ -7,6 +7,7 @@ import MovieDetail from './MovieDetail.vue';
 import MyMovies from './MyMovies.vue';
 
 const fetchedAt = '2026-10-12T00:00:00.000Z';
+const trendingGeneration = '00000000-0000-4000-8000-000000000001';
 
 describe('localized movie page flows', () => {
   beforeEach(() => {
@@ -32,6 +33,7 @@ describe('localized movie page flows', () => {
       } : {
         items: [{ tmdbId: 42, title: english ? 'English trending' : '中文热门', userStatus: 'unwatched' }],
         page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+        generation: trendingGeneration,
         locale: english ? 'en-US' : 'zh-CN',
       });
     }));
@@ -65,6 +67,7 @@ describe('localized movie page flows', () => {
       return Response.json({
         items: [{ tmdbId: 42, title: english ? 'English trending' : '中文热门', userStatus: 'unwatched' }],
         page: 1, hasMore: true, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+        generation: trendingGeneration,
         locale: english ? 'en-US' : 'zh-CN',
       });
     }));
@@ -108,14 +111,16 @@ describe('localized movie page flows', () => {
 
     resolveEnglish(Response.json({
       items: [{ tmdbId: 42, title: 'English trending', userStatus: 'unwatched' }],
-      page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'en-US',
+      page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+      generation: trendingGeneration, locale: 'en-US',
     }));
     await flushPromises();
     expect(wrapper.text()).toContain('English trending');
 
     resolveChinese(Response.json({
       items: [{ tmdbId: 42, title: 'Late Chinese response', userStatus: 'unwatched' }],
-      page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'zh-CN',
+      page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+      generation: trendingGeneration, locale: 'zh-CN',
     }));
     await flushPromises();
     expect(wrapper.text()).toContain('English trending');
@@ -124,20 +129,23 @@ describe('localized movie page flows', () => {
   });
 
   it('does not render a trending movie twice when the next page overlaps', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => Response.json(
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => Response.json(
       init?.method === 'POST'
         ? {
             items: [
               { tmdbId: 42, title: '重复电影', userStatus: 'unwatched' },
               { tmdbId: 43, title: '第二页电影', userStatus: 'unwatched' },
             ],
-            page: 2, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'zh-CN',
+            page: 2, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+            generation: trendingGeneration, locale: 'zh-CN',
           }
         : {
             items: [{ tmdbId: 42, title: '重复电影', userStatus: 'unwatched' }],
-            page: 1, hasMore: true, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'zh-CN',
+            page: 1, hasMore: true, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+            generation: trendingGeneration, locale: 'zh-CN',
           },
-    )));
+    ));
+    vi.stubGlobal('fetch', fetchMock);
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
     await flushPromises();
@@ -149,6 +157,8 @@ describe('localized movie page flows', () => {
       expect.stringContaining('重复电影'),
       expect.stringContaining('第二页电影'),
     ]);
+    const loadMoreRequest = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')?.[1];
+    expect(JSON.parse(String(loadMoreRequest?.body))).toMatchObject({ page: 1, generation: trendingGeneration, locale: 'zh-CN' });
     wrapper.unmount();
   });
 
@@ -157,7 +167,8 @@ describe('localized movie page flows', () => {
       const url = String(input);
       if (!url.includes('/movies/search')) {
         return Response.json({
-          items: [], page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'zh-CN',
+          items: [], page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+          generation: trendingGeneration, locale: 'zh-CN',
         });
       }
       return Response.json(url.includes('page=2')

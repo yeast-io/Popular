@@ -5,6 +5,7 @@ import App from './App.vue';
 import { setLocale } from './i18n';
 
 const fetchedAt = '2026-10-12T00:00:00.000Z';
+const trendingGeneration = '00000000-0000-4000-8000-000000000001';
 
 describe('movie detail navigation', () => {
   let scrollY = 0;
@@ -33,7 +34,8 @@ describe('movie detail navigation', () => {
       }
       return Response.json({
         items: [{ tmdbId: 42, title: '热门电影', userStatus: 'unwatched' }],
-        page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt, locale: 'zh-CN',
+        page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+        generation: trendingGeneration, locale: 'zh-CN',
       });
     }));
   });
@@ -142,7 +144,7 @@ describe('language menu', () => {
       if (String(input).endsWith('/auth/me')) return new Response(null, { status: 401 });
       return Response.json({
         items: [], page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete',
-        fetchedAt, locale: String(input).includes('locale=en-US') ? 'en-US' : 'zh-CN',
+        fetchedAt, generation: trendingGeneration, locale: String(input).includes('locale=en-US') ? 'en-US' : 'zh-CN',
       });
     }));
   });

@@ -1,12 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { MovieRecord, MovieStatusRecord, TrendingPageRecord, TrendingStore } from './movie.types.js';
+import type { MovieRecord, MovieStatusRecord, TrendingPageRecord, TrendingSnapshotRecord, TrendingStore } from './movie.types.js';
 import { MovieService } from './movie.service.js';
+
+const generation = '00000000-0000-4000-8000-000000000001';
 
 class MemoryTrendingStore implements TrendingStore {
   readonly pages = new Map<string, TrendingPageRecord>();
-  async publishPage(record: TrendingPageRecord, locale: 'zh-CN' | 'en-US') { this.pages.set(`${locale}:${record.page}`, record); }
-  async readPage(page: number, locale: 'zh-CN' | 'en-US') { return this.pages.get(`${locale}:${page}`) ?? null; }
+  async publishSnapshot(record: TrendingSnapshotRecord, locale: 'zh-CN' | 'en-US') {
+    for (const page of record.pages) this.pages.set(`${locale}:${page.page}`, page);
+  }
+  async appendSnapshotPage(record: TrendingPageRecord, locale: 'zh-CN' | 'en-US') { this.pages.set(`${locale}:${record.page}`, record); }
+  async readPage(page: number, locale: 'zh-CN' | 'en-US', requestedGeneration?: string) {
+    const record = this.pages.get(`${locale}:${page}`);
+    if (!record || (requestedGeneration && requestedGeneration !== generation)) return null;
+    return { ...record, generation };
+  }
+  async readSnapshot(locale: 'zh-CN' | 'en-US', requestedGeneration: string) {
+    if (requestedGeneration !== generation) return null;
+    const pages = [...this.pages.entries()]
+      .filter(([key]) => key.startsWith(`${locale}:`))
+      .map(([, page]) => page)
+      .sort((left, right) => left.page - right.page);
+    if (!pages.length) return null;
+    return { generation, pages, sourcePage: pages.length, pageSize: pages[0]!.movies.length, fetchedAt: pages[0]!.fetchedAt };
+  }
 }
 
 const fetchedAt = new Date('2026-10-12T00:00:00.000Z');
@@ -29,6 +47,7 @@ test('trending preserves source order and maps optional presentation fields', as
   assert.equal(result.items[1]?.posterUrl, undefined);
   assert.equal(result.items[0]?.userStatus, 'unwatched');
   assert.equal(result.hasMore, true);
+  assert.equal(result.generation, generation);
   assert.equal(result.locale, 'zh-CN');
 });
 
@@ -37,7 +56,10 @@ test('trending lazily syncs the requested locale when its page is missing', asyn
   let requestedLocale = '';
   const sync = { syncPage: async (page: number, _trigger: string, locale: 'zh-CN' | 'en-US') => {
     requestedLocale = locale;
-    await store.publishPage({ page, totalPages: 1, totalResults: 1, fetchedAt, movies: [{ tmdbId: 1, title: 'Movie', genreIds: [] }] }, locale);
+    await store.publishSnapshot({
+      generation, sourcePage: page, pageSize: 1, fetchedAt,
+      pages: [{ page, totalPages: 1, totalResults: 1, fetchedAt, movies: [{ tmdbId: 1, title: 'Movie', genreIds: [] }] }],
+    }, locale);
     return { status: 'completed' as const, pages: 1, movies: 1 };
   } };
   const result = await new MovieService(store, sync as never).trending(1, 'en-US', null);
@@ -68,14 +90,15 @@ test('load more syncs only the next missing page', async () => {
   store.pages.set('en-US:1', { page: 1, totalPages: 2, totalResults: 1, fetchedAt, movies: [{ tmdbId: 7, title: 'First', genreIds: [] }] });
   let requestedPage = 0;
   const sync = {
-    syncPage: async (page: number, _trigger: string, locale: string) => {
+    syncPage: async (page: number, _trigger: string, locale: string, requestedGeneration: string) => {
       assert.equal(locale, 'en-US');
+      assert.equal(requestedGeneration, generation);
       requestedPage = page;
       store.pages.set(`${locale}:${page}`, { page, totalPages: 2, totalResults: 1, fetchedAt, movies: [{ tmdbId: 8, title: 'Next', genreIds: [] }] });
       return { status: 'completed' as const, pages: 1, movies: 1 };
     },
   };
-  const result = await new MovieService(store, sync as never).loadMore(1, 'en-US', null);
+  const result = await new MovieService(store, sync as never).loadMore(1, generation, 'en-US', null);
   assert.equal(requestedPage, 2);
   assert.equal(result.page, 2);
 });
@@ -84,7 +107,7 @@ test('load more rejects a fabricated current page instead of allowing arbitrary 
   let called = false;
   const sync = { syncPage: async () => { called = true; return { status: 'completed' as const, pages: 1, movies: 0 }; } };
   const service = new MovieService(new MemoryTrendingStore(), sync as never);
-  await assert.rejects(() => service.loadMore(37, 'zh-CN', null), { statusCode: 400, code: 'BAD_REQUEST' });
+  await assert.rejects(() => service.loadMore(37, generation, 'zh-CN', null), { statusCode: 400, code: 'BAD_REQUEST' });
   assert.equal(called, false);
 });
 

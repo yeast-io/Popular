@@ -17,6 +17,7 @@ const loading = ref(true);
 const loadingMore = ref(false);
 const errorMessage = ref('');
 const fetchedAt = ref('');
+const trendingGeneration = ref('');
 const skeletons = Array.from({ length: 10 }, (_, index) => index);
 const failedPosters = ref(new Set<number>());
 const updating = ref(new Set<number>());
@@ -62,6 +63,7 @@ watch([query, locale], () => {
   loadingMore.value = false;
   errorMessage.value = '';
   fetchedAt.value = '';
+  trendingGeneration.value = '';
   loadedLocale.value = null;
   loadedQuery.value = '';
   debounceTimer = setTimeout(() => void loadFirstPage(generation), 300);
@@ -112,7 +114,8 @@ async function loadMore() {
       applySearch(result, true);
     } else {
       const result = await request<TrendingMoviesResponse>(`${apiBaseUrl}/movies/trending/load-more`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: currentPage, locale: requestedLocale }),
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ page: currentPage, generation: trendingGeneration.value, locale: requestedLocale }),
       });
       if (generation !== requestGeneration) return;
       applyTrending(result, true);
@@ -158,11 +161,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 function applyTrending(result: TrendingMoviesResponse, append: boolean) {
   movies.value = append ? mergeUniqueMovies(movies.value, result.items) : result.items;
-  page.value = result.page; hasMore.value = result.hasMore; fetchedAt.value = result.fetchedAt;
+  page.value = result.page; hasMore.value = result.hasMore; fetchedAt.value = result.fetchedAt; trendingGeneration.value = result.generation;
 }
 function applySearch(result: SearchMoviesResponse, append: boolean) {
   movies.value = append ? mergeUniqueMovies(movies.value, result.items) : result.items;
-  page.value = result.page; hasMore.value = result.hasMore; fetchedAt.value = '';
+  page.value = result.page; hasMore.value = result.hasMore; fetchedAt.value = ''; trendingGeneration.value = '';
 }
 function mergeUniqueMovies(current: MovieSummary[], incoming: MovieSummary[]): MovieSummary[] {
   const seen = new Set(current.map(({ tmdbId }) => tmdbId));

@@ -18,3 +18,10 @@ test('movie query contracts reject an unsupported locale', () => {
   assert.equal(Value.Check(MyMoviesQuerySchema, { locale: 'fr-FR' }), false);
   assert.equal(Value.Check(LoadMoreTrendingRequestSchema, { page: 1, locale: 'fr-FR' }), false);
 });
+
+test('load-more requires a valid trending generation', () => {
+  const generation = '00000000-0000-4000-8000-000000000001';
+  assert.equal(Value.Check(LoadMoreTrendingRequestSchema, { page: 1, generation, locale: 'zh-CN' }), true);
+  assert.equal(Value.Check(LoadMoreTrendingRequestSchema, { page: 1, locale: 'zh-CN' }), false);
+  assert.equal(Value.Check(LoadMoreTrendingRequestSchema, { page: 1, generation: 'not-a-uuid', locale: 'zh-CN' }), false);
+});

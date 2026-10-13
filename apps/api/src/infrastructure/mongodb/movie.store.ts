@@ -5,8 +5,9 @@ import type { MovieLocalizationDocument } from './movie-localization.schema.js';
 import type { MovieResultSetDocument } from './movie-result-set.schema.js';
 import type { MovieDocument } from './movie.schema.js';
 import type { PersonDocument } from './person.schema.js';
+import type { TrendingStateDocument } from './trending-state.schema.js';
 import type {
-  MovieCatalogStore, MovieDetailRecord, MovieRecord, TrendingPageRecord, TrendingStore,
+  MovieCatalogStore, MovieDetailRecord, MovieRecord, TrendingPageRecord, TrendingSnapshotRecord, TrendingStore,
 } from '../../modules/movies/movie.types.js';
 
 export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
@@ -16,16 +17,54 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     private readonly resultSets: Model<MovieResultSetDocument>,
     private readonly people?: Model<PersonDocument>,
     private readonly credits?: Model<MovieCreditDocument>,
+    private readonly trendingStates?: Model<TrendingStateDocument>,
   ) {}
 
-  async publishPage(record: TrendingPageRecord, locale: Locale): Promise<void> {
+  async publishSnapshot(record: TrendingSnapshotRecord, locale: Locale): Promise<void> {
+    const states = this.requireTrendingStates();
+    await this.upsertMovies(record.pages.flatMap(({ movies }) => movies), record.fetchedAt, locale);
+    await this.resultSets.bulkWrite(record.pages.map((page) => ({ updateOne: {
+      filter: { key: trendingGenerationKey(locale, record.generation, page.page) },
+      update: { $set: {
+        type: 'trending',
+        params: {
+          mediaType: 'movie', window: 'week', language: locale,
+          sourcePage: record.sourcePage, pageSize: record.pageSize,
+        },
+        page: page.page, tmdbIds: page.movies.map(({ tmdbId }) => tmdbId),
+        totalPages: page.totalPages, totalResults: page.totalResults,
+        fetchedAt: record.fetchedAt, generation: record.generation,
+      } },
+      upsert: true,
+    } })), { ordered: true });
+    await states.updateOne(
+      { locale },
+      { $set: { activeGeneration: record.generation, publishedAt: record.fetchedAt } },
+      { upsert: true },
+    );
+    await this.resultSets.updateMany(
+      { type: 'trending', generation: { $ne: record.generation }, 'params.language': locale, deleteAt: { $exists: false } },
+      { $set: { deleteAt: new Date(record.fetchedAt.getTime() + 24 * 60 * 60 * 1_000) } },
+    );
+  }
+
+  async appendSnapshotPage(
+    record: TrendingPageRecord,
+    locale: Locale,
+    generation: string,
+    sourcePage: number,
+    pageSize: number,
+  ): Promise<void> {
+    this.requireTrendingStates();
     await this.upsertMovies(record.movies, record.fetchedAt, locale);
     await this.resultSets.updateOne(
-      { key: trendingKey(locale, record.page) },
+      { key: trendingGenerationKey(locale, generation, record.page) },
       { $set: {
-        type: 'trending', params: { mediaType: 'movie', window: 'week', language: locale }, page: record.page,
-        tmdbIds: record.movies.map(({ tmdbId }) => tmdbId), totalPages: record.totalPages,
-        totalResults: record.totalResults, fetchedAt: record.fetchedAt,
+        type: 'trending',
+        params: { mediaType: 'movie', window: 'week', language: locale, sourcePage, pageSize },
+        page: record.page, tmdbIds: record.movies.map(({ tmdbId }) => tmdbId),
+        totalPages: record.totalPages, totalResults: record.totalResults,
+        fetchedAt: record.fetchedAt, generation,
       } },
       { upsert: true },
     );
@@ -201,19 +240,57 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     };
   }
 
-  async readPage(page: number, locale: Locale): Promise<TrendingPageRecord | null> {
-    const resultSet = await this.resultSets.findOne({ key: trendingKey(locale, page) }).lean().exec();
+  async readPage(page: number, locale: Locale, generation?: string) {
+    const resolvedGeneration = generation ?? await this.readActiveGeneration(locale);
+    if (!resolvedGeneration) return null;
+    const resultSet = await this.resultSets.findOne({
+      key: trendingGenerationKey(locale, resolvedGeneration, page),
+    }).lean().exec();
     if (!resultSet) return null;
     const movies = await this.readMovies(resultSet.tmdbIds, locale);
     return {
       movies, page: resultSet.page, totalPages: resultSet.totalPages,
       totalResults: resultSet.totalResults, fetchedAt: resultSet.fetchedAt,
+      generation: resolvedGeneration,
     };
+  }
+
+  async readSnapshot(locale: Locale, generation: string): Promise<TrendingSnapshotRecord | null> {
+    this.requireTrendingStates();
+    const resultSets = await this.resultSets.find({
+      type: 'trending', generation, 'params.language': locale,
+    }).sort({ page: 1 }).lean().exec();
+    if (resultSets.length === 0) return null;
+    const pages = await Promise.all(resultSets.map(async (resultSet) => ({
+      movies: await this.readMovies(resultSet.tmdbIds, locale),
+      page: resultSet.page,
+      totalPages: resultSet.totalPages,
+      totalResults: resultSet.totalResults,
+      fetchedAt: resultSet.fetchedAt,
+    })));
+    const params = resultSets.at(-1)?.params as { sourcePage?: unknown; pageSize?: unknown } | undefined;
+    const sourcePage = typeof params?.sourcePage === 'number' ? params.sourcePage : pages.length;
+    const pageSize = typeof params?.pageSize === 'number' ? params.pageSize : Math.max(1, pages[0]?.movies.length ?? 20);
+    return { generation, pages, sourcePage, pageSize, fetchedAt: pages[0]!.fetchedAt };
+  }
+
+  private async readActiveGeneration(locale: Locale): Promise<string | null> {
+    const state = await this.requireTrendingStates().findOne({ locale }).select({ activeGeneration: 1 }).lean().exec();
+    return state?.activeGeneration ?? null;
+  }
+
+  private requireTrendingStates(): Model<TrendingStateDocument> {
+    if (!this.trendingStates) throw new Error('Trending snapshot state persistence is not configured');
+    return this.trendingStates;
   }
 }
 
 export function trendingKey(locale: Locale, page: number): string {
   return `trending:movie:week:${locale}:${page}`;
+}
+
+export function trendingGenerationKey(locale: Locale, generation: string, page: number): string {
+  return `trending:movie:week:${locale}:generation:${generation}:page:${page}`;
 }
 
 export function searchKey(query: string, locale: Locale, page: number): string {

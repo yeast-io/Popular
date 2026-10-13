@@ -36,9 +36,23 @@ export interface TrendingPageRecord {
   expectedMovieCount?: number;
 }
 
+export interface TrendingSnapshotPageRecord extends TrendingPageRecord {
+  generation: string;
+}
+
+export interface TrendingSnapshotRecord {
+  generation: string;
+  pages: TrendingPageRecord[];
+  sourcePage: number;
+  pageSize: number;
+  fetchedAt: Date;
+}
+
 export interface TrendingStore {
-  publishPage(record: TrendingPageRecord, locale: Locale): Promise<void>;
-  readPage(page: number, locale: Locale): Promise<TrendingPageRecord | null>;
+  publishSnapshot(record: TrendingSnapshotRecord, locale: Locale): Promise<void>;
+  appendSnapshotPage(record: TrendingPageRecord, locale: Locale, generation: string, sourcePage: number, pageSize: number): Promise<void>;
+  readPage(page: number, locale: Locale, generation?: string): Promise<TrendingSnapshotPageRecord | null>;
+  readSnapshot(locale: Locale, generation: string): Promise<TrendingSnapshotRecord | null>;
 }
 
 export interface MovieCatalogStore {

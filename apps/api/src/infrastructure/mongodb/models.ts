@@ -12,6 +12,7 @@ import { createIntegrationConfigModel } from './integration-config.schema.js';
 import { createMovieResourceCheckModel } from './movie-resource-check.schema.js';
 import { createMovieResourceCheckTaskModel } from './movie-resource-check-task.schema.js';
 import { createMovieResourceSyncBatchModel } from './movie-resource-sync-batch.schema.js';
+import { createTrendingStateModel } from './trending-state.schema.js';
 
 export function createModels(connection: Connection) {
   return {
@@ -28,6 +29,7 @@ export function createModels(connection: Connection) {
     movieResourceChecks: createMovieResourceCheckModel(connection),
     movieResourceCheckTasks: createMovieResourceCheckTaskModel(connection),
     movieResourceSyncBatches: createMovieResourceSyncBatchModel(connection),
+    trendingStates: createTrendingStateModel(connection),
   };
 }
 

@@ -42,7 +42,7 @@ try {
   const avatarStore = new MinioAvatarStore(infrastructure.minio.getClient(), config.MINIO_BUCKET);
   const userService = new UserService(authService, userStore, avatarStore, config.AVATAR_MAX_BYTES);
   const trendingStore = new MongoTrendingStore(
-    models.movies, models.movieLocalizations, models.movieResultSets, models.people, models.movieCredits,
+    models.movies, models.movieLocalizations, models.movieResultSets, models.people, models.movieCredits, models.trendingStates,
   );
   const tmdb = new TmdbClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS);
   const trendingSync = new TrendingSyncService(

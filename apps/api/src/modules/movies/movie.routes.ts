@@ -24,7 +24,7 @@ export function registerMovieRoutes(app: FastifyInstance, service: MovieService,
 
   app.post<{ Body: LoadMoreTrendingRequest }>('/movies/trending/load-more', {
     schema: { body: LoadMoreTrendingRequestSchema, response: { 200: TrendingMoviesResponseSchema, 400: ApiErrorSchema, 409: ApiErrorSchema, 503: ApiErrorSchema } },
-  }, async (request) => service.loadMore(request.body.page, resolveLocale(request.body.locale, config), await optionalOwnerId(request, auth, config)));
+  }, async (request) => service.loadMore(request.body.page, request.body.generation, resolveLocale(request.body.locale, config), await optionalOwnerId(request, auth, config)));
 }
 
 function resolveLocale(locale: TrendingQuery['locale'], config?: AppConfig): NonNullable<TrendingQuery['locale']> {

@@ -52,8 +52,13 @@ export const TrendingQuerySchema = Type.Object({
   locale: Type.Optional(LocaleSchema),
 }, { additionalProperties: false });
 
+const TrendingGenerationSchema = Type.String({
+  pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+});
+
 export const LoadMoreTrendingRequestSchema = Type.Object({
   page: Type.Integer({ minimum: 1, maximum: 49 }),
+  generation: TrendingGenerationSchema,
   locale: Type.Optional(LocaleSchema),
 }, { additionalProperties: false });
 
@@ -64,6 +69,7 @@ export const TrendingMoviesResponseSchema = Type.Object({
   source: Type.Literal('cache'),
   resultCompleteness: Type.Literal('complete'),
   fetchedAt: Type.String({ format: 'date-time' }),
+  generation: TrendingGenerationSchema,
   locale: LocaleSchema,
 }, { additionalProperties: false });
 

@@ -12,8 +12,8 @@ export class MovieService {
     private readonly statuses?: MovieStatusStore,
   ) {}
 
-  async trending(page: number, locale: Locale, ownerId: string | null): Promise<TrendingMoviesResponse> {
-    let result = await this.store.readPage(page, locale);
+  async trending(page: number, locale: Locale, ownerId: string | null, generation?: string): Promise<TrendingMoviesResponse> {
+    let result = await this.store.readPage(page, locale, generation);
     if (!result && page === 1) {
       const sync = await this.sync.syncPage(page, 'request', locale);
       if (sync.status === 'skipped') {
@@ -32,6 +32,7 @@ export class MovieService {
       source: 'cache',
       resultCompleteness: 'complete',
       fetchedAt: result.fetchedAt.toISOString(),
+      generation: result.generation,
       locale,
     };
   }
@@ -110,17 +111,17 @@ export class MovieService {
     return new Map(rows.map(({ tmdbId, status }) => [tmdbId, status]));
   }
 
-  async loadMore(currentPage: number, locale: Locale, ownerId: string | null): Promise<TrendingMoviesResponse> {
-    const current = await this.store.readPage(currentPage, locale);
+  async loadMore(currentPage: number, generation: string, locale: Locale, ownerId: string | null): Promise<TrendingMoviesResponse> {
+    const current = await this.store.readPage(currentPage, locale, generation);
     if (!current) throw new AppError(400, 'BAD_REQUEST', 'The current trending page is not available.');
     if (currentPage >= current.totalPages) throw new AppError(400, 'BAD_REQUEST', 'There are no more trending pages.');
     const nextPage = currentPage + 1;
-    const existing = await this.store.readPage(nextPage, locale);
+    const existing = await this.store.readPage(nextPage, locale, generation);
     if (!existing) {
-      const result = await this.sync.syncPage(nextPage, 'load-more', locale);
+      const result = await this.sync.syncPage(nextPage, 'load-more', locale, generation);
       if (result.status === 'skipped') throw new AppError(409, 'TRENDING_SYNC_IN_PROGRESS', 'This page is already being refreshed. Please retry shortly.');
     }
-    return this.trending(nextPage, locale, ownerId);
+    return this.trending(nextPage, locale, ownerId, generation);
   }
 }
 
