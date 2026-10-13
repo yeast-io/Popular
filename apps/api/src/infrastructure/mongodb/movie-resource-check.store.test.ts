@@ -72,6 +72,20 @@ test('reads only display-safe resource check state for the requested owner and m
   });
 });
 
+test('reads legacy resource checks without availability as unchecked', async () => {
+  const ownerId = new Types.ObjectId(key.ownerId);
+  const { store } = harness({
+    ...key,
+    ownerId,
+    lastAttemptAt: attemptedAt,
+    lastAttemptStatus: 'error',
+    lastErrorCode: 'invalid_response',
+  });
+
+  assert.equal((await store.readForMovies(key.ownerId, [key.tmdbId]))[0]?.availability, 'unchecked');
+  assert.equal((await store.readOne(key))?.availability, 'unchecked');
+});
+
 test('returns checking for an active task even before a result row exists', async () => {
   const { store } = harness(null, [{
     ...key,
@@ -135,6 +149,11 @@ test('a failed refresh updates attempt metadata without replacing the previous s
       lastAttemptAt: attemptedAt,
     },
   });
+  assert.deepEqual(calls[2], {
+    operation: 'state',
+    filter: { ...key, availability: { $exists: false } },
+    update: { $set: { availability: 'unchecked' } },
+  });
   assert.equal(calls[0]?.operation, 'release');
 });
 
@@ -157,6 +176,11 @@ test('a failed live query preserves the last successful checkedAt and availabili
   assert.deepEqual(call?.update, {
     $set: { lastAttemptStatus: 'error', lastErrorCode: 'network', lastAttemptAt: attemptedAt },
     $setOnInsert: { ...key, availability: 'unchecked' },
+  });
+  assert.deepEqual(calls[1], {
+    operation: 'state',
+    filter: { ...key, availability: { $exists: false } },
+    update: { $set: { availability: 'unchecked' } },
   });
   assert.equal(JSON.stringify(call?.update).includes('checkedAt'), false);
 });

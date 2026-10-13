@@ -26,7 +26,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
       tmdbId: row.tmdbId,
       provider: 'mteam',
       checking: checkingIds.has(row.tmdbId),
-      availability: row.availability,
+      availability: row.availability ?? 'unchecked',
       ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
       ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
       ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
@@ -54,7 +54,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     }
     return {
       ownerId: String(row.ownerId), tmdbId: row.tmdbId, provider: 'mteam', checking: Boolean(task),
-      availability: row.availability,
+      availability: row.availability ?? 'unchecked',
       ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
       ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
       ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
@@ -139,6 +139,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
           }
         : { $set: { ...result, lastAttemptAt: attemptedAt } },
     ).exec();
+    if (result.lastAttemptStatus === 'error') await this.backfillMissingAvailability(key);
   }
 
   async recordAttempt(
@@ -173,6 +174,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
         update,
         { upsert: true },
       ).exec();
+      if (result.lastAttemptStatus === 'error') await this.backfillMissingAvailability(key);
     } catch (error) {
       // A newer result can win the unique-key race between app instances.
       if (!isDuplicateKeyError(error)) throw error;
@@ -206,6 +208,13 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
 
   private async releaseTask(key: MovieResourceCheckKey, attemptedAt: Date): Promise<void> {
     await this.tasks.deleteOne({ ...key, attemptedAt }).exec();
+  }
+
+  private async backfillMissingAvailability(key: MovieResourceCheckKey): Promise<void> {
+    await this.checks.updateOne(
+      { ...key, availability: { $exists: false } },
+      { $set: { availability: 'unchecked' } },
+    ).exec();
   }
 }
 
