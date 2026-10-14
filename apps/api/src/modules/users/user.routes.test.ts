@@ -27,6 +27,7 @@ const config = loadConfig({
 
 class MemoryUsers implements AuthUserStore {
   readonly users = new Map<string, StoredUser>();
+  async countUsers() { return this.users.size; }
   async createPasswordUser(input: Omit<StoredUser, 'id'>) {
     if (this.users.has(input.email)) throw new DuplicateEmailError();
     const user = { ...input, id: String(this.users.size + 1) };
@@ -71,7 +72,7 @@ async function fixture() {
   const users = new MemoryUsers();
   const sessions = new MemorySessions();
   const avatars = new MemoryAvatars();
-  const auth = new AuthService(users, sessions);
+  const auth = new AuthService(users, sessions, config.REGISTRATION_USER_LIMIT);
   const userService = new UserService(auth, users, avatars, config.AVATAR_MAX_BYTES, config.AVATAR_MAX_PIXELS);
   const app = await buildApp({ config, healthDependencies: [], authService: auth, userService });
   const registration = await app.inject({

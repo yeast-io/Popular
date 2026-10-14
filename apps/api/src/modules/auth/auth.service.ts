@@ -6,11 +6,30 @@ import { DuplicateEmailError, type AuthUserStore, type SessionStore, type Stored
 const DUMMY_PASSWORD_HASH = `scrypt$AAAAAAAAAAAAAAAAAAAAAA$${Buffer.alloc(64).toString('base64url')}`;
 
 export class AuthService {
-  constructor(private readonly users: AuthUserStore, private readonly sessions: SessionStore) {}
+  private registrationQueue = Promise.resolve();
+
+  constructor(
+    private readonly users: AuthUserStore,
+    private readonly sessions: SessionStore,
+    private readonly registrationUserLimit: number,
+  ) {}
 
   async register(input: RegisterRequest): Promise<{ user: AuthUser; token: string }> {
     const email = normalizeEmail(input.email);
     const passwordHash = await hashPassword(input.password);
+    return this.withRegistrationLock(async () => {
+      if (await this.users.countUsers() >= this.registrationUserLimit) {
+        throw new AppError(403, 'REGISTRATION_LIMIT_REACHED', 'Registration user limit has been reached');
+      }
+      return this.createRegisteredUser(input, email, passwordHash);
+    });
+  }
+
+  private async createRegisteredUser(
+    input: RegisterRequest,
+    email: string,
+    passwordHash: string,
+  ): Promise<{ user: AuthUser; token: string }> {
     try {
       const user = await this.users.createPasswordUser({
         email,
@@ -23,6 +42,18 @@ export class AuthService {
         throw new AppError(409, 'CONFLICT', 'Email is already registered');
       }
       throw error;
+    }
+  }
+
+  private async withRegistrationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.registrationQueue;
+    let release!: () => void;
+    this.registrationQueue = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
     }
   }
 

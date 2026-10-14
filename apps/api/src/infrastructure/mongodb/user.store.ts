@@ -11,6 +11,10 @@ export class MongoAuthUserStore implements AuthUserStore {
 
   constructor(private readonly users: UserModel, private readonly identities: IdentityModel) {}
 
+  async countUsers(): Promise<number> {
+    return this.users.countDocuments({}).exec();
+  }
+
   async createPasswordUser(input: { email: string; displayName: string; passwordHash: string }): Promise<StoredUser> {
     try {
       if (this.transactionsSupported !== false) {

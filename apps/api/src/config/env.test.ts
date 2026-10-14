@@ -19,6 +19,7 @@ test('loads and normalizes valid environment', () => {
   const config = loadConfig({ ...valid, TRUST_PROXY: '10.0.0.0/8, 127.0.0.1' });
   assert.deepEqual(config.trustProxy, ['10.0.0.0/8', '127.0.0.1']);
   assert.equal(config.PORT, 3000);
+  assert.equal(config.REGISTRATION_USER_LIMIT, 100);
   assert.equal(config.INTEGRATION_SECRET_KEY, valid.INTEGRATION_SECRET_KEY);
   assert.deepEqual(config.MTEAM_ALLOWED_HOSTS, ['api.m-team.cc', 'api.m-team.io']);
   assert.equal(config.MTEAM_RESOURCE_AVAILABLE_TTL_SECONDS, 86_400);
@@ -29,6 +30,11 @@ test('loads and normalizes valid environment', () => {
   assert.equal(config.MTEAM_RELEASE_CACHE_TTL_SECONDS, 120);
   assert.equal(config.AVATAR_MAX_BYTES, 50 * 1024 * 1024);
   assert.equal(config.AVATAR_MAX_PIXELS, 16_777_216);
+});
+
+test('validates the registration user limit', () => {
+  assert.equal(loadConfig({ ...valid, REGISTRATION_USER_LIMIT: '250' }).REGISTRATION_USER_LIMIT, 250);
+  assert.throws(() => loadConfig({ ...valid, REGISTRATION_USER_LIMIT: '0' }), /REGISTRATION_USER_LIMIT/);
 });
 
 test('requires a dedicated integration encryption key', () => {

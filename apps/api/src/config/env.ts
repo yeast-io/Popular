@@ -40,6 +40,7 @@ const EnvSchema = z.object({
   SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(31_536_000).default(2_592_000),
   SESSION_TOKEN_PEPPER: z.string().min(32),
   SESSION_COOKIE_SECURE: booleanString.default(false),
+  REGISTRATION_USER_LIMIT: z.coerce.number().int().min(1).default(100),
   MINIO_ENDPOINT: z.string().min(1).refine(
     (value) => !value.includes('://') && !value.includes('/'),
     'must be a hostname or IP address without protocol, port, or path',

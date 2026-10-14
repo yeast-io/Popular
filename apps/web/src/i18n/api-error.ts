@@ -5,6 +5,7 @@ const errorKeys = {
   BAD_REQUEST: 'errors.badRequest',
   UNAUTHORIZED: 'errors.unauthorized',
   FORBIDDEN: 'errors.forbidden',
+  REGISTRATION_LIMIT_REACHED: 'auth.registrationLimitReached',
   NOT_FOUND: 'errors.notFound',
   CONFLICT: 'errors.conflict',
   VALIDATION_ERROR: 'errors.validation',

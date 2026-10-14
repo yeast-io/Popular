@@ -129,6 +129,7 @@ const zhCN = {
   'auth.registered': '账户已创建。你现在已登录。',
   'auth.invalidCredentials': '邮箱或密码不正确。',
   'auth.emailRegistered': '该邮箱已注册，请直接登录。',
+  'auth.registrationLimitReached': '注册名额暂时已满，请稍后再试。',
   'a11y.accountMenu': '打开账户菜单',
   'a11y.currentAvatar': '{name} 的当前头像',
   'a11y.chooseAvatar': '选择新的头像图片',

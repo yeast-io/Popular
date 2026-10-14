@@ -7,6 +7,7 @@ export interface StoredUser {
 }
 
 export interface AuthUserStore {
+  countUsers(): Promise<number>;
   createPasswordUser(input: { email: string; displayName: string; passwordHash: string }): Promise<StoredUser>;
   findByEmailWithPassword(email: string): Promise<StoredUser | null>;
   findById(id: string): Promise<StoredUser | null>;

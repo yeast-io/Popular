@@ -22,6 +22,7 @@ const config = loadConfig({
 
 class MemoryUsers implements AuthUserStore {
   readonly users = new Map<string, StoredUser>();
+  async countUsers() { return this.users.size; }
   async createPasswordUser(input: Omit<StoredUser, 'id'>) {
     if (this.users.has(input.email)) throw new DuplicateEmailError();
     const user = { ...input, id: String(this.users.size + 1) };
@@ -51,7 +52,7 @@ test('registration cookie authenticates /me and logout clears it', async () => {
   const app = await buildApp({
     config,
     healthDependencies: [],
-    authService: new AuthService(new MemoryUsers(), new MemorySessions()),
+    authService: new AuthService(new MemoryUsers(), new MemorySessions(), config.REGISTRATION_USER_LIMIT),
   });
 
   const registration = await app.inject({
@@ -86,7 +87,7 @@ test('registration validates password length before calling the service', async 
   const app = await buildApp({
     config,
     healthDependencies: [],
-    authService: new AuthService(new MemoryUsers(), new MemorySessions()),
+    authService: new AuthService(new MemoryUsers(), new MemorySessions(), config.REGISTRATION_USER_LIMIT),
   });
   const response = await app.inject({
     method: 'POST',
@@ -95,5 +96,25 @@ test('registration validates password length before calling the service', async 
   });
   assert.equal(response.statusCode, 400);
   assert.equal(response.json().error.code, 'VALIDATION_ERROR');
+  await app.close();
+});
+
+test('registration returns a stable API error when the user limit is reached', async () => {
+  const users = new MemoryUsers();
+  const app = await buildApp({
+    config,
+    healthDependencies: [],
+    authService: new AuthService(users, new MemorySessions(), 1),
+  });
+  const payload = { password: 'correct horse battery staple', displayName: 'Person' };
+  assert.equal((await app.inject({
+    method: 'POST', url: '/api/v1/auth/register', payload: { ...payload, email: 'first@example.com' },
+  })).statusCode, 201);
+  const rejected = await app.inject({
+    method: 'POST', url: '/api/v1/auth/register', payload: { ...payload, email: 'second@example.com' },
+  });
+  assert.equal(rejected.statusCode, 403);
+  assert.equal(rejected.json().error.code, 'REGISTRATION_LIMIT_REACHED');
+  assert.equal(users.users.size, 1);
   await app.close();
 });

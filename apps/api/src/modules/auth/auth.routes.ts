@@ -12,7 +12,7 @@ import { AuthService } from './auth.service.js';
 
 export function registerAuthRoutes(app: FastifyInstance, service: AuthService, config: AppConfig): void {
   app.post<{ Body: RegisterRequest }>('/auth/register', {
-    schema: { body: RegisterRequestSchema, response: { 201: AuthResponseSchema, 400: ApiErrorSchema, 409: ApiErrorSchema } },
+    schema: { body: RegisterRequestSchema, response: { 201: AuthResponseSchema, 400: ApiErrorSchema, 403: ApiErrorSchema, 409: ApiErrorSchema } },
   }, async (request, reply) => {
     const result = await service.register(request.body);
     reply.header('set-cookie', sessionCookie(config, result.token));

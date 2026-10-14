@@ -4,6 +4,7 @@ export const errorCodes = [
   'BAD_REQUEST',
   'UNAUTHORIZED',
   'FORBIDDEN',
+  'REGISTRATION_LIMIT_REACHED',
   'NOT_FOUND',
   'CONFLICT',
   'VALIDATION_ERROR',

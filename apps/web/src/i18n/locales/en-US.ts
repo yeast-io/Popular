@@ -133,6 +133,7 @@ const enUS = {
   'auth.registered': 'Your account has been created. You are now logged in.',
   'auth.invalidCredentials': 'The email or password is incorrect.',
   'auth.emailRegistered': 'That email is already registered. Log in instead.',
+  'auth.registrationLimitReached': 'Registration is temporarily full. Please try again later.',
   'a11y.accountMenu': 'Open account menu',
   'a11y.currentAvatar': 'Current avatar for {name}',
   'a11y.chooseAvatar': 'Choose a new avatar image',

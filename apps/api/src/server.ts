@@ -56,7 +56,7 @@ try {
     config.SESSION_TOKEN_PEPPER,
     config.SESSION_TTL_SECONDS,
   );
-  const authService = new AuthService(userStore, sessionStore);
+  const authService = new AuthService(userStore, sessionStore, config.REGISTRATION_USER_LIMIT);
   const externalUsageService = new ExternalUsageService(authService, externalUsageStore);
   const avatarStore = new MinioAvatarStore(infrastructure.minio.getClient(), config.MINIO_BUCKET);
   const userService = new UserService(authService, userStore, avatarStore, config.AVATAR_MAX_BYTES, config.AVATAR_MAX_PIXELS);

@@ -6,6 +6,7 @@ import { DuplicateEmailError, type AuthUserStore, type SessionStore, type Stored
 
 class MemoryUsers implements AuthUserStore {
   readonly users = new Map<string, StoredUser>();
+  async countUsers() { return this.users.size; }
   async createPasswordUser(input: Omit<StoredUser, 'id'>): Promise<StoredUser> {
     if (this.users.has(input.email)) throw new DuplicateEmailError();
     const user = { ...input, id: String(this.users.size + 1) };
@@ -34,15 +35,41 @@ class MemorySessions implements SessionStore {
 test('register normalizes email and creates an authenticated session', async () => {
   const users = new MemoryUsers();
   const sessions = new MemorySessions();
-  const service = new AuthService(users, sessions);
+  const service = new AuthService(users, sessions, 100);
   const result = await service.register({ email: ' PERSON@Example.COM ', password: 'correct horse battery staple', displayName: 'Person' });
   assert.equal(result.user.email, 'person@example.com');
   assert.equal(await sessions.getOwnerId(result.token), result.user.id);
   assert.notEqual(users.users.get('person@example.com')?.passwordHash, 'correct horse battery staple');
 });
 
+test('register rejects new users once the configured limit is reached', async () => {
+  const users = new MemoryUsers();
+  const service = new AuthService(users, new MemorySessions(), 1);
+  await service.register({ email: 'first@example.com', password: 'correct horse battery staple', displayName: 'First' });
+  await assert.rejects(
+    service.register({ email: 'second@example.com', password: 'correct horse battery staple', displayName: 'Second' }),
+    (error: unknown) => error instanceof AppError
+      && error.statusCode === 403
+      && error.code === 'REGISTRATION_LIMIT_REACHED'
+      && error.message === 'Registration user limit has been reached',
+  );
+  assert.equal(users.users.size, 1);
+});
+
+test('concurrent registrations cannot exceed the configured limit in one server process', async () => {
+  const users = new MemoryUsers();
+  const service = new AuthService(users, new MemorySessions(), 1);
+  const results = await Promise.allSettled([
+    service.register({ email: 'first@example.com', password: 'correct horse battery staple', displayName: 'First' }),
+    service.register({ email: 'second@example.com', password: 'correct horse battery staple', displayName: 'Second' }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(results.filter((result) => result.status === 'rejected').length, 1);
+  assert.equal(users.users.size, 1);
+});
+
 test('login rejects a wrong password without revealing which credential failed', async () => {
-  const service = new AuthService(new MemoryUsers(), new MemorySessions());
+  const service = new AuthService(new MemoryUsers(), new MemorySessions(), 100);
   await assert.rejects(
     service.login({ email: 'missing@example.com', password: 'incorrect password' }),
     (error: unknown) => error instanceof AppError && error.statusCode === 401 && error.message === 'Invalid email or password',
@@ -52,7 +79,7 @@ test('login rejects a wrong password without revealing which credential failed',
 test('current user and logout use the server-side session', async () => {
   const users = new MemoryUsers();
   const sessions = new MemorySessions();
-  const service = new AuthService(users, sessions);
+  const service = new AuthService(users, sessions, 100);
   const registered = await service.register({ email: 'person@example.com', password: 'correct horse battery staple', displayName: 'Person' });
   assert.equal((await service.currentUser(registered.token)).id, registered.user.id);
   await service.logout(registered.token);
