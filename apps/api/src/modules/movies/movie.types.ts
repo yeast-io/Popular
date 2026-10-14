@@ -16,6 +16,16 @@ export interface MovieRecord {
 export interface GenreRecord { tmdbId: number; name: string }
 export interface PersonRecord { tmdbId: number; name: string; originalName?: string; profilePath?: string }
 export interface CreditRecord { person: PersonRecord; creditId: string; type: 'cast' | 'director'; character?: string; order?: number }
+export interface MovieTrailerRecord {
+  tmdbVideoId: string;
+  provider: 'youtube';
+  providerVideoId: string;
+  name: string;
+  language?: string;
+  region?: string;
+  official: boolean;
+  publishedAt?: Date;
+}
 
 export interface MovieDetailRecord extends MovieRecord {
   imdbId?: string;
@@ -24,6 +34,8 @@ export interface MovieDetailRecord extends MovieRecord {
   genres: GenreRecord[];
   cast: CreditRecord[];
   directors: CreditRecord[];
+  trailer?: MovieTrailerRecord;
+  trailerSyncedAt?: Date;
   detailSyncedAt?: Date;
 }
 
@@ -68,15 +80,18 @@ export interface MovieCatalogStore {
 
 export interface MovieStatusRecord {
   tmdbId: number;
-  status: 'watched' | 'interested' | 'not_interested';
+  status: 'unwatched' | 'watched' | 'interested';
+  preference: 'neutral' | 'liked' | 'disliked';
   updatedAt: Date;
 }
 
 export interface MovieStatusStore {
-  set(ownerId: string, tmdbId: number, status: MovieStatusRecord['status']): Promise<MovieStatusRecord['status'] | null>;
-  delete(ownerId: string, tmdbId: number): Promise<void>;
+  setStatus(ownerId: string, tmdbId: number, status: Exclude<MovieStatusRecord['status'], 'unwatched'>): Promise<MovieStatusRecord['status'] | null>;
+  clearStatus(ownerId: string, tmdbId: number): Promise<void>;
+  setPreference(ownerId: string, tmdbId: number, preference: Exclude<MovieStatusRecord['preference'], 'neutral'>): Promise<MovieStatusRecord['preference']>;
+  clearPreference(ownerId: string, tmdbId: number): Promise<void>;
   readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieStatusRecord[]>;
-  list(ownerId: string, status: MovieStatusRecord['status'] | undefined, page: number, pageSize: number): Promise<{ items: MovieStatusRecord[]; total: number }>;
+  list(ownerId: string, filter: Exclude<MovieStatusRecord['status'], 'unwatched'> | Exclude<MovieStatusRecord['preference'], 'neutral'> | undefined, page: number, pageSize: number): Promise<{ items: MovieStatusRecord[]; total: number }>;
 }
 
 export interface TrendingProvider {

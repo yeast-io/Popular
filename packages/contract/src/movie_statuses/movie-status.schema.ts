@@ -1,12 +1,17 @@
 import { Static, Type } from '@sinclair/typebox';
 import { LocaleSchema } from '../common/locale.schema.js';
 
-export const movieStatuses = ['unwatched', 'watched', 'interested', 'not_interested'] as const;
+export const movieStatuses = ['unwatched', 'watched', 'interested'] as const;
 export const MovieStatusSchema = Type.Union(movieStatuses.map((status) => Type.Literal(status)));
 export type MovieStatus = Static<typeof MovieStatusSchema>;
 
-export const trackedMovieStatuses = ['watched', 'interested', 'not_interested'] as const;
+export const trackedMovieStatuses = ['watched', 'interested'] as const;
 export const TrackedMovieStatusSchema = Type.Union(trackedMovieStatuses.map((status) => Type.Literal(status)));
+
+export const moviePreferences = ['neutral', 'liked', 'disliked'] as const;
+export const MoviePreferenceSchema = Type.Union(moviePreferences.map((preference) => Type.Literal(preference)));
+export const trackedMoviePreferences = ['liked', 'disliked'] as const;
+export const TrackedMoviePreferenceSchema = Type.Union(trackedMoviePreferences.map((preference) => Type.Literal(preference)));
 
 export const MovieIdParamsSchema = Type.Object({
   tmdbId: Type.Integer({ minimum: 1 }),
@@ -16,13 +21,25 @@ export const SetMovieStatusRequestSchema = Type.Object({
   status: TrackedMovieStatusSchema,
 }, { additionalProperties: false });
 
+export const SetMoviePreferenceRequestSchema = Type.Object({
+  preference: TrackedMoviePreferenceSchema,
+}, { additionalProperties: false });
+
 export const MovieStatusResponseSchema = Type.Object({
   tmdbId: Type.Integer({ minimum: 1 }),
   status: MovieStatusSchema,
 }, { additionalProperties: false });
 
+export const MoviePreferenceResponseSchema = Type.Object({
+  tmdbId: Type.Integer({ minimum: 1 }),
+  preference: MoviePreferenceSchema,
+}, { additionalProperties: false });
+
+export const myMoviesFilters = [...trackedMovieStatuses, ...trackedMoviePreferences] as const;
+export const MyMoviesFilterSchema = Type.Union(myMoviesFilters.map((filter) => Type.Literal(filter)));
+
 export const MyMoviesQuerySchema = Type.Object({
-  status: Type.Optional(TrackedMovieStatusSchema),
+  status: Type.Optional(MyMoviesFilterSchema),
   page: Type.Optional(Type.Integer({ minimum: 1, default: 1 })),
   pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, default: 20 })),
   locale: Type.Optional(LocaleSchema),
@@ -120,7 +137,8 @@ export const MyMoviesResponseSchema = Type.Object({
     releaseDate: Type.Optional(Type.String({ format: 'date' })),
     posterUrl: Type.Optional(Type.String({ format: 'uri' })),
     voteAverage: Type.Optional(Type.Number({ minimum: 0, maximum: 10 })),
-    userStatus: TrackedMovieStatusSchema,
+    userStatus: MovieStatusSchema,
+    userPreference: MoviePreferenceSchema,
     resourceCheck: Type.Optional(MovieResourceCheckSchema),
   }, { additionalProperties: false })),
   pagination: Type.Object({
@@ -133,9 +151,14 @@ export const MyMoviesResponseSchema = Type.Object({
 }, { additionalProperties: false });
 
 export type TrackedMovieStatus = Static<typeof TrackedMovieStatusSchema>;
+export type MoviePreference = Static<typeof MoviePreferenceSchema>;
+export type TrackedMoviePreference = Static<typeof TrackedMoviePreferenceSchema>;
+export type MyMoviesFilter = Static<typeof MyMoviesFilterSchema>;
 export type MovieIdParams = Static<typeof MovieIdParamsSchema>;
 export type SetMovieStatusRequest = Static<typeof SetMovieStatusRequestSchema>;
+export type SetMoviePreferenceRequest = Static<typeof SetMoviePreferenceRequestSchema>;
 export type MovieStatusResponse = Static<typeof MovieStatusResponseSchema>;
+export type MoviePreferenceResponse = Static<typeof MoviePreferenceResponseSchema>;
 export type MyMoviesQuery = Static<typeof MyMoviesQuerySchema>;
 export type MyMoviesResponse = Static<typeof MyMoviesResponseSchema>;
 export type MovieResourceAvailability = Static<typeof MovieResourceAvailabilitySchema>;

@@ -180,15 +180,22 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
       }, $setOnInsert: { tmdbId: movie.tmdbId } },
       { upsert: true },
     );
+    const localizationSet = {
+      ...toSummaryLocalizationUpdate(movie, syncedAt),
+      ...(movie.tagline ? { tagline: movie.tagline } : {}),
+      genres: movie.genres,
+      detailSyncedAt: syncedAt,
+      trailerSyncedAt: syncedAt,
+      activeCreditVersion: syncVersion,
+      ...(movie.trailer ? { trailer: movie.trailer } : {}),
+    };
     await this.localizations.updateOne(
       { movieTmdbId: movie.tmdbId, locale },
-      { $set: {
-        ...toSummaryLocalizationUpdate(movie, syncedAt),
-        ...(movie.tagline ? { tagline: movie.tagline } : {}),
-        genres: movie.genres,
-        detailSyncedAt: syncedAt,
-        activeCreditVersion: syncVersion,
-      }, $setOnInsert: { movieTmdbId: movie.tmdbId, locale } },
+      {
+        $set: localizationSet,
+        ...(!movie.trailer ? { $unset: { trailer: 1 } } : {}),
+        $setOnInsert: { movieTmdbId: movie.tmdbId, locale },
+      },
       { upsert: true },
     );
     await this.credits.deleteMany({ movieTmdbId: movie.tmdbId, locale, syncVersion: { $ne: syncVersion } });
@@ -233,6 +240,8 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
       ...(movie.imdbId ? { imdbId: movie.imdbId } : {}),
       ...(localized.tagline ? { tagline: localized.tagline } : {}),
       ...(typeof movie.runtimeMinutes === 'number' ? { runtimeMinutes: movie.runtimeMinutes } : {}),
+      ...(localized.trailer ? { trailer: localized.trailer } : {}),
+      ...(localized.trailerSyncedAt ? { trailerSyncedAt: localized.trailerSyncedAt } : {}),
       genres: localized.genres ?? [],
       cast: mappedCredits.filter((credit) => credit.type === 'cast'),
       directors: mappedCredits.filter((credit) => credit.type === 'director'),
@@ -322,8 +331,10 @@ interface ResolvedLocalization {
   posterPath?: string;
   backdropPath?: string;
   genres?: Array<{ tmdbId: number; name: string }>;
+  trailer?: MovieDetailRecord['trailer'];
   summarySyncedAt: Date;
   detailSyncedAt?: Date;
+  trailerSyncedAt?: Date;
 }
 
 function resolveLocalization(
@@ -343,7 +354,18 @@ function resolveLocalization(
     ...(localization.genres
       ? { genres: localization.genres.map((genre) => ({ tmdbId: genre.tmdbId, name: genre.name })) }
       : {}),
+    ...(localization.trailer ? { trailer: {
+      tmdbVideoId: localization.trailer.tmdbVideoId,
+      provider: 'youtube',
+      providerVideoId: localization.trailer.providerVideoId,
+      name: localization.trailer.name,
+      ...(localization.trailer.language ? { language: localization.trailer.language } : {}),
+      ...(localization.trailer.region ? { region: localization.trailer.region } : {}),
+      official: localization.trailer.official,
+      ...(localization.trailer.publishedAt ? { publishedAt: localization.trailer.publishedAt } : {}),
+    } } : {}),
     ...(localization.detailSyncedAt ? { detailSyncedAt: localization.detailSyncedAt } : {}),
+    ...(localization.trailerSyncedAt ? { trailerSyncedAt: localization.trailerSyncedAt } : {}),
   };
 }
 

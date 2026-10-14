@@ -975,6 +975,59 @@ label small {
   font-size: 1.8rem;
   text-shadow: 0 2px 12px #000;
 }
+.preference-control {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  gap: 7px;
+}
+.preference-button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  padding: 0;
+  color: #fff;
+  background: rgba(8, 9, 10, 0.72);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(8px);
+}
+.preference-button svg {
+  width: 17px;
+  height: 17px;
+  fill: transparent;
+  stroke: currentcolor;
+  stroke-width: 1.7;
+}
+.preference-button:hover,
+.preference-button:focus-visible {
+  border-color: #fff;
+  background: rgba(22, 23, 24, 0.92);
+}
+.preference-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.preference-button.active {
+  border-color: #69d58c;
+  color: #fff;
+  background: #238348;
+}
+.preference-button.active svg {
+  fill: currentcolor;
+}
+.preference-button.dislike.active {
+  border-color: #ffc45b;
+  background: #9b5408;
+}
+.preference-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .movie-copy {
   padding: 14px 2px 0;
 }
@@ -1055,7 +1108,7 @@ label small {
 }
 .status-control {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 4px;
   margin-top: 12px;
 }
@@ -1095,10 +1148,15 @@ label small {
   color: #7fd49a;
   background: rgba(127, 212, 154, 0.08);
 }
-.status-badge[data-status='not_interested'] {
+.status-badge[data-status='disliked'] {
   border-color: rgba(160, 161, 157, 0.28);
   color: #aaa;
   background: rgba(160, 161, 157, 0.07);
+}
+.status-badge[data-status='liked'] {
+  border-color: rgba(240, 82, 69, 0.38);
+  color: #ff8e82;
+  background: rgba(240, 82, 69, 0.1);
 }
 .resource-status {
   margin: 9px 0 0;
@@ -1617,6 +1675,7 @@ label small {
 }
 .filter-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: -8px 0 28px;
 }
@@ -2587,6 +2646,114 @@ button.poster-resource-badge:disabled {
   width: 100%;
   margin-top: 28px;
 }
+.detail-preference {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+.detail-preference button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #343536;
+  border-radius: 3px;
+  padding: 9px 12px;
+  color: #81827e;
+  background: #151617;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.detail-preference button:hover,
+.detail-preference button:focus-visible {
+  border-color: var(--movie-accent);
+  color: #fff;
+}
+.detail-preference button.liked.active {
+  border-color: #69d58c;
+  color: #fff;
+  background: #238348;
+}
+.detail-preference button.disliked.active {
+  border-color: #ffc45b;
+  color: #fff;
+  background: #9b5408;
+}
+.detail-preference button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.trailer-button {
+  display: inline-flex;
+  width: auto;
+  align-items: center;
+  gap: 9px;
+  margin-top: 24px;
+  border: 1px solid rgba(var(--movie-accent-rgb), 0.72);
+  border-radius: 3px;
+  padding: 10px 15px;
+  color: #fff;
+  background: rgba(var(--movie-accent-rgb), 0.2);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+.trailer-button:hover {
+  background: rgba(var(--movie-accent-rgb), 0.34);
+}
+.trailer-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+.trailer-button svg {
+  width: 17px;
+  height: 17px;
+  fill: currentcolor;
+}
+.trailer-dialog-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: rgba(3, 4, 5, 0.86);
+  backdrop-filter: blur(7px);
+}
+.trailer-panel {
+  width: min(960px, 100%);
+  border: 1px solid #303132;
+  padding: 22px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.68);
+  background: #0f1011;
+  outline: none;
+}
+.trailer-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.trailer-panel-heading .eyebrow {
+  margin-bottom: 4px;
+}
+.trailer-panel-heading h2 {
+  margin: 0;
+  font: 400 1.35rem/1.2 Georgia, serif;
+}
+.trailer-frame {
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+.trailer-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
 .detail-sections {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
@@ -2789,6 +2956,12 @@ button.poster-resource-badge:disabled {
   .release-dialog-backdrop {
     align-items: end;
     padding: 12px;
+  }
+  .trailer-dialog-backdrop {
+    padding: 12px;
+  }
+  .trailer-panel {
+    padding: 16px;
   }
   .release-panel {
   position: relative;

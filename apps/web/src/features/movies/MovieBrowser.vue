@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ApiError, MovieStatus, MovieSummary, SearchMoviesResponse, TrackedMovieStatus, TrendingMoviesResponse } from '@movie-hub/contract';
+import type { ApiError, MoviePreference, MovieStatus, MovieSummary, SearchMoviesResponse, TrackedMoviePreference, TrackedMovieStatus, TrendingMoviesResponse } from '@movie-hub/contract';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
@@ -39,7 +39,6 @@ const freshness = computed(() => fetchedAt.value && !searching.value
 const statusOptions = computed(() => [
   ['watched', t('movie.status.watched')],
   ['interested', t('movie.status.interested')],
-  ['not_interested', t('movie.status.notInterested')],
 ] as const);
 const browserTitle = computed(() => searching.value
   ? t('discover.searchTitle', { query: query.value.trim() })
@@ -149,6 +148,28 @@ async function setStatus(movie: MovieSummary, status: TrackedMovieStatus) {
   }
 }
 
+async function setPreference(movie: MovieSummary, preference: TrackedMoviePreference) {
+  if (!props.authenticated) { emit('requireLogin'); return; }
+  if (updating.value.has(movie.tmdbId)) return;
+  const previous = movie.userPreference;
+  const next: MoviePreference = previous === preference ? 'neutral' : preference;
+  movie.userPreference = next;
+  updating.value = new Set(updating.value).add(movie.tmdbId);
+  errorMessage.value = '';
+  try {
+    const response = await fetch(`${apiBaseUrl}/me/movies/${movie.tmdbId}/preference`, {
+      method: next === 'neutral' ? 'DELETE' : 'PUT', credentials: 'include',
+      ...(next === 'neutral' ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ preference: next }) }),
+    });
+    if (!response.ok) throw await localizedResponseError(response);
+  } catch (error) {
+    movie.userPreference = previous;
+    errorMessage.value = localizedErrorMessage(error, 'errors.saveMoviePreference');
+  } finally {
+    const pending = new Set(updating.value); pending.delete(movie.tmdbId); updating.value = pending;
+  }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: 'include', ...init });
   const result = await response.json() as T | ApiError;
@@ -238,6 +259,30 @@ function messageFor(error: unknown): string {
             />
             <div v-else class="poster-placeholder" role="img" :aria-label="t('a11y.moviePosterUnavailable', { title: movie.title })"><span aria-hidden="true">{{ t('movie.posterUnavailable') }}</span></div>
             <span v-if="!searching" class="rank">{{ String(index + 1).padStart(2, '0') }}</span>
+            <div class="preference-control" role="group" :aria-label="t('a11y.moviePreference', { title: movie.title })">
+              <button
+                type="button"
+                class="preference-button"
+                :class="{ active: movie.userPreference === 'liked' }"
+                :aria-label="t(movie.userPreference === 'liked' ? 'movie.preference.clearLiked' : 'movie.preference.like')"
+                :aria-pressed="movie.userPreference === 'liked'"
+                :disabled="updating.has(movie.tmdbId)"
+                @click.stop="setPreference(movie, 'liked')"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 20.5 3.8 12.9A5.4 5.4 0 0 1 11.4 5l.6.7.6-.7a5.4 5.4 0 0 1 7.6 7.9L12 20.5Z" /></svg>
+              </button>
+              <button
+                type="button"
+                class="preference-button dislike"
+                :class="{ active: movie.userPreference === 'disliked' }"
+                :aria-label="t(movie.userPreference === 'disliked' ? 'movie.preference.clearDisliked' : 'movie.preference.dislike')"
+                :aria-pressed="movie.userPreference === 'disliked'"
+                :disabled="updating.has(movie.tmdbId)"
+                @click.stop="setPreference(movie, 'disliked')"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7.2 3h8.9a2 2 0 0 1 1.9 1.4l1.7 5.1a3 3 0 0 1-2.8 4h-3l.5 3.7a2.4 2.4 0 0 1-4.4 1.5L6.7 13H4a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h2.2L7.2 3Zm0 2.5v5.2l4.5 7.1-.7-5.3a1.3 1.3 0 0 1 1.3-1.5h4.6a.5.5 0 0 0 .5-.7l-1.6-4.8H7.2Z" /></svg>
+              </button>
+            </div>
             <div class="poster-interface" aria-hidden="true">
               <span class="interface-code">MH / {{ movie.tmdbId }}</span>
               <div class="interface-meta">

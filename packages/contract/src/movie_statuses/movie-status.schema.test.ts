@@ -2,9 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import { TypeSystem } from '@sinclair/typebox/system';
-import { MovieReleaseListResponseSchema, MyMoviesResponseSchema } from './movie-status.schema.js';
+import { MovieReleaseListResponseSchema, MyMoviesQuerySchema, MyMoviesResponseSchema } from './movie-status.schema.js';
 
 TypeSystem.Format('date-time', (value) => !Number.isNaN(Date.parse(value)));
+
+test('My Movies accepts preference filters and rejects the retired not-interested filter', () => {
+  assert.equal(Value.Check(MyMoviesQuerySchema, { status: 'liked' }), true);
+  assert.equal(Value.Check(MyMoviesQuerySchema, { status: 'disliked' }), true);
+  assert.equal(Value.Check(MyMoviesQuerySchema, { status: 'not_interested' }), false);
+});
 
 test('My Movies can expose a failed refresh without discarding the last successful availability', () => {
   assert.equal(Value.Check(MyMoviesResponseSchema, {
@@ -12,6 +18,7 @@ test('My Movies can expose a failed refresh without discarding the last successf
       tmdbId: 603,
       title: 'The Matrix',
       userStatus: 'interested',
+      userPreference: 'liked',
       resourceCheck: {
         provider: 'mteam',
         checking: false,

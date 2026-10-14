@@ -201,6 +201,47 @@ describe('localized movie page flows', () => {
     wrapper.unmount();
   });
 
+  it('toggles mutually exclusive poster preferences without opening the movie', async () => {
+    const requests: Array<{ url: string; method: string; body?: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method ?? 'GET', ...(init?.body ? { body: String(init.body) } : {}) });
+      if (url.endsWith('/preference')) {
+        return Response.json({ tmdbId: 42, preference: init?.method === 'DELETE' ? 'neutral' : JSON.parse(String(init?.body)).preference });
+      }
+      return Response.json({
+        items: [{ tmdbId: 42, title: '偏好测试', userStatus: 'unwatched', userPreference: 'neutral' }],
+        page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', fetchedAt,
+        generation: trendingGeneration, locale: 'zh-CN',
+      });
+    }));
+
+    const wrapper = mount(MovieBrowser, { props: { authenticated: true } });
+    await flushPromises();
+    const buttons = wrapper.findAll('button.preference-button');
+
+    await buttons[0]!.trigger('click');
+    await flushPromises();
+    expect(buttons[0]!.classes()).toContain('active');
+    expect(buttons[1]!.classes()).not.toContain('active');
+
+    await buttons[1]!.trigger('click');
+    await flushPromises();
+    expect(buttons[0]!.classes()).not.toContain('active');
+    expect(buttons[1]!.classes()).toContain('active');
+
+    await buttons[1]!.trigger('click');
+    await flushPromises();
+    expect(buttons[1]!.classes()).not.toContain('active');
+    expect(wrapper.emitted('openMovie')).toBeUndefined();
+    expect(requests.filter(({ url }) => url.endsWith('/preference')).map(({ method, body }) => [method, body])).toEqual([
+      ['PUT', '{"preference":"liked"}'],
+      ['PUT', '{"preference":"disliked"}'],
+      ['DELETE', undefined],
+    ]);
+    wrapper.unmount();
+  });
+
   it('reloads Detail without falling back to the other locale', async () => {
     const urls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {

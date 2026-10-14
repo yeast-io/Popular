@@ -1,6 +1,6 @@
 import { Static, Type } from '@sinclair/typebox';
 import { LocaleSchema } from '../common/locale.schema.js';
-import { MovieStatusSchema } from '../movie_statuses/movie-status.schema.js';
+import { MoviePreferenceSchema, MovieStatusSchema } from '../movie_statuses/movie-status.schema.js';
 
 export const MovieSummarySchema = Type.Object({
   tmdbId: Type.Integer({ minimum: 1 }),
@@ -11,6 +11,7 @@ export const MovieSummarySchema = Type.Object({
   posterUrl: Type.Optional(Type.String({ format: 'uri' })),
   voteAverage: Type.Optional(Type.Number({ minimum: 0, maximum: 10 })),
   userStatus: MovieStatusSchema,
+  userPreference: MoviePreferenceSchema,
 }, { additionalProperties: false });
 
 export const MoviePersonSchema = Type.Object({
@@ -18,6 +19,17 @@ export const MoviePersonSchema = Type.Object({
   name: Type.String({ minLength: 1 }),
   character: Type.Optional(Type.String()),
   profileUrl: Type.Optional(Type.String({ format: 'uri' })),
+}, { additionalProperties: false });
+
+export const MovieTrailerSchema = Type.Object({
+  tmdbVideoId: Type.String({ minLength: 1 }),
+  provider: Type.Literal('youtube'),
+  providerVideoId: Type.String({ minLength: 1 }),
+  name: Type.String({ minLength: 1 }),
+  language: Type.Optional(Type.String({ minLength: 2 })),
+  region: Type.Optional(Type.String({ minLength: 2 })),
+  official: Type.Boolean(),
+  publishedAt: Type.Optional(Type.String({ format: 'date-time' })),
 }, { additionalProperties: false });
 
 export const MovieDetailSchema = Type.Object({
@@ -34,9 +46,11 @@ export const MovieDetailSchema = Type.Object({
   backdropUrl: Type.Optional(Type.String({ format: 'uri' })),
   voteAverage: Type.Optional(Type.Number({ minimum: 0, maximum: 10 })),
   voteCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  trailer: Type.Optional(MovieTrailerSchema),
   cast: Type.Array(MoviePersonSchema),
   directors: Type.Array(MoviePersonSchema),
   userStatus: MovieStatusSchema,
+  userPreference: MoviePreferenceSchema,
   detailSyncedAt: Type.String({ format: 'date-time' }),
   stale: Type.Boolean(),
   locale: LocaleSchema,
@@ -90,6 +104,7 @@ export const SearchMoviesResponseSchema = Type.Object({
 
 export type MovieSummary = Static<typeof MovieSummarySchema>;
 export type MoviePerson = Static<typeof MoviePersonSchema>;
+export type MovieTrailer = Static<typeof MovieTrailerSchema>;
 export type MovieDetail = Static<typeof MovieDetailSchema>;
 export type MovieDetailParams = Static<typeof MovieDetailParamsSchema>;
 export type MovieDetailQuery = Static<typeof MovieDetailQuerySchema>;

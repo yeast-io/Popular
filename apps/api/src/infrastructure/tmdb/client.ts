@@ -41,6 +41,19 @@ interface TmdbDetail extends TmdbMovie {
       data?: { title?: string; overview?: string; tagline?: string };
     }>;
   };
+  videos?: { results?: TmdbVideo[] };
+}
+
+interface TmdbVideo {
+  id?: string;
+  iso_639_1?: string;
+  iso_3166_1?: string;
+  key?: string;
+  name?: string;
+  official?: boolean;
+  published_at?: string;
+  site?: string;
+  type?: string;
 }
 
 export class TmdbClient implements TrendingProvider {
@@ -87,7 +100,8 @@ export class TmdbClient implements TrendingProvider {
   async fetchDetails(tmdbId: number, locale: Locale, context?: ExternalRequestContext): Promise<MovieDetailRecord> {
     const url = new URL(`${this.baseUrl}/movie/${tmdbId}`);
     url.searchParams.set('language', locale);
-    url.searchParams.set('append_to_response', 'credits,translations');
+    url.searchParams.set('append_to_response', 'credits,translations,videos');
+    url.searchParams.set('include_video_language', videoLanguages(locale).join(','));
     const response = await this.request(url, 'movie.details', context);
     const payload = await response.json() as TmdbDetail;
     const localized = selectRequestedTranslation(payload, locale);
@@ -115,6 +129,7 @@ export class TmdbClient implements TrendingProvider {
       ...(typeof payload.runtime === 'number' && payload.runtime >= 0 ? { runtimeMinutes: payload.runtime } : {}),
       genres: (payload.genres ?? []).flatMap((genre) => Number.isInteger(genre.id) && genre.id > 0 && genre.name?.trim()
         ? [{ tmdbId: genre.id, name: genre.name.trim() }] : []),
+      ...selectTrailer(payload.videos?.results, locale),
       cast, directors,
     };
   }
@@ -185,6 +200,44 @@ export class TmdbClient implements TrendingProvider {
       // Usage telemetry must never change the upstream request result.
     }
   }
+}
+
+function videoLanguages(locale: Locale): string[] {
+  const language = locale.split('-')[0]!;
+  return [...new Set([language, 'en', 'null'])];
+}
+
+function selectTrailer(videos: TmdbVideo[] | undefined, locale: Locale): Pick<MovieDetailRecord, 'trailer'> {
+  const [language, region] = locale.split('-');
+  const candidates = (videos ?? []).filter((video) =>
+    video.site === 'YouTube'
+    && video.type === 'Trailer'
+    && Boolean(video.id?.trim())
+    && Boolean(video.key?.trim())
+    && Boolean(video.name?.trim())
+    && /^[A-Za-z0-9_-]+$/.test(video.key!.trim()),
+  );
+  candidates.sort((left, right) => {
+    const score = (video: TmdbVideo) =>
+      (video.iso_639_1 === language ? 4 : 0)
+      + (video.iso_3166_1 === region ? 2 : 0)
+      + (video.official ? 1 : 0);
+    return score(right) - score(left)
+      || Date.parse(right.published_at ?? '') - Date.parse(left.published_at ?? '');
+  });
+  const selected = candidates[0];
+  if (!selected) return {};
+  const publishedAt = selected.published_at ? new Date(selected.published_at) : undefined;
+  return { trailer: {
+    tmdbVideoId: selected.id!.trim(),
+    provider: 'youtube',
+    providerVideoId: selected.key!.trim(),
+    name: selected.name!.trim(),
+    ...(selected.iso_639_1 ? { language: selected.iso_639_1 } : {}),
+    ...(selected.iso_3166_1 ? { region: selected.iso_3166_1 } : {}),
+    official: selected.official === true,
+    ...(publishedAt && !Number.isNaN(publishedAt.getTime()) ? { publishedAt } : {}),
+  } };
 }
 
 function tmdbHttpErrorCode(status: number): ExternalRequestErrorCode {

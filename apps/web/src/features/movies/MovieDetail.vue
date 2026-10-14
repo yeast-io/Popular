@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type {
   ApiError, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MovieReleaseListResponse,
-  MovieResourceCheckResponse, MovieStatus, QBittorrentConfiguration, TrackedMovieStatus,
+  MoviePreference, MovieResourceCheckResponse, MovieStatus, QBittorrentConfiguration, TrackedMoviePreference, TrackedMovieStatus,
 } from '@movie-hub/contract';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
@@ -24,6 +24,9 @@ const releasesLoading = ref(false);
 const releasesError = ref('');
 const releaseDialog = ref<HTMLElement | null>(null);
 const releaseCloseButton = ref<HTMLButtonElement | null>(null);
+const trailerOpen = ref(false);
+const trailerDialog = ref<HTMLElement | null>(null);
+const trailerCloseButton = ref<HTMLButtonElement | null>(null);
 const downloads = ref<MovieDownload[]>([]);
 const qbittorrentConfigured = ref(false);
 const confirmingRelease = ref<MovieRelease | null>(null);
@@ -33,7 +36,9 @@ let requestController: AbortController | undefined;
 let resourcePoll: number | undefined;
 let downloadPoll: number | undefined;
 let releaseTrigger: HTMLElement | null = null;
+let trailerTrigger: HTMLElement | null = null;
 let previousBodyOverflow = '';
+let pageScrollLocked = false;
 const detailStyle = computed(() => {
   const hue = 14 + (props.tmdbId % 4) * 11;
   return { '--movie-accent': `hsl(${hue} 88% 58%)`, '--movie-accent-rgb': hue < 30 ? '242, 82, 45' : '242, 151, 45' };
@@ -41,7 +46,6 @@ const detailStyle = computed(() => {
 const statusOptions = computed(() => [
   ['watched', t('movie.status.watched')],
   ['interested', t('movie.status.interested')],
-  ['not_interested', t('movie.status.notInterested')],
 ] as const);
 const orderedReleases = computed(() => {
   const downloadedReleaseIds = new Set(downloads.value.map((download) => download.sourceReleaseId));
@@ -63,12 +67,15 @@ onBeforeUnmount(() => {
   stopResourcePolling();
   stopDownloadPolling();
   document.removeEventListener('visibilitychange', handleVisibilityChange);
+  trailerOpen.value = false;
+  releasesOpen.value = false;
   unlockPageScroll();
 });
 watch([() => props.tmdbId, locale], () => {
   releases.value = [];
   downloads.value = [];
   closeReleases(false);
+  closeTrailer(false);
   releasesError.value = '';
   void load();
   if (props.authenticated) void loadResourceCheck();
@@ -208,6 +215,26 @@ function closeReleases(restoreFocus = true) {
   }
 }
 
+async function showTrailer() {
+  if (!movie.value?.trailer) return;
+  trailerTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  trailerOpen.value = true;
+  lockPageScroll();
+  await nextTick();
+  trailerCloseButton.value?.focus();
+}
+
+function closeTrailer(restoreFocus = true) {
+  if (!trailerOpen.value) return;
+  trailerOpen.value = false;
+  unlockPageScroll();
+  if (restoreFocus) void nextTick(() => trailerTrigger?.focus());
+}
+
+function trailerEmbedUrl(videoId: string): string {
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1`;
+}
+
 async function loadQBittorrentConfiguration() {
   try {
     const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, { credentials: 'include' });
@@ -287,13 +314,16 @@ function downloadStatus(download: MovieDownload): string {
 }
 
 function lockPageScroll() {
+  if (pageScrollLocked) return;
   previousBodyOverflow = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
+  pageScrollLocked = true;
 }
 
 function unlockPageScroll() {
-  if (!releasesOpen.value && document.body.style.overflow !== 'hidden') return;
+  if (releasesOpen.value || trailerOpen.value || !pageScrollLocked) return;
   document.body.style.overflow = previousBodyOverflow;
+  pageScrollLocked = false;
 }
 
 function handleReleaseDialogKeydown(event: KeyboardEvent) {
@@ -306,13 +336,26 @@ function handleReleaseDialogKeydown(event: KeyboardEvent) {
     closeReleases();
     return;
   }
-  if (event.key !== 'Tab' || !releaseDialog.value) return;
-  const focusable = [...releaseDialog.value.querySelectorAll<HTMLElement>(
+  trapDialogFocus(event, releaseDialog.value);
+}
+
+function handleTrailerDialogKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeTrailer();
+    return;
+  }
+  trapDialogFocus(event, trailerDialog.value);
+}
+
+function trapDialogFocus(event: KeyboardEvent, dialog: HTMLElement | null) {
+  if (event.key !== 'Tab' || !dialog) return;
+  const focusable = [...dialog.querySelectorAll<HTMLElement>(
     'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
   )];
   if (!focusable.length) {
     event.preventDefault();
-    releaseDialog.value.focus();
+    dialog.focus();
     return;
   }
   const first = focusable[0];
@@ -358,6 +401,24 @@ async function setStatus(status: TrackedMovieStatus) {
   } catch (error) {
     movie.value.userStatus = previous;
     errorMessage.value = localizedErrorMessage(error, 'errors.saveMovieStatus');
+  } finally { updating.value = false; }
+}
+
+async function setPreference(preference: TrackedMoviePreference) {
+  if (!props.authenticated) { emit('requireLogin'); return; }
+  if (!movie.value || updating.value) return;
+  const previous = movie.value.userPreference;
+  const next: MoviePreference = previous === preference ? 'neutral' : preference;
+  movie.value.userPreference = next; updating.value = true; errorMessage.value = '';
+  try {
+    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/preference`, {
+      method: next === 'neutral' ? 'DELETE' : 'PUT', credentials: 'include',
+      ...(next === 'neutral' ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ preference: next }) }),
+    });
+    if (!response.ok) throw await localizedResponseError(response);
+  } catch (error) {
+    movie.value.userPreference = previous;
+    errorMessage.value = localizedErrorMessage(error, 'errors.saveMoviePreference');
   } finally { updating.value = false; }
 }
 
@@ -447,6 +508,10 @@ function syncedAtLabel(syncedAt: string): string {
             <span v-for="genre in movie.genres" :key="genre.tmdbId">{{ genre.name }}</span>
             <span v-if="!movie.genres.length" class="genre-missing">{{ t('movie.detail.genresMissing') }}</span>
           </div>
+          <button v-if="movie.trailer" class="trailer-button" type="button" @click="showTrailer">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7 8 5-8 5V7Z" /></svg>
+            {{ t('movie.trailer.play') }}
+          </button>
           <div class="status-control detail-status" role="group" :aria-label="t('a11y.movieStatus', { title: movie.title })">
             <button
               v-for="option in statusOptions"
@@ -458,6 +523,14 @@ function syncedAtLabel(syncedAt: string): string {
               @click="setStatus(option[0])"
             >
               {{ option[1] }}
+            </button>
+          </div>
+          <div class="detail-preference" role="group" :aria-label="t('a11y.moviePreference', { title: movie.title })">
+            <button type="button" class="liked" :class="{ active: movie.userPreference === 'liked' }" :aria-pressed="movie.userPreference === 'liked'" :disabled="updating" @click="setPreference('liked')">
+              <span aria-hidden="true">♥</span>{{ t('movie.preference.liked') }}
+            </button>
+            <button type="button" class="disliked" :class="{ active: movie.userPreference === 'disliked' }" :aria-pressed="movie.userPreference === 'disliked'" :disabled="updating" @click="setPreference('disliked')">
+              <span aria-hidden="true">👎</span>{{ t('movie.preference.disliked') }}
             </button>
           </div>
           <div class="resource-check-panel">
@@ -530,6 +603,36 @@ function syncedAtLabel(syncedAt: string): string {
       </p>
     </article>
     <Teleport to="body">
+      <div v-if="trailerOpen && movie?.trailer" class="trailer-dialog-backdrop" @click.self="closeTrailer()">
+        <section
+          ref="trailerDialog"
+          class="trailer-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="trailer-dialog-title"
+          tabindex="-1"
+          @keydown="handleTrailerDialogKeydown"
+        >
+          <div class="trailer-panel-heading">
+            <div>
+              <p class="eyebrow">{{ t('movie.trailer.eyebrow') }}</p>
+              <h2 id="trailer-dialog-title">{{ movie.trailer.name }}</h2>
+            </div>
+            <button ref="trailerCloseButton" class="text-button" type="button" @click="closeTrailer()">
+              {{ t('movie.trailer.close') }}
+            </button>
+          </div>
+          <div class="trailer-frame">
+            <iframe
+              :src="trailerEmbedUrl(movie.trailer.providerVideoId)"
+              :title="t('movie.trailer.playerTitle', { title: movie.title })"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerpolicy="strict-origin-when-cross-origin"
+              allowfullscreen
+            ></iframe>
+          </div>
+        </section>
+      </div>
       <div v-if="releasesOpen" class="release-dialog-backdrop" @click.self="closeReleases()">
         <section
           ref="releaseDialog"

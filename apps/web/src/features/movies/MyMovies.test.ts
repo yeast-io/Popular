@@ -60,6 +60,30 @@ describe('My Movies resource check failures', () => {
     wrapper.unmount();
   });
 
+  it('offers liked and disliked filters instead of not interested', async () => {
+    setLocale('zh-CN');
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.endsWith('/me/integrations/mteam')) return Response.json({ provider: 'mteam', status: 'configured_valid' });
+      return Response.json({ items: [], pagination: { page: 1, pageSize: 50, total: 0, hasMore: false }, locale: 'zh-CN' });
+    }));
+
+    const wrapper = mount(MyMovies);
+    await flushPromises();
+    expect(wrapper.findAll('.filter-tabs button').map((button) => button.text())).toEqual(['想看', '已看', '喜欢', '不喜欢']);
+    expect(wrapper.text()).not.toContain('不想看');
+
+    await wrapper.findAll('.filter-tabs button')[2]!.trigger('click');
+    await flushPromises();
+    await wrapper.findAll('.filter-tabs button')[3]!.trigger('click');
+    await flushPromises();
+    expect(urls).toContain('/api/v1/me/movies?status=liked&page=1&pageSize=50&locale=zh-CN');
+    expect(urls).toContain('/api/v1/me/movies?status=disliked&page=1&pageSize=50&locale=zh-CN');
+    wrapper.unmount();
+  });
+
   it('shows every movie-level state and only labels checkedAt as a successful check', async () => {
     setLocale('zh-CN');
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {

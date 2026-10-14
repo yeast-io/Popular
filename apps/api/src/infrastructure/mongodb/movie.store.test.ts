@@ -66,6 +66,37 @@ test('movie detail upsert keeps image paths scoped to the requested locale', asy
   assert.equal(localizationUpdate.$set.backdropPath, '/en-backdrop.jpg');
 });
 
+test('movie detail stores a localized trailer and clears it when TMDB no longer returns one', async () => {
+  const localizationUpdates: unknown[][] = [];
+  const movies = { updateOne: async () => undefined };
+  const localizations = { updateOne: async (...args: unknown[]) => { localizationUpdates.push(args); } };
+  const people = { bulkWrite: async () => undefined };
+  const credits = { insertMany: async () => undefined, deleteMany: async () => undefined };
+  const store = new MongoTrendingStore(movies as never, localizations as never, {} as never, people as never, credits as never);
+  const base = { tmdbId: 42, title: 'Movie', genreIds: [], genres: [], cast: [], directors: [] };
+
+  await store.writeMovieDetail({
+    ...base,
+    trailer: {
+      tmdbVideoId: 'tmdb-video', provider: 'youtube', providerVideoId: 'youtube-key',
+      name: 'Official trailer', language: 'en', region: 'US', official: true,
+      publishedAt: new Date('2026-10-12T00:00:00.000Z'),
+    },
+  }, new Date('2026-10-13T00:00:00.000Z'), 'en-US');
+  await store.writeMovieDetail(base, new Date('2026-10-14T00:00:00.000Z'), 'en-US');
+
+  const stored = localizationUpdates[0]?.[1] as { $set: Record<string, unknown>; $unset?: Record<string, unknown> };
+  assert.deepEqual(stored.$set.trailer, {
+    tmdbVideoId: 'tmdb-video', provider: 'youtube', providerVideoId: 'youtube-key',
+    name: 'Official trailer', language: 'en', region: 'US', official: true,
+    publishedAt: new Date('2026-10-12T00:00:00.000Z'),
+  });
+  assert.deepEqual(stored.$set.trailerSyncedAt, new Date('2026-10-13T00:00:00.000Z'));
+  assert.equal(stored.$unset, undefined);
+  const cleared = localizationUpdates[1]?.[1] as { $unset?: Record<string, unknown> };
+  assert.deepEqual(cleared.$unset, { trailer: 1 });
+});
+
 test('reads the image paths belonging to the requested locale', async () => {
   const movies = {
     find: () => ({ lean: () => ({ exec: async () => [{ tmdbId: 42, genreIds: [], posterPath: '/legacy.jpg' }] }) }),

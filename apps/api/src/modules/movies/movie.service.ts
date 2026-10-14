@@ -1,4 +1,4 @@
-import type { Locale, MovieDetail, MovieStatus, MovieSummary, SearchMoviesResponse, TrendingMoviesResponse } from '@movie-hub/contract';
+import type { Locale, MovieDetail, MoviePreference, MovieStatus, MovieSummary, SearchMoviesResponse, TrendingMoviesResponse } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieCatalogStore, MovieRecord, MovieSearchProvider, MovieStatusStore, TrendingStore } from './movie.types.js';
 import type { TrendingSyncService } from './trending-sync.service.js';
@@ -25,9 +25,9 @@ export class MovieService {
       }
     }
     if (!result) throw new AppError(503, 'TRENDING_NOT_SYNCED', 'Trending movies are not available yet.');
-    const statusByMovie = await this.statusMap(ownerId, result.movies.map(({ tmdbId }) => tmdbId));
+    const stateByMovie = await this.stateMap(ownerId, result.movies.map(({ tmdbId }) => tmdbId));
     return {
-      items: result.movies.map((movie) => toMovieSummary(movie, statusByMovie.get(movie.tmdbId))),
+      items: result.movies.map((movie) => toMovieSummary(movie, stateByMovie.get(movie.tmdbId)?.status, stateByMovie.get(movie.tmdbId)?.preference)),
       page: result.page,
       hasMore: result.page < result.totalPages,
       source: 'cache',
@@ -71,9 +71,9 @@ export class MovieService {
       }
     }
     if (!result) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Movie search is not available.');
-    const statusByMovie = await this.statusMap(ownerId, result.movies.map(({ tmdbId }) => tmdbId));
+    const stateByMovie = await this.stateMap(ownerId, result.movies.map(({ tmdbId }) => tmdbId));
     return {
-      items: result.movies.map((movie) => toMovieSummary(movie, statusByMovie.get(movie.tmdbId))),
+      items: result.movies.map((movie) => toMovieSummary(movie, stateByMovie.get(movie.tmdbId)?.status, stateByMovie.get(movie.tmdbId)?.preference)),
       page: result.page,
       hasMore: result.page < result.totalPages,
       source,
@@ -86,8 +86,10 @@ export class MovieService {
     if (!this.provider || !this.catalog) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Movie details are not available.');
     const cached = await this.catalog.readMovieDetail(tmdbId, locale);
     const localeCache = cached?.localizationLocale === locale ? cached : null;
-    const fresh = localeCache?.detailSyncedAt
-      && Date.now() - localeCache.detailSyncedAt.getTime() < 7 * 24 * 60 * 60 * 1_000;
+    const fresh = localeCache?.detailSyncedAt && localeCache.trailerSyncedAt
+      && Date.now() - Math.min(
+        localeCache.detailSyncedAt.getTime(), localeCache.trailerSyncedAt.getTime(),
+      ) < 7 * 24 * 60 * 60 * 1_000;
     let movie = localeCache;
     let stale = false;
     if (!fresh) {
@@ -98,6 +100,7 @@ export class MovieService {
         const syncedAt = new Date();
         await this.catalog.writeMovieDetail(movie, syncedAt, locale);
         movie.detailSyncedAt = syncedAt;
+        movie.trailerSyncedAt = syncedAt;
         movie.localizationLocale = locale;
       } catch (error) {
         if (!localeCache) throw error;
@@ -106,14 +109,14 @@ export class MovieService {
       }
     }
     if (!movie?.detailSyncedAt) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Movie details are not available.');
-    const status = (await this.statusMap(ownerId, [tmdbId])).get(tmdbId) ?? 'unwatched';
-    return toMovieDetail(movie, status, stale, locale);
+    const state = (await this.stateMap(ownerId, [tmdbId])).get(tmdbId);
+    return toMovieDetail(movie, state?.status ?? 'unwatched', state?.preference ?? 'neutral', stale, locale);
   }
 
-  private async statusMap(ownerId: string | null | undefined, tmdbIds: number[]): Promise<Map<number, MovieStatus>> {
+  private async stateMap(ownerId: string | null | undefined, tmdbIds: number[]) {
     if (!ownerId || !this.statuses) return new Map();
     const rows = await this.statuses.readForMovies(ownerId, tmdbIds);
-    return new Map(rows.map(({ tmdbId, status }) => [tmdbId, status]));
+    return new Map(rows.map(({ tmdbId, status, preference }) => [tmdbId, { status, preference }]));
   }
 
   async loadMore(currentPage: number, generation: string, locale: Locale, ownerId: string | null): Promise<TrendingMoviesResponse> {
@@ -134,14 +137,24 @@ function imageUrl(path: string, size: 'w185' | 'w500' | 'w1280'): string {
   return `https://image.tmdb.org/t/p/${size}${path}`;
 }
 
-function toMovieDetail(movie: import('./movie.types.js').MovieDetailRecord, userStatus: MovieStatus, stale: boolean, locale: Locale): MovieDetail {
+function toMovieDetail(movie: import('./movie.types.js').MovieDetailRecord, userStatus: MovieStatus, userPreference: MoviePreference, stale: boolean, locale: Locale): MovieDetail {
   return {
-    ...toMovieSummary(movie, userStatus),
+    ...toMovieSummary(movie, userStatus, userPreference),
     ...(movie.imdbId ? { imdbId: movie.imdbId } : {}),
     ...(movie.tagline ? { tagline: movie.tagline } : {}),
     ...(movie.runtimeMinutes !== undefined ? { runtimeMinutes: movie.runtimeMinutes } : {}),
     ...(movie.backdropPath ? { backdropUrl: imageUrl(movie.backdropPath, 'w1280') } : {}),
     ...(movie.voteCount !== undefined ? { voteCount: movie.voteCount } : {}),
+    ...(movie.trailer ? { trailer: {
+      tmdbVideoId: movie.trailer.tmdbVideoId,
+      provider: movie.trailer.provider,
+      providerVideoId: movie.trailer.providerVideoId,
+      name: movie.trailer.name,
+      ...(movie.trailer.language ? { language: movie.trailer.language } : {}),
+      ...(movie.trailer.region ? { region: movie.trailer.region } : {}),
+      official: movie.trailer.official,
+      ...(movie.trailer.publishedAt ? { publishedAt: movie.trailer.publishedAt.toISOString() } : {}),
+    } } : {}),
     genres: movie.genres,
     cast: movie.cast.map(({ person, character }) => ({ tmdbId: person.tmdbId, name: person.name,
       ...(character ? { character } : {}),
@@ -154,7 +167,7 @@ function toMovieDetail(movie: import('./movie.types.js').MovieDetailRecord, user
   };
 }
 
-export function toMovieSummary(movie: MovieRecord, userStatus: MovieStatus = 'unwatched'): MovieSummary {
+export function toMovieSummary(movie: MovieRecord, userStatus: MovieStatus = 'unwatched', userPreference: MoviePreference = 'neutral'): MovieSummary {
   return {
     tmdbId: movie.tmdbId,
     title: movie.title,
@@ -164,5 +177,6 @@ export function toMovieSummary(movie: MovieRecord, userStatus: MovieStatus = 'un
     ...(movie.posterPath ? { posterUrl: imageUrl(movie.posterPath, 'w500') } : {}),
     ...(movie.voteAverage !== undefined ? { voteAverage: movie.voteAverage } : {}),
     userStatus,
+    userPreference,
   };
 }

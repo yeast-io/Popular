@@ -15,13 +15,28 @@ const catalog = {
   readSearch: async () => null,
 };
 const store = {
-  set: async (_ownerId: string, tmdbId: number, status: MovieStatusRecord['status']) => {
+  setStatus: async (_ownerId: string, tmdbId: number, status: Exclude<MovieStatusRecord['status'], 'unwatched'>) => {
     const existing = rows.find((row) => row.tmdbId === tmdbId);
     const previous = existing?.status ?? null;
-    if (existing) existing.status = status; else rows.push({ tmdbId, status, updatedAt: new Date() });
+    if (existing) existing.status = status; else rows.push({ tmdbId, status, preference: 'neutral', updatedAt: new Date() });
     return previous;
   },
-  delete: async (_ownerId: string, tmdbId: number) => { const index = rows.findIndex((row) => row.tmdbId === tmdbId); if (index >= 0) rows.splice(index, 1); },
+  clearStatus: async (_ownerId: string, tmdbId: number) => {
+    const existing = rows.find((row) => row.tmdbId === tmdbId);
+    if (!existing) return;
+    if (existing.preference === 'neutral') rows.splice(rows.indexOf(existing), 1); else existing.status = 'unwatched';
+  },
+  setPreference: async (_ownerId: string, tmdbId: number, preference: Exclude<MovieStatusRecord['preference'], 'neutral'>) => {
+    const existing = rows.find((row) => row.tmdbId === tmdbId);
+    const previous = existing?.preference ?? 'neutral';
+    if (existing) existing.preference = preference; else rows.push({ tmdbId, status: 'unwatched', preference, updatedAt: new Date() });
+    return previous;
+  },
+  clearPreference: async (_ownerId: string, tmdbId: number) => {
+    const existing = rows.find((row) => row.tmdbId === tmdbId);
+    if (!existing) return;
+    if (existing.status === 'unwatched') rows.splice(rows.indexOf(existing), 1); else existing.preference = 'neutral';
+  },
   readForMovies: async () => rows,
   list: async () => ({ items: rows, total: rows.length }),
 };
@@ -33,6 +48,7 @@ test('set, list, and clear form a complete personal movie-state flow', async () 
   const list = await service.list('owner-a', 'watched', 1, 20);
   assert.equal(list.items[0]?.title, '七号电影');
   assert.equal(list.items[0]?.userStatus, 'watched');
+  assert.equal(list.items[0]?.userPreference, 'neutral');
   assert.equal(list.locale, 'zh-CN');
   assert.deepEqual(await service.clear('owner-a', 7), { tmdbId: 7, status: 'unwatched' });
 });
@@ -40,6 +56,18 @@ test('set, list, and clear form a complete personal movie-state flow', async () 
 test('cannot create a dangling status for an unknown movie', async () => {
   const service = new MovieStatusService(store, catalog, 'zh-CN');
   await assert.rejects(() => service.set('owner-a', 999, 'interested'), { statusCode: 404, code: 'NOT_FOUND' });
+});
+
+test('preference is independent from viewing status and can return to neutral', async () => {
+  rows.length = 0;
+  const service = new MovieStatusService(store, catalog, 'zh-CN');
+  await service.set('owner-a', 7, 'watched');
+  assert.deepEqual(await service.setPreference('owner-a', 7, 'liked'), { tmdbId: 7, preference: 'liked' });
+  assert.equal(rows[0]?.status, 'watched');
+  assert.equal(rows[0]?.preference, 'liked');
+  assert.deepEqual(await service.clearPreference('owner-a', 7), { tmdbId: 7, preference: 'neutral' });
+  assert.equal(rows[0]?.status, 'watched');
+  assert.equal(rows[0]?.preference, 'neutral');
 });
 
 test('My Movies requests localized movie records without changing saved states', async () => {
@@ -52,7 +80,7 @@ test('My Movies requests localized movie records without changing saved states',
     },
   };
   rows.length = 0;
-  rows.push({ tmdbId: 7, status: 'interested', updatedAt: new Date() });
+  rows.push({ tmdbId: 7, status: 'interested', preference: 'neutral', updatedAt: new Date() });
 
   const result = await new MovieStatusService(store, localizedCatalog, 'zh-CN')
     .list('owner-a', 'interested', 1, 20, 'en-US');
@@ -78,7 +106,7 @@ test('transitioning to interested schedules a forced background check after savi
 
 test('listing interested movies schedules checks without awaiting remote work', async () => {
   rows.length = 0;
-  rows.push({ tmdbId: 7, status: 'interested', updatedAt: new Date() });
+  rows.push({ tmdbId: 7, status: 'interested', preference: 'neutral', updatedAt: new Date() });
   const calls: number[] = [];
   const service = new MovieStatusService(store, catalog, 'zh-CN', {
     schedule: (_ownerId, tmdbId) => { calls.push(tmdbId); },
@@ -95,9 +123,34 @@ test('listing interested movies schedules checks without awaiting remote work', 
   });
 });
 
+test('liked movies expose an existing resource result without scheduling a new check', async () => {
+  rows.length = 0;
+  rows.push({ tmdbId: 7, status: 'unwatched', preference: 'liked', updatedAt: new Date() });
+  const scheduled: number[] = [];
+  const checkedAt = new Date('2026-10-14T07:38:00.000Z');
+  const service = new MovieStatusService(store, catalog, 'zh-CN', {
+    schedule: (_ownerId, tmdbId) => { scheduled.push(tmdbId); },
+  }, {
+    readOne: async () => null,
+    readForMovies: async (_ownerId, tmdbIds) => [{
+      ownerId: 'owner-a', tmdbId: tmdbIds[0]!, provider: 'mteam', checking: false,
+      availability: 'available', checkedAt, expiresAt: new Date('2026-10-15T07:38:00.000Z'),
+      lastAttemptAt: checkedAt, lastAttemptStatus: 'success',
+    }],
+  });
+
+  const result = await service.list('owner-a', 'liked', 1, 20);
+
+  assert.deepEqual(scheduled, []);
+  assert.equal(result.items[0]?.userStatus, 'unwatched');
+  assert.equal(result.items[0]?.userPreference, 'liked');
+  assert.equal(result.items[0]?.resourceCheck?.availability, 'available');
+  assert.equal(result.items[0]?.resourceCheck?.checkedAt, checkedAt.toISOString());
+});
+
 test('My Movies exposes a failed refresh while preserving the last successful availability', async () => {
   rows.length = 0;
-  rows.push({ tmdbId: 7, status: 'interested', updatedAt: new Date() });
+  rows.push({ tmdbId: 7, status: 'interested', preference: 'neutral', updatedAt: new Date() });
   const checkedAt = new Date('2026-10-12T00:00:00.000Z');
   const attemptedAt = new Date('2026-10-13T00:00:00.000Z');
   const service = new MovieStatusService(store, catalog, 'zh-CN', undefined, {

@@ -130,7 +130,7 @@ test('search caches results and merges statuses for the authenticated owner', as
   const statuses = {
     readForMovies: async (ownerId: string): Promise<MovieStatusRecord[]> => {
       assert.equal(ownerId, 'owner-1');
-      return [{ tmdbId: 42, status: 'interested', updatedAt: fetchedAt }];
+      return [{ tmdbId: 42, status: 'interested', preference: 'liked', updatedAt: fetchedAt }];
     },
   };
   const service = new MovieService(store, {} as never, provider, catalog, statuses as never);
@@ -139,6 +139,7 @@ test('search caches results and merges statuses for the authenticated owner', as
 
   assert.equal(cached[0]?.tmdbId, 42);
   assert.equal(result.items[0]?.userStatus, 'interested');
+  assert.equal(result.items[0]?.userPreference, 'liked');
   assert.equal(result.hasMore, true);
   assert.equal(result.locale, 'en-US');
   assert.equal(result.source, 'tmdb');
@@ -256,6 +257,10 @@ test('detail fetches, persists, and returns cast and director metadata', async (
     tmdbId: 42, title: '电影', overview: '剧情', genreIds: [18], genres: [{ tmdbId: 18, name: '剧情' }],
     runtimeMinutes: 120, cast: [{ person: { tmdbId: 1, name: '演员' }, creditId: 'cast-1', type: 'cast' as const, character: '角色' }],
     directors: [{ person: { tmdbId: 2, name: '导演' }, creditId: 'director-1', type: 'director' as const }],
+    trailer: {
+      tmdbVideoId: 'video-1', provider: 'youtube' as const, providerVideoId: 'youtube-key',
+      name: '官方预告', language: 'zh', official: true, publishedAt: new Date('2026-10-12T00:00:00.000Z'),
+    },
   };
   const provider = { search: async () => ({ page: 1, totalPages: 1, totalResults: 0, movies: [] }), fetchDetails: async () => detail };
   const catalog = {
@@ -269,6 +274,10 @@ test('detail fetches, persists, and returns cast and director metadata', async (
   assert.equal(result.runtimeMinutes, 120);
   assert.deepEqual(result.cast.map(({ name, character }) => ({ name, character })), [{ name: '演员', character: '角色' }]);
   assert.deepEqual(result.directors.map(({ name }) => name), ['导演']);
+  assert.deepEqual(result.trailer, {
+    tmdbVideoId: 'video-1', provider: 'youtube', providerVideoId: 'youtube-key',
+    name: '官方预告', language: 'zh', official: true, publishedAt: '2026-10-12T00:00:00.000Z',
+  });
   assert.equal(result.stale, false);
   assert.equal(result.locale, 'zh-CN');
 });
@@ -293,6 +302,31 @@ test('detail never falls back to another locale when TMDB fails', async () => {
   const service = new MovieService(store, {} as never, provider, catalog);
   await assert.rejects(() => service.detail(42, 'en-US', null), /TMDB unavailable/);
   assert.equal(providerCalls, 1);
+});
+
+test('detail refreshes a legacy cache once when trailer metadata has never been synchronized', async () => {
+  const store = new MemoryTrendingStore();
+  let providerCalls = 0;
+  const legacyDetail = {
+    tmdbId: 42, title: 'Legacy detail', genreIds: [], genres: [], cast: [], directors: [],
+    detailSyncedAt: new Date(), localizationLocale: 'en-US' as const,
+  };
+  const refreshedDetail = {
+    tmdbId: 42, title: 'Refreshed detail', genreIds: [], genres: [], cast: [], directors: [],
+  };
+  const provider = {
+    search: async () => ({ page: 1, totalPages: 1, totalResults: 0, movies: [] }),
+    fetchDetails: async () => { providerCalls += 1; return refreshedDetail; },
+  };
+  const catalog = {
+    upsertMovies: async () => undefined, publishSearch: async () => undefined, readSearch: async () => null,
+    readMovies: async () => [], hasMovie: async () => true,
+    writeMovieDetail: async () => undefined, readMovieDetail: async () => legacyDetail,
+  };
+
+  const result = await new MovieService(store, {} as never, provider, catalog).detail(42, 'en-US', null);
+  assert.equal(providerCalls, 1);
+  assert.equal(result.title, 'Refreshed detail');
 });
 
 test('detail falls back to stale detail only in the requested locale', async () => {

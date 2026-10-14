@@ -4,7 +4,7 @@ import type {
   MTeamConfiguration,
   MovieResourceSyncBatch,
   MyMoviesResponse,
-  TrackedMovieStatus,
+  MyMoviesFilter,
 } from '@movie-hub/contract';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
@@ -14,7 +14,7 @@ import { localizedApiError, localizedErrorMessage } from '../../i18n/api-error';
 const { apiBaseUrl } = loadWebConfig();
 const { formatDate, locale, t } = useI18n();
 const emit = defineEmits<{ openMovie: [tmdbId: number] }>();
-const filter = ref<TrackedMovieStatus>('interested');
+const filter = ref<MyMoviesFilter>('interested');
 const result = ref<MyMoviesResponse | null>(null);
 const loading = ref(true);
 const errorMessage = ref('');
@@ -30,7 +30,8 @@ const syncJobStorageKey = 'movie-hub:mteam-sync-job';
 const statusOptions = computed(() => [
   ['interested', t('movie.status.interested')],
   ['watched', t('movie.status.watched')],
-  ['not_interested', t('movie.status.notInterested')],
+  ['liked', t('movie.preference.liked')],
+  ['disliked', t('movie.preference.disliked')],
 ] as const);
 const activeStatusLabel = computed(() => statusOptions.value.find(([status]) => status === filter.value)?.[1] ?? '');
 onMounted(() => { void load(); void loadMTeamConfiguration(); void loadSyncBatch(); });
@@ -331,8 +332,8 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
                 <time v-if="movie.releaseDate" :datetime="movie.releaseDate">{{ releaseDateLabel(movie.releaseDate) }}</time>
                 <span v-else>{{ releaseDateLabel() }}</span>
               </span>
-              <span class="status-badge" :data-status="movie.userStatus">
-                <span class="sr-only">{{ t('a11y.movieStatusLabel') }}: </span>{{ statusOptions.find(([status]) => status === movie.userStatus)?.[1] }}
+              <span class="status-badge" :data-status="filter">
+                <span class="sr-only">{{ t('a11y.movieStatusLabel') }}: </span>{{ activeStatusLabel }}
               </span>
             </div>
             <div

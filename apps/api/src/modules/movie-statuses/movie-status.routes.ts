@@ -1,7 +1,7 @@
 import {
-  ApiErrorSchema, MovieIdParamsSchema, MovieReleaseListResponseSchema, MovieResourceCheckResponseSchema, MovieResourceSyncBatchSchema, MovieResourceSyncParamsSchema,
+  ApiErrorSchema, MovieIdParamsSchema, MoviePreferenceResponseSchema, MovieReleaseListResponseSchema, MovieResourceCheckResponseSchema, MovieResourceSyncBatchSchema, MovieResourceSyncParamsSchema,
   MovieStatusResponseSchema, MyMoviesQuerySchema, MyMoviesResponseSchema, StartMovieResourceSyncRequestSchema,
-  SetMovieStatusRequestSchema, type MovieIdParams, type MovieResourceSyncParams, type MyMoviesQuery, type SetMovieStatusRequest, type StartMovieResourceSyncRequest,
+  SetMoviePreferenceRequestSchema, SetMovieStatusRequestSchema, type MovieIdParams, type MovieResourceSyncParams, type MyMoviesQuery, type SetMoviePreferenceRequest, type SetMovieStatusRequest, type StartMovieResourceSyncRequest,
 } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.js';
@@ -26,6 +26,14 @@ export function registerMovieStatusRoutes(
   app.delete<{ Params: MovieIdParams }>('/me/movies/:tmdbId/status', {
     schema: { params: MovieIdParamsSchema, response: { 200: MovieStatusResponseSchema, 401: ApiErrorSchema } },
   }, async (request) => service.clear(await ownerId(request), request.params.tmdbId));
+
+  app.put<{ Params: MovieIdParams; Body: SetMoviePreferenceRequest }>('/me/movies/:tmdbId/preference', {
+    schema: { params: MovieIdParamsSchema, body: SetMoviePreferenceRequestSchema, response: { 200: MoviePreferenceResponseSchema, 401: ApiErrorSchema, 404: ApiErrorSchema } },
+  }, async (request) => service.setPreference(await ownerId(request), request.params.tmdbId, request.body.preference));
+
+  app.delete<{ Params: MovieIdParams }>('/me/movies/:tmdbId/preference', {
+    schema: { params: MovieIdParamsSchema, response: { 200: MoviePreferenceResponseSchema, 401: ApiErrorSchema } },
+  }, async (request) => service.clearPreference(await ownerId(request), request.params.tmdbId));
 
   app.get<{ Querystring: MyMoviesQuery }>('/me/movies', {
     schema: { querystring: MyMoviesQuerySchema, response: { 200: MyMoviesResponseSchema, 401: ApiErrorSchema } },
