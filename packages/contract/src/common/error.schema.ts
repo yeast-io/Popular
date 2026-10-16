@@ -1,6 +1,10 @@
 import { Static, Type } from '@sinclair/typebox';
 
 export const errorCodes = [
+  'OPENAI_NOT_CONFIGURED',
+  'OPENAI_AUTH_FAILED',
+  'OPENAI_QUOTA_EXCEEDED',
+  'OPENAI_RATE_LIMITED',
   'BAD_REQUEST',
   'UNAUTHORIZED',
   'FORBIDDEN',

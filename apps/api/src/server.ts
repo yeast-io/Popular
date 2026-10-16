@@ -19,6 +19,8 @@ import { MovieStatusService } from './modules/movie-statuses/movie-status.servic
 import { MongoIntegrationConfigStore } from './infrastructure/mongodb/integration-config.store.js';
 import { MTeamClient } from './infrastructure/mteam/client.js';
 import { IntegrationService } from './modules/integrations/integration.service.js';
+import { MongoOpenAIConfigStore } from './infrastructure/mongodb/openai-config.store.js';
+import { OpenAISettingsService } from './modules/integrations/openai-settings.service.js';
 import { SecretCrypto } from './modules/integrations/secret-crypto.js';
 import { MongoMovieResourceCheckStore } from './infrastructure/mongodb/movie-resource-check.store.js';
 import { MovieResourceCheckService } from './modules/integrations/movie-resource-check.service.js';
@@ -32,6 +34,12 @@ import { MovieDownloadService } from './modules/downloads/movie-download.service
 import { MongoExternalUsageStore } from './infrastructure/mongodb/external-usage.store.js';
 import { ExternalUsageAggregationService } from './modules/external-usage/external-usage-aggregation.service.js';
 import { ExternalUsageService } from './modules/external-usage/external-usage.service.js';
+import { MongoConversationStore } from './infrastructure/mongodb/conversation.store.js';
+import { ConversationService } from './modules/conversations/conversation.service.js';
+import OpenAI from 'openai';
+import { OpenAILlmClient } from './infrastructure/openai/client.js';
+import { Utf8ByteTokenCounter } from './modules/llm/utf8-byte-token-counter.js';
+import { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
 
 const config = loadConfig();
 const loggers = createLoggers(config.LOG_LEVEL);
@@ -150,10 +158,32 @@ try {
     mteam,
     movieResourceChecks,
   );
+  const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
+  const conversationService = new ConversationService(authService, conversationStore);
+  const openaiSettingsService = new OpenAISettingsService(authService, new MongoOpenAIConfigStore(models.openaiConfigs), secrets);
+  const conversationTurnService = new ConversationTurnService(
+    conversationStore,
+    async (ownerId) => new OpenAILlmClient(new OpenAI({
+      apiKey: await openaiSettingsService.requireApiKey(ownerId),
+      timeout: config.OPENAI_REQUEST_TIMEOUT_MS,
+      maxRetries: config.OPENAI_MAX_RETRIES,
+    }), config.OPENAI_MODEL),
+    new Utf8ByteTokenCounter(),
+    {
+      systemPrompt: config.OPENAI_SYSTEM_PROMPT,
+      maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
+      maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS,
+      summaryMaxOutputTokens: config.OPENAI_SUMMARY_MAX_OUTPUT_TOKENS,
+      historyLimit: config.OPENAI_HISTORY_LIMIT,
+      safetyMarginTokens: 256,
+      messageOverheadTokens: 4,
+    },
+  );
 
   const app = await buildApp({
     config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
-    movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService, externalUsageService,
+    movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, openaiSettingsService,
+    conversationTurnService,
   });
   await movieResourceSyncService.resumePending();
   externalUsageAggregation.start();

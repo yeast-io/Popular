@@ -14,7 +14,7 @@ export function logErrorOnce(logger: Logger, error: unknown, context: ErrorConte
       err: normalized,
       operation: context.operation,
       ...(context.requestId ? { requestId: context.requestId } : {}),
-    }, normalized.message);
+    }, 'Operation failed');
     loggedErrors.add(normalized);
   }
   return normalized;

@@ -7,9 +7,11 @@ import MyMovies from './features/movies/MyMovies.vue';
 import MovieDetail from './features/movies/MovieDetail.vue';
 import { useI18n } from './i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
+import OpenAISettings from './features/integrations/OpenAISettings.vue';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
 import QBittorrentSettings from './features/integrations/QBittorrentSettings.vue';
 import UsageStatistics from './features/usage/UsageStatistics.vue';
+import AiChat from './features/ai/AiChat.vue';
 
 const { apiBaseUrl } = loadWebConfig();
 const { locale, setLocale, t } = useI18n();
@@ -32,7 +34,7 @@ const avatarLimits = ref<PublicConfig['avatar'] | null>(null);
 type AuthField = 'displayName' | 'email' | 'password';
 const authFieldErrors = ref<Partial<Record<AuthField, string>>>({});
 const profileNameError = ref('');
-type Page = 'home' | 'my-movies' | 'settings' | 'usage' | 'movie-detail' | 'login' | 'register';
+type Page = 'home' | 'my-movies' | 'ai' | 'settings' | 'usage' | 'movie-detail' | 'login' | 'register';
 const currentPage = ref<Page>(pageFromPath());
 const selectedMovieId = ref(movieIdFromPath());
 const atTop = ref(true);
@@ -74,7 +76,7 @@ onMounted(async () => {
     errorMessage.value = t('errors.serviceUnavailable');
   } finally {
     loading.value = false;
-    if (!user.value && ['settings', 'usage', 'my-movies'].includes(currentPage.value)) {
+    if (!user.value && ['settings', 'usage', 'my-movies', 'ai'].includes(currentPage.value)) {
       openAuth('login', true);
     }
   }
@@ -276,6 +278,7 @@ function pageFromPath(): Page {
   if (window.location.pathname === '/login') return 'login';
   if (window.location.pathname === '/register') return 'register';
   if (window.location.pathname === '/my-movies') return 'my-movies';
+  if (window.location.pathname === '/ai') return 'ai';
   if (window.location.pathname === '/settings') return 'settings';
   return window.location.pathname === '/usage' ? 'usage' : 'home';
 }
@@ -313,7 +316,8 @@ function backFromMovieDetail() {
 function navigate(page: Page) {
   const path = page === 'settings' ? '/settings'
     : page === 'usage' ? '/usage'
-      : page === 'my-movies' ? '/my-movies' : '/';
+      : page === 'my-movies' ? '/my-movies'
+        : page === 'ai' ? '/ai' : '/';
   if (window.location.pathname !== path) window.history.pushState({}, '', path);
   currentPage.value = page;
   errorMessage.value = '';
@@ -413,6 +417,7 @@ function closeAccountMenu() {
       <nav class="site-nav" :aria-label="t('nav.ariaLabel')">
         <button type="button" :class="{ active: currentPage === 'home' }" @click="navigate('home')">{{ t('nav.discover') }}</button>
         <button v-if="user" type="button" :class="{ active: currentPage === 'my-movies' }" @click="navigate('my-movies')">{{ t('nav.myMovies') }}</button>
+        <button v-if="user" type="button" :class="{ active: currentPage === 'ai' }" @click="navigate('ai')">{{ t('nav.ai') }}</button>
         <details ref="localeMenu" class="locale-switcher">
           <summary
             :aria-label="`${t('language.label')}: ${t(`language.${locale}`)}`"
@@ -500,6 +505,7 @@ function closeAccountMenu() {
       @require-login="openAuth('login')"
     />
     <UsageStatistics v-if="currentPage === 'usage' && user" />
+    <AiChat v-if="currentPage === 'ai' && user" :key="user.id" @open-settings="navigate('settings')" />
 
     <section v-if="currentPage === 'login' || currentPage === 'register'" class="auth-page">
       <div class="page-toolbar">
@@ -628,6 +634,7 @@ function closeAccountMenu() {
             <p>{{ t('integrations.sectionDescription') }}</p>
           </div>
           <div class="settings-form">
+            <OpenAISettings :key="user?.id" />
             <MTeamSettings />
             <QBittorrentSettings />
           </div>

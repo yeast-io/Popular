@@ -56,10 +56,18 @@ const orderedReleases = computed(() => {
   }
   return [...downloaded, ...notDownloaded];
 });
+const posterDownloadState = computed<'downloaded' | 'downloading' | null>(() => {
+  if (downloads.value.some((download) => ['completed', 'seeding'].includes(download.status))) return 'downloaded';
+  if (downloads.value.some((download) => ['submitting', 'downloading', 'paused'].includes(download.status))) return 'downloading';
+  return null;
+});
 
 onMounted(() => {
   void load();
-  if (props.authenticated) void loadResourceCheck();
+  if (props.authenticated) {
+    void loadResourceCheck();
+    void loadDownloadSnapshot();
+  }
   document.addEventListener('visibilitychange', handleVisibilityChange);
 });
 onBeforeUnmount(() => {
@@ -78,11 +86,21 @@ watch([() => props.tmdbId, locale], () => {
   closeTrailer(false);
   releasesError.value = '';
   void load();
-  if (props.authenticated) void loadResourceCheck();
+  if (props.authenticated) {
+    void loadResourceCheck();
+    void loadDownloadSnapshot();
+  }
 });
 watch(() => props.authenticated, (authenticated) => {
-  if (authenticated) void loadResourceCheck();
-  else { resourceCheck.value = null; stopResourcePolling(); }
+  if (authenticated) {
+    void loadResourceCheck();
+    void loadDownloadSnapshot();
+  } else {
+    resourceCheck.value = null;
+    downloads.value = [];
+    stopResourcePolling();
+    stopDownloadPolling();
+  }
 });
 
 async function load() {
@@ -248,13 +266,23 @@ async function loadQBittorrentConfiguration() {
 
 async function loadDownloads() {
   if (!releasesOpen.value || document.visibilityState === 'hidden') return;
+  await fetchDownloads();
+}
+
+async function loadDownloadSnapshot() {
+  await fetchDownloads();
+}
+
+async function fetchDownloads() {
+  const requestedTmdbId = props.tmdbId;
   try {
-    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/downloads`, { credentials: 'include' });
+    const response = await fetch(`${apiBaseUrl}/me/movies/${requestedTmdbId}/downloads`, { credentials: 'include' });
     const body = await response.json() as MovieDownloadListResponse | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.movieDownloadFailed');
+    if (requestedTmdbId !== props.tmdbId || !props.authenticated) return;
     const items = (body as MovieDownloadListResponse).items;
     downloads.value = Array.isArray(items) ? items : [];
-    scheduleDownloadPoll();
+    if (releasesOpen.value) scheduleDownloadPoll();
   } catch {
     stopDownloadPolling();
   }
@@ -457,8 +485,17 @@ function syncedAtLabel(syncedAt: string): string {
         <div class="detail-poster">
           <img v-if="movie.posterUrl" :src="movie.posterUrl" :alt="t('a11y.moviePoster', { title: movie.title })" />
           <div v-else class="poster-placeholder"><span>{{ t('movie.posterUnavailable') }}</span></div>
+          <span
+            v-if="posterDownloadState"
+            class="poster-resource-badge"
+            :class="`is-${posterDownloadState}`"
+            :title="t(`movie.download.badge.${posterDownloadState}`)"
+          >
+            <span class="poster-resource-dot" aria-hidden="true"></span>
+            <span>{{ t(`movie.download.badge.${posterDownloadState}`) }}</span>
+          </span>
           <button
-            v-if="resourceCheck?.availability === 'available' && !resourceCheck.checking"
+            v-else-if="resourceCheck?.availability === 'available' && !resourceCheck.checking"
             class="poster-resource-badge"
             :class="`is-${posterResourceState()}`"
             type="button"

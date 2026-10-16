@@ -2,6 +2,10 @@ import type { ApiError, ErrorCode } from '@movie-hub/contract';
 import { t, type TranslationKey } from './index';
 
 const errorKeys = {
+  OPENAI_NOT_CONFIGURED: 'openai.required',
+  OPENAI_AUTH_FAILED: 'openai.authFailed',
+  OPENAI_QUOTA_EXCEEDED: 'openai.quotaExceeded',
+  OPENAI_RATE_LIMITED: 'openai.rateLimited',
   BAD_REQUEST: 'errors.badRequest',
   UNAUTHORIZED: 'errors.unauthorized',
   FORBIDDEN: 'errors.forbidden',

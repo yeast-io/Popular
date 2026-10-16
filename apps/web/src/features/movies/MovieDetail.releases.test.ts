@@ -12,6 +12,36 @@ describe('Movie Detail live releases', () => {
     document.body.style.overflow = '';
   });
 
+  it('replaces the poster resource badge with the movie download state', async () => {
+    setLocale('zh-CN');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/resources/mteam')) {
+        return Response.json({ provider: 'mteam', checking: false, availability: 'available', lastAttemptStatus: 'success' });
+      }
+      if (url.endsWith('/downloads')) {
+        return Response.json({ items: [{
+          id: 'd1', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: '991', provider: 'qbittorrent',
+          status: 'seeding', progress: 100,
+        }] });
+      }
+      return Response.json({
+        tmdbId: 603, title: '电影', genres: [], cast: [], directors: [], userStatus: 'interested',
+        detailSyncedAt: '2026-10-15T00:00:00.000Z', stale: false, locale: 'zh-CN',
+      });
+    }));
+
+    const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
+    await flushPromises();
+
+    const badge = wrapper.get('.poster-resource-badge');
+    expect(badge.text()).toBe('已下载');
+    expect(badge.classes()).toContain('is-downloaded');
+    expect(badge.element.tagName).toBe('SPAN');
+    expect(wrapper.get('.resource-status').text()).toBe('有可下载资源');
+    wrapper.unmount();
+  });
+
   it('opens returned releases in a modal and closes it with Escape', async () => {
     setLocale('zh-CN');
     const urls: string[] = [];

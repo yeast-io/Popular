@@ -127,6 +127,24 @@ test('external usage keeps idempotent request events and expires both collection
   void connection.destroy();
 });
 
+test('conversation schemas index owner listings, message order, and idempotency', () => {
+  const connection = mongoose.createConnection();
+  const models = createModels(connection);
+  assert.ok(models.conversationMessages.schema.indexes().some(([fields, options]) =>
+    fields.threadId === 1 && fields.sequence === 1 && options.unique === true
+  ));
+  assert.ok(models.conversationMessages.schema.indexes().some(([fields, options]) =>
+    fields.ownerId === 1 && fields.threadId === 1 && fields.role === 1
+      && fields.clientRequestId === 1 && options.unique === true
+  ));
+  assert.ok(models.conversationThreads.schema.indexes().some(([fields]) =>
+    fields.ownerId === 1 && fields.updatedAt === -1
+  ));
+  assert.ok(models.conversationThreads.schema.path('summary'));
+
+  void connection.destroy();
+});
+
 test('external usage accepts new provider ids without a schema change', () => {
   const connection = mongoose.createConnection();
   const models = createModels(connection);
@@ -165,5 +183,13 @@ test('external usage accepts new provider ids without a schema change', () => {
   assert.equal(event.validateSync(), undefined);
   assert.equal(daily.validateSync(), undefined);
   assert.match(invalid.validateSync()?.message ?? '', /provider/);
+  void connection.destroy();
+});
+
+test('OpenAI keys have a unique account index and hide ciphertext by default', () => {
+  const connection = mongoose.createConnection();
+  const { openaiConfigs } = createModels(connection);
+  assert.ok(openaiConfigs.schema.indexes().some(([fields, options]) => fields.ownerId === 1 && options.unique === true));
+  assert.equal(openaiConfigs.schema.path('encryptedApiKey').options.select, false);
   void connection.destroy();
 });

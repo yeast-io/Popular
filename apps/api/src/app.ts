@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { registerOpenAISettingsRoutes } from './modules/integrations/openai-settings.routes.js';
+import type { OpenAISettingsService } from './modules/integrations/openai-settings.service.js';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { AppConfig } from './config/env.js';
@@ -23,6 +26,9 @@ import type { MovieDownloadService } from './modules/downloads/movie-download.se
 import { registerExternalUsageRoutes } from './modules/external-usage/external-usage.routes.js';
 import type { ExternalUsageService } from './modules/external-usage/external-usage.service.js';
 import { registerPublicConfigRoutes } from './modules/config/public-config.routes.js';
+import { registerConversationRoutes } from './modules/conversations/conversation.routes.js';
+import type { ConversationService } from './modules/conversations/conversation.service.js';
+import type { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
 
 export interface BuildAppOptions {
   config: AppConfig;
@@ -36,19 +42,23 @@ export interface BuildAppOptions {
   qbittorrentIntegrationService?: QBittorrentIntegrationService;
   movieDownloadService?: MovieDownloadService;
   externalUsageService?: ExternalUsageService;
+  openaiSettingsService?: OpenAISettingsService;
+  conversationService?: ConversationService;
+  conversationTurnService?: ConversationTurnService;
 }
 
-export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService, externalUsageService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, conversationTurnService, openaiSettingsService }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
-  const app = Fastify({ logger: false, trustProxy: config.trustProxy });
+  const app = Fastify({ logger: false, trustProxy: config.trustProxy, genReqId: () => randomUUID() });
 
   await app.register(cors, { origin: config.WEB_ORIGIN, credentials: true });
   registerAccessLog(app, config.ACCESS_LOG_ENABLED);
   registerErrorHandler(app, loggers);
 
   await app.register(async (api) => {
+    if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config);
     registerPublicConfigRoutes(api, config);
     registerHealthRoutes(api, healthDependencies);
     if (authService) registerAuthRoutes(api, authService, config);
@@ -58,6 +68,7 @@ export async function buildApp({ config, healthDependencies, authService, userSe
     if (integrationService) registerIntegrationRoutes(api, integrationService, config, qbittorrentIntegrationService);
     if (movieDownloadService) registerMovieDownloadRoutes(api, movieDownloadService, config);
     if (externalUsageService) registerExternalUsageRoutes(api, externalUsageService, config);
+    if (conversationService) registerConversationRoutes(api, conversationService, config, conversationTurnService, authService, loggers.error);
   }, { prefix: '/api/v1' });
 
   return app;

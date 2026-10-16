@@ -71,7 +71,30 @@ const EnvSchema = z.object({
   MTEAM_SEARCH_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(60_000).default(2_500),
   MTEAM_RELEASE_CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(300).default(120),
   QBITTORRENT_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
+  OPENAI_MODEL: z.string().trim().min(1).max(100).default('gpt-4.1-mini'),
+  OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(60_000),
+  OPENAI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+  OPENAI_MAX_CONTEXT_TOKENS: z.coerce.number().int().min(1_024).max(1_000_000).default(32_000),
+  OPENAI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(100_000).default(1_000),
+  OPENAI_SUMMARY_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(10_000).default(500),
+  OPENAI_HISTORY_LIMIT: z.coerce.number().int().min(1).max(1_000).default(100),
+  OPENAI_SYSTEM_PROMPT: z.string().min(1).max(10_000).default('You are a concise movie discovery assistant. Do not invent movie identifiers or availability.'),
   ...trendingFields,
+}).superRefine((value, context) => {
+  if (value.OPENAI_MAX_OUTPUT_TOKENS >= value.OPENAI_MAX_CONTEXT_TOKENS) {
+    context.addIssue({
+      code: 'custom',
+      path: ['OPENAI_MAX_OUTPUT_TOKENS'],
+      message: 'must be smaller than OPENAI_MAX_CONTEXT_TOKENS',
+    });
+  }
+  if (value.OPENAI_SUMMARY_MAX_OUTPUT_TOKENS >= value.OPENAI_MAX_CONTEXT_TOKENS) {
+    context.addIssue({
+      code: 'custom',
+      path: ['OPENAI_SUMMARY_MAX_OUTPUT_TOKENS'],
+      message: 'must be smaller than OPENAI_MAX_CONTEXT_TOKENS',
+    });
+  }
 });
 
 const TrendingEnvSchema = z.object({

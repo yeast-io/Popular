@@ -1,3 +1,4 @@
+import { createOpenAIConfigModel } from './openai-config.store.js';
 import type { Connection } from 'mongoose';
 import { createAuthIdentityModel } from './auth-identity.schema.js';
 import { createMovieResultSetModel } from './movie-result-set.schema.js';
@@ -17,9 +18,12 @@ import { createQBittorrentConfigModel } from './qbittorrent-config.schema.js';
 import { createMovieDownloadModel } from './movie-download.schema.js';
 import { createExternalRequestEventModel } from './external-request-event.schema.js';
 import { createExternalUsageDailyModel } from './external-usage-daily.schema.js';
+import { createConversationThreadModel } from './conversation-thread.schema.js';
+import { createConversationMessageModel } from './conversation-message.schema.js';
 
 export function createModels(connection: Connection) {
   return {
+    openaiConfigs: createOpenAIConfigModel(connection),
     users: createUserModel(connection),
     authIdentities: createAuthIdentityModel(connection),
     movies: createMovieModel(connection),
@@ -38,6 +42,8 @@ export function createModels(connection: Connection) {
     movieDownloads: createMovieDownloadModel(connection),
     externalRequestEvents: createExternalRequestEventModel(connection),
     externalUsageDaily: createExternalUsageDailyModel(connection),
+    conversationThreads: createConversationThreadModel(connection),
+    conversationMessages: createConversationMessageModel(connection),
   };
 }
 

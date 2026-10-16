@@ -10,3 +10,5 @@ export * from './integrations/integration.schema.js';
 export * from './downloads/movie-download.schema.js';
 export * from './external_usage/external-usage.schema.js';
 export * from './config/public-config.schema.js';
+export * from './conversations/conversation.schema.js';
+export * from './integrations/openai.schema.js';

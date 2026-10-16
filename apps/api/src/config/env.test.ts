@@ -87,3 +87,30 @@ test('accepts a 50 MB avatar limit and rejects larger values', () => {
   assert.equal(loadConfig({ ...valid, AVATAR_MAX_BYTES: String(50 * 1024 * 1024) }).AVATAR_MAX_BYTES, 50 * 1024 * 1024);
   assert.throws(() => loadConfig({ ...valid, AVATAR_MAX_BYTES: String(50 * 1024 * 1024 + 1) }), /AVATAR_MAX_BYTES/);
 });
+
+test('enables OpenAI only with a complete bounded configuration', () => {
+  const disabled = loadConfig(valid);
+  assert.equal(disabled.OPENAI_MODEL, 'gpt-4.1-mini');
+
+  const enabled = loadConfig({
+    ...valid,
+    OPENAI_MODEL: 'test-model',
+    OPENAI_MAX_CONTEXT_TOKENS: '8192',
+    OPENAI_MAX_OUTPUT_TOKENS: '1024',
+  });
+  assert.equal(enabled.OPENAI_MODEL, 'test-model');
+  assert.equal(enabled.OPENAI_MAX_CONTEXT_TOKENS, 8192);
+  assert.equal(enabled.OPENAI_SUMMARY_MAX_OUTPUT_TOKENS, 500);
+  assert.throws(() => loadConfig({
+    ...valid,
+    OPENAI_MODEL: 'test-model',
+    OPENAI_MAX_CONTEXT_TOKENS: '1024',
+    OPENAI_MAX_OUTPUT_TOKENS: '1024',
+  }), /OPENAI_MAX_OUTPUT_TOKENS/);
+  assert.throws(() => loadConfig({
+    ...valid,
+    OPENAI_MODEL: 'test-model',
+    OPENAI_MAX_CONTEXT_TOKENS: '1024',
+    OPENAI_SUMMARY_MAX_OUTPUT_TOKENS: '1024',
+  }), /OPENAI_SUMMARY_MAX_OUTPUT_TOKENS/);
+});
