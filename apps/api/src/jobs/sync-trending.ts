@@ -1,7 +1,7 @@
 import '../config/load-env.js';
 import { loadTrendingConfig } from '../config/env.js';
 import { createLoggers } from '../infrastructure/logging/logger.js';
-import { MongoTrendingStore } from '../infrastructure/mongodb/movie.store.js';
+import { MongoTrendingStore } from '../infrastructure/mongodb/movies/movie.store.js';
 import { createModels } from '../infrastructure/mongodb/models.js';
 import { MongoDbConnector } from '../infrastructure/mongodb/connector.js';
 import { RedisConnector } from '../infrastructure/redis/connector.js';

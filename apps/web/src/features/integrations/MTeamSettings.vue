@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import IntegrationCard from '../settings/IntegrationCard.vue';
 import {
   MTEAM_DEFAULT_BASE_URL,
   MTEAM_DEFAULT_WEB_BASE_URL,
@@ -160,17 +161,8 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
 </script>
 
 <template>
-  <section class="settings-card integration-card" aria-labelledby="mteam-section-title" :aria-busy="loading || submitting || deleting">
-    <div class="settings-card-heading compact integration-heading">
-      <div>
-        <div class="integration-title-row">
-          <h2 id="mteam-section-title">{{ t('mteam.title') }}</h2>
-          <span class="integration-status" :class="config.status">{{ statusLabel }}</span>
-        </div>
-        <p>{{ t('mteam.description') }}</p>
-      </div>
-    </div>
-
+  <IntegrationCard id="mteam" :title="t('mteam.title')" badge="MT" :description="t('settings.mteamSummary')"
+    :status-label="statusLabel" :status-class="config.status" :configured="configured" :busy="submitting || deleting" :loading="loading" :notice="errorMessage">
     <div v-if="loading" class="loading compact-loading">{{ t('mteam.loading') }}</div>
     <template v-else>
       <dl v-if="configured" class="integration-summary">
@@ -220,5 +212,5 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
         </div>
       </form>
     </template>
-  </section>
+  </IntegrationCard>
 </template>

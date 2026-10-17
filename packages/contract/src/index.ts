@@ -12,3 +12,9 @@ export * from './external_usage/external-usage.schema.js';
 export * from './config/public-config.schema.js';
 export * from './conversations/conversation.schema.js';
 export * from './integrations/openai.schema.js';
+export * from './integrations/whatsapp.schema.js';
+export * from './integrations/notification.schema.js';
+
+export * from './integrations/notification-test.schema.js';
+
+export * from './integrations/telegram.schema.js';

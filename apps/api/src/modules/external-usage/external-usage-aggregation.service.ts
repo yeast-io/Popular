@@ -1,4 +1,4 @@
-import { EXTERNAL_USAGE_RETENTION_DAYS } from '../../infrastructure/mongodb/external-request-event.schema.js';
+import { EXTERNAL_USAGE_RETENTION_DAYS } from '../../infrastructure/mongodb/external-usage/external-request-event.schema.js';
 
 export interface ExternalUsageAggregator {
   rebuildDaily(since: Date): Promise<void>;

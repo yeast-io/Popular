@@ -1,3 +1,11 @@
+import { registerTelegramRoutes } from './modules/telegram/telegram.routes.js';
+import type { TelegramService } from './modules/telegram/telegram.service.js';
+import { registerNotificationTestRoutes } from './modules/notifications/notification-test.routes.js';
+import type { NotificationTestService } from './modules/notifications/notification-test.service.js';
+import { registerNotificationRoutes } from './modules/notifications/notification.routes.js';
+import type { NotificationService } from './modules/notifications/notification.service.js';
+import { registerWhatsAppRoutes } from './modules/whatsapp/whatsapp.routes.js';
+import type { WhatsAppService } from './modules/whatsapp/whatsapp.service.js';
 import { randomUUID } from 'node:crypto';
 import { registerOpenAISettingsRoutes } from './modules/integrations/openai-settings.routes.js';
 import type { OpenAISettingsService } from './modules/integrations/openai-settings.service.js';
@@ -33,6 +41,10 @@ import type { ConversationService } from './modules/conversations/conversation.s
 import type { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
 
 export interface BuildAppOptions {
+  telegramService?: TelegramService;
+  notificationTestService?: NotificationTestService;
+  notificationService?: NotificationService;
+  whatsappService?: WhatsAppService;
   config: AppConfig;
   healthDependencies: HealthDependency[];
   authService?: AuthService;
@@ -50,7 +62,7 @@ export interface BuildAppOptions {
   conversationTurnService?: ConversationTurnService;
 }
 
-export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, conversationTurnService, openaiSettingsService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ telegramService, notificationTestService, notificationService, whatsappService, config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, conversationTurnService, openaiSettingsService }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
@@ -61,6 +73,10 @@ export async function buildApp({ config, healthDependencies, authService, userSe
   registerErrorHandler(app, loggers);
 
   await app.register(async (api) => {
+    if (telegramService) registerTelegramRoutes(api, telegramService, config);
+    if (notificationTestService) registerNotificationTestRoutes(api, notificationTestService, config);
+    if (notificationService) registerNotificationRoutes(api, notificationService, config);
+    if (whatsappService) registerWhatsAppRoutes(api, whatsappService, config);
     if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config);
     registerPublicConfigRoutes(api, config);
     registerHealthRoutes(api, healthDependencies);

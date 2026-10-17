@@ -1,5 +1,5 @@
 {
-  "name": "movie-hub",
+  "name": "popular-movie-ai-studio",
   "private": true,
   "packageManager": "pnpm@12.10.1",
   "scripts": {

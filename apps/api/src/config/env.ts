@@ -27,7 +27,7 @@ const trendingFields = {
 };
 
 const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z.enum(['development', 'test', 'local', 'dev', 'production']).default('development'),
   HOST: z.string().min(1).default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
   WEB_ORIGIN: z.string().url(),
@@ -72,6 +72,7 @@ const EnvSchema = z.object({
   MTEAM_RELEASE_CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(300).default(120),
   TRANSMISSION_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
   QBITTORRENT_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
+  TELEGRAM_BOT_TOKEN: z.string().trim().regex(/^\d+:[A-Za-z0-9_-]+$/).optional(),
   OPENAI_MODEL: z.string().trim().min(1).max(100).default('gpt-4.1-mini'),
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(60_000),
   OPENAI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
@@ -157,3 +158,6 @@ function parseTrustProxy(value: string): false | string[] {
   if (entries.length === 0) throw new InvalidEnvironmentError(['TRUST_PROXY: must be true, false, or a comma-separated allowlist']);
   return entries;
 }
+
+export const notificationTestEnabled = (config: Pick<AppConfig, 'NODE_ENV'>): boolean =>
+  ['development', 'test', 'local', 'dev'].includes(config.NODE_ENV);

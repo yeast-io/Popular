@@ -11,7 +11,7 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import { MovieDownloadService } from './movie-download.service.js';
 import type { MovieDownloadRecord, MovieDownloadStore } from './movie-download.types.js';
 
-function fixture(providers: DownloadProvider[]) {
+function fixture(providers: DownloadProvider[], notifications?: Pick<import('../notifications/notification.service.js').NotificationService, 'reserve' | 'submitted'>) {
   const ownerId = '507f1f77bcf86cd799439011';
   const enabled = new Set(providers);
   const records = new Map<string, MovieDownloadRecord>();
@@ -116,7 +116,7 @@ function fixture(providers: DownloadProvider[]) {
     return { ownerId, provider: 'mteam', baseUrl: 'https://mteam.test', encryptedApiKey: secrets.encrypt('mteam-key', integrationSecretContext(ownerId, 'mteam')) };
   } } as unknown as IntegrationConfigStore, secrets, qb, { async downloadTorrent() { return new Uint8Array([1, 2, 3]); } }, {
     async listReleases() { return { provider: 'mteam', availability: 'available', queriedAt: new Date().toISOString(), cached: false, releases: ['991', '992'].map(id => ({ id, title: 'Movie', detailsUrl: `https://mteam.test/${id}`, seeders: 10, tags: [] })) }; },
-  }, () => new Date('2026-10-17T00:00:00Z'), { configs: trConfigs, client: tr });
+  }, () => new Date('2026-10-17T00:00:00Z'), { configs: trConfigs, client: tr }, notifications);
   return {
     service, records, adds, lookups, enabled,
     setTrFailure() { trFailure = true; },
@@ -247,4 +247,32 @@ test('download routes authenticate provider discovery, validate choices and seri
     const listing = await app.inject({ method: 'GET', url, headers });
     assert.equal(listing.json().items[0].provider, 'transmission');
   } finally { await app.close(); }
+});
+
+
+test('reserves recovery state before remote add and activates scanning only after successful creation', async () => {
+  for (const provider of ['qbittorrent', 'transmission'] as const) {
+    const calls: string[] = [];
+    const f = fixture([provider], {
+      reserve: async (owner, id) => { assert.equal(f.adds.length, 0); assert.equal(f.records.get(id)?.ownerId, owner); calls.push('reserved'); },
+      submitted: async (owner, id) => { assert.deepEqual(f.adds, [provider]); assert.equal(f.records.get(id)?.ownerId, owner); calls.push('activated'); },
+    });
+    await f.service.create('owner', 603, '991');
+    await f.service.create('owner', 603, '991');
+    assert.deepEqual(calls, ['reserved', 'activated']);
+  }
+  let activated = false;
+  const failing = fixture(['transmission'], { reserve: async () => undefined, submitted: async () => { activated = true; } });
+  failing.setTrFailure();
+  await assert.rejects(() => failing.service.create('owner', 603, '991'));
+  assert.equal(activated, false);
+});
+
+test('failure to persist notification intent fails safely before submitting and permits retry', async () => {
+  let fail = true;
+  const f = fixture(['transmission'], { reserve: async () => { if (fail) throw new Error('database unavailable'); }, submitted: async () => undefined });
+  await assert.rejects(() => f.service.create('owner', 603, '991'), /database unavailable/);
+  assert.equal(f.adds.length, 0); assert.equal([...f.records.values()][0]?.status, 'failed');
+  fail = false;
+  await f.service.create('owner', 603, '991'); assert.deepEqual(f.adds, ['transmission']);
 });

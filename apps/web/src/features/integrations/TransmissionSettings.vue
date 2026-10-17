@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import IntegrationCard from '../settings/IntegrationCard.vue';
 import type {
   ApiError,
   IntegrationStatus,
@@ -98,16 +99,8 @@ function canSubmit(): boolean {
 </script>
 
 <template>
-  <section class="settings-card integration-card" aria-labelledby="transmission-section-title" :aria-busy="loading || submitting || deleting">
-    <div class="settings-card-heading compact integration-heading">
-      <div>
-        <div class="integration-title-row">
-          <h2 id="transmission-section-title">{{ t('transmission.title') }}</h2>
-          <span class="integration-status" :class="config.status">{{ statusLabel }}</span>
-        </div>
-        <p>{{ t('transmission.description') }}</p>
-      </div>
-    </div>
+  <IntegrationCard id="transmission" :title="t('transmission.title')" badge="Tr" :description="t('settings.transmissionSummary')"
+    :status-label="statusLabel" :status-class="config.status" :configured="configured" :busy="submitting || deleting" :loading="loading" :notice="errorMessage">
     <div v-if="loading" class="loading compact-loading">{{ t('transmission.loading') }}</div>
     <template v-else>
       <dl v-if="configured" class="integration-summary">
@@ -151,7 +144,7 @@ function canSubmit(): boolean {
         </div>
       </form>
     </template>
-  </section>
+  </IntegrationCard>
 </template>
 
 <style scoped>

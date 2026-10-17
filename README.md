@@ -1,6 +1,6 @@
-# Movie Hub
+# Popular Movie AI Studio
 
-Movie Hub is a contract-first TypeScript monorepo. It contains a Fastify API, a Vue/Vite web app, validated configuration, remote infrastructure connectors, operational logging, email/password authentication backed by Redis sessions, and a cached TMDB weekly-trending experience.
+Popular Movie AI Studio is a contract-first TypeScript monorepo. It contains a Fastify API, a Vue/Vite web app, validated configuration, remote infrastructure connectors, operational logging, email/password authentication backed by Redis sessions, and a cached TMDB weekly-trending experience.
 
 ## Workspace
 

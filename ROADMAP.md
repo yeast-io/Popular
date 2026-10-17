@@ -1,4 +1,4 @@
-# Movie Hub Roadmap
+# Popular Movie AI Studio Roadmap
 
 ## 产品目标
 

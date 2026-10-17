@@ -24,13 +24,17 @@ function setup() {
     find: async (id) => records.get(id) ?? null,
     save: async (record) => { records.set(record.ownerId, record); },
     delete: async (id) => { records.delete(id); },
+    saveValidation: async (id, key, validation) => {
+      const record = records.get(id); if (!record || record.encryptedApiKey !== key) return false;
+      records.set(id, { ...record, validation }); return true;
+    },
   };
   const auth = { requireOwnerId: async (token: string | undefined) => {
     if (token !== 'alice' && token !== 'bob') throw new AppError(401, 'UNAUTHORIZED', 'Login required');
     return token;
   } };
   const service = new OpenAISettingsService(auth, store, new SecretCrypto(config.INTEGRATION_SECRET_KEY));
-  return { records, service };
+  return { records, service, auth, store };
 }
 const aliceKey = 'sk-test-alice-private-key-1234';
 const bobKey = 'sk-test-bob-private-key-5678';
@@ -103,5 +107,70 @@ test('missing key blocks normal and streaming turns before any message write', a
       assert.ok(!String(response.headers['content-type']).includes('event-stream'));
     }
     assert.equal(writes, 0);
+  } finally { await app.close(); }
+});
+
+test('connection tests validate only the saved owner key, persist results, and reset after key or model replacement', async () => {
+  const f = setup();
+  const seen: string[] = [];
+  const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async key => { seen.push(key); } });
+  await service.save('alice', aliceKey);
+  const result = await service.test('alice');
+  assert.equal(result.validation?.status, 'valid'); assert.equal(result.validation?.model, 'test-model'); assert.ok(result.validation?.checkedAt);
+  assert.deepEqual(seen, [aliceKey]); assert.deepEqual((await service.get('alice')).validation, result.validation);
+  assert.equal((await service.get('bob')).configured, false);
+  assert.equal(JSON.stringify(result).includes(aliceKey), false);
+  const changedModel = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'new-model', verify: async () => undefined });
+  assert.equal((await changedModel.get('alice')).validation, undefined);
+  assert.equal(f.records.get('alice')?.validation?.status, 'valid');
+  await service.save('alice', bobKey); assert.equal((await service.get('alice')).validation, undefined);
+});
+
+test('verification failures store only a safe reason and remain visible after reloading settings', async () => {
+  const { OpenAIProbeError } = await import('./openai-settings.service.js');
+  const f = setup(); await f.service.save('alice', aliceKey);
+  const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async () => { throw new OpenAIProbeError('quota'); } });
+  const result = await service.test('alice');
+  assert.equal(result.validation?.status, 'failed'); assert.equal(result.validation?.failureReason, 'quota');
+  assert.deepEqual((await service.get('alice')).validation, result.validation);
+  await assert.rejects(() => service.test('alice'), { code: 'CONFLICT' });
+  await assert.rejects(() => service.test('bob'), { code: 'OPENAI_NOT_CONFIGURED' });
+  await assert.rejects(() => service.test(undefined), { code: 'UNAUTHORIZED' });
+});
+
+test('concurrent tests share one request, and a stale result cannot validate a replaced or deleted key', async () => {
+  for (const action of ['replace', 'delete'] as const) {
+    const f = setup(); await f.service.save('alice', aliceKey);
+    let release!: () => void;
+    let started!: () => void;
+    let calls = 0;
+    const begun = new Promise<void>(resolve => { started = resolve; });
+    const finished = new Promise<void>(resolve => { release = resolve; });
+    const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async () => { calls++; started(); await finished; } });
+    const first = service.test('alice');
+    const second = service.test('alice');
+    await begun;
+    if (action === 'replace') await service.save('alice', bobKey); else await service.delete('alice');
+    release();
+    const results = await Promise.allSettled([first, second]);
+    assert.equal(calls, 1); assert.equal(results.every(result => result.status === 'rejected' && result.reason.code === 'CONFLICT'), true);
+    assert.equal((await service.get('alice')).validation, undefined);
+    assert.equal((await service.get('alice')).configured, action === 'replace');
+  }
+});
+
+test('test HTTP route authenticates and ignores injected key, model and owner; returns only persisted metadata', async () => {
+  const f = setup();
+  await f.service.save('alice', aliceKey);
+  let calls = 0;
+  const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async key => { assert.equal(key, aliceKey); calls++; } });
+  const app = await buildApp({ config, healthDependencies: [], openaiSettingsService: service });
+  try {
+    const url = '/api/v1/me/integrations/openai/test';
+    assert.equal((await app.inject({ method: 'POST', url })).statusCode, 401);
+    const result = await app.inject({ method: 'POST', url, headers: { cookie: 'movie_hub_session=alice' }, payload: { apiKey: 'attacker', ownerId: 'bob', model: 'unwanted-model' } });
+    assert.equal(result.statusCode, 200); assert.equal(result.json().validation.status, 'valid'); assert.equal(result.json().validation.model, 'test-model');
+    assert.equal(calls, 1); assert.equal(result.body.includes(aliceKey), false); assert.equal(result.body.includes('encryptedApiKey'), false);
+    assert.deepEqual(await service.get('bob'), { configured: false });
   } finally { await app.close(); }
 });

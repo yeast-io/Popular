@@ -1,43 +1,56 @@
+import { TelegramService } from './modules/telegram/telegram.service.js';
+import { TelegramWorker } from './modules/telegram/telegram.worker.js';
+import { TelegramClient } from './infrastructure/telegram/client.js';
+import { MongoTelegramStore } from './infrastructure/mongodb/telegram/telegram.store.js';
+import { probeOpenAI } from './infrastructure/openai/connection-probe.js';
+import { NotificationTestService } from './modules/notifications/notification-test.service.js';
+import { MongoNotificationTestStore } from './infrastructure/mongodb/notifications/notification-test.store.js';
 import './config/load-env.js';
+import { MongoNotificationStore } from './infrastructure/mongodb/notifications/notification.store.js';
+import { NotificationService } from './modules/notifications/notification.service.js';
+import { NotificationWorker } from './modules/notifications/notification.worker.js';
+import { WhatsAppService } from './modules/whatsapp/whatsapp.service.js';
+import { MongoWhatsAppStore } from './infrastructure/mongodb/whatsapp/whatsapp.store.js';
+import { connectBaileys } from './infrastructure/whatsapp/baileys.connector.js';
 import { buildApp } from './app.js';
 import { loadConfig } from './config/env.js';
 import { closeInfrastructure, connectInfrastructure, createInfrastructure } from './infrastructure/dependencies.js';
 import { createLoggers } from './infrastructure/logging/logger.js';
 import { createModels } from './infrastructure/mongodb/models.js';
-import { MongoAuthUserStore } from './infrastructure/mongodb/user.store.js';
+import { MongoAuthUserStore } from './infrastructure/mongodb/users/user.store.js';
 import { RedisSessionStore } from './infrastructure/redis/session.store.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { MinioAvatarStore } from './infrastructure/minio/avatar.store.js';
 import { UserService } from './modules/users/user.service.js';
-import { MongoTrendingStore } from './infrastructure/mongodb/movie.store.js';
+import { MongoTrendingStore } from './infrastructure/mongodb/movies/movie.store.js';
 import { RedisSyncLock } from './infrastructure/redis/sync-lock.store.js';
 import { TmdbClient } from './infrastructure/tmdb/client.js';
 import { MovieService } from './modules/movies/movie.service.js';
 import { TrendingSyncService } from './modules/movies/trending-sync.service.js';
-import { MongoMovieStatusStore } from './infrastructure/mongodb/user-movie-state.store.js';
+import { MongoMovieStatusStore } from './infrastructure/mongodb/movie-statuses/user-movie-state.store.js';
 import { MovieStatusService } from './modules/movie-statuses/movie-status.service.js';
-import { MongoIntegrationConfigStore } from './infrastructure/mongodb/integration-config.store.js';
+import { MongoIntegrationConfigStore } from './infrastructure/mongodb/integrations/integration-config.store.js';
 import { MTeamClient } from './infrastructure/mteam/client.js';
 import { IntegrationService } from './modules/integrations/integration.service.js';
-import { MongoOpenAIConfigStore } from './infrastructure/mongodb/openai-config.store.js';
+import { MongoOpenAIConfigStore } from './infrastructure/mongodb/integrations/openai-config.store.js';
 import { OpenAISettingsService } from './modules/integrations/openai-settings.service.js';
 import { SecretCrypto } from './modules/integrations/secret-crypto.js';
-import { MongoMovieResourceCheckStore } from './infrastructure/mongodb/movie-resource-check.store.js';
+import { MongoMovieResourceCheckStore } from './infrastructure/mongodb/movie-resources/movie-resource-check.store.js';
 import { MovieResourceCheckService } from './modules/integrations/movie-resource-check.service.js';
-import { MongoMovieResourceSyncBatchStore } from './infrastructure/mongodb/movie-resource-sync-batch.store.js';
+import { MongoMovieResourceSyncBatchStore } from './infrastructure/mongodb/movie-resources/movie-resource-sync-batch.store.js';
 import { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
-import { MongoQBittorrentConfigStore } from './infrastructure/mongodb/qbittorrent-config.store.js';
-import { MongoTransmissionConfigStore } from './infrastructure/mongodb/transmission-config.store.js';
+import { MongoQBittorrentConfigStore } from './infrastructure/mongodb/integrations/qbittorrent-config.store.js';
+import { MongoTransmissionConfigStore } from './infrastructure/mongodb/integrations/transmission-config.store.js';
 import { TransmissionClient } from './infrastructure/transmission/client.js';
 import { TransmissionIntegrationService } from './modules/integrations/transmission-integration.service.js';
 import { QBittorrentClient } from './infrastructure/qbittorrent/client.js';
 import { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
-import { MongoMovieDownloadStore } from './infrastructure/mongodb/movie-download.store.js';
+import { MongoMovieDownloadStore } from './infrastructure/mongodb/downloads/movie-download.store.js';
 import { MovieDownloadService } from './modules/downloads/movie-download.service.js';
-import { MongoExternalUsageStore } from './infrastructure/mongodb/external-usage.store.js';
+import { MongoExternalUsageStore } from './infrastructure/mongodb/external-usage/external-usage.store.js';
 import { ExternalUsageAggregationService } from './modules/external-usage/external-usage-aggregation.service.js';
 import { ExternalUsageService } from './modules/external-usage/external-usage.service.js';
-import { MongoConversationStore } from './infrastructure/mongodb/conversation.store.js';
+import { MongoConversationStore } from './infrastructure/mongodb/conversations/conversation.store.js';
 import { ConversationService } from './modules/conversations/conversation.service.js';
 import OpenAI from 'openai';
 import { OpenAILlmClient } from './infrastructure/openai/client.js';
@@ -156,6 +169,22 @@ try {
     qbittorrent,
     secrets,
   );
+  await models.telegramBindings.init();
+  const telegramClient = config.TELEGRAM_BOT_TOKEN ? new TelegramClient(config.TELEGRAM_BOT_TOKEN) : undefined;
+  const telegramService = new TelegramService(authService, new MongoTelegramStore(models.telegramBindings), telegramClient);
+  const telegramWorker = telegramClient && config.TELEGRAM_BOT_TOKEN ? new TelegramWorker(infrastructure.redis.getClient(), config.TELEGRAM_BOT_TOKEN,
+    telegramClient, telegramService, () => loggers.app.warn('Telegram polling failed; check connectivity, token, and that no webhook or external poller uses this bot')) : undefined;
+  await models.whatsappSessions.init();
+  const whatsappService = new WhatsAppService(authService, new MongoWhatsAppStore(models.whatsappSessions, secrets), connectBaileys,
+    (ownerId, event) => loggers.app.info({ ownerId, ...event }, 'WhatsApp connection lifecycle'));
+  await Promise.all([models.movieDownloads.init(), models.notificationPreferences.init()]);
+  const notificationService = new NotificationService(authService, new MongoNotificationStore(models.movieDownloads, models.notificationPreferences), [{
+    id: 'telegram', name: 'Telegram', isConfigured: ownerId => telegramService.isConfigured(ownerId),
+    send: (ownerId, notification) => telegramService.sendNotification(ownerId, notification),
+  }, {
+    id: 'whatsapp', name: 'WhatsApp', isConfigured: ownerId => whatsappService.isConfigured(ownerId),
+    send: (ownerId, notification) => whatsappService.sendNotification(ownerId, notification),
+  }]);
   const movieDownloadService = new MovieDownloadService(
     authService,
     new MongoMovieDownloadStore(models.movieDownloads),
@@ -167,10 +196,14 @@ try {
     movieResourceChecks,
     undefined,
     { configs: transmissionConfigStore, client: transmission },
+    notificationService,
   );
   const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
   const conversationService = new ConversationService(authService, conversationStore);
-  const openaiSettingsService = new OpenAISettingsService(authService, new MongoOpenAIConfigStore(models.openaiConfigs), secrets);
+  const openaiSettingsService = new OpenAISettingsService(authService, new MongoOpenAIConfigStore(models.openaiConfigs), secrets, {
+    model: config.OPENAI_MODEL,
+    verify: apiKey => probeOpenAI(new OpenAI({ apiKey, timeout: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000), maxRetries: 0 }), config.OPENAI_MODEL),
+  });
   const conversationTurnService = new ConversationTurnService(
     conversationStore,
     async (ownerId) => new OpenAILlmClient(new OpenAI({
@@ -190,15 +223,25 @@ try {
     },
   );
 
+  const notificationWorker = new NotificationWorker(notificationService, movieDownloadService, trendingStore, config.TMDB_LANGUAGE, config.WEB_ORIGIN,
+    event => loggers.app.warn({ event }, 'Download notification worker'));
+  const notificationTestService = new NotificationTestService(authService, new MongoNotificationTestStore(models.movieDownloads), notificationService, trendingStore, config.TMDB_LANGUAGE, config.WEB_ORIGIN);
   const app = await buildApp({
+    telegramService, notificationTestService,
+    notificationService, whatsappService,
     config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
     movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, openaiSettingsService,
     conversationTurnService,
   });
   await movieResourceSyncService.resumePending();
   externalUsageAggregation.start();
+  notificationWorker.start();
+  telegramWorker?.start();
   app.addHook('onClose', async () => {
     externalUsageAggregation.stop();
+    await telegramWorker?.stop();
+    await notificationWorker.stop();
+    await whatsappService.close();
     await closeInfrastructure(infrastructure);
   });
 

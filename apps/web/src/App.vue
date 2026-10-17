@@ -7,6 +7,11 @@ import MyMovies from './features/movies/MyMovies.vue';
 import MovieDetail from './features/movies/MovieDetail.vue';
 import { useI18n } from './i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
+import SettingsIcon from './features/settings/SettingsIcon.vue';
+import TelegramSettings from './features/integrations/TelegramSettings.vue';
+import WhatsAppSettings from './features/integrations/WhatsAppSettings.vue';
+import NotificationSettings from './features/notifications/NotificationSettings.vue';
+import NotificationTestPage from './features/notifications/NotificationTestPage.vue';
 import OpenAISettings from './features/integrations/OpenAISettings.vue';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
 import TransmissionSettings from './features/integrations/TransmissionSettings.vue';
@@ -35,8 +40,26 @@ const avatarLimits = ref<PublicConfig['avatar'] | null>(null);
 type AuthField = 'displayName' | 'email' | 'password';
 const authFieldErrors = ref<Partial<Record<AuthField, string>>>({});
 const profileNameError = ref('');
-type Page = 'home' | 'my-movies' | 'ai' | 'settings' | 'usage' | 'movie-detail' | 'login' | 'register';
+const notificationTestEnabled = ref(false);
+type Page = 'notification-tests' | 'home' | 'my-movies' | 'ai' | 'settings' | 'usage' | 'movie-detail' | 'login' | 'register';
 const currentPage = ref<Page>(pageFromPath());
+const notificationSettings = ref<InstanceType<typeof NotificationSettings>>();
+type SettingsSection = 'profile' | 'ai' | 'downloads' | 'notifications';
+const settingsSection = ref<SettingsSection>('profile');
+const settingsVisited = ref(new Set<SettingsSection>(['profile']));
+const settingsSections = ['profile', 'ai', 'downloads', 'notifications'] as const;
+function selectSettingsSection(section: SettingsSection) {
+  settingsSection.value = section;
+  settingsVisited.value.add(section);
+}
+function selectMobileSettings(event: Event) {
+  selectSettingsSection((event.target as HTMLSelectElement).value as SettingsSection);
+}
+function openAISettings() {
+  selectSettingsSection('ai');
+  navigate('settings');
+}
+
 const selectedMovieId = ref(movieIdFromPath());
 const atTop = ref(true);
 const atBottom = ref(true);
@@ -77,7 +100,7 @@ onMounted(async () => {
     errorMessage.value = t('errors.serviceUnavailable');
   } finally {
     loading.value = false;
-    if (!user.value && ['settings', 'usage', 'my-movies', 'ai'].includes(currentPage.value)) {
+    if (!user.value && ['settings', 'usage', 'my-movies', 'ai', 'notification-tests'].includes(currentPage.value)) {
       openAuth('login', true);
     }
   }
@@ -86,9 +109,15 @@ onMounted(async () => {
 async function loadPublicConfig() {
   try {
     const response = await fetch(`${apiBaseUrl}/config`);
-    if (response.ok) avatarLimits.value = (await response.json() as PublicConfig).avatar;
+    if (response.ok) {
+      const config = await response.json() as PublicConfig;
+      avatarLimits.value = config.avatar;
+      notificationTestEnabled.value = config.notificationTestEnabled === true;
+    }
   } catch {
-    // The API remains the source of truth and will enforce the limit during upload.
+    // Features stay hidden when public configuration is unavailable.
+  } finally {
+    if (!notificationTestEnabled.value && currentPage.value === 'notification-tests') navigateToPath('/', true);
   }
 }
 
@@ -149,6 +178,10 @@ function clearAuthFieldError(field: AuthField) {
 }
 
 function setUser(nextUser: AuthUser) {
+  if (user.value?.id !== nextUser.id) {
+    settingsSection.value = 'profile';
+    settingsVisited.value = new Set(['profile']);
+  }
   user.value = nextUser;
   profileName.value = nextUser.displayName;
   avatarRemoved.value = false;
@@ -280,6 +313,7 @@ function pageFromPath(): Page {
   if (window.location.pathname === '/register') return 'register';
   if (window.location.pathname === '/my-movies') return 'my-movies';
   if (window.location.pathname === '/ai') return 'ai';
+  if (window.location.pathname === '/dev/notification-tests') return 'notification-tests';
   if (window.location.pathname === '/settings') return 'settings';
   return window.location.pathname === '/usage' ? 'usage' : 'home';
 }
@@ -291,6 +325,7 @@ function movieIdFromPath(): number | null {
 
 function syncPageFromLocation() {
   const nextPage = pageFromPath();
+  if (nextPage === 'notification-tests' && !notificationTestEnabled.value) { navigateToPath('/', true); return; }
   currentPage.value = nextPage;
   if (nextPage === 'login' || nextPage === 'register') mode.value = nextPage;
   selectedMovieId.value = movieIdFromPath();
@@ -315,7 +350,7 @@ function backFromMovieDetail() {
 }
 
 function navigate(page: Page) {
-  const path = page === 'settings' ? '/settings'
+  const path = page === 'notification-tests' ? '/dev/notification-tests' : page === 'settings' ? '/settings'
     : page === 'usage' ? '/usage'
       : page === 'my-movies' ? '/my-movies'
         : page === 'ai' ? '/ai' : '/';
@@ -388,7 +423,7 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
   localeMenu.value?.removeAttribute('open');
 }
 
-function navigateFromAccount(page: 'settings' | 'usage') {
+function navigateFromAccount(page: 'settings' | 'usage' | 'notification-tests') {
   accountMenu.value?.removeAttribute('open');
   navigate(page);
 }
@@ -411,9 +446,9 @@ function closeAccountMenu() {
 <template>
   <main class="app-shell">
     <header class="site-header">
-      <button class="brand brand-button" type="button" @click="navigate('home')">
-        <span class="brand-mark">MH</span>
-        <span class="brand-copy">MOVIE HUB<small>CINEMA INDEX</small></span>
+      <button class="brand brand-button" type="button" aria-label="Popular Movie AI Studio" @click="navigate('home')">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span class="brand-copy">Popular Movie<small>AI Studio</small></span>
       </button>
       <nav class="site-nav" :aria-label="t('nav.ariaLabel')">
         <button type="button" :class="{ active: currentPage === 'home' }" @click="navigate('home')">{{ t('nav.discover') }}</button>
@@ -472,6 +507,12 @@ function closeAccountMenu() {
                 <span>{{ t('nav.usage') }}</span>
               </button>
             </div>
+            <div v-if="notificationTestEnabled" class="account-action-group">
+              <button type="button" :class="{ active: currentPage === 'notification-tests' }" @click="navigateFromAccount('notification-tests')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6m-5 0v6l-6 10v2h16v-2L14 9V3M7 15h10" /></svg>
+                <span>{{ t('notificationTest.title') }}</span>
+              </button>
+            </div>
             <div class="account-action-group account-signout-group">
               <button class="danger" type="button" @click="logout">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m11-9h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></svg>
@@ -505,8 +546,9 @@ function closeAccountMenu() {
       @back="backFromMovieDetail"
       @require-login="openAuth('login')"
     />
+    <NotificationTestPage v-if="currentPage === 'notification-tests' && user && notificationTestEnabled" :key="user.id" />
     <UsageStatistics v-if="currentPage === 'usage' && user" />
-    <AiChat v-if="currentPage === 'ai' && user" :key="user.id" @open-settings="navigate('settings')" />
+    <AiChat v-if="currentPage === 'ai' && user" :key="user.id" @open-settings="openAISettings" />
 
     <section v-if="currentPage === 'login' || currentPage === 'register'" class="auth-page">
       <div class="page-toolbar">
@@ -569,78 +611,110 @@ function closeAccountMenu() {
           <h1>{{ t('account.settingsTitle') }}</h1>
           <p>{{ t('account.settingsDescription') }}</p>
         </div>
-        <form class="settings-form" novalidate @submit.prevent="saveProfile">
-          <section class="settings-card profile-settings-card" aria-labelledby="profile-section-title">
-            <div class="settings-card-heading profile-card-heading">
+        <div class="settings-layout">
+          <aside class="settings-sidebar">
+            <p class="settings-nav-caption">{{ t('settings.workspace') }}</p>
+            <nav class="settings-category-nav" :aria-label="t('settings.categories')">
+              <button v-for="section in settingsSections" :key="section" type="button"
+                :class="{ active: settingsSection === section }" :aria-current="settingsSection === section ? 'page' : undefined"
+                :data-settings-section="section" @click="selectSettingsSection(section)">
+                <SettingsIcon :name="section" />
+                <span>{{ t(`settings.${section}`) }}</span>
+                <span class="settings-nav-indicator" aria-hidden="true">›</span>
+              </button>
+            </nav>
+            <label class="settings-mobile-category" for="settings-category">
+              {{ t('settings.categories') }}
+              <select id="settings-category" :value="settingsSection" @change="selectMobileSettings">
+                <option v-for="section in settingsSections" :key="section" :value="section">{{ t(`settings.${section}`) }}</option>
+              </select>
+            </label>
+            <div class="settings-sidebar-note"><span class="settings-private-dot" aria-hidden="true"></span>{{ t('settings.private') }}</div>
+          </aside>
+          <div class="settings-content">
+            <div class="settings-content-heading">
+              <span class="settings-section-icon"><SettingsIcon :name="settingsSection" /></span>
               <div>
-                <h2 id="profile-section-title">{{ t('profile.basicSection') }}</h2>
-                <p>{{ t('profile.basicSectionDescription') }}</p>
+                <h2>{{ t(`settings.${settingsSection}`) }}</h2>
+                <p>{{ t(`settings.${settingsSection}Description`) }}</p>
               </div>
-              <div class="profile-avatar-editor">
-                <div class="avatar large">
-                  <img v-if="avatarSource" :src="avatarSource" :alt="t('a11y.currentAvatar', { name: profileName || user.displayName })" />
-                  <span v-else>{{ profileName.slice(0, 1).toUpperCase() || '?' }}</span>
+            </div>
+            <form v-show="settingsSection === 'profile'" class="settings-form" novalidate @submit.prevent="saveProfile">
+              <section class="settings-card profile-settings-card" aria-labelledby="profile-section-title">
+                <div class="settings-card-heading profile-card-heading">
+                  <div>
+                    <h3 id="profile-section-title">{{ t('profile.basicSection') }}</h3>
+                    <p>{{ t('profile.basicSectionDescription') }}</p>
+                  </div>
+                  <div class="profile-avatar-editor">
+                    <div class="avatar large">
+                      <img v-if="avatarSource" :src="avatarSource" :alt="t('a11y.currentAvatar', { name: profileName || user.displayName })" />
+                      <span v-else>{{ profileName.slice(0, 1).toUpperCase() || '?' }}</span>
+                    </div>
+                    <div class="avatar-actions profile-avatar-actions">
+                      <label class="upload-button">
+                        {{ t('profile.avatarChoose') }}
+                        <input class="file-input" type="file" accept="image/jpeg,image/png,image/webp" :aria-label="t('a11y.chooseAvatar')" @change="chooseAvatar" />
+                      </label>
+                      <button v-if="avatarSource || user.avatarUrl" class="text-button danger" type="button" @click="removeAvatar">{{ t('profile.avatarRemove') }}</button>
+                      <small>{{ avatarHint }}</small>
+                    </div>
+                  </div>
                 </div>
-                <div class="avatar-actions profile-avatar-actions">
-                  <label class="upload-button">
-                    {{ t('profile.avatarChoose') }}
-                    <input class="file-input" type="file" accept="image/jpeg,image/png,image/webp" :aria-label="t('a11y.chooseAvatar')" @change="chooseAvatar" />
+                <div class="settings-fields">
+                  <label for="profile-display-name">
+                    {{ t('profile.displayNameLabel') }}
+                    <input
+                      id="profile-display-name"
+                      v-model="profileName"
+                      name="displayName"
+                      autocomplete="name"
+                      maxlength="80"
+                      required
+                      :placeholder="t('profile.displayNamePlaceholder')"
+                      :aria-invalid="Boolean(profileNameError)"
+                      :aria-describedby="profileNameError ? 'profile-display-name-error' : undefined"
+                      @input="profileNameError = ''"
+                    />
+                    <small v-if="profileNameError" id="profile-display-name-error" class="field-error">{{ profileNameError }}</small>
                   </label>
-                  <button v-if="avatarSource || user.avatarUrl" class="text-button danger" type="button" @click="removeAvatar">{{ t('profile.avatarRemove') }}</button>
-                  <small>{{ avatarHint }}</small>
+                  <div class="readonly-field">
+                    <div class="readonly-field-heading">
+                      <span>{{ t('profile.emailLabel') }}</span>
+                      <small>{{ t('profile.emailReadonlyHint') }}</small>
+                    </div>
+                    <strong>{{ user.email }}</strong>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div class="settings-fields">
-              <label for="profile-display-name">
-                {{ t('profile.displayNameLabel') }}
-                <input
-                  id="profile-display-name"
-                  v-model="profileName"
-                  name="displayName"
-                  autocomplete="name"
-                  maxlength="80"
-                  required
-                  :placeholder="t('profile.displayNamePlaceholder')"
-                  :aria-invalid="Boolean(profileNameError)"
-                  :aria-describedby="profileNameError ? 'profile-display-name-error' : undefined"
-                  @input="profileNameError = ''"
-                />
-                <small v-if="profileNameError" id="profile-display-name-error" class="field-error">{{ profileNameError }}</small>
-              </label>
-              <div class="readonly-field">
-                <div class="readonly-field-heading">
-                  <span>{{ t('profile.emailLabel') }}</span>
-                  <small>{{ t('profile.emailReadonlyHint') }}</small>
+                <div class="settings-card-footer">
+                  <div class="settings-feedback">
+                    <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
+                    <p v-if="successMessage" class="success settings-message" role="status" aria-live="polite">{{ successMessage }}</p>
+                  </div>
+                  <div class="settings-actions">
+                    <button class="primary" type="submit" :disabled="submitting || !profileDirty">
+                      {{ submitting ? t('profile.saving') : t('profile.save') }}
+                    </button>
+                  </div>
                 </div>
-                <strong>{{ user.email }}</strong>
-              </div>
+              </section>
+            </form>
+
+            <div v-if="settingsVisited.has('ai')" v-show="settingsSection === 'ai'" class="settings-form">
+              <OpenAISettings :key="user.id" />
             </div>
-            <div class="settings-card-footer">
-              <div class="settings-feedback">
-                <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
-                <p v-if="successMessage" class="success settings-message" role="status" aria-live="polite">{{ successMessage }}</p>
-              </div>
-              <div class="settings-actions">
-                <button class="primary" type="submit" :disabled="submitting || !profileDirty">
-                  {{ submitting ? t('profile.saving') : t('profile.save') }}
-                </button>
-              </div>
+            <div v-if="settingsVisited.has('downloads')" v-show="settingsSection === 'downloads'" class="settings-form">
+              <MTeamSettings :key="user.id" />
+              <QBittorrentSettings :key="user.id" />
+              <TransmissionSettings :key="user.id" />
             </div>
-          </section>
-        </form>
-        <section class="settings-section" aria-labelledby="integrations-section-title">
-          <div class="settings-section-heading">
-            <h2 id="integrations-section-title">{{ t('integrations.sectionTitle') }}</h2>
-            <p>{{ t('integrations.sectionDescription') }}</p>
+            <div v-if="settingsVisited.has('notifications')" v-show="settingsSection === 'notifications'" class="settings-form">
+              <NotificationSettings :key="user.id" ref="notificationSettings" />
+              <TelegramSettings :key="user.id" @binding-change="notificationSettings?.refresh()" />
+              <WhatsAppSettings :key="user.id" @binding-change="notificationSettings?.refresh()" />
+            </div>
           </div>
-          <div class="settings-form">
-            <OpenAISettings :key="user?.id" />
-            <MTeamSettings />
-            <QBittorrentSettings />
-            <TransmissionSettings />
-          </div>
-        </section>
+        </div>
       </template>
     </section>
 

@@ -1,7 +1,7 @@
 import '../config/load-env.js';
 import { loadMigrationConfig } from '../config/env.js';
 import { MongoDbConnector } from '../infrastructure/mongodb/connector.js';
-import { migrateMovieLocales } from '../infrastructure/mongodb/movie-locale-migration.js';
+import { migrateMovieLocales } from '../infrastructure/mongodb/movies/movie-locale-migration.js';
 
 const supportedArguments = new Set(['--', '--dry-run']);
 const unknownArguments = process.argv.slice(2).filter((argument) => !supportedArguments.has(argument));

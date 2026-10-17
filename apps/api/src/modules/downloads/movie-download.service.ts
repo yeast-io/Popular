@@ -11,6 +11,7 @@ import { decryptCredential as decryptTransmissionCredential, transmissionAppErro
 import type { TransmissionClientPort, TransmissionConfigStore, TransmissionTorrent } from '../integrations/transmission.types.js';
 import { SecretCrypto } from '../integrations/secret-crypto.js';
 import type { MovieDownloadProgress, MovieDownloadRecord, MovieDownloadStore } from './movie-download.types.js';
+import type { NotificationService } from '../notifications/notification.service.js';
 import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
 
 export class MovieDownloadService {
@@ -27,6 +28,7 @@ export class MovieDownloadService {
     private readonly resources: Pick<MovieResourceCheckService, 'listReleases'>,
     private readonly now: () => Date = () => new Date(),
     private readonly transmission?: { configs: TransmissionConfigStore; client: TransmissionClientPort },
+    private readonly notifications?: Pick<NotificationService, 'reserve' | 'submitted'>,
   ) {}
 
   async providers(token: string | undefined): Promise<DownloadProviderListResponse> {
@@ -88,7 +90,14 @@ export class MovieDownloadService {
       throw new AppError(502, 'MOVIE_DOWNLOAD_FAILED', 'Could not retrieve the selected M-Team release', undefined, { cause: error });
     }
     try {
+      await this.notifications?.reserve(ownerId, record.id);
+    } catch (error) {
+      await this.downloads.markFailed(record.id, 'MOVIE_DOWNLOAD_FAILED', this.now());
+      throw error;
+    }
+    try {
       const hash = await client.add(torrent, record.lookupTag);
+      await this.notifications?.submitted(ownerId, record.id);
       if (hash) {
         record = await this.downloads.updateProgress(record.id, {
           torrentHash: hash, name: release.title, status: 'submitting', progress: 0,
@@ -107,6 +116,12 @@ export class MovieDownloadService {
       await this.downloads.markFailed(record.id, 'MOVIE_DOWNLOAD_FAILED', this.now());
       throw providerError(provider, error);
     }
+  }
+
+  async inspect(record: MovieDownloadRecord): Promise<MovieDownloadProgress | null> {
+    const client = await this.clientFor(record.ownerId, record.provider);
+    const torrent = record.torrentHash ? (await client.list([record.torrentHash]))[0] : await client.findByTag(record.lookupTag);
+    return torrent ? withSyncTime(torrent, this.now(), record.addedAt) : null;
   }
 
   private async clientFor(ownerId: string, provider: DownloadProvider): Promise<DownloadClient> {

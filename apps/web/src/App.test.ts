@@ -256,3 +256,77 @@ describe('language menu', () => {
     wrapper.unmount();
   });
 });
+
+describe('settings workspace', () => {
+  beforeEach(() => {
+    setLocale('en-US');
+    window.history.replaceState({}, '', '/settings');
+    vi.stubGlobal('scrollTo', vi.fn());
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return Response.json({ user: { id: 'settings-user', email: 'test@example.com', displayName: 'Daniel' } });
+      if (url.endsWith('/config')) return Response.json({ avatar: { maxBytes: 52428800, maxPixels: 16777216 } });
+      if (url.endsWith('/openai')) return Response.json({ configured: false });
+      if (url.endsWith('/telegram')) return Response.json({ status: 'unbound' });
+      if (url.endsWith('/whatsapp')) return Response.json({ status: 'unbound' });
+      if (url.endsWith('/notifications')) return Response.json({ enabled: false, defaultChannel: 'whatsapp', additionalChannels: [], channels: [{ id: 'whatsapp', name: 'WhatsApp', configured: false }] });
+      const provider = url.split('/').at(-1);
+      return Response.json({ provider, status: 'unconfigured' });
+    }));
+  });
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('groups settings by purpose, loads categories on demand and preserves unsaved drafts', async () => {
+    const wrapper = mount(App, { attachTo: document.body }); await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Profile');
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/integrations/'))).toBe(false);
+    await wrapper.get('#profile-display-name').setValue('Unsaved profile');
+    await wrapper.get('[data-settings-section="ai"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('AI assistant');
+    expect(wrapper.get('.integration-disclosure').attributes('aria-expanded')).toBe('false');
+    expect(wrapper.get('#openai-api-key').isVisible()).toBe(false);
+    await wrapper.get('.integration-disclosure').trigger('click');
+    await wrapper.get('#openai-api-key').setValue('sk-unsaved-personal-key');
+    await wrapper.get('[data-settings-section="downloads"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Sources & downloads');
+    expect(wrapper.findAll('.connection-copy h3').map(node => node.text())).toContain('M-Team');
+    expect(wrapper.get('#openai-api-key').isVisible()).toBe(false);
+    await wrapper.get('[data-settings-section="ai"]').trigger('click');
+    expect(wrapper.get('#openai-api-key').element).toHaveProperty('value', 'sk-unsaved-personal-key');
+    await wrapper.get('[data-settings-section="profile"]').trigger('click');
+    expect(wrapper.get('#profile-display-name').element).toHaveProperty('value', 'Unsaved profile');
+    expect(wrapper.get('.settings-actions .primary').element).toHaveProperty('disabled', false);
+    wrapper.unmount();
+  });
+
+  it('supports the mobile category selector without starting a Telegram or WhatsApp binding on visit', async () => {
+    const wrapper = mount(App, { attachTo: document.body }); await flushPromises();
+    await wrapper.get('#settings-category').setValue('notifications'); await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Notifications');
+    expect(wrapper.findAll('.connection-copy h3').map(node => node.text())).toEqual(['Telegram', 'WhatsApp']);
+    expect(wrapper.get('.integration-disclosure').text()).toContain('Link account');
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/bind'))).toBe(false);
+    await wrapper.get('#settings-category').setValue('profile');
+    expect(wrapper.get('#profile-display-name').isVisible()).toBe(true);
+    wrapper.unmount();
+  });
+});
+
+describe('notification test page environment gate', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+  it.each([true, false])('uses the server feature flag (%s) for the menu and direct page access', async enabled => {
+    setLocale('en-US'); window.history.replaceState({}, '', '/dev/notification-tests');
+    vi.stubGlobal('scrollTo', vi.fn());
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      if (String(input).endsWith('/auth/me')) return Response.json({ user: { id: 'alice', displayName: 'Alice', email: 'alice@example.com' } });
+      if (String(input).endsWith('/config')) return Response.json({ notificationTestEnabled: enabled, avatar: { maxBytes: 1000, maxPixels: 1000 } });
+      throw new Error('Unexpected request');
+    }));
+    const wrapper = mount(App, { global: { stubs: { MovieBrowser: true, NotificationTestPage: { template: '<div data-notification-test />' } } } });
+    await flushPromises();
+    expect(wrapper.find('[data-notification-test]').exists()).toBe(enabled);
+    expect(wrapper.findAll('.account-options button').some(button => button.text() === 'Notification tests')).toBe(enabled);
+    expect(window.location.pathname).toBe(enabled ? '/dev/notification-tests' : '/');
+    wrapper.unmount();
+  });
+});

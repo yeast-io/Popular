@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import IntegrationCard from '../settings/IntegrationCard.vue';
 import type {
   ApiError,
   IntegrationStatus,
@@ -105,16 +106,8 @@ function canSubmit(): boolean {
 </script>
 
 <template>
-  <section class="settings-card integration-card" aria-labelledby="qbittorrent-section-title" :aria-busy="loading || submitting || deleting">
-    <div class="settings-card-heading compact integration-heading">
-      <div>
-        <div class="integration-title-row">
-          <h2 id="qbittorrent-section-title">{{ t('qbittorrent.title') }}</h2>
-          <span class="integration-status" :class="config.status">{{ statusLabel }}</span>
-        </div>
-        <p>{{ t('qbittorrent.description') }}</p>
-      </div>
-    </div>
+  <IntegrationCard id="qbittorrent" :title="t('qbittorrent.title')" badge="qB" :description="t('settings.qbittorrentSummary')"
+    :status-label="statusLabel" :status-class="config.status" :configured="configured" :busy="submitting || deleting" :loading="loading" :notice="errorMessage">
     <div v-if="loading" class="loading compact-loading">{{ t('qbittorrent.loading') }}</div>
     <template v-else>
       <dl v-if="configured" class="integration-summary">
@@ -185,5 +178,5 @@ function canSubmit(): boolean {
         </div>
       </form>
     </template>
-  </section>
+  </IntegrationCard>
 </template>

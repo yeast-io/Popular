@@ -37,6 +37,7 @@ test('public config exposes avatar limits from the environment', async () => {
   const response = await app.inject({ method: 'GET', url: '/api/v1/config' });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), {
+    notificationTestEnabled: true,
     avatar: { maxBytes: config.AVATAR_MAX_BYTES, maxPixels: config.AVATAR_MAX_PIXELS },
   });
   await app.close();

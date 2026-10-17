@@ -284,7 +284,7 @@ function messageFor(error: unknown): string {
               </button>
             </div>
             <div class="poster-interface" aria-hidden="true">
-              <span class="interface-code">MH / {{ movie.tmdbId }}</span>
+              <span class="interface-code">PM / {{ movie.tmdbId }}</span>
               <div class="interface-meta">
                 <span>{{ releaseDateLabel(movie.releaseDate) }}</span
                 ><span v-if="movie.voteAverage !== undefined" :aria-label="t('movie.rating', { rating: ratingLabel(movie.voteAverage) })"><span aria-hidden="true">★ {{ ratingLabel(movie.voteAverage) }}</span></span>

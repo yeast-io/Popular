@@ -114,3 +114,15 @@ test('enables OpenAI only with a complete bounded configuration', () => {
     OPENAI_SUMMARY_MAX_OUTPUT_TOKENS: '1024',
   }), /OPENAI_SUMMARY_MAX_OUTPUT_TOKENS/);
 });
+
+test('Telegram bot is optional; malformed tokens fail without exposing their value', () => {
+  assert.equal(loadConfig(valid).TELEGRAM_BOT_TOKEN, undefined);
+  assert.equal(loadConfig({ ...valid, TELEGRAM_BOT_TOKEN: '123456:valid_token-1' }).TELEGRAM_BOT_TOKEN, '123456:valid_token-1');
+  const secret = 'invalid-sensitive-token';
+  assert.throws(() => loadConfig({ ...valid, TELEGRAM_BOT_TOKEN: secret }), error => {
+    assert.ok(error instanceof InvalidEnvironmentError);
+    assert.ok(error.message.includes('TELEGRAM_BOT_TOKEN'));
+    assert.ok(!error.message.includes(secret));
+    return true;
+  });
+});
