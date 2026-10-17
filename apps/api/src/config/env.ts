@@ -70,6 +70,7 @@ const EnvSchema = z.object({
   MTEAM_RESOURCE_CHECK_LEASE_SECONDS: z.coerce.number().int().min(30).max(3_600).default(120),
   MTEAM_SEARCH_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(60_000).default(2_500),
   MTEAM_RELEASE_CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(300).default(120),
+  TRANSMISSION_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
   QBITTORRENT_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
   OPENAI_MODEL: z.string().trim().min(1).max(100).default('gpt-4.1-mini'),
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(60_000),

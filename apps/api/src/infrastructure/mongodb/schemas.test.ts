@@ -52,6 +52,10 @@ test('integration configurations are unique per owner and provider and hide secr
     fields.ownerId === 1 && options.unique === true,
   ));
   assert.equal(models.qbittorrentConfigs.schema.path('encryptedCredential').options.select, false);
+  assert.ok(models.transmissionConfigs.schema.indexes().some(([fields, options]) =>
+    fields.ownerId === 1 && options.unique === true,
+  ));
+  assert.equal(models.transmissionConfigs.schema.path('encryptedCredential').options.select, false);
   void connection.destroy();
 });
 

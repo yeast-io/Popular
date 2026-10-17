@@ -9,6 +9,7 @@ import { useI18n } from './i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
 import OpenAISettings from './features/integrations/OpenAISettings.vue';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
+import TransmissionSettings from './features/integrations/TransmissionSettings.vue';
 import QBittorrentSettings from './features/integrations/QBittorrentSettings.vue';
 import UsageStatistics from './features/usage/UsageStatistics.vue';
 import AiChat from './features/ai/AiChat.vue';
@@ -637,6 +638,7 @@ function closeAccountMenu() {
             <OpenAISettings :key="user?.id" />
             <MTeamSettings />
             <QBittorrentSettings />
+            <TransmissionSettings />
           </div>
         </section>
       </template>

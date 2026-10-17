@@ -72,3 +72,22 @@ export type SaveMTeamConfigurationRequest = Static<typeof SaveMTeamConfiguration
 export type QBittorrentAuthMethod = Static<typeof QBittorrentAuthMethodSchema>;
 export type QBittorrentConfiguration = Static<typeof QBittorrentConfigurationSchema>;
 export type SaveQBittorrentConfigurationRequest = Static<typeof SaveQBittorrentConfigurationRequestSchema>;
+
+export const TransmissionConfigurationSchema = Type.Object({
+  provider: Type.Literal('transmission'),
+  status: IntegrationStatusSchema,
+  baseUrl: Type.Optional(Type.String({ format: 'uri' })),
+  username: Type.Optional(Type.String()),
+  version: Type.Optional(Type.String()),
+  lastValidationAt: Type.Optional(Type.String({ format: 'date-time' })),
+  lastFailureType: Type.Optional(IntegrationFailureTypeSchema),
+}, { additionalProperties: false });
+
+export const SaveTransmissionConfigurationRequestSchema = Type.Object({
+  baseUrl: Type.String({ minLength: 1, maxLength: 2048 }),
+  username: Type.String({ minLength: 1, maxLength: 256 }),
+  password: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
+}, { additionalProperties: false });
+
+export type TransmissionConfiguration = Static<typeof TransmissionConfigurationSchema>;
+export type SaveTransmissionConfigurationRequest = Static<typeof SaveTransmissionConfigurationRequestSchema>;

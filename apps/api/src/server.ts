@@ -27,6 +27,9 @@ import { MovieResourceCheckService } from './modules/integrations/movie-resource
 import { MongoMovieResourceSyncBatchStore } from './infrastructure/mongodb/movie-resource-sync-batch.store.js';
 import { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
 import { MongoQBittorrentConfigStore } from './infrastructure/mongodb/qbittorrent-config.store.js';
+import { MongoTransmissionConfigStore } from './infrastructure/mongodb/transmission-config.store.js';
+import { TransmissionClient } from './infrastructure/transmission/client.js';
+import { TransmissionIntegrationService } from './modules/integrations/transmission-integration.service.js';
 import { QBittorrentClient } from './infrastructure/qbittorrent/client.js';
 import { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
 import { MongoMovieDownloadStore } from './infrastructure/mongodb/movie-download.store.js';
@@ -140,6 +143,11 @@ try {
     secrets,
     new Set(config.MTEAM_ALLOWED_HOSTS),
   );
+  const transmissionConfigStore = new MongoTransmissionConfigStore(models.transmissionConfigs);
+  const transmission = new TransmissionClient(config.TRANSMISSION_REQUEST_TIMEOUT_MS);
+  const transmissionIntegrationService = new TransmissionIntegrationService(
+    authService, transmissionConfigStore, transmission, secrets,
+  );
   const qbittorrentConfigStore = new MongoQBittorrentConfigStore(models.qbittorrentConfigs);
   const qbittorrent = new QBittorrentClient(config.QBITTORRENT_REQUEST_TIMEOUT_MS);
   const qbittorrentIntegrationService = new QBittorrentIntegrationService(
@@ -157,6 +165,8 @@ try {
     qbittorrent,
     mteam,
     movieResourceChecks,
+    undefined,
+    { configs: transmissionConfigStore, client: transmission },
   );
   const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
   const conversationService = new ConversationService(authService, conversationStore);
@@ -182,7 +192,7 @@ try {
 
   const app = await buildApp({
     config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
-    movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, openaiSettingsService,
+    movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, openaiSettingsService,
     conversationTurnService,
   });
   await movieResourceSyncService.resumePending();

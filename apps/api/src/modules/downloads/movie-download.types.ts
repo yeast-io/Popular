@@ -1,4 +1,4 @@
-import type { MovieDownloadStatus } from '@movie-hub/contract';
+import type { DownloadProvider, MovieDownloadStatus } from '@movie-hub/contract';
 
 export interface MovieDownloadRecord {
   id: string;
@@ -6,7 +6,7 @@ export interface MovieDownloadRecord {
   tmdbId: number;
   sourceProvider: 'mteam';
   sourceReleaseId: string;
-  provider: 'qbittorrent';
+  provider: DownloadProvider;
   lookupTag: string;
   torrentHash?: string;
   name?: string;
@@ -36,10 +36,15 @@ export interface MovieDownloadProgress {
 
 export interface MovieDownloadStore {
   findByRelease(ownerId: string, tmdbId: number, releaseId: string): Promise<MovieDownloadRecord | null>;
-  createSubmitting(ownerId: string, tmdbId: number, releaseId: string): Promise<MovieDownloadRecord>;
-  retry(id: string): Promise<MovieDownloadRecord>;
+  createSubmitting(ownerId: string, tmdbId: number, releaseId: string, provider: DownloadProvider): Promise<DownloadClaim>;
+  retry(id: string): Promise<DownloadClaim>;
   listForMovie(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]>;
   updateProgress(id: string, progress: MovieDownloadProgress): Promise<MovieDownloadRecord>;
   markFailed(id: string, errorCode: string, attemptedAt: Date): Promise<MovieDownloadRecord>;
   markMissing(id: string, attemptedAt: Date): Promise<MovieDownloadRecord>;
+}
+
+export interface DownloadClaim {
+  record: MovieDownloadRecord;
+  claimed: boolean;
 }

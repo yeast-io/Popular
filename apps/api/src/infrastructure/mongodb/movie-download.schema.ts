@@ -5,7 +5,7 @@ const movieDownloadSchema = new Schema({
   tmdbId: { type: Number, required: true, min: 1 },
   sourceProvider: { type: String, required: true, enum: ['mteam'] },
   sourceReleaseId: { type: String, required: true },
-  provider: { type: String, required: true, enum: ['qbittorrent'] },
+  provider: { type: String, required: true, enum: ['qbittorrent', 'transmission'] },
   lookupTag: { type: String, required: true },
   torrentHash: { type: String },
   name: { type: String },

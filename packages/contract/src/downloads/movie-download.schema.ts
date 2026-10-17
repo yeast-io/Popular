@@ -1,5 +1,13 @@
 import { Static, Type } from '@sinclair/typebox';
 
+export const DownloadProviderSchema = Type.Union([Type.Literal('qbittorrent'), Type.Literal('transmission')]);
+export type DownloadProvider = Static<typeof DownloadProviderSchema>;
+
+export const DownloadProviderListResponseSchema = Type.Object({
+  providers: Type.Array(DownloadProviderSchema),
+}, { additionalProperties: false });
+export type DownloadProviderListResponse = Static<typeof DownloadProviderListResponseSchema>;
+
 export const MovieDownloadStatusSchema = Type.Union([
   Type.Literal('submitting'),
   Type.Literal('downloading'),
@@ -15,7 +23,7 @@ export const MovieDownloadSchema = Type.Object({
   tmdbId: Type.Integer({ minimum: 1 }),
   sourceProvider: Type.Literal('mteam'),
   sourceReleaseId: Type.String({ minLength: 1 }),
-  provider: Type.Literal('qbittorrent'),
+  provider: DownloadProviderSchema,
   status: MovieDownloadStatusSchema,
   progress: Type.Number({ minimum: 0, maximum: 100 }),
   downloadedBytes: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -32,6 +40,7 @@ export const MovieDownloadListResponseSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const CreateMovieDownloadRequestSchema = Type.Object({
+  provider: Type.Optional(DownloadProviderSchema),
   sourceReleaseId: Type.String({ minLength: 1, maxLength: 128, pattern: '^\\d+$' }),
 }, { additionalProperties: false });
 

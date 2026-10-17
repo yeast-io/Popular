@@ -1,6 +1,7 @@
 import { Types, type Model } from 'mongoose';
-import type { MovieDownloadStatus } from '@movie-hub/contract';
+import type { DownloadProvider, MovieDownloadStatus } from '@movie-hub/contract';
 import type {
+  DownloadClaim,
   MovieDownloadProgress,
   MovieDownloadRecord,
   MovieDownloadStore,
@@ -15,7 +16,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
     return row ? toRecord(row) : null;
   }
 
-  async createSubmitting(ownerId: string, tmdbId: number, releaseId: string): Promise<MovieDownloadRecord> {
+  async createSubmitting(ownerId: string, tmdbId: number, releaseId: string, provider: DownloadProvider): Promise<DownloadClaim> {
     const id = new Types.ObjectId();
     try {
       const row = await this.downloads.create({
@@ -24,26 +25,34 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
         tmdbId,
         sourceProvider: 'mteam',
         sourceReleaseId: releaseId,
-        provider: 'qbittorrent',
+        provider,
         lookupTag: `movie-hub-${id.toHexString()}`,
         status: 'submitting',
         progress: 0,
       });
-      return toRecord(row.toObject());
+      return { record: toRecord(row.toObject()), claimed: true };
     } catch (error) {
       if (isDuplicateKey(error)) {
         const existing = await this.findByRelease(ownerId, tmdbId, releaseId);
-        if (existing) return existing;
+        if (existing) return { record: existing, claimed: false };
       }
       throw error;
     }
   }
 
-  async retry(id: string): Promise<MovieDownloadRecord> {
-    return this.update(id, {
-      $set: { status: 'submitting', progress: 0 },
-      $unset: { torrentHash: 1, name: 1, lastErrorCode: 1, addedAt: 1, lastSyncedAt: 1 },
-    });
+  async retry(id: string): Promise<DownloadClaim> {
+    const row = await this.downloads.findOneAndUpdate(
+      { _id: id, status: { $in: ['failed', 'missing'] } },
+      {
+        $set: { status: 'submitting', progress: 0 },
+        $unset: { torrentHash: 1, name: 1, lastErrorCode: 1, addedAt: 1, lastSyncedAt: 1 },
+      },
+      { new: true },
+    ).lean().exec();
+    if (row) return { record: toRecord(row), claimed: true };
+    const existing = await this.downloads.findById(id).lean().exec();
+    if (!existing) throw new Error('Movie download disappeared during retry');
+    return { record: toRecord(existing), claimed: false };
   }
 
   async listForMovie(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]> {
@@ -66,7 +75,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
 
   async markMissing(id: string, attemptedAt: Date): Promise<MovieDownloadRecord> {
     return this.update(id, {
-      $set: { status: 'missing', lastErrorCode: 'QBITTORRENT_TORRENT_MISSING', lastSyncedAt: attemptedAt },
+      $set: { status: 'missing', lastErrorCode: 'DOWNLOAD_TORRENT_MISSING', lastSyncedAt: attemptedAt },
     });
   }
 
@@ -84,7 +93,7 @@ function toRecord(row: MovieDownloadDocument & { _id: unknown }): MovieDownloadR
     tmdbId: row.tmdbId,
     sourceProvider: 'mteam',
     sourceReleaseId: row.sourceReleaseId,
-    provider: 'qbittorrent',
+    provider: row.provider as DownloadProvider,
     lookupTag: row.lookupTag,
     status: row.status as MovieDownloadStatus,
     progress: row.progress,

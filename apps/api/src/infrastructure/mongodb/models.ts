@@ -14,6 +14,7 @@ import { createMovieResourceCheckModel } from './movie-resource-check.schema.js'
 import { createMovieResourceCheckTaskModel } from './movie-resource-check-task.schema.js';
 import { createMovieResourceSyncBatchModel } from './movie-resource-sync-batch.schema.js';
 import { createTrendingStateModel } from './trending-state.schema.js';
+import { createTransmissionConfigModel } from './transmission-config.schema.js';
 import { createQBittorrentConfigModel } from './qbittorrent-config.schema.js';
 import { createMovieDownloadModel } from './movie-download.schema.js';
 import { createExternalRequestEventModel } from './external-request-event.schema.js';
@@ -38,6 +39,7 @@ export function createModels(connection: Connection) {
     movieResourceCheckTasks: createMovieResourceCheckTaskModel(connection),
     movieResourceSyncBatches: createMovieResourceSyncBatchModel(connection),
     trendingStates: createTrendingStateModel(connection),
+    transmissionConfigs: createTransmissionConfigModel(connection),
     qbittorrentConfigs: createQBittorrentConfigModel(connection),
     movieDownloads: createMovieDownloadModel(connection),
     externalRequestEvents: createExternalRequestEventModel(connection),

@@ -20,6 +20,8 @@ import type { MovieStatusService } from './modules/movie-statuses/movie-status.s
 import { registerIntegrationRoutes } from './modules/integrations/integration.routes.js';
 import type { IntegrationService } from './modules/integrations/integration.service.js';
 import type { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
+import { registerTransmissionRoutes } from './modules/integrations/transmission.routes.js';
+import type { TransmissionIntegrationService } from './modules/integrations/transmission-integration.service.js';
 import type { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
 import { registerMovieDownloadRoutes } from './modules/downloads/movie-download.routes.js';
 import type { MovieDownloadService } from './modules/downloads/movie-download.service.js';
@@ -39,6 +41,7 @@ export interface BuildAppOptions {
   movieStatusService?: MovieStatusService;
   integrationService?: IntegrationService;
   movieResourceSyncService?: MovieResourceSyncService;
+  transmissionIntegrationService?: TransmissionIntegrationService;
   qbittorrentIntegrationService?: QBittorrentIntegrationService;
   movieDownloadService?: MovieDownloadService;
   externalUsageService?: ExternalUsageService;
@@ -47,7 +50,7 @@ export interface BuildAppOptions {
   conversationTurnService?: ConversationTurnService;
 }
 
-export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, conversationTurnService, openaiSettingsService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, conversationTurnService, openaiSettingsService }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
@@ -65,6 +68,7 @@ export async function buildApp({ config, healthDependencies, authService, userSe
     if (userService) registerUserRoutes(api, userService, config);
     if (movieService) registerMovieRoutes(api, movieService, authService, config);
     if (movieStatusService && authService) registerMovieStatusRoutes(api, movieStatusService, authService, config, movieResourceSyncService);
+    if (transmissionIntegrationService) registerTransmissionRoutes(api, transmissionIntegrationService, config);
     if (integrationService) registerIntegrationRoutes(api, integrationService, config, qbittorrentIntegrationService);
     if (movieDownloadService) registerMovieDownloadRoutes(api, movieDownloadService, config);
     if (externalUsageService) registerExternalUsageRoutes(api, externalUsageService, config);

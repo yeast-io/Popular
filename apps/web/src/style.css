@@ -3105,7 +3105,7 @@ button.poster-resource-badge:disabled {
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 42px;
-  align-items: end;
+  align-items: start;
   gap: 10px;
   max-width: 820px;
   margin: auto;
@@ -3149,10 +3149,14 @@ button.poster-resource-badge:disabled {
 }
 .ai-composer textarea {
   width: 100%;
+  min-height: 42px;
+  align-self: start;
+  margin: 0;
   max-height: 180px;
   resize: vertical;
   border: 0;
-  padding: 9px 0 7px;
+  padding: 0;
+  text-align: left;
   color: #f3f0e9;
   outline: 0;
   background: transparent;
@@ -3163,6 +3167,7 @@ button.poster-resource-badge:disabled {
   color: #656762;
 }
 .ai-composer button {
+  align-self: end;
   display: grid;
   place-items: center;
   width: 42px;

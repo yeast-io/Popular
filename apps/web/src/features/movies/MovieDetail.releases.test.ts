@@ -61,8 +61,8 @@ describe('Movie Detail live releases', () => {
           }],
         });
       }
-      if (url.endsWith('/integrations/qbittorrent')) {
-        return Response.json({ provider: 'qbittorrent', status: 'unconfigured' });
+      if (url.endsWith('/download-providers')) {
+        return Response.json({ providers: [] });
       }
       if (url.endsWith('/downloads')) return Response.json({ items: [] });
       return Response.json({
@@ -110,7 +110,7 @@ describe('Movie Detail live releases', () => {
     wrapper.unmount();
   });
 
-  it('requires confirmation, creates one download, and polls only while the release dialog is open', async () => {
+  it('submits directly with one downloader and polls only while the release dialog is open', async () => {
     vi.useFakeTimers();
     setLocale('zh-CN');
     let downloadGets = 0;
@@ -126,8 +126,8 @@ describe('Movie Detail live releases', () => {
           releases: [{ id: '991', title: 'Movie.Release', detailsUrl: 'https://kp.m-team.cc/detail/991', sizeBytes: 1000, seeders: 3, resolution: '4K', videoCodec: 'H.265', tags: [] }],
         });
       }
-      if (url.endsWith('/integrations/qbittorrent')) {
-        return Response.json({ provider: 'qbittorrent', status: 'configured_valid', baseUrl: 'http://nas:8080' });
+      if (url.endsWith('/download-providers')) {
+        return Response.json({ providers: ['qbittorrent'] });
       }
       if (url.endsWith('/downloads') && init?.method === 'POST') {
         downloadPosts += 1;
@@ -157,11 +157,7 @@ describe('Movie Detail live releases', () => {
     const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
     dialog.querySelector<HTMLButtonElement>('.release-download-button')!.click();
     await flushPromises();
-    expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
-    expect(downloadPosts).toBe(0);
-
-    document.body.querySelector<HTMLButtonElement>('.download-confirm-actions .primary')!.click();
-    await flushPromises();
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
     expect(downloadPosts).toBe(1);
     expect(dialog.querySelector<HTMLProgressElement>('progress')?.value).toBe(20);
     expect(dialog.querySelector('.release-download-progress')?.classList.contains('downloading')).toBe(true);
@@ -194,8 +190,8 @@ describe('Movie Detail live releases', () => {
           ],
         });
       }
-      if (url.endsWith('/integrations/qbittorrent')) {
-        return Response.json({ provider: 'qbittorrent', status: 'unconfigured' });
+      if (url.endsWith('/download-providers')) {
+        return Response.json({ providers: [] });
       }
       if (url.endsWith('/downloads')) return Response.json({ items: [] });
       return Response.json({
@@ -233,8 +229,8 @@ describe('Movie Detail live releases', () => {
           ],
         });
       }
-      if (url.endsWith('/integrations/qbittorrent')) {
-        return Response.json({ provider: 'qbittorrent', status: 'configured_valid', baseUrl: 'http://nas:8080' });
+      if (url.endsWith('/download-providers')) {
+        return Response.json({ providers: ['qbittorrent'] });
       }
       if (url.endsWith('/downloads')) {
         return Response.json({ items: [
