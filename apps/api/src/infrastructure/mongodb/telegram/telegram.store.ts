@@ -5,6 +5,10 @@ import type { TelegramStore, TelegramRecord } from '../../../modules/telegram/te
 const duplicate = (error: unknown): boolean => typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 export class MongoTelegramStore implements TelegramStore {
   constructor(private readonly model: Model<TelegramBindingDocument>) {}
+  async findOwnerByChatId(chatId: string): Promise<string | null> {
+    const row = await this.model.findOne({ chatId }).select('ownerId').lean().exec();
+    return row ? String(row.ownerId) : null;
+  }
   async find(ownerId: string): Promise<TelegramRecord | null> {
     const row = await this.model.findOne({ ownerId }).lean().exec();
     return row ? { ...(row.chatId ? { chatId: row.chatId } : {}), ...(row.account ? { account: row.account } : {}), ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}) } : null;

@@ -1,4 +1,5 @@
 import type { WhatsAppConfiguration } from '@movie-hub/contract';
+import type { IncomingMessage } from '../incoming-message.js';
 
 // Every operation, including lease checks, is scoped to the authenticated owner.
 export interface WhatsAppStore {
@@ -16,7 +17,7 @@ export interface WhatsAppConnection {
   stop(logout: boolean): Promise<void>;
 }
 export interface WhatsAppDiagnostic {
-  event: 'connecting' | 'qr_issued' | 'pairing_accepted' | 'connected' | 'disconnected' | 'reconnect_scheduled' | 'storage_error' | 'connection_error' | 'lease_lost' | 'binding_timeout' | 'registration_refresh_received';
+  event: 'connecting' | 'qr_issued' | 'pairing_accepted' | 'connected' | 'disconnected' | 'reconnect_scheduled' | 'storage_error' | 'connection_error' | 'lease_lost' | 'binding_timeout' | 'registration_refresh_received' | 'message_receive_error';
   reason?: 'qr_refs_exhausted' | 'connection_lost' | 'operation_timeout' | 'prekey_upload_timeout' | 'unknown';
   elapsedMs?: number;
   qrCount?: number;
@@ -25,6 +26,7 @@ export interface WhatsAppDiagnostic {
   attempt?: number;
 }
 export interface WhatsAppConnectionOptions {
+  receive?(message: IncomingMessage): Promise<void>;
   report?(event: WhatsAppDiagnostic): void;
   load(): Promise<string | null>;
   save(state: string): Promise<void>;

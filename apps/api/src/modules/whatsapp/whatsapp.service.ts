@@ -3,6 +3,7 @@ import type { WhatsAppConfiguration } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { WhatsAppConnection, WhatsAppConnector, WhatsAppDiagnostic, WhatsAppStore } from './whatsapp.types.js';
+import type { IncomingMessage } from '../incoming-message.js';
 
 type Session = {
   leaseId: string; state: WhatsAppConfiguration; connection?: WhatsAppConnection;
@@ -15,7 +16,8 @@ export class WhatsAppService {
   private readonly queues = new Map<string, Promise<unknown>>();
   private closed = false;
   private readonly lastStates = new Map<string, WhatsAppConfiguration>();
-  constructor(private readonly auth: Pick<AuthService, 'requireOwnerId'>, private readonly store: WhatsAppStore, private readonly connect: WhatsAppConnector, private readonly report: (ownerId: string, event: WhatsAppDiagnostic) => void = () => undefined) {}
+  constructor(private readonly auth: Pick<AuthService, 'requireOwnerId'>, private readonly store: WhatsAppStore, private readonly connect: WhatsAppConnector, private readonly report: (ownerId: string, event: WhatsAppDiagnostic) => void = () => undefined,
+    private readonly receive: (ownerId: string, message: IncomingMessage) => void = () => undefined) {}
 
   private async owned<T>(token: string | undefined, work: (ownerId: string) => Promise<T>): Promise<T> {
     const ownerId = await this.auth.requireOwnerId(token);
@@ -52,6 +54,11 @@ export class WhatsAppService {
       this.sessions.set(ownerId, session);
       try {
         session.connection = await this.connect({
+          receive: async message => {
+            if (this.closed || this.sessions.get(ownerId) !== session) return;
+            if (!await this.store.renew(ownerId, session.leaseId)) return;
+            if (!this.closed && this.sessions.get(ownerId) === session) this.receive(ownerId, message);
+          },
           report: event => this.report(ownerId, event),
           load: () => this.store.load(ownerId, session.leaseId),
           save: state => this.store.save(ownerId, session.leaseId, state),

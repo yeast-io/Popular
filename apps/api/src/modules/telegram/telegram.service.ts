@@ -3,10 +3,12 @@ import type { TelegramBinding, TelegramConfiguration } from '@movie-hub/contract
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { DownloadNotification } from '../notifications/notification.types.js';
+import type { IncomingMessage } from '../incoming-message.js';
 
 export interface TelegramRecord { chatId?: string; account?: string; expiresAt?: Date }
 export interface TelegramStore {
   find(ownerId: string): Promise<TelegramRecord | null>;
+  findOwnerByChatId(chatId: string): Promise<string | null>;
   pending(ownerId: string, hash: string, expiresAt: Date): Promise<boolean>;
   consume(hash: string, chatId: string, account: string, now: Date): Promise<boolean>;
   remove(ownerId: string): Promise<void>;
@@ -14,7 +16,7 @@ export interface TelegramStore {
 }
 export interface TelegramUpdate {
   update_id: number;
-  message?: { text?: string; from?: { id: number; is_bot?: boolean; username?: string; first_name?: string }; chat: { id: number; type: string } };
+  message?: { message_id?: number; text?: string; caption?: string; photo?: unknown[]; video?: unknown; audio?: unknown; voice?: unknown; document?: unknown; sticker?: unknown; from?: { id: number; is_bot?: boolean; username?: string; first_name?: string }; chat: { id: number; type: string } };
 }
 export interface TelegramTransport {
   username(): Promise<string>;
@@ -25,7 +27,8 @@ export interface TelegramTransport {
 export const bindingHash = (value: string): string => createHash('sha256').update(value).digest('hex');
 export class TelegramService {
   constructor(private readonly auth: Pick<AuthService, 'requireOwnerId'>, private readonly store: TelegramStore,
-    private readonly transport?: TelegramTransport, private readonly now: () => Date = () => new Date()) {}
+    private readonly transport?: TelegramTransport, private readonly now: () => Date = () => new Date(),
+    private readonly receive: (ownerId: string, message: IncomingMessage) => void = () => undefined) {}
   async get(token: string | undefined): Promise<TelegramConfiguration> {
     const owner = await this.auth.requireOwnerId(token);
     if (!this.transport) return { status: 'unavailable' };
@@ -47,7 +50,20 @@ export class TelegramService {
     const message = update.message;
     if (!message || message.chat.type !== 'private' || !message.from || message.from.is_bot || message.from.id !== message.chat.id || !Number.isSafeInteger(message.chat.id) || message.chat.id <= 0) return;
     const match = /^\/start(?:@[A-Za-z0-9_]+)? ([A-Za-z0-9_-]{43})$/.exec(message.text ?? '');
-    if (!match) return;
+    if (!match) {
+      // Never include binding commands (including malformed/expired links) in message logs.
+      if (/^\/start(?:@\S+)?(?:\s|$)/.test(message.text ?? '')) return;
+      const chatId = String(message.chat.id);
+      const ownerId = await this.store.findOwnerByChatId(chatId);
+      if (!ownerId) return;
+      const messageType = message.text !== undefined ? 'text'
+        : ['photo', 'video', 'audio', 'voice', 'document', 'sticker'].find(key => message[key as keyof typeof message] != null) ?? 'unknown';
+      const text = message.text ?? message.caption;
+      this.receive(ownerId, { channel: 'telegram', senderId: String(message.from.id), chatId, messageType,
+        ...(message.message_id !== undefined ? { messageId: String(message.message_id) } : {}),
+        ...(text !== undefined ? { text } : {}) });
+      return;
+    }
     // The bearer link is never logged or stored in plaintext. Unique chat index prevents cross-owner replacement.
     await this.store.consume(bindingHash(match[1]!), String(message.chat.id),
       message.from.username ? `@${message.from.username}` : (message.from.first_name ?? String(message.chat.id)).slice(0, 100), this.now());

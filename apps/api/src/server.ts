@@ -171,12 +171,15 @@ try {
   );
   await models.telegramBindings.init();
   const telegramClient = config.TELEGRAM_BOT_TOKEN ? new TelegramClient(config.TELEGRAM_BOT_TOKEN) : undefined;
-  const telegramService = new TelegramService(authService, new MongoTelegramStore(models.telegramBindings), telegramClient);
+  const logIncomingMessage = (ownerId: string, message: import('./modules/incoming-message.js').IncomingMessage) => {
+    loggers.app.info({ event: 'incoming_message', ownerId, ...message }, 'User message received');
+  };
+  const telegramService = new TelegramService(authService, new MongoTelegramStore(models.telegramBindings), telegramClient, undefined, logIncomingMessage);
   const telegramWorker = telegramClient && config.TELEGRAM_BOT_TOKEN ? new TelegramWorker(infrastructure.redis.getClient(), config.TELEGRAM_BOT_TOKEN,
     telegramClient, telegramService, () => loggers.app.warn('Telegram polling failed; check connectivity, token, and that no webhook or external poller uses this bot')) : undefined;
   await models.whatsappSessions.init();
   const whatsappService = new WhatsAppService(authService, new MongoWhatsAppStore(models.whatsappSessions, secrets), connectBaileys,
-    (ownerId, event) => loggers.app.info({ ownerId, ...event }, 'WhatsApp connection lifecycle'));
+    (ownerId, event) => loggers.app.info({ ownerId, ...event }, 'WhatsApp connection lifecycle'), logIncomingMessage);
   await Promise.all([models.movieDownloads.init(), models.notificationPreferences.init()]);
   const notificationService = new NotificationService(authService, new MongoNotificationStore(models.movieDownloads, models.notificationPreferences), [{
     id: 'telegram', name: 'Telegram', isConfigured: ownerId => telegramService.isConfigured(ownerId),

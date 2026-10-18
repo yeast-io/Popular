@@ -12,6 +12,17 @@ test('owner and chat uniqueness are database enforced; link hashes are excluded 
   // Expiry must not TTL-delete a connected owner document.
   assert.ok(!indexes.some(([, options]) => options.expireAfterSeconds !== undefined));
 });
+test('incoming chat lookup returns only its bound owner, or null for an unknown chat', async () => {
+  let row: { ownerId: string } | null = { ownerId: 'alice' };
+  const store = new MongoTelegramStore({ findOne: (filter: unknown) => {
+    assert.deepEqual(filter, { chatId: '101' });
+    return { select: (fields: string) => { assert.equal(fields, 'ownerId'); return { lean: () => ({ exec: async () => row }) }; } };
+  } } as never);
+  assert.equal(await store.findOwnerByChatId('101'), 'alice');
+  row = null;
+  assert.equal(await store.findOwnerByChatId('101'), null);
+});
+
 test('consume is one atomic conditional write; expired, reused or already-bound links cannot match', async () => {
   let filter: Record<string, unknown> = {};
   let update: Record<string, unknown> = {};

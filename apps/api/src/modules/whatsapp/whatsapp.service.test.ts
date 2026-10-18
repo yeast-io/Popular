@@ -58,6 +58,27 @@ test('owner-scoped QR, status, auth state, self-test and unlink never cross user
   } finally { await f.service.close(); }
 });
 
+test('incoming messages are owner-scoped and rejected after lease loss, unlink or shutdown', async () => {
+  const f = fixture();
+  const received: string[] = [];
+  const service = new WhatsAppService(f.auth, f.store, f.connect, undefined, owner => { received.push(owner); });
+  const message = { channel: 'whatsapp' as const, chatId: 'peer@s.whatsapp.net', senderId: 'peer@s.whatsapp.net', messageType: 'conversation', text: 'hello' };
+  try {
+    await service.start('alice'); await service.start('bob');
+    const alice = f.connections[0]!.options;
+    const bob = f.connections[1]!.options;
+    await alice.receive!(message); await bob.receive!(message);
+    assert.deepEqual(received, ['alice', 'bob']);
+    f.leases.delete('alice');
+    await alice.receive!(message);
+    await service.remove('bob');
+    await bob.receive!(message);
+    await service.close();
+    await alice.receive!(message);
+    assert.deepEqual(received, ['alice', 'bob']);
+  } finally { await service.close(); await f.service.close(); }
+});
+
 test('concurrent bind is idempotent; cross-instance lease contention cannot open a second socket', async () => {
   const f = fixture();
   const other = new WhatsAppService(f.auth, f.store, f.connect);

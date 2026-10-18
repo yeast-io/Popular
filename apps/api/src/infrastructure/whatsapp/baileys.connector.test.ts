@@ -27,7 +27,7 @@ test('separate auth/key stores and socket-derived self recipients; no arbitrary 
     const a = sockets[0]!;
     const b = sockets[1]!;
     assert.equal(a.config.markOnlineOnConnect, false); assert.equal(a.config.syncFullHistory, false);
-    assert.equal(a.handlers.has('messages.upsert'), false);
+    assert.equal(a.handlers.has('messages.upsert'), true);
     await a.config.auth.keys.set({ session: { secret: Buffer.from('alice-only') } });
     assert.deepEqual(await b.config.auth.keys.get('session', ['secret']), {});
     const saved = JSON.parse(aliceState, BufferJSON.reviver);
@@ -73,11 +73,49 @@ function fakeSockets() {
     const handlers = new Map<string, (data: never) => void>();
     const ws = new EventEmitter();
     sockets.push({ config, handlers, ws });
-    return { ws, ev: { on: (name: string, listener: (data: never) => void) => handlers.set(name, listener) }, end: () => undefined } as unknown as WASocket;
+    return { user: { id: '61111111111:9@s.whatsapp.net', lid: '11111@lid' }, ws, ev: { on: (name: string, listener: (data: never) => void) => handlers.set(name, listener) }, end: () => undefined } as unknown as WASocket;
   }) as typeof import('@whiskeysockets/baileys').default;
   const emit = (name: string, data: unknown, index = sockets.length - 1) => sockets[index]!.handlers.get(name)!(data as never);
   return { sockets, makeSocket, emit };
 }
+
+test('incoming notify batches include text, wrapped media and phone self-chat; ignore history, groups, protocol and outgoing traffic', async () => {
+  const f = fakeSockets();
+  const received: import('../../modules/incoming-message.js').IncomingMessage[] = [];
+  const connection = await createBaileysConnector(f.makeSocket)({ load: async () => null, save: async () => undefined, update: () => undefined,
+    receive: async message => { received.push(message); } });
+  const peer = '61222222222@s.whatsapp.net';
+  const self = '61111111111@s.whatsapp.net';
+  const makeMessage = (id: string, chatId: string, message: object, fromMe = false) => ({ key: { id, remoteJid: chatId, fromMe }, message });
+  const batch = [
+    makeMessage('1', peer, { conversation: 'hello' }),
+    makeMessage('2', peer, { ephemeralMessage: { message: { imageMessage: { caption: 'poster', mediaKey: 'never-log' } } } }),
+    makeMessage('3', '123@g.us', { conversation: 'group' }),
+    makeMessage('4', 'status@broadcast', { conversation: 'status' }),
+    makeMessage('5', peer, { conversation: 'outgoing' }, true),
+    makeMessage('6', peer, { protocolMessage: {} }),
+    makeMessage('7', peer, { audioMessage: { mediaKey: 'never-log' } }),
+    makeMessage('8', self, { conversation: 'from phone' }, true),
+    makeMessage('9', '11111@lid', { conversation: 'from phone LID' }, true),
+  ];
+  try {
+    f.emit('messages.upsert', { type: 'append', messages: batch });
+    await tick(); assert.equal(received.length, 0);
+    f.emit('messages.upsert', { type: 'notify', messages: batch });
+    await tick();
+    assert.deepEqual(received.map(message => [message.messageId, message.messageType, message.text]), [
+      ['1', 'conversation', 'hello'], ['2', 'imageMessage', 'poster'], ['7', 'audioMessage', undefined],
+      ['8', 'conversation', 'from phone'], ['9', 'conversation', 'from phone LID'],
+    ]);
+    assert.ok(received.every(message => message.channel === 'whatsapp'));
+    assert.equal(received[0]!.senderId, peer);
+    assert.equal(received[3]!.senderId, self);
+    assert.ok(!JSON.stringify(received).includes('never-log'));
+    await connection.stop(false);
+    f.emit('messages.upsert', { type: 'notify', messages: [makeMessage('8', self, { conversation: 'late' })] });
+    await tick(); assert.equal(received.length, 5);
+  } finally { await connection.stop(false); }
+});
 
 test('first QR remains valid after 20 seconds; subsequent QR uses its shorter lifetime and Chrome identity', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-17T00:00:00Z') });

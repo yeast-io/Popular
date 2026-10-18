@@ -16,6 +16,7 @@ function fixture() {
   } };
   const store: TelegramStore = {
     find: async owner => rows.get(owner) ?? null,
+    findOwnerByChatId: async chatId => [...rows].find(([, row]) => row.chatId === chatId)?.[0] ?? null,
     pending: async (owner, hash, expiresAt) => {
       if (rows.get(owner)?.chatId) return false;
       rows.set(owner, { hash, expiresAt }); return true;
@@ -85,6 +86,35 @@ test('test and download notifications always use authenticated owner binding; un
   await assert.rejects(() => f.service.test('alice'), { code: 'CONFLICT' });
   assert.equal(await f.service.isConfigured('alice'), false);
   assert.equal(await f.service.isConfigured('bob'), true);
+});
+
+test('incoming messages resolve the linked owner, log text/media only, and exclude binding secrets and unlinked chats', async () => {
+  const f = fixture();
+  const received: Array<{ ownerId: string; message: import('../incoming-message.js').IncomingMessage }> = [];
+  const service = new TelegramService(f.auth, f.store, f.transport, undefined, (ownerId, message) => received.push({ ownerId, message }));
+  const binding = await service.start('alice');
+  await service.accept(f.update(binding.bindingUrl));
+  const incoming = (text: string, id = 101): TelegramUpdate => ({ update_id: 2, message: { message_id: 7, text, from: { id }, chat: { id, type: 'private' } } });
+  await service.accept(incoming('hello\n你好'));
+  const photo = incoming('');
+  delete photo.message!.text;
+  photo.message!.photo = [{ file_id: 'not-logged' }];
+  photo.message!.caption = 'movie poster';
+  await service.accept(photo);
+  await service.accept(incoming('/start malformed-secret'));
+  await service.accept(f.update(binding.bindingUrl));
+  await service.accept(incoming('unbound', 202));
+  const group = incoming('group'); group.message!.chat.type = 'group';
+  await service.accept(group);
+  const bot = incoming('bot'); bot.message!.from!.is_bot = true;
+  await service.accept(bot);
+  await service.remove('alice');
+  await service.accept(incoming('after unlink'));
+  assert.deepEqual(received, [
+    { ownerId: 'alice', message: { channel: 'telegram', senderId: '101', chatId: '101', messageId: '7', messageType: 'text', text: 'hello\n你好' } },
+    { ownerId: 'alice', message: { channel: 'telegram', senderId: '101', chatId: '101', messageId: '7', messageType: 'photo', text: 'movie poster' } },
+  ]);
+  assert.equal(f.sent.length, 0);
 });
 
 test('unconfigured service still requires authentication and clearly reports unavailable', async () => {

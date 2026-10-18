@@ -1,10 +1,10 @@
-import makeWASocket, { BufferJSON, Browsers, DisconnectReason, initAuthCreds, jidNormalizedUser, proto, type AuthenticationCreds, type AuthenticationState, type SignalDataSet, type BinaryNode } from '@whiskeysockets/baileys';
+import makeWASocket, { BufferJSON, Browsers, DisconnectReason, getContentType, normalizeMessageContent, initAuthCreds, jidNormalizedUser, proto, type AuthenticationCreds, type AuthenticationState, type SignalDataSet, type BinaryNode } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import type { WhatsAppConfiguration } from '@movie-hub/contract';
 import type { WhatsAppConnector, WhatsAppDiagnostic } from '../../modules/whatsapp/whatsapp.types.js';
 
-// Outbound only: recipients are always derived from the linked account.
+// Outbound recipients are always derived from the linked account.
 export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWASocket): WhatsAppConnector {
   return async options => {
     const saved = await options.load();
@@ -87,6 +87,27 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
         if (stopped || socket !== current) return;
         Object.assign(data.creds, update);
         void persist().catch(() => fail('storage_error'));
+      });
+      current.ev.on('messages.upsert', ({ type, messages }) => {
+        if (type !== 'notify' || stopped || closed || socket !== current) return;
+        void (async () => {
+          for (const message of messages) {
+            if (stopped || closed || socket !== current) return;
+            const chatId = message.key.remoteJid;
+            // Ignore groups, status, channels and outgoing messages to other people.
+            if (!chatId || !/^[^@]+@(s\.whatsapp\.net|lid)$/.test(chatId)) continue;
+            const selfIds = [current.user?.id, current.user?.lid].filter((id): id is string => !!id).map(jidNormalizedUser);
+            if (message.key.fromMe && !selfIds.includes(jidNormalizedUser(chatId))) continue;
+            const content = normalizeMessageContent(message.message);
+            const messageType = getContentType(content);
+            if (!content || !messageType || ['protocolMessage', 'senderKeyDistributionMessage'].includes(messageType)) continue;
+            const text = content.conversation ?? content.extendedTextMessage?.text ?? content.imageMessage?.caption
+              ?? content.videoMessage?.caption ?? content.documentMessage?.caption;
+            await options.receive?.({ channel: 'whatsapp', chatId, senderId: message.key.fromMe ? jidNormalizedUser(current.user!.id) : chatId,
+              ...(message.key.id ? { messageId: message.key.id } : {}), messageType,
+              ...(text != null ? { text } : {}) });
+          }
+        })().catch(() => options.report?.({ event: 'message_receive_error' }));
       });
       current.ev.on('connection.update', update => {
         void (async () => {
