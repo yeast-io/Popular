@@ -7,7 +7,9 @@ export class ExternalUsageService {
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly usage: ExternalUsageReader,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+  )
+  {
+  }
 
   async readMine(token: string | undefined, days: ExternalUsageDays): Promise<ExternalUsageResponse> {
     const ownerId = await this.auth.requireOwnerId(token);
@@ -25,6 +27,7 @@ export class ExternalUsageService {
         requests: row.requests,
         successes: row.successes,
         failures: row.failures,
+        ...(row.tokenUsage ? { tokenUsage: row.tokenUsage } : {}),
       });
       dailyByDate.set(row.date, providers);
     }
@@ -49,6 +52,8 @@ export class ExternalUsageService {
         operation: row.operation,
         ...toMetrics(row),
       })),
+      models: (result.models ?? []).map(row => ({ provider: row.provider, model: row.model,
+        operation: row.operation, ...toMetrics(row) })),
     };
   }
 }
@@ -59,6 +64,7 @@ function toMetrics(value: ExternalUsageMetricRecord) {
     successes: value.successes,
     failures: value.failures,
     averageDurationMs: value.requests ? Math.round(value.totalDurationMs / value.requests) : 0,
+    ...(value.tokenUsage ? { tokenUsage: value.tokenUsage } : {}),
   };
 }
 

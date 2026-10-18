@@ -17,7 +17,9 @@ export class MovieStatusService {
     private readonly defaultLocale: Locale,
     private readonly resourceChecks?: MovieResourceCheckDispatcher,
     private readonly resourceCheckStore?: Pick<MovieResourceCheckStore, 'readForMovies' | 'readOne'>,
-  ) {}
+  )
+  {
+  }
 
   async set(ownerId: string, tmdbId: number, status: TrackedMovieStatus) {
     if (!await this.movies.hasMovie(tmdbId)) throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded from search or trending before it can be saved.');

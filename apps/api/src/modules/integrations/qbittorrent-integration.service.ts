@@ -21,7 +21,9 @@ export class QBittorrentIntegrationService {
     private readonly client: QBittorrentClientPort,
     private readonly secrets: SecretCrypto,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+  )
+  {
+  }
 
   async get(token: string | undefined): Promise<QBittorrentConfiguration> {
     return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)));

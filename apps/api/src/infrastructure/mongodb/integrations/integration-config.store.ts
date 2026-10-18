@@ -4,7 +4,11 @@ import type { IntegrationConfigRecord, IntegrationConfigStore } from '../../../m
 import type { IntegrationConfigDocument } from './integration-config.schema.js';
 
 export class MongoIntegrationConfigStore implements IntegrationConfigStore {
-  constructor(private readonly configs: Model<IntegrationConfigDocument>) {}
+  constructor(
+    private readonly configs: Model<IntegrationConfigDocument>
+  )
+  {
+  }
 
   async find(ownerId: string, provider: 'mteam'): Promise<IntegrationConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId, provider }).select('+encryptedApiKey').lean().exec();

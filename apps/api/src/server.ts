@@ -1,4 +1,9 @@
+import { ApplicationShutdown, installShutdownHandlers } from './infrastructure/lifecycle/shutdown.js';
 import { TelegramService } from './modules/telegram/telegram.service.js';
+import { AssistantWorkflowRunner } from './modules/assistant/assistant.runner.js';
+import { AssistantMessageReceiver } from './modules/assistant/assistant.receiver.js';
+import { AssistantWorker } from './modules/assistant/assistant.worker.js';
+import { MongoAssistantQueue } from './infrastructure/mongodb/assistant/assistant-message.store.js';
 import { TelegramWorker } from './modules/telegram/telegram.worker.js';
 import { TelegramClient } from './infrastructure/telegram/client.js';
 import { MongoTelegramStore } from './infrastructure/mongodb/telegram/telegram.store.js';
@@ -14,7 +19,7 @@ import { MongoWhatsAppStore } from './infrastructure/mongodb/whatsapp/whatsapp.s
 import { connectBaileys } from './infrastructure/whatsapp/baileys.connector.js';
 import { buildApp } from './app.js';
 import { loadConfig } from './config/env.js';
-import { closeInfrastructure, connectInfrastructure, createInfrastructure } from './infrastructure/dependencies.js';
+import { connectInfrastructure, createInfrastructure } from './infrastructure/dependencies.js';
 import { createLoggers } from './infrastructure/logging/logger.js';
 import { createModels } from './infrastructure/mongodb/models.js';
 import { MongoAuthUserStore } from './infrastructure/mongodb/users/user.store.js';
@@ -60,9 +65,19 @@ import { ConversationTurnService } from './modules/conversations/conversation-tu
 const config = loadConfig();
 const loggers = createLoggers(config.LOG_LEVEL);
 const infrastructure = createInfrastructure(config);
+let finishStartup!: () => void;
+const startupSettled = new Promise<void>(resolve => { finishStartup = resolve; });
+const shutdown = new ApplicationShutdown(loggers.app, startupSettled, config.SHUTDOWN_TIMEOUT_MS);
+shutdown.register('minio', 90, () => infrastructure.minio.close());
+shutdown.register('mongodb', 100, () => infrastructure.mongodb.close());
+shutdown.register('redis', 110, () => infrastructure.redis.close());
+const shutdownHandlers = installShutdownHandlers(shutdown, process, async () => {
+  await Promise.all([loggers.app, loggers.error].map(logger => new Promise<void>(resolve => logger.flush(() => resolve()))));
+});
 
 try {
   await connectInfrastructure(infrastructure);
+  shutdown.assertRunning();
   const models = createModels(infrastructure.mongodb.getConnection());
   await Promise.all([models.externalRequestEvents.init(), models.externalUsageDaily.init()]);
   const externalUsageStore = new MongoExternalUsageStore(
@@ -72,8 +87,13 @@ try {
   );
   const externalUsageAggregation = new ExternalUsageAggregationService(
     externalUsageStore,
-    { error: (bindings, message) => loggers.error.error(bindings, message) },
+    {
+      info: (bindings, message) => loggers.app.info(bindings, message),
+      error: (bindings, message) => loggers.error.error(bindings, message),
+    },
+    undefined, undefined, config.SCAN_TRACE_ENABLED,
   );
+  shutdown.register('external_usage_aggregation', 45, () => externalUsageAggregation.stop());
   const userStore = new MongoAuthUserStore(models.users, models.authIdentities);
   const sessionStore = new RedisSessionStore(
     infrastructure.redis.getClient(),
@@ -95,7 +115,7 @@ try {
     externalUsageStore,
   );
   const trendingSync = new TrendingSyncService(
-    tmdb, trendingStore, new RedisSyncLock(infrastructure.redis.getClient()),
+    tmdb, trendingStore, new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED, loggers.app),
     config.TMDB_LANGUAGE, config.TRENDING_SYNC_LOCK_TTL_SECONDS,
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
@@ -170,16 +190,24 @@ try {
     secrets,
   );
   await models.telegramBindings.init();
-  const telegramClient = config.TELEGRAM_BOT_TOKEN ? new TelegramClient(config.TELEGRAM_BOT_TOKEN) : undefined;
-  const logIncomingMessage = (ownerId: string, message: import('./modules/incoming-message.js').IncomingMessage) => {
-    loggers.app.info({ event: 'incoming_message', ownerId, ...message }, 'User message received');
+  await models.assistantMessages.init();
+  const assistantQueue = new MongoAssistantQueue(models.assistantMessages);
+  const assistantReceiver = new AssistantMessageReceiver(assistantQueue, input => assistantWorker.wake(input), loggers.app);
+  const telegramClient = config.TELEGRAM_BOT_TOKEN ? new TelegramClient(config.TELEGRAM_BOT_TOKEN, undefined, loggers.app, config.TELEGRAM_POLL_TRACE_ENABLED) : undefined;
+  const receiveMessage = async (ownerId: string, message: import('./modules/incoming-message.js').IncomingMessage) => {
+    await assistantReceiver.receive(ownerId, message);
+    loggers.app.info({ event: 'incoming_message', ownerId, channel: message.channel, messageId: message.messageId,
+      messageType: message.messageType }, 'User message received');
   };
-  const telegramService = new TelegramService(authService, new MongoTelegramStore(models.telegramBindings), telegramClient, undefined, logIncomingMessage);
+  const telegramService = new TelegramService(authService, new MongoTelegramStore(models.telegramBindings), telegramClient, undefined, receiveMessage, loggers.app);
   const telegramWorker = telegramClient && config.TELEGRAM_BOT_TOKEN ? new TelegramWorker(infrastructure.redis.getClient(), config.TELEGRAM_BOT_TOKEN,
-    telegramClient, telegramService, () => loggers.app.warn('Telegram polling failed; check connectivity, token, and that no webhook or external poller uses this bot')) : undefined;
+    telegramClient, telegramService, () => loggers.app.warn('Telegram polling failed; check connectivity, token, and that no webhook or external poller uses this bot'), loggers.app, config.REDIS_LOCK_TRACE_ENABLED, config.TELEGRAM_POLL_TRACE_ENABLED) : undefined;
+  shutdown.register('telegram_worker', 10, () => telegramWorker?.stop());
+  loggers.app.info({ event: 'telegram_configuration', enabled: Boolean(telegramWorker) }, 'Telegram polling configuration');
   await models.whatsappSessions.init();
   const whatsappService = new WhatsAppService(authService, new MongoWhatsAppStore(models.whatsappSessions, secrets), connectBaileys,
-    (ownerId, event) => loggers.app.info({ ownerId, ...event }, 'WhatsApp connection lifecycle'), logIncomingMessage);
+    (ownerId, event) => loggers.app.info({ ownerId, ...event }, 'WhatsApp connection lifecycle'), receiveMessage);
+  shutdown.register('whatsapp_sessions', 40, () => whatsappService.close());
   await Promise.all([models.movieDownloads.init(), models.notificationPreferences.init()]);
   const notificationService = new NotificationService(authService, new MongoNotificationStore(models.movieDownloads, models.notificationPreferences), [{
     id: 'telegram', name: 'Telegram', isConfigured: ownerId => telegramService.isConfigured(ownerId),
@@ -212,8 +240,8 @@ try {
     async (ownerId) => new OpenAILlmClient(new OpenAI({
       apiKey: await openaiSettingsService.requireApiKey(ownerId),
       timeout: config.OPENAI_REQUEST_TIMEOUT_MS,
-      maxRetries: config.OPENAI_MAX_RETRIES,
-    }), config.OPENAI_MODEL),
+      maxRetries: 0,
+    }), config.OPENAI_MODEL, { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES }),
     new Utf8ByteTokenCounter(),
     {
       systemPrompt: config.OPENAI_SYSTEM_PROMPT,
@@ -226,8 +254,34 @@ try {
     },
   );
 
+  const assistantRunner = new AssistantWorkflowRunner(async ownerId => new OpenAILlmClient(new OpenAI({
+    apiKey: await openaiSettingsService.requireApiKey(ownerId),
+    timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0,
+  }), config.OPENAI_MODEL, { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES }), {
+    systemPrompt: config.OPENAI_SYSTEM_PROMPT,
+    maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
+    maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS,
+  });
+  const assistantWorker = new AssistantWorker(infrastructure.redis.getClient(), assistantQueue, assistantRunner,
+    (input, text) => input.channel === 'telegram'
+      ? telegramService.reply(input.ownerId, input.chatId, text)
+      : whatsappService.reply(input.ownerId, input.chatId, text),
+    input => input.channel === 'telegram'
+      ? telegramService.canReply(input.ownerId, input.chatId)
+      : whatsappService.canReply(input.ownerId, input.chatId),
+    event => loggers.app.warn({ event }, 'Assistant workflow'),
+    { maxConcurrency: config.ASSISTANT_MAX_CONCURRENCY, scanIntervalMs: config.ASSISTANT_SCAN_INTERVAL_MS, scanTraceEnabled: config.SCAN_TRACE_ENABLED },
+    loggers.app,
+    config.REDIS_LOCK_TRACE_ENABLED,
+  );
+
+  shutdown.register('assistant_worker', 20, () => assistantWorker.stop());
   const notificationWorker = new NotificationWorker(notificationService, movieDownloadService, trendingStore, config.TMDB_LANGUAGE, config.WEB_ORIGIN,
-    event => loggers.app.warn({ event }, 'Download notification worker'));
+    (event, fields) => {
+      if (event === 'SCAN_STARTED' || event === 'SCAN_COMPLETED') loggers.app.info({ event, ...fields }, 'Download notification scan');
+      else loggers.app.warn({ event, ...fields }, 'Download notification worker');
+    }, undefined, undefined, config.SCAN_TRACE_ENABLED);
+  shutdown.register('notification_worker', 30, () => notificationWorker.stop());
   const notificationTestService = new NotificationTestService(authService, new MongoNotificationTestStore(models.movieDownloads), notificationService, trendingStore, config.TMDB_LANGUAGE, config.WEB_ORIGIN);
   const app = await buildApp({
     telegramService, notificationTestService,
@@ -236,29 +290,33 @@ try {
     movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, openaiSettingsService,
     conversationTurnService,
   });
+  shutdown.register('resource_sync', 60, () => movieResourceSyncService.stop());
+  shutdown.register('resource_checks', 70, () => movieResourceChecks.stop());
+  shutdown.register('http_server', 50, () => app.close());
+  app.addHook('onRequest', async (_request, reply) => {
+    if (shutdown.requested) return reply.code(503).send({ code: 'SERVICE_UNAVAILABLE', message: 'Application is shutting down' });
+  });
+  shutdown.assertRunning();
   await movieResourceSyncService.resumePending();
+  shutdown.assertRunning();
   externalUsageAggregation.start();
   notificationWorker.start();
   telegramWorker?.start();
-  app.addHook('onClose', async () => {
-    externalUsageAggregation.stop();
-    await telegramWorker?.stop();
-    await notificationWorker.stop();
-    await whatsappService.close();
-    await closeInfrastructure(infrastructure);
-  });
-
-  const shutdown = async (signal: NodeJS.Signals) => {
-    loggers.app.info({ signal }, 'Shutting down');
-    await app.close();
-  };
-  process.once('SIGINT', () => void shutdown('SIGINT'));
-  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+  const linkedWhatsAppOwners = await models.whatsappSessions.find({ encryptedState: { $exists: true } }).select('ownerId').lean();
+  shutdown.assertRunning();
+  await whatsappService.resume(linkedWhatsAppOwners.map(row => String(row.ownerId)));
+  shutdown.assertRunning();
+  assistantWorker.start();
 
   await app.listen({ host: config.HOST, port: config.PORT });
+  shutdown.assertRunning();
   loggers.app.info({ host: config.HOST, port: config.PORT }, 'API listening');
 } catch (error) {
-  loggers.error.fatal({ err: error }, 'API startup failed');
-  await closeInfrastructure(infrastructure);
-  process.exitCode = 1;
+  if (!shutdown.requested) {
+    loggers.error.fatal({ err: error }, 'API startup failed');
+    // The handler owns process termination after the startup barrier is released.
+    shutdownHandlers.request('startup_failure', error);
+  }
+} finally {
+  finishStartup();
 }

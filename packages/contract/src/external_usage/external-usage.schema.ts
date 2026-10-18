@@ -17,11 +17,21 @@ const ExternalProviderIdSchema = Type.String({
 });
 const DateOnlySchema = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
 
+const TokenUsageSchema = Type.Object({
+  inputTokens: Type.Integer({ minimum: 0 }),
+  outputTokens: Type.Integer({ minimum: 0 }),
+  cachedInputTokens: Type.Integer({ minimum: 0 }),
+  knownRequests: Type.Integer({ minimum: 0 }),
+  unknownRequests: Type.Integer({ minimum: 0 }),
+  unknownCachedRequests: Type.Integer({ minimum: 0 }),
+}, { additionalProperties: false });
+
 const usageMetricProperties = {
   requests: Type.Integer({ minimum: 0 }),
   successes: Type.Integer({ minimum: 0 }),
   failures: Type.Integer({ minimum: 0 }),
   averageDurationMs: Type.Integer({ minimum: 0 }),
+  tokenUsage: Type.Optional(TokenUsageSchema),
 };
 
 const UsageMetricsSchema = Type.Object(usageMetricProperties, { additionalProperties: false });
@@ -36,6 +46,7 @@ const DailyProviderUsageSchema = Type.Object({
   requests: Type.Integer({ minimum: 0 }),
   successes: Type.Integer({ minimum: 0 }),
   failures: Type.Integer({ minimum: 0 }),
+  tokenUsage: Type.Optional(TokenUsageSchema),
 }, { additionalProperties: false });
 
 const DailyUsageSchema = Type.Object({
@@ -45,6 +56,13 @@ const DailyUsageSchema = Type.Object({
 
 const OperationUsageSchema = Type.Object({
   provider: ExternalProviderIdSchema,
+  operation: Type.String({ minLength: 1, maxLength: 80 }),
+  ...usageMetricProperties,
+}, { additionalProperties: false });
+
+const ModelUsageSchema = Type.Object({
+  provider: ExternalProviderIdSchema,
+  model: Type.String({ minLength: 1, maxLength: 128 }),
   operation: Type.String({ minLength: 1, maxLength: 80 }),
   ...usageMetricProperties,
 }, { additionalProperties: false });
@@ -61,6 +79,7 @@ export const ExternalUsageResponseSchema = Type.Object({
   providers: Type.Array(ProviderUsageSchema),
   daily: Type.Array(DailyUsageSchema),
   operations: Type.Array(OperationUsageSchema),
+  models: Type.Optional(Type.Array(ModelUsageSchema)),
 }, { additionalProperties: false });
 
 export type ExternalUsageDays = Static<typeof ExternalUsageDaysSchema>;

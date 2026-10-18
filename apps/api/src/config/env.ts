@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_OPENAI_SYSTEM_PROMPT } from './system-prompts.js';
 import { supportedLocales } from '@movie-hub/contract';
 
 const booleanString = z
@@ -15,6 +16,7 @@ const mongodbFields = {
 const redisFields = {
   REDIS_URL: z.string().url().refine((url) => ['redis:', 'rediss:'].includes(new URL(url).protocol), 'must use redis:// or rediss://'),
   REDIS_KEY_PREFIX: z.string().min(1).default('movie_hub:'),
+  REDIS_LOCK_TRACE_ENABLED: booleanString.default(false),
 };
 
 const trendingFields = {
@@ -28,6 +30,7 @@ const trendingFields = {
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'local', 'dev', 'production']).default('development'),
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
   HOST: z.string().min(1).default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
   WEB_ORIGIN: z.string().url(),
@@ -72,7 +75,11 @@ const EnvSchema = z.object({
   MTEAM_RELEASE_CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(300).default(120),
   TRANSMISSION_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
   QBITTORRENT_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
+  SCAN_TRACE_ENABLED: booleanString.default(false),
+  TELEGRAM_POLL_TRACE_ENABLED: booleanString.default(false),
   TELEGRAM_BOT_TOKEN: z.string().trim().regex(/^\d+:[A-Za-z0-9_-]+$/).optional(),
+  ASSISTANT_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
+  ASSISTANT_SCAN_INTERVAL_MS: z.coerce.number().int().min(1_000).max(300_000).default(15_000),
   OPENAI_MODEL: z.string().trim().min(1).max(100).default('gpt-4.1-mini'),
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(60_000),
   OPENAI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
@@ -80,7 +87,7 @@ const EnvSchema = z.object({
   OPENAI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(100_000).default(1_000),
   OPENAI_SUMMARY_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(10_000).default(500),
   OPENAI_HISTORY_LIMIT: z.coerce.number().int().min(1).max(1_000).default(100),
-  OPENAI_SYSTEM_PROMPT: z.string().min(1).max(10_000).default('You are a concise movie discovery assistant. Do not invent movie identifiers or availability.'),
+  OPENAI_SYSTEM_PROMPT: z.string().min(1).max(10_000).default(DEFAULT_OPENAI_SYSTEM_PROMPT),
   ...trendingFields,
 }).superRefine((value, context) => {
   if (value.OPENAI_MAX_OUTPUT_TOKENS >= value.OPENAI_MAX_CONTEXT_TOKENS) {
@@ -113,7 +120,10 @@ export type TrendingConfig = z.infer<typeof TrendingEnvSchema>;
 export type MigrationConfig = z.infer<typeof MigrationEnvSchema>;
 
 export class InvalidEnvironmentError extends Error {
-  constructor(public readonly issues: string[]) {
+  constructor(
+    public readonly issues: string[]
+  )
+  {
     super(`Invalid environment:\n${issues.map((issue) => `- ${issue}`).join('\n')}`);
     this.name = 'InvalidEnvironmentError';
   }

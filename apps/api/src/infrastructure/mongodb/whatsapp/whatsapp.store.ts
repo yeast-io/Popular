@@ -6,7 +6,12 @@ import type { SecretCrypto } from '../../../modules/integrations/secret-crypto.j
 const context = (ownerId: string) => `whatsapp:${ownerId}:auth:v1`;
 
 export class MongoWhatsAppStore implements WhatsAppStore {
-  constructor(private readonly model: Model<WhatsAppSessionDocument>, private readonly secrets: SecretCrypto) {}
+  constructor(
+    private readonly model: Model<WhatsAppSessionDocument>,
+    private readonly secrets: SecretCrypto
+  )
+  {
+  }
   async exists(ownerId: string): Promise<boolean> {
     const row = await this.model.findOne({ ownerId }).select('+encryptedState').lean().exec();
     if (!row?.encryptedState) return false;

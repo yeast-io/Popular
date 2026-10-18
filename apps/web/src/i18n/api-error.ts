@@ -48,7 +48,10 @@ const errorKeys = {
 } as const satisfies Record<ErrorCode, TranslationKey>;
 
 export class LocalizedApiError extends Error {
-  constructor(readonly translationKey: TranslationKey) {
+  constructor(
+    readonly translationKey: TranslationKey
+  )
+  {
     super(translationKey);
     this.name = 'LocalizedApiError';
   }

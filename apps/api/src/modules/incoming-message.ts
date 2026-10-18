@@ -6,4 +6,6 @@ export interface IncomingMessage {
   messageId?: string;
   messageType: string;
   text?: string;
+  /** Set by the WhatsApp adapter only after checking the linked account identity. */
+  isSelfChat?: boolean;
 }

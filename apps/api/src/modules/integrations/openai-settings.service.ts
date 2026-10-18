@@ -17,7 +17,12 @@ export interface OpenAIConfigStore {
   saveValidation(ownerId: string, encryptedApiKey: string, validation: OpenAIValidation): Promise<boolean>;
 }
 export class OpenAIProbeError extends Error {
-  constructor(readonly reason: NonNullable<OpenAIValidation['failureReason']>) { super('OpenAI connection verification failed'); }
+  constructor(
+    readonly reason: NonNullable<OpenAIValidation['failureReason']>
+  )
+  {
+    super('OpenAI connection verification failed');
+  }
 }
 export class OpenAISettingsService {
   private readonly pending = new Map<string, Promise<OpenAIConfiguration>>();
@@ -27,7 +32,9 @@ export class OpenAISettingsService {
     private readonly store: OpenAIConfigStore,
     private readonly secrets: SecretCrypto,
     private readonly verification?: { model: string; verify(apiKey: string): Promise<void> },
-  ) {}
+  )
+  {
+  }
 
   async get(token: string | undefined): Promise<OpenAIConfiguration> {
     const record = await this.store.find(await this.auth.requireOwnerId(token));

@@ -44,6 +44,9 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   private readonly releaseCache = new Map<string, { expiresAt: number; value: MovieReleaseListResponse }>();
   private readonly releaseRequests = new Map<string, Promise<MovieReleaseListResponse>>();
   private draining = false;
+  private drainingTask: Promise<void> | undefined;
+  private stopped = false;
+  private readonly enqueuing = new Set<Promise<void>>();
   private lastStartedAt = 0;
   private intervalGate: Promise<void> = Promise.resolve();
   private requestGate: Promise<void> = Promise.resolve();
@@ -61,12 +64,16 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     private readonly now: () => Date = () => new Date(),
     private readonly wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
       new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  ) {}
+  )
+  {
+  }
 
   schedule(ownerId: string, tmdbId: number, options: { force?: boolean } = {}): void {
-    void this.enqueue(ownerId, tmdbId, Boolean(options.force)).catch((error) => {
+    if (this.stopped) return;
+    const task = this.enqueue(ownerId, tmdbId, Boolean(options.force)).then(() => undefined).catch((error) => {
       this.logger.error({ err: error, ownerId, tmdbId, provider: 'mteam' }, 'Could not enqueue movie resource check');
-    });
+    }).finally(() => this.enqueuing.delete(task));
+    this.enqueuing.add(task);
   }
 
   async request(ownerId: string, tmdbId: number, force = true): Promise<boolean> {
@@ -159,6 +166,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }
 
   private async enqueue(ownerId: string, tmdbId: number, force: boolean): Promise<boolean> {
+    if (this.stopped) return false;
     const config = await this.configs.find(ownerId, 'mteam');
     if (!config || config.lastFailureType === 'authentication') return false;
     const key = taskKey(ownerId, tmdbId, 'mteam');
@@ -173,7 +181,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     );
     if (!acquired) return false;
     this.queue.set(key, { ownerId, tmdbId, attemptedAt });
-    void this.drain();
+    this.drainingTask ??= this.drain().finally(() => { this.drainingTask = undefined; });
     return true;
   }
 
@@ -240,6 +248,15 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       );
       return result;
     }
+  }
+
+  async stop(): Promise<void> {
+    this.stopped = true;
+    await Promise.allSettled(this.enqueuing);
+    await this.drainingTask;
+    await Promise.allSettled(this.releaseRequests.values());
+    await this.requestGate;
+    this.releaseCache.clear();
   }
 
   private async drain(): Promise<void> {

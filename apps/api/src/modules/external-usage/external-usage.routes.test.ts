@@ -52,3 +52,22 @@ test('external usage route requires its owner and validates the requested range'
 
   await app.close();
 });
+
+test('HTTP response preserves provider token metrics and model details', async () => {
+  const tokenUsage = { inputTokens: 20, outputTokens: 5, cachedInputTokens: 10,
+    knownRequests: 1, unknownRequests: 0, unknownCachedRequests: 0 };
+  const metric = { requests: 1, successes: 1, failures: 0, totalDurationMs: 100, tokenUsage };
+  const service = new ExternalUsageService({ requireOwnerId: async () => '507f1f77bcf86cd799439011' }, {
+    readUserUsage: async () => ({ totals: metric, providers: [{ provider: 'openai', ...metric }], daily: [],
+      operations: [{ provider: 'openai', operation: 'conversation.summary', ...metric }],
+      models: [{ provider: 'openai', model: 'test-model', operation: 'conversation.summary', ...metric }] }),
+  });
+  const app = await buildApp({ config, healthDependencies: [], externalUsageService: service });
+  try {
+    const response = await app.inject({ method: 'GET', url: '/api/v1/me/external-usage' });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json().providers[0].tokenUsage, tokenUsage);
+    assert.equal(response.json().models[0].model, 'test-model');
+    assert.equal(response.json().models[0].operation, 'conversation.summary');
+  } finally { await app.close(); }
+});

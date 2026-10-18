@@ -1,3 +1,4 @@
+import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
 import type { Locale } from '@movie-hub/contract';
 import type { MovieDownloadService } from '../downloads/movie-download.service.js';
 import type { MovieCatalogStore } from '../movies/movie.types.js';
@@ -8,10 +9,19 @@ export class NotificationWorker {
   private timer?: ReturnType<typeof setInterval>;
   private running: Promise<void> | undefined;
   private stopped = false;
-  constructor(private readonly service: NotificationService, private readonly downloads: Pick<MovieDownloadService, 'inspect'>,
-    private readonly movies: Pick<MovieCatalogStore, 'readMovies'>, private readonly locale: Locale, private readonly webOrigin: string,
-    private readonly report: (event: string) => void = () => undefined,
-    private readonly now: () => Date = () => new Date(), private readonly poster: (path: string) => Promise<Buffer | undefined> = loadPoster) {}
+  constructor(
+    private readonly service: NotificationService,
+    private readonly downloads: Pick<MovieDownloadService, 'inspect'>,
+    private readonly movies: Pick<MovieCatalogStore, 'readMovies'>,
+    private readonly locale: Locale,
+    private readonly webOrigin: string,
+    private readonly report: (event: string, fields?: Record<string, unknown>) => void = () => undefined,
+    private readonly now: () => Date = () => new Date(),
+    private readonly poster: (path: string) => Promise<Buffer | undefined> = loadPoster,
+    private readonly scanTraceEnabled = false,
+  )
+  {
+  }
   start() {
     this.stopped = false;
     this.timer = setInterval(() => { void this.tick(); }, 5_000);
@@ -21,7 +31,11 @@ export class NotificationWorker {
   async stop() { this.stopped = true; if (this.timer) clearInterval(this.timer); await this.running; }
   async tick(): Promise<void> {
     if (this.running || this.stopped) return this.running;
-    this.running = this.run().catch(() => this.report('SCAN_FAILED'));
+    const started = Date.now();
+    if (this.scanTraceEnabled) this.report('SCAN_STARTED');
+    this.running = this.run().then(() => {
+      if (this.scanTraceEnabled) this.report('SCAN_COMPLETED', { durationMs: Date.now() - started });
+    }).catch(error => this.report('SCAN_FAILED', { error: serializeDiagnosticError(error) }));
     try { await this.running; } finally { this.running = undefined; }
   }
   private async run() {

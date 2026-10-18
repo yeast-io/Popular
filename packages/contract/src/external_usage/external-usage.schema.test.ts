@@ -30,3 +30,13 @@ test('usage contracts reject unsafe provider ids', () => {
     providers: [{ ...response.providers[0], provider: 'unsafe provider' }],
   }), false);
 });
+
+test('LLM metrics accept known and unknown usage but reject negative counters', () => {
+  const tokenUsage = { inputTokens: 100, outputTokens: 20, cachedInputTokens: 40,
+    knownRequests: 1, unknownRequests: 1, unknownCachedRequests: 1 };
+  const value = { ...response, providers: [{ ...response.providers[0], provider: 'openai', tokenUsage }],
+    models: [{ ...response.operations[0], provider: 'openai', model: 'test-model', tokenUsage }] };
+  assert.equal(Value.Check(ExternalUsageResponseSchema, value), true);
+  assert.equal(Value.Check(ExternalUsageResponseSchema, { ...value,
+    providers: [{ ...value.providers[0], tokenUsage: { ...tokenUsage, unknownRequests: -1 } }] }), false);
+});

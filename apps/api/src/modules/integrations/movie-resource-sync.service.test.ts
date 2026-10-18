@@ -217,3 +217,14 @@ async function eventually(predicate: () => boolean, timeoutMs = 500): Promise<vo
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
+
+test('shutdown cancels queued batch timers and preserves batches for startup recovery', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = harness([], () => ({ started: true, result: { lastAttemptStatus: 'error', lastErrorCode: 'internal_error' } }));
+  await h.service.start('alice');
+  await h.service.stop();
+  context.mock.timers.tick(60_000);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.batches.batch?.status, 'queued');
+});

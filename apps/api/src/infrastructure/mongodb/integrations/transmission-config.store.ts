@@ -4,7 +4,11 @@ import type { TransmissionConfigRecord, TransmissionConfigStore } from '../../..
 import type { TransmissionConfigDocument } from './transmission-config.schema.js';
 
 export class MongoTransmissionConfigStore implements TransmissionConfigStore {
-  constructor(private readonly configs: Model<TransmissionConfigDocument>) {}
+  constructor(
+    private readonly configs: Model<TransmissionConfigDocument>
+  )
+  {
+  }
 
   async find(ownerId: string): Promise<TransmissionConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId }).select('+encryptedCredential').lean().exec();

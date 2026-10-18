@@ -5,19 +5,23 @@ export interface ExternalUsageAggregator {
 }
 
 export interface ExternalUsageAggregationLogger {
+  info?(bindings: Record<string, unknown>, message: string): void;
   error(bindings: Record<string, unknown>, message: string): void;
 }
 
 export class ExternalUsageAggregationService {
   private timer: NodeJS.Timeout | undefined;
-  private running = false;
+  private running: Promise<void> | undefined;
 
   constructor(
     private readonly store: ExternalUsageAggregator,
     private readonly logger: ExternalUsageAggregationLogger,
     private readonly intervalMs = 5 * 60 * 1_000,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+    private readonly scanTraceEnabled = false,
+  )
+  {
+  }
 
   start(): void {
     if (this.timer) return;
@@ -26,22 +30,22 @@ export class ExternalUsageAggregationService {
     this.timer.unref();
   }
 
-  stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
+  async stop(): Promise<void> {
+    if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    await this.running;
   }
 
-  private async rebuild(since: Date): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      await this.store.rebuildDaily(since);
-    } catch (error) {
+  private rebuild(since: Date): Promise<void> {
+    if (this.running) return this.running;
+    const started = Date.now();
+    if (this.scanTraceEnabled) this.logger.info?.({ event: 'external_usage_scan_started', since }, 'External usage aggregation started');
+    this.running = this.store.rebuildDaily(since).then(() => {
+      if (this.scanTraceEnabled) this.logger.info?.({ event: 'external_usage_scan_completed', since, durationMs: Date.now() - started }, 'External usage aggregation completed');
+    }).catch(error => {
       this.logger.error({ err: error, since }, 'Could not rebuild external usage aggregates');
-    } finally {
-      this.running = false;
-    }
+    }).finally(() => { this.running = undefined; });
+    return this.running;
   }
 }
 

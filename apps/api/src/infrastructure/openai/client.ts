@@ -3,34 +3,58 @@ import { AppError } from '../http/app-error.js';
 import type OpenAI from 'openai';
 import type { LlmClient, LlmGenerateInput, LlmGenerateResult, LlmStreamEvent, LlmFailureDiagnostics } from '../../modules/llm/llm.types.js';
 import { LlmProviderError } from '../../modules/llm/llm.types.js';
+import { OpenAIRequestAccounting, readTokenUsage, type OpenAIAccountingOptions, type OpenAIRequestAttempt, type RecordedTokenUsage } from './request-accounting.js';
 
 export class OpenAILlmClient implements LlmClient {
+  private readonly accounting: OpenAIRequestAccounting;
   constructor(
     private readonly client: Pick<OpenAI, 'responses'>,
     private readonly model: string,
-  ) {}
+    accounting?: OpenAIAccountingOptions,
+  )
+  {
+    this.accounting = new OpenAIRequestAccounting(model, accounting);
+  }
 
   async generate(input: LlmGenerateInput): Promise<LlmGenerateResult> {
     currentAiTrace()?.event('openai.request.started', { model: this.model, maxOutputTokens: input.maxOutputTokens, streaming: false });
+    let attempt: OpenAIRequestAttempt | undefined;
+    let usage: RecordedTokenUsage | undefined;
+    let responseModel: string | undefined;
+    let outcome: 'success' | 'failure' = 'failure';
+    let failure: unknown;
     try {
-      const response = await this.client.responses.create({
+      const tracked = await this.accounting.request(input, () => this.client.responses.create({
         model: this.model,
         input: input.messages.map(({ role, content }) => ({ role, content })),
         max_output_tokens: input.maxOutputTokens,
         store: false,
-      }, input.signal ? { signal: input.signal } : undefined);
+        ...(input.outputSchema ? { text: { format: {
+          type: 'json_schema' as const, name: input.outputSchema.name,
+          schema: input.outputSchema.schema, strict: true,
+        } } } : {}),
+      }, { maxRetries: 0, ...(input.signal ? { signal: input.signal } : {}) }));
+      const response = tracked.response;
+      attempt = tracked.attempt;
+      usage = readTokenUsage(response.usage);
+      responseModel = response.model;
+      if (response.status && response.status !== 'completed') {
+        throw new LlmProviderError('OpenAI response did not complete');
+      }
       if (!response.output_text.trim()) {
         throw new LlmProviderError('OpenAI returned no output text');
       }
-      if (!response.usage) {
+      if (!usage) {
         throw new LlmProviderError('OpenAI returned no token usage');
       }
+      outcome = 'success';
       return {
         content: response.output_text,
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
       };
     } catch (error) {
+      failure = error;
       if (error instanceof AppError || error instanceof LlmProviderError) throw error;
       const upstream = error as { status?: number; code?: string } | null;
       if (upstream?.status === 401 || upstream?.status === 403) {
@@ -40,20 +64,27 @@ export class OpenAILlmClient implements LlmClient {
         throw new AppError(429, upstream.code === 'insufficient_quota' ? 'OPENAI_QUOTA_EXCEEDED' : 'OPENAI_RATE_LIMITED', 'OpenAI quota or rate limit reached', undefined, { cause: error });
       }
       throw new LlmProviderError('OpenAI response generation failed', { cause: error });
-    }
+    } finally { await attempt?.finish(outcome, usage, responseModel, failure); }
   }
 
   async *stream(input: LlmGenerateInput): AsyncIterable<LlmStreamEvent> {
     currentAiTrace()?.event('openai.request.started', { model: this.model, maxOutputTokens: input.maxOutputTokens, streaming: true });
     const diagnostics: LlmFailureDiagnostics = { reason: 'upstream_exception', receivedText: false };
+    let attempt: OpenAIRequestAttempt | undefined;
+    let usage: RecordedTokenUsage | undefined;
+    let responseModel: string | undefined;
+    let outcome: 'success' | 'failure' = 'failure';
+    let failure: unknown;
     try {
-      const stream = await this.client.responses.create({
+      const tracked = await this.accounting.request(input, () => this.client.responses.create({
         model: this.model,
         input: input.messages.map(({ role, content }) => ({ role, content })),
         max_output_tokens: input.maxOutputTokens,
         store: false,
         stream: true,
-      }, input.signal ? { signal: input.signal } : undefined);
+      }, { maxRetries: 0, ...(input.signal ? { signal: input.signal } : {}) }));
+      const stream = tracked.response;
+      attempt = tracked.attempt;
       let completed = false;
 
       for await (const event of stream) {
@@ -68,18 +99,24 @@ export class OpenAILlmClient implements LlmClient {
           continue;
         }
         if (event.type === 'response.completed') {
-          const usage = event.response.usage;
+          usage = readTokenUsage(event.response.usage);
+          responseModel = event.response.model;
           if (!usage) throw new LlmProviderError('OpenAI returned no token usage', undefined, { ...diagnostics, reason: 'missing_usage' });
-          currentAiTrace()?.event('openai.response.completed', { responseId: diagnostics.responseId, inputTokens: usage.input_tokens, outputTokens: usage.output_tokens });
+          currentAiTrace()?.event('openai.response.completed', { responseId: diagnostics.responseId, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens });
           completed = true;
+          outcome = 'success';
           yield {
             type: 'completed',
-            inputTokens: usage.input_tokens,
-            outputTokens: usage.output_tokens,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
           };
           continue;
         }
         if (event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') {
+          if ('response' in event) {
+            usage = readTokenUsage(event.response.usage);
+            responseModel = event.response.model;
+          }
           if (event.type === 'response.incomplete') {
             diagnostics.incompleteReason = safeCode(event.response.incomplete_details?.reason);
           }
@@ -92,6 +129,8 @@ export class OpenAILlmClient implements LlmClient {
 
       if (!completed) throw new LlmProviderError('OpenAI stream ended before completion', undefined, { ...diagnostics, reason: 'missing_completion' });
     } catch (error) {
+      failure = error;
+      outcome = 'failure';
       if (error instanceof AppError || error instanceof LlmProviderError) throw error;
       const upstream = error as { status?: number; code?: string } | null;
       if (upstream?.status === 401 || upstream?.status === 403) {
@@ -107,7 +146,7 @@ export class OpenAILlmClient implements LlmClient {
       diagnostics.upstreamCode = safeCode(metadata?.code);
       diagnostics.upstreamRequestId = safeIdentifier(metadata?.request_id, 'req_');
       throw new LlmProviderError('OpenAI response streaming failed', { cause: error }, diagnostics);
-    }
+    } finally { await attempt?.finish(outcome, usage, responseModel, failure); }
   }
 }
 

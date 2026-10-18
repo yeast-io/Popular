@@ -12,13 +12,20 @@ export class AiTrace {
   private readonly secrets = new Set<string>();
   private lastStage = 'request';
   private failedStage: string | undefined;
-  constructor(private readonly logger: AiLogger | undefined, private readonly bindings: Record<string, unknown>, content: string) {
+  constructor(
+    private readonly logger: AiLogger | undefined,
+    private readonly bindings: Record<string, unknown>,
+    content: string,
+    private readonly operation?: string,
+    private readonly eventsEnabled = true,
+  )
+  {
     this.sensitive(content);
   }
   sensitive(value: string): void { if (value) this.secrets.add(value); }
   event(stage: string, fields: Record<string, unknown> = {}): void {
     this.lastStage = stage;
-    this.logger?.info?.({ ...this.bindings, operation: 'conversation.turn', stage, elapsedMs: Date.now() - this.started, ...fields }, stage);
+    if (this.eventsEnabled) this.logger?.info?.({ ...this.bindings, operation: this.operation ?? 'conversation.turn', stage, elapsedMs: Date.now() - this.started, ...fields }, stage);
   }
   async step<T>(stage: string, action: () => Promise<T>, fields: Record<string, unknown> = {}): Promise<T> {
     const start = Date.now();
@@ -32,12 +39,14 @@ export class AiTrace {
       throw error;
     }
   }
+  /** Clear a recorded failure after the caller has handled it and continues execution. */
+  clearFailure(): void { this.failedStage = undefined; }
   fail(error: unknown, fields: Record<string, unknown> = {}): void {
     this.logger?.error({
-      ...this.bindings, operation: 'conversation.stream', stage: this.failedStage ?? this.lastStage,
+      ...this.bindings, operation: this.operation ?? 'conversation.stream', stage: this.failedStage ?? this.lastStage,
       elapsedMs: Date.now() - this.started, ...fields,
       error: serializeDiagnosticError(error, [...this.secrets]),
-    }, 'AI conversation request failed');
+    }, this.operation ? `${this.operation} failed` : 'AI conversation request failed');
   }
 }
 

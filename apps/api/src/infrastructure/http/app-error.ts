@@ -7,7 +7,8 @@ export class AppError extends Error {
     message: string,
     public readonly details?: unknown,
     options?: ErrorOptions,
-  ) {
+  )
+  {
     super(message, options);
     this.name = 'AppError';
   }

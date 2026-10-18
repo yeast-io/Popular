@@ -18,7 +18,9 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     private readonly people?: Model<PersonDocument>,
     private readonly credits?: Model<MovieCreditDocument>,
     private readonly trendingStates?: Model<TrendingStateDocument>,
-  ) {}
+  )
+  {
+  }
 
   async publishSnapshot(record: TrendingSnapshotRecord, locale: Locale): Promise<void> {
     const states = this.requireTrendingStates();

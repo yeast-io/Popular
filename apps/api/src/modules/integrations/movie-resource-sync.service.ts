@@ -16,6 +16,9 @@ interface SyncLogger {
 
 export class MovieResourceSyncService {
   private readonly running = new Set<string>();
+  private readonly tasks = new Set<Promise<void>>();
+  private readonly timers = new Set<ReturnType<typeof setTimeout>>();
+  private stopped = false;
   private static readonly STALE_CHECK_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 
   constructor(
@@ -29,7 +32,9 @@ export class MovieResourceSyncService {
     private readonly now: () => Date = () => new Date(),
     private readonly wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
       new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  ) {}
+  )
+  {
+  }
 
   async start(ownerId: string): Promise<MovieResourceSyncBatch> {
     const active = await this.batches.readCurrent(ownerId);
@@ -71,27 +76,47 @@ export class MovieResourceSyncService {
   }
 
   private run(batch: StoredMovieResourceSyncBatch): void {
-    if (!['queued', 'running', 'paused'].includes(batch.status) || this.running.has(batch.id)) return;
+    if (this.stopped || !['queued', 'running', 'paused'].includes(batch.status) || this.running.has(batch.id)) return;
     const delay = batch.status === 'paused' && batch.resumeAt
       ? Math.max(0, new Date(batch.resumeAt).getTime() - this.now().getTime())
       : 0;
     this.running.add(batch.id);
-    setTimeout(() => {
-      void this.process(batch).catch((error) => {
+    this.schedule(() => {
+      const task = this.process(batch).catch((error) => {
         this.logger.error({ err: error, batchId: batch.id, ownerId: batch.ownerId }, 'Movie resource sync batch crashed');
         return this.batches.finish(batch.id, 'failed');
-      }).finally(() => this.running.delete(batch.id));
+      }).finally(() => { this.running.delete(batch.id); this.tasks.delete(task); });
+      this.tasks.add(task);
     }, delay);
+  }
+
+  private schedule(action: () => void, delay: number): void {
+    if (this.stopped) return;
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      if (!this.stopped) action();
+    }, delay);
+    this.timers.add(timer);
+  }
+
+  async stop(): Promise<void> {
+    this.stopped = true;
+    for (const timer of this.timers) clearTimeout(timer);
+    this.timers.clear();
+    await Promise.allSettled(this.tasks);
+    this.running.clear();
   }
 
   private async process(batch: StoredMovieResourceSyncBatch): Promise<void> {
     await this.batches.setRunning(batch.id);
     this.logger.info({ batchId: batch.id, ownerId: batch.ownerId, total: batch.total }, 'Movie resource sync batch started');
     for (let index = batch.cursor; index < batch.movieIds.length; index += 1) {
+      if (this.stopped) return;
       const tmdbId = batch.movieIds[index];
       if (!tmdbId) continue;
       const execution = await this.checker.checkNowDetailed(batch.ownerId, tmdbId, batch.force);
       const result = execution.started ? execution.result : await this.waitForExistingCheck(batch.ownerId, tmdbId);
+      if (this.stopped && !execution.started) return;
       if (result.lastAttemptStatus === 'error' && result.lastErrorCode === 'authentication') {
         await this.batches.finish(batch.id, 'failed', 'update_api_key');
         return;
@@ -105,7 +130,7 @@ export class MovieResourceSyncService {
         const resumeAt = new Date(this.now().getTime() + this.retryDelayMs);
         const nextRateLimitRetries = batch.rateLimitRetries + 1;
         await this.batches.pause(batch.id, resumeAt);
-        setTimeout(() => this.run({
+        this.schedule(() => this.run({
           ...batch, cursor: index, status: 'paused', resumeAt: resumeAt.toISOString(),
           rateLimitRetries: nextRateLimitRetries,
         }), this.retryDelayMs);
@@ -113,6 +138,7 @@ export class MovieResourceSyncService {
       }
       await this.batches.advance(batch.id, counterFor(result));
     }
+    if (this.stopped) return;
     await this.batches.finish(batch.id, 'completed');
     this.logger.info({ batchId: batch.id, ownerId: batch.ownerId, total: batch.total }, 'Movie resource sync batch completed');
   }
@@ -127,7 +153,7 @@ export class MovieResourceSyncService {
           : { lastAttemptStatus: 'error', lastErrorCode: 'internal_error' };
       }
       await this.wait(Math.min(250, Math.max(0, deadline - Date.now())));
-    } while (Date.now() < deadline);
+    } while (!this.stopped && Date.now() < deadline);
     return { lastAttemptStatus: 'error', lastErrorCode: 'internal_error' };
   }
 

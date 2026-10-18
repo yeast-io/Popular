@@ -47,6 +47,7 @@ async function loadUsage() {
 function providerLabel(provider: string): string {
   if (provider === 'tmdb') return t('usage.provider.tmdb');
   if (provider === 'mteam') return t('usage.provider.mteam');
+  if (provider === 'openai') return t('usage.provider.openai');
   return provider;
 }
 
@@ -59,6 +60,10 @@ function operationLabel(operation: string): string {
     'connection.test': 'usage.operation.connectionTest',
     'torrent.download_token': 'usage.operation.downloadToken',
     'torrent.download': 'usage.operation.torrentDownload',
+    'conversation.reply': 'usage.operation.conversationReply',
+    'conversation.summary': 'usage.operation.conversationSummary',
+    'assistant.intent': 'usage.operation.assistantIntent',
+    'assistant.discuss': 'usage.operation.assistantDiscuss',
   } as const;
   const key = known[operation as keyof typeof known];
   return key ? t(key) : operation;
@@ -84,6 +89,16 @@ function duration(milliseconds: number): string {
   return milliseconds < 1_000
     ? t('usage.durationMs', { value: formatNumber(milliseconds) })
     : t('usage.durationSeconds', { value: formatNumber(milliseconds / 1_000, { maximumFractionDigits: 1 }) });
+}
+
+type TokenUsage = NonNullable<ExternalUsageResponse['totals']['tokenUsage']>;
+function tokens(usage: TokenUsage | undefined, field: 'inputTokens' | 'outputTokens' | 'cachedInputTokens'): string {
+  if (!usage) return '—';
+  const unknown = field === 'cachedInputTokens' ? usage.unknownCachedRequests : usage.unknownRequests;
+  const known = field === 'cachedInputTokens'
+    ? usage.knownRequests + usage.unknownRequests - usage.unknownCachedRequests : usage.knownRequests;
+  if (known === 0) return t('usage.unknown');
+  return `${formatNumber(usage[field])}${unknown > 0 ? ' + ?' : ''}`;
 }
 </script>
 
@@ -173,7 +188,14 @@ function duration(milliseconds: number): string {
               <dl>
                 <div><dt>{{ t('usage.failures') }}</dt><dd>{{ formatNumber(provider.failures) }}</dd></div>
                 <div><dt>{{ t('usage.averageDuration') }}</dt><dd>{{ duration(provider.averageDurationMs) }}</dd></div>
+                <template v-if="provider.tokenUsage">
+                  <div><dt>{{ t('usage.inputTokens') }}</dt><dd>{{ tokens(provider.tokenUsage, 'inputTokens') }}</dd></div>
+                  <div><dt>{{ t('usage.cachedInputTokens') }}</dt><dd>{{ tokens(provider.tokenUsage, 'cachedInputTokens') }}</dd></div>
+                  <div><dt>{{ t('usage.outputTokens') }}</dt><dd>{{ tokens(provider.tokenUsage, 'outputTokens') }}</dd></div>
+                </template>
               </dl>
+              <p v-if="provider.tokenUsage?.unknownRequests" class="usage-note">{{ t('usage.unknownUsage', { count: provider.tokenUsage.unknownRequests }) }}</p>
+              <p v-if="provider.tokenUsage?.unknownCachedRequests" class="usage-note">{{ t('usage.unknownCachedUsage', { count: provider.tokenUsage.unknownCachedRequests }) }}</p>
             </article>
           </div>
         </section>
@@ -182,7 +204,7 @@ function duration(milliseconds: number): string {
           <div class="usage-panel-heading"><div><h2 id="usage-operation-title">{{ t('usage.operations') }}</h2><p>{{ t('usage.operationsDescription') }}</p></div></div>
           <div class="usage-table-scroll">
             <table class="usage-table">
-              <thead><tr><th>{{ t('usage.service') }}</th><th>{{ t('usage.operation') }}</th><th>{{ t('usage.calls') }}</th><th>{{ t('usage.failures') }}</th><th>{{ t('usage.averageDuration') }}</th></tr></thead>
+              <thead><tr><th>{{ t('usage.service') }}</th><th>{{ t('usage.operation') }}</th><th>{{ t('usage.calls') }}</th><th>{{ t('usage.failures') }}</th><th>{{ t('usage.averageDuration') }}</th><th>{{ t('usage.inputTokens') }}</th><th>{{ t('usage.cachedInputTokens') }}</th><th>{{ t('usage.outputTokens') }}</th></tr></thead>
               <tbody>
                 <tr v-for="operation in usage.operations" :key="`${operation.provider}:${operation.operation}`">
                   <td><span class="usage-provider-dot" :style="{ background: providerColor(operation.provider) }" />{{ providerLabel(operation.provider) }}</td>
@@ -190,6 +212,28 @@ function duration(milliseconds: number): string {
                   <td>{{ formatNumber(operation.requests) }}</td>
                   <td>{{ formatNumber(operation.failures) }}</td>
                   <td>{{ duration(operation.averageDurationMs) }}</td>
+                  <td>{{ tokens(operation.tokenUsage, 'inputTokens') }}</td>
+                  <td>{{ tokens(operation.tokenUsage, 'cachedInputTokens') }}</td>
+                  <td>{{ tokens(operation.tokenUsage, 'outputTokens') }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section v-if="usage.models?.length" class="usage-panel" aria-labelledby="usage-model-title">
+          <div class="usage-panel-heading"><div><h2 id="usage-model-title">{{ t('usage.models') }}</h2><p>{{ t('usage.tokenNote') }}</p></div></div>
+          <div class="usage-table-scroll">
+            <table class="usage-table">
+              <thead><tr><th>{{ t('usage.model') }}</th><th>{{ t('usage.operation') }}</th><th>{{ t('usage.calls') }}</th><th>{{ t('usage.failures') }}</th><th>{{ t('usage.averageDuration') }}</th><th>{{ t('usage.inputTokens') }}</th><th>{{ t('usage.cachedInputTokens') }}</th><th>{{ t('usage.outputTokens') }}</th></tr></thead>
+              <tbody>
+                <tr v-for="model in usage.models" :key="`${model.provider}:${model.model}:${model.operation}`">
+                  <td>{{ model.model }}</td><td>{{ operationLabel(model.operation) }}</td>
+                  <td>{{ formatNumber(model.requests) }}</td><td>{{ formatNumber(model.failures) }}</td>
+                  <td>{{ duration(model.averageDurationMs) }}</td>
+                  <td>{{ tokens(model.tokenUsage, 'inputTokens') }}</td>
+                  <td>{{ tokens(model.tokenUsage, 'cachedInputTokens') }}</td>
+                  <td>{{ tokens(model.tokenUsage, 'outputTokens') }}</td>
                 </tr>
               </tbody>
             </table>

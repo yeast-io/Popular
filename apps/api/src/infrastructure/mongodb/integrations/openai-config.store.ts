@@ -4,7 +4,11 @@ import type { OpenAIConfigDocument } from './openai-config.schema.js';
 import type { OpenAIConfigRecord, OpenAIConfigStore } from '../../../modules/integrations/openai-settings.service.js';
 
 export class MongoOpenAIConfigStore implements OpenAIConfigStore {
-  constructor(private readonly configs: Model<OpenAIConfigDocument>) {}
+  constructor(
+    private readonly configs: Model<OpenAIConfigDocument>
+  )
+  {
+  }
   async find(ownerId: string): Promise<OpenAIConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId }).select('+encryptedApiKey').lean().exec();
     return row ? { ownerId: row.ownerId.toString(), encryptedApiKey: row.encryptedApiKey, maskedApiKey: row.maskedApiKey,

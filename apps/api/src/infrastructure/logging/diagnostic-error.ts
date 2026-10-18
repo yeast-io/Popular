@@ -6,6 +6,8 @@ export function redactDiagnosticText(text: string, sensitiveValues: readonly str
     if (escaped !== value) safe = safe.split(escaped).join('[REDACTED]');
   }
   return safe
+    .replace(/(api\.telegram\.org\/bot)[^/\s]+/gi, '$1[REDACTED]')
+    .replace(/\b\d{5,}:[a-zA-Z0-9_-]{15,}\b/g, '[REDACTED]')
     .replace(/\bsk-[a-zA-Z0-9_-]+/g, '[REDACTED]')
     .replace(/(Bearer\s+)[^\s"',}]+/gi, '$1[REDACTED]')
     .replace(/((?:mongodb(?:\+srv)?|rediss?|https?):\/\/)[^\s/@:]+(?::[^\s/@]*)?@/gi, '$1[REDACTED]@')

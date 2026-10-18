@@ -35,6 +35,12 @@ const externalRequestEventSchema = new Schema({
   durationMs: { type: Number, required: true, min: 0 },
   operationId: { type: String, required: true, maxlength: 80 },
   attempt: { type: Number, required: true, min: 1 },
+  model: { type: String, maxlength: 128 },
+  tokenUsage: { type: new Schema({
+    inputTokens: { type: Number, required: true, min: 0 },
+    outputTokens: { type: Number, required: true, min: 0 },
+    cachedInputTokens: { type: Number, min: 0 },
+  }, { _id: false }), required: false },
   occurredAt: { type: Date, required: true },
   expiresAt: { type: Date, required: true },
 }, { collection: 'external_request_events', versionKey: false });

@@ -26,6 +26,7 @@ export function buildSummaryRequest(
       },
     ],
     maxOutputTokens,
+    operation: 'conversation.summary',
   };
 }
 

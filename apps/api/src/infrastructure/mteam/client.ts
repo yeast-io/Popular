@@ -17,7 +17,9 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
   constructor(
     private readonly timeoutMs: number,
     private readonly usage?: ExternalRequestRecorder,
-  ) {}
+  )
+  {
+  }
 
   async verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void> {
     const body = await withAbsoluteTimeout(this.timeoutMs, async (signal) => {

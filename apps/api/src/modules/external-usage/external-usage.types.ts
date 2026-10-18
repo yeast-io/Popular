@@ -36,6 +36,10 @@ export interface ExternalRequestEventInput extends ExternalRequestContext {
   occurredAt: Date;
   httpStatus?: number;
   errorCode?: ExternalRequestErrorCode;
+  /** Model metadata only; never include prompts, outputs, or API credentials. */
+  model?: string;
+  /** Absent when the provider did not return trustworthy usage. Cached tokens are part of input tokens. */
+  tokenUsage?: { inputTokens: number; outputTokens: number; cachedInputTokens?: number };
 }
 
 export interface ExternalRequestRecorder {
@@ -47,6 +51,16 @@ export interface ExternalUsageMetricRecord {
   successes: number;
   failures: number;
   totalDurationMs: number;
+  tokenUsage?: TokenUsageMetrics;
+}
+
+export interface TokenUsageMetrics {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  knownRequests: number;
+  unknownRequests: number;
+  unknownCachedRequests: number;
 }
 
 export interface ExternalUsageQueryResult {
@@ -54,6 +68,7 @@ export interface ExternalUsageQueryResult {
   providers: Array<ExternalUsageMetricRecord & { provider: string }>;
   daily: Array<Omit<ExternalUsageMetricRecord, 'totalDurationMs'> & { date: string; provider: string }>;
   operations: Array<ExternalUsageMetricRecord & { provider: string; operation: string }>;
+  models?: Array<ExternalUsageMetricRecord & { provider: string; model: string; operation: string }>;
 }
 
 export interface ExternalUsageReader {

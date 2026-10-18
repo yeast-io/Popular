@@ -7,6 +7,10 @@ export interface LlmGenerateInput {
   messages: LlmMessage[];
   maxOutputTokens: number;
   signal?: AbortSignal;
+  /** Optional strict JSON response schema for non-streaming classification. */
+  outputSchema?: { name: string; schema: Record<string, unknown> };
+  /** Attribution for request statistics; not included in the provider payload. */
+  operation?: 'conversation.reply' | 'conversation.summary' | 'assistant.intent' | 'assistant.discuss';
 }
 
 export interface LlmGenerateResult {
@@ -36,7 +40,12 @@ export interface LlmFailureDiagnostics {
 }
 
 export class LlmProviderError extends Error {
-  constructor(message: string, options?: ErrorOptions, public readonly diagnostics?: LlmFailureDiagnostics) {
+  constructor(
+    message: string,
+    options?: ErrorOptions,
+    public readonly diagnostics?: LlmFailureDiagnostics
+  )
+  {
     super(message, options);
     this.name = 'LlmProviderError';
   }

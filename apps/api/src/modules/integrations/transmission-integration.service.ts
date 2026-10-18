@@ -21,7 +21,9 @@ export class TransmissionIntegrationService {
     private readonly client: Pick<TransmissionClientPort, 'verify'>,
     private readonly secrets: SecretCrypto,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+  )
+  {
+  }
 
   async get(token: string | undefined): Promise<TransmissionConfiguration> {
     return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)));

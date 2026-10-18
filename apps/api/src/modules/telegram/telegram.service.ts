@@ -1,3 +1,4 @@
+import { AiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
 import { createHash, randomBytes } from 'node:crypto';
 import type { TelegramBinding, TelegramConfiguration } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
@@ -22,13 +23,20 @@ export interface TelegramTransport {
   username(): Promise<string>;
   send(chatId: string, text: string, parseMode?: 'HTML'): Promise<string>;
   sendPhoto(chatId: string, photo: Buffer, caption: string): Promise<string>;
-  updates(offset: number): Promise<TelegramUpdate[]>;
+  updates(offset: number, signal?: AbortSignal): Promise<TelegramUpdate[]>;
 }
 export const bindingHash = (value: string): string => createHash('sha256').update(value).digest('hex');
 export class TelegramService {
-  constructor(private readonly auth: Pick<AuthService, 'requireOwnerId'>, private readonly store: TelegramStore,
-    private readonly transport?: TelegramTransport, private readonly now: () => Date = () => new Date(),
-    private readonly receive: (ownerId: string, message: IncomingMessage) => void = () => undefined) {}
+  constructor(
+    private readonly auth: Pick<AuthService, 'requireOwnerId'>,
+    private readonly store: TelegramStore,
+    private readonly transport?: TelegramTransport,
+    private readonly now: () => Date = () => new Date(),
+    private readonly receive: (ownerId: string, message: IncomingMessage) => void | Promise<void> = () => undefined,
+    private readonly logger?: AiLogger,
+  )
+  {
+  }
   async get(token: string | undefined): Promise<TelegramConfiguration> {
     const owner = await this.auth.requireOwnerId(token);
     if (!this.transport) return { status: 'unavailable' };
@@ -48,27 +56,50 @@ export class TelegramService {
   }
   async accept(update: TelegramUpdate): Promise<void> {
     const message = update.message;
-    if (!message || message.chat.type !== 'private' || !message.from || message.from.is_bot || message.from.id !== message.chat.id || !Number.isSafeInteger(message.chat.id) || message.chat.id <= 0) return;
-    const match = /^\/start(?:@[A-Za-z0-9_]+)? ([A-Za-z0-9_-]{43})$/.exec(message.text ?? '');
-    if (!match) {
-      // Never include binding commands (including malformed/expired links) in message logs.
-      if (/^\/start(?:@\S+)?(?:\s|$)/.test(message.text ?? '')) return;
-      const chatId = String(message.chat.id);
-      const ownerId = await this.store.findOwnerByChatId(chatId);
-      if (!ownerId) return;
-      const messageType = message.text !== undefined ? 'text'
-        : ['photo', 'video', 'audio', 'voice', 'document', 'sticker'].find(key => message[key as keyof typeof message] != null) ?? 'unknown';
-      const text = message.text ?? message.caption;
-      this.receive(ownerId, { channel: 'telegram', senderId: String(message.from.id), chatId, messageType,
-        ...(message.message_id !== undefined ? { messageId: String(message.message_id) } : {}),
-        ...(text !== undefined ? { text } : {}) });
-      return;
-    }
-    // The bearer link is never logged or stored in plaintext. Unique chat index prevents cross-owner replacement.
-    await this.store.consume(bindingHash(match[1]!), String(message.chat.id),
-      message.from.username ? `@${message.from.username}` : (message.from.first_name ?? String(message.chat.id)).slice(0, 100), this.now());
+    const trace = new AiTrace(this.logger, { event: 'telegram_message', channel: 'telegram', updateId: update.update_id,
+      messageId: message?.message_id, chatId: message?.chat.id }, message?.text ?? message?.caption ?? '', 'telegram.receive');
+    trace.sensitive((message?.text ?? message?.caption ?? '').trim());
+    await withAiTrace(trace, async () => {
+      const skip = (reason: string) => trace.event('telegram.message.filtered', { reason });
+      if (!message) return skip('no_message');
+      if (message.chat.type !== 'private') return skip('not_private_chat');
+      if (!message.from) return skip('missing_sender');
+      if (message.from.is_bot) return skip('bot_sender');
+      if (message.from.id !== message.chat.id) return skip('sender_chat_mismatch');
+      if (!Number.isSafeInteger(message.chat.id) || message.chat.id <= 0) return skip('invalid_chat_id');
+      const match = /^\/start(?:@[A-Za-z0-9_]+)? ([A-Za-z0-9_-]{43})$/.exec(message.text ?? '');
+      if (!match) {
+        if (/^\/start(?:@\S+)?(?:\s|$)/.test(message.text ?? '')) return skip('binding_command');
+        const chatId = String(message.chat.id);
+        const ownerId = await trace.step('telegram.binding.lookup', () => this.store.findOwnerByChatId(chatId));
+        if (!ownerId) return skip('chat_not_bound');
+        const messageType = message.text !== undefined ? 'text'
+          : ['photo', 'video', 'audio', 'voice', 'document', 'sticker'].find(key => message[key as keyof typeof message] != null) ?? 'unknown';
+        const text = message.text ?? message.caption;
+        trace.event('telegram.message.accepted', { ownerId, messageType });
+        await trace.step('telegram.message.dispatch', () => Promise.resolve(this.receive(ownerId, {
+          channel: 'telegram', senderId: String(message.from!.id), chatId, messageType,
+          ...(message.message_id !== undefined ? { messageId: String(message.message_id) } : {}),
+          ...(text !== undefined ? { text } : {}),
+        })), { ownerId });
+        return;
+      }
+      trace.sensitive(match[1]!);
+      // Binding tokens and user text are never included in diagnostic fields.
+      const consumed = await trace.step('telegram.binding.consume', () => this.store.consume(bindingHash(match[1]!), String(message.chat.id),
+        message.from!.username ? `@${message.from!.username}` : (message.from!.first_name ?? String(message.chat.id)).slice(0, 100), this.now()));
+      trace.event('telegram.binding.result', { consumed });
+    }).catch(error => { trace.fail(error); throw error; });
   }
+
   async remove(token: string | undefined): Promise<void> { await this.store.remove(await this.auth.requireOwnerId(token)); }
+  async canReply(ownerId: string, chatId: string): Promise<boolean> {
+    return !!this.transport && (await this.store.find(ownerId))?.chatId === chatId;
+  }
+  async reply(ownerId: string, chatId: string, text: string): Promise<string> {
+    if (!await this.canReply(ownerId, chatId)) throw new AppError(409, 'CONFLICT', 'Telegram binding changed');
+    return this.transport!.send(chatId, text);
+  }
   async test(token: string | undefined): Promise<{ messageId: string }> {
     const owner = await this.auth.requireOwnerId(token);
     const chatId = await this.recipient(owner);

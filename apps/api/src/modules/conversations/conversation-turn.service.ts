@@ -43,7 +43,9 @@ export class ConversationTurnService {
     private readonly llm: LlmClient | ((ownerId: string) => Promise<LlmClient>),
     private readonly tokenCounter: TokenCounter,
     private readonly options: ConversationTurnOptions,
-  ) {}
+  )
+  {
+  }
 
   run(input: RunConversationTurnInput): Promise<ConversationTurnResult> {
     const key = this.turnKey(input);

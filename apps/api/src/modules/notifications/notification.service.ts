@@ -6,7 +6,13 @@ import { CHECK_INTERVAL_MS, type NotificationChannel, type NotificationPlan, typ
 
 export class NotificationService {
   private readonly channels: Map<string, NotificationChannel>;
-  constructor(private readonly auth: Pick<AuthService, 'requireOwnerId'>, readonly store: NotificationStore, channels: NotificationChannel[], private readonly now: () => Date = () => new Date()) {
+  constructor(
+    private readonly auth: Pick<AuthService, 'requireOwnerId'>,
+    readonly store: NotificationStore,
+    channels: NotificationChannel[],
+    private readonly now: () => Date = () => new Date()
+  )
+  {
     this.channels = new Map(channels.map(channel => [channel.id, channel]));
   }
   channel(id: string): NotificationChannel | undefined { return this.channels.get(id); }

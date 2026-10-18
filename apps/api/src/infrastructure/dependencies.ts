@@ -28,11 +28,13 @@ export function createInfrastructure(config: AppConfig): Infrastructure {
 
 export async function connectInfrastructure(infrastructure: Infrastructure): Promise<void> {
   try {
-    await Promise.all([
+    const results = await Promise.allSettled([
       infrastructure.mongodb.connect(),
       infrastructure.redis.connect(),
       infrastructure.minio.connect(),
     ]);
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
   } catch (error) {
     await closeInfrastructure(infrastructure);
     throw error;

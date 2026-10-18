@@ -9,7 +9,12 @@ type IdentityModel = Model<AuthIdentityDocument>;
 export class MongoAuthUserStore implements AuthUserStore {
   private transactionsSupported: boolean | undefined;
 
-  constructor(private readonly users: UserModel, private readonly identities: IdentityModel) {}
+  constructor(
+    private readonly users: UserModel,
+    private readonly identities: IdentityModel
+  )
+  {
+  }
 
   async countUsers(): Promise<number> {
     return this.users.countDocuments({}).exec();

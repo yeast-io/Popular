@@ -15,11 +15,15 @@ class FakeLlmClient implements LlmClient {
   lastInput: LlmGenerateInput | null = null;
   calls = 0;
 
-  constructor(private readonly result: LlmGenerateResult = {
-    content: 'fake assistant response',
-    inputTokens: 20,
-    outputTokens: 3,
-  }) {}
+  constructor(
+    private readonly result: LlmGenerateResult = {
+      content: 'fake assistant response',
+      inputTokens: 20,
+      outputTokens: 3,
+    }
+  )
+  {
+  }
 
   async generate(input: LlmGenerateInput): Promise<LlmGenerateResult> {
     this.calls += 1;
@@ -53,7 +57,11 @@ class FailingLlmClient implements LlmClient {
 class QueueLlmClient implements LlmClient {
   readonly inputs: LlmGenerateInput[] = [];
 
-  constructor(private readonly results: LlmGenerateResult[]) {}
+  constructor(
+    private readonly results: LlmGenerateResult[]
+  )
+  {
+  }
 
   async generate(input: LlmGenerateInput): Promise<LlmGenerateResult> {
     this.inputs.push(input);

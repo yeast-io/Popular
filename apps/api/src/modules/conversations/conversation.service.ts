@@ -12,7 +12,9 @@ export class ConversationService {
   constructor(
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly conversations: ConversationStore,
-  ) {}
+  )
+  {
+  }
 
   async createThread(token: string | undefined): Promise<ConversationThreadResponse> {
     const ownerId = await this.auth.requireOwnerId(token);

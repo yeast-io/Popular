@@ -281,3 +281,14 @@ test('a failed live query records only an error result and does not return stale
 
   assert.deepEqual(checks.completed.at(-1), { lastAttemptStatus: 'error', lastErrorCode: 'timeout' });
 });
+
+test('shutdown waits for accepted background checks and prevents new scheduled work', async () => {
+  const { checks, service } = harness();
+  service.schedule('owner-a', 603);
+  await service.stop();
+  assert.equal(checks.checking, false);
+  assert.equal(checks.completed.length, 1);
+  service.schedule('owner-a', 604);
+  assert.equal(await service.request('owner-a', 604), false);
+  assert.equal(checks.completed.length, 1);
+});

@@ -43,6 +43,22 @@ function fixture() {
   return { service, auth, store, rows, sent, transport, update, advance: (ms: number) => { now = new Date(now.getTime() + ms); } };
 }
 
+test('receiving awaits durable acceptance and replies recheck the owner binding', async () => {
+  const f = fixture();
+  let saved = false;
+  const service = new TelegramService(f.auth, f.store, f.transport, undefined, async () => {
+    await new Promise<void>(resolve => setImmediate(resolve)); saved = true;
+  });
+  const link = await service.start('alice'); await service.accept(f.update(link.bindingUrl));
+  await service.accept({ update_id: 2, message: { message_id: 1, text: 'hello', from: { id: 101 }, chat: { id: 101, type: 'private' } } });
+  assert.equal(saved, true);
+  await service.reply('alice', '101', 'hello back');
+  await assert.rejects(service.reply('bob', '101', 'must not send'), { code: 'CONFLICT' });
+  await service.remove('alice');
+  await assert.rejects(service.reply('alice', '101', 'must not send'), { code: 'CONFLICT' });
+  assert.equal(f.sent.length, 1);
+});
+
 test('one-use expiring links accept only private self chats and cannot overwrite either account binding', async () => {
   const f = fixture();
   const original = await f.service.start('alice');
@@ -91,7 +107,7 @@ test('test and download notifications always use authenticated owner binding; un
 test('incoming messages resolve the linked owner, log text/media only, and exclude binding secrets and unlinked chats', async () => {
   const f = fixture();
   const received: Array<{ ownerId: string; message: import('../incoming-message.js').IncomingMessage }> = [];
-  const service = new TelegramService(f.auth, f.store, f.transport, undefined, (ownerId, message) => received.push({ ownerId, message }));
+  const service = new TelegramService(f.auth, f.store, f.transport, undefined, (ownerId, message) => { received.push({ ownerId, message }); });
   const binding = await service.start('alice');
   await service.accept(f.update(binding.bindingUrl));
   const incoming = (text: string, id = 101): TelegramUpdate => ({ update_id: 2, message: { message_id: 7, text, from: { id }, chat: { id, type: 'private' } } });
@@ -214,4 +230,20 @@ test('photo upload sends actual poster bytes as multipart with HTML caption, wit
   });
   const invalid = new TelegramClient('123:secret', (async () => Response.json({ ok: true, result: {} })) as typeof fetch);
   await assert.rejects(() => invalid.sendPhoto('101', Buffer.from('poster'), 'text'), { code: 'SERVICE_UNAVAILABLE' });
+});
+
+test('receive diagnostics explain filtering and binding matches without logging message text', async () => {
+  const f = fixture();
+  const logs: Array<Record<string, unknown>> = [];
+  const logger = { info: (fields: Record<string, unknown>) => { logs.push(fields); }, error: (fields: Record<string, unknown>) => { logs.push(fields); } };
+  const service = new TelegramService(f.auth, f.store, f.transport, undefined, () => undefined, logger);
+  const update: TelegramUpdate = { update_id: 10, message: { message_id: 20, text: 'private message text', from: { id: 101 }, chat: { id: 101, type: 'private' } } };
+  await service.accept(update);
+  assert.ok(logs.some(line => line.reason === 'chat_not_bound' && line.messageId === 20));
+  await service.accept({ ...update, message: { ...update.message!, chat: { id: 101, type: 'group' } } });
+  assert.ok(logs.some(line => line.reason === 'not_private_chat'));
+  f.rows.set('alice', { chatId: '101' });
+  await service.accept(update);
+  assert.ok(logs.some(line => line.stage === 'telegram.message.accepted' && line.ownerId === 'alice'));
+  assert.ok(!JSON.stringify(logs).includes('private message text'));
 });

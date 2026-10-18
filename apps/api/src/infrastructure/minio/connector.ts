@@ -16,7 +16,10 @@ export class MinioConnector implements HealthDependency {
   readonly name = 'minio' as const;
   private readonly client: Client;
 
-  constructor(private readonly options: MinioOptions) {
+  constructor(
+    private readonly options: MinioOptions
+  )
+  {
     this.client = new Client({
       endPoint: options.endpoint,
       port: options.port,

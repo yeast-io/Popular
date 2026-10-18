@@ -16,8 +16,15 @@ export class WhatsAppService {
   private readonly queues = new Map<string, Promise<unknown>>();
   private closed = false;
   private readonly lastStates = new Map<string, WhatsAppConfiguration>();
-  constructor(private readonly auth: Pick<AuthService, 'requireOwnerId'>, private readonly store: WhatsAppStore, private readonly connect: WhatsAppConnector, private readonly report: (ownerId: string, event: WhatsAppDiagnostic) => void = () => undefined,
-    private readonly receive: (ownerId: string, message: IncomingMessage) => void = () => undefined) {}
+  constructor(
+    private readonly auth: Pick<AuthService, 'requireOwnerId'>,
+    private readonly store: WhatsAppStore,
+    private readonly connect: WhatsAppConnector,
+    private readonly report: (ownerId: string, event: WhatsAppDiagnostic) => void = () => undefined,
+    private readonly receive: (ownerId: string, message: IncomingMessage) => void | Promise<void> = () => undefined
+  )
+  {
+  }
 
   private async owned<T>(token: string | undefined, work: (ownerId: string) => Promise<T>): Promise<T> {
     const ownerId = await this.auth.requireOwnerId(token);
@@ -57,7 +64,7 @@ export class WhatsAppService {
           receive: async message => {
             if (this.closed || this.sessions.get(ownerId) !== session) return;
             if (!await this.store.renew(ownerId, session.leaseId)) return;
-            if (!this.closed && this.sessions.get(ownerId) === session) this.receive(ownerId, message);
+            if (!this.closed && this.sessions.get(ownerId) === session) await this.receive(ownerId, message);
           },
           report: event => this.report(ownerId, event),
           load: () => this.store.load(ownerId, session.leaseId),
@@ -101,6 +108,28 @@ export class WhatsAppService {
       }
   }
   async isConfigured(ownerId: string): Promise<boolean> { return this.store.exists(ownerId); }
+  /** Restore saved linked accounts on startup without exposing an unauthenticated HTTP endpoint. */
+  async resume(ownerIds: string[]): Promise<void> {
+    for (const ownerId of ownerIds) {
+      try { await this.serial(ownerId, () => this.startOwner(ownerId)); }
+      catch { this.report(ownerId, { event: 'connection_error' }); }
+    }
+  }
+  async canReply(ownerId: string, chatId: string): Promise<boolean> {
+    if (!await this.store.exists(ownerId)) return false;
+    const session = this.sessions.get(ownerId);
+    if (!session?.connection || session.state.status !== 'connected') throw new Error('WhatsApp unavailable');
+    return session.connection.ownsChat?.(chatId) === true;
+  }
+  async reply(ownerId: string, chatId: string, text: string): Promise<string> {
+    return this.serial(ownerId, async () => {
+      const session = this.sessions.get(ownerId);
+      if (this.closed || !session?.connection?.sendReply || session.state.status !== 'connected'
+        || session.connection.ownsChat?.(chatId) !== true
+        || !await this.store.renew(ownerId, session.leaseId)) throw new Error('WhatsApp unavailable');
+      return session.connection.sendReply(text);
+    });
+  }
   async sendNotification(ownerId: string, notification: import('../notifications/notification.types.js').DownloadNotification): Promise<{ messageId: string }> {
     return this.serial(ownerId, async () => {
       if (this.closed || !await this.store.exists(ownerId)) throw new Error('WhatsApp not linked');

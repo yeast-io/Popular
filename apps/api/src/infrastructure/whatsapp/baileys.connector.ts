@@ -1,4 +1,4 @@
-import makeWASocket, { BufferJSON, Browsers, DisconnectReason, getContentType, normalizeMessageContent, initAuthCreds, jidNormalizedUser, proto, type AuthenticationCreds, type AuthenticationState, type SignalDataSet, type BinaryNode } from '@whiskeysockets/baileys';
+import makeWASocket, { BufferJSON, Browsers, DisconnectReason, getContentType, normalizeMessageContent, initAuthCreds, jidNormalizedUser, proto, generateMessageIDV2, type AnyMessageContent, type AuthenticationCreds, type AuthenticationState, type SignalDataSet, type BinaryNode } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import type { WhatsAppConfiguration } from '@movie-hub/contract';
@@ -15,6 +15,19 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
     let socket: ReturnType<typeof makeWASocket> | undefined;
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     let attempts = 0;
+    // Reserve IDs before sending so synchronous self-chat echoes cannot start another AI run.
+    const outboundIds = new Set<string>();
+    const sendOwnMessage = async (content: AnyMessageContent) => {
+      const current = socket;
+      if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
+      const messageId = generateMessageIDV2(current.user.id);
+      outboundIds.add(messageId);
+      if (outboundIds.size > 2_000) outboundIds.delete(outboundIds.values().next().value!);
+      const result = await current.sendMessage(jidNormalizedUser(current.user.id), content, { messageId });
+      if (!result?.key.id) throw new Error('WhatsApp did not confirm acceptance');
+      outboundIds.add(result.key.id);
+      return result.key.id;
+    };
     let writes = Promise.resolve();
     let removeRefreshObserver: (() => void) | undefined;
     const fail = (failureReason: 'storage_error' | 'connection_error' = 'connection_error') => {
@@ -94,6 +107,7 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
           for (const message of messages) {
             if (stopped || closed || socket !== current) return;
             const chatId = message.key.remoteJid;
+            if (message.key.id && outboundIds.has(message.key.id)) continue;
             // Ignore groups, status, channels and outgoing messages to other people.
             if (!chatId || !/^[^@]+@(s\.whatsapp\.net|lid)$/.test(chatId)) continue;
             const selfIds = [current.user?.id, current.user?.lid].filter((id): id is string => !!id).map(jidNormalizedUser);
@@ -104,6 +118,7 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
             const text = content.conversation ?? content.extendedTextMessage?.text ?? content.imageMessage?.caption
               ?? content.videoMessage?.caption ?? content.documentMessage?.caption;
             await options.receive?.({ channel: 'whatsapp', chatId, senderId: message.key.fromMe ? jidNormalizedUser(current.user!.id) : chatId,
+              isSelfChat: selfIds.includes(jidNormalizedUser(chatId)),
               ...(message.key.id ? { messageId: message.key.id } : {}), messageType,
               ...(text != null ? { text } : {}) });
           }
@@ -166,27 +181,23 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
     }
     open();
     return {
+      sendReply: text => sendOwnMessage({ text }),
+      ownsChat: chatId => [socket?.user?.id, socket?.user?.lid].some(id => id && jidNormalizedUser(id) === jidNormalizedUser(chatId)),
       async sendSelf() {
         const current = socket;
         if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
         // The recipient is derived exclusively from this owner's linked identity.
-        const jid = jidNormalizedUser(current.user.id);
-        const result = await current.sendMessage(jid, { text: `Popular Movie AI Studio WhatsApp connection test · ${new Date().toISOString()}` });
-        if (!result?.key.id) throw new Error('WhatsApp did not confirm acceptance');
-        return result.key.id;
+        return sendOwnMessage({ text: `Popular Movie AI Studio WhatsApp connection test · ${new Date().toISOString()}` });
       },
       async sendNotification(notification) {
         const current = socket;
         if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
-        const jid = jidNormalizedUser(current.user.id);
         const caption = [
           `✅ 下载完成 · ${notification.title}`, notification.resourceName,
           `下载器: ${notification.provider} · ${(notification.totalBytes / 1024 ** 3).toFixed(2)} GiB`,
           `检测完成时间: ${notification.completedAt.toISOString()}`, notification.detailUrl,
         ].join('\n');
-        const result = await current.sendMessage(jid, notification.poster ? { image: notification.poster, caption } : { text: caption });
-        if (!result?.key.id) throw new Error('WhatsApp did not confirm acceptance');
-        return result.key.id;
+        return sendOwnMessage(notification.poster ? { image: notification.poster, caption } : { text: caption });
       },
       async stop(logout) {
         stopped = true;

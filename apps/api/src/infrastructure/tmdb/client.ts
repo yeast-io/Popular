@@ -63,7 +63,9 @@ export class TmdbClient implements TrendingProvider {
     private readonly baseUrl = 'https://api.themoviedb.org/3',
     private readonly fetcher: typeof fetch = globalThis.fetch,
     private readonly usage?: ExternalRequestRecorder,
-  ) {}
+  )
+  {
+  }
 
   async fetchPage(page: number, locale: Locale, context?: ExternalRequestContext) {
     const url = new URL(`${this.baseUrl}/trending/movie/week`);

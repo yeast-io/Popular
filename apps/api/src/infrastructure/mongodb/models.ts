@@ -1,4 +1,5 @@
 import { createTelegramModel } from './telegram/telegram.schema.js';
+import { createAssistantMessageModel } from './assistant/assistant-message.schema.js';
 import { createNotificationPreferencesModel } from './notifications/notification-preferences.schema.js';
 import { createWhatsAppModel } from './whatsapp/whatsapp.schema.js';
 import { createOpenAIConfigModel } from './integrations/openai-config.schema.js';
@@ -27,6 +28,7 @@ import { createConversationMessageModel } from './conversations/conversation-mes
 
 export function createModels(connection: Connection) {
   return {
+    assistantMessages: createAssistantMessageModel(connection),
     telegramBindings: createTelegramModel(connection),
     notificationPreferences: createNotificationPreferencesModel(connection),
     whatsappSessions: createWhatsAppModel(connection),

@@ -55,6 +55,21 @@ test('sanitizes provider failures and empty output', async () => {
   await assert.rejects(empty.generate({ messages: [], maxOutputTokens: 10 }), LlmProviderError);
 });
 
+test('classification uses a strict JSON schema and rejects incomplete output', async () => {
+  let request: Record<string, unknown> = {};
+  let status = 'completed';
+  const client = new OpenAILlmClient({ responses: { create: async (input: Record<string, unknown>) => {
+    request = input;
+    return { status, output_text: '{"intent":"discuss"}', usage: { input_tokens: 1, output_tokens: 1 } };
+  } } } as unknown as Pick<OpenAI, 'responses'>, 'test-model');
+  const input = { messages: [], maxOutputTokens: 256, outputSchema: { name: 'intent', schema: { type: 'object' } } };
+  await client.generate(input);
+  assert.deepEqual(request.text, { format: { type: 'json_schema', name: 'intent', schema: { type: 'object' }, strict: true } });
+  assert.equal(request.store, false);
+  status = 'incomplete';
+  await assert.rejects(client.generate(input), LlmProviderError);
+});
+
 test('maps Responses API text deltas and completion usage', async () => {
   let request: unknown;
   const events = async function* () {

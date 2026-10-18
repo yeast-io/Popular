@@ -43,3 +43,25 @@ test('returns only the authenticated owner usage and fills missing UTC days', as
   assert.equal(result.totals.averageDurationMs, 120);
   assert.equal(result.providers[0]?.provider, 'future_tracker');
 });
+
+test('token totals, unknown counts, and per-model operations reach the user response without fee fields', async () => {
+  const tokenUsage = { inputTokens: 100, outputTokens: 20, cachedInputTokens: 40,
+    knownRequests: 1, unknownRequests: 1, unknownCachedRequests: 1 };
+  const metric = { requests: 2, successes: 1, failures: 1, totalDurationMs: 100, tokenUsage };
+  const service = new ExternalUsageService({ requireOwnerId: async () => 'alice' }, {
+    readUserUsage: async owner => {
+      assert.equal(owner, 'alice');
+      return { totals: metric, providers: [{ provider: 'openai', ...metric }],
+        daily: [{ date: '2026-10-18', provider: 'openai', ...metric }],
+        operations: [{ provider: 'openai', operation: 'assistant.intent', ...metric }],
+        models: [{ provider: 'openai', model: 'test-model', operation: 'assistant.intent', ...metric }] };
+    },
+  }, () => new Date('2026-10-18T01:00:00Z'));
+  const result = await service.readMine('session', 7);
+  assert.deepEqual(result.totals.tokenUsage, tokenUsage);
+  assert.deepEqual(result.providers[0]!.tokenUsage, tokenUsage);
+  assert.deepEqual(result.daily.at(-1)!.providers[0]!.tokenUsage, tokenUsage);
+  assert.equal(result.models![0]!.model, 'test-model');
+  assert.equal(result.models![0]!.averageDurationMs, 50);
+  assert.ok(!JSON.stringify(result).includes('cost'));
+});

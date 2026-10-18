@@ -4,7 +4,11 @@ import type { TelegramStore, TelegramRecord } from '../../../modules/telegram/te
 
 const duplicate = (error: unknown): boolean => typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 export class MongoTelegramStore implements TelegramStore {
-  constructor(private readonly model: Model<TelegramBindingDocument>) {}
+  constructor(
+    private readonly model: Model<TelegramBindingDocument>
+  )
+  {
+  }
   async findOwnerByChatId(chatId: string): Promise<string | null> {
     const row = await this.model.findOne({ chatId }).select('ownerId').lean().exec();
     return row ? String(row.ownerId) : null;

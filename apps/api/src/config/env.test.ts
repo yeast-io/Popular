@@ -126,3 +126,39 @@ test('Telegram bot is optional; malformed tokens fail without exposing their val
     return true;
   });
 });
+
+test('validates assistant worker concurrency and recovery scan interval', () => {
+  const config = loadConfig(valid);
+  assert.equal(config.ASSISTANT_MAX_CONCURRENCY, 4);
+  assert.equal(config.ASSISTANT_SCAN_INTERVAL_MS, 15_000);
+  assert.throws(() => loadConfig({ ...valid, ASSISTANT_MAX_CONCURRENCY: '0' }), /ASSISTANT_MAX_CONCURRENCY/);
+  assert.throws(() => loadConfig({ ...valid, ASSISTANT_MAX_CONCURRENCY: '1.5' }), /ASSISTANT_MAX_CONCURRENCY/);
+  assert.throws(() => loadConfig({ ...valid, ASSISTANT_SCAN_INTERVAL_MS: '999' }), /ASSISTANT_SCAN_INTERVAL_MS/);
+});
+
+test('validates the graceful shutdown deadline', () => {
+  assert.equal(loadConfig(valid).SHUTDOWN_TIMEOUT_MS, 30_000);
+  assert.throws(() => loadConfig({ ...valid, SHUTDOWN_TIMEOUT_MS: '0' }), /SHUTDOWN_TIMEOUT_MS/);
+});
+
+test('Redis lock tracing defaults off and validates the switch for API and sync jobs', () => {
+  assert.equal(loadConfig(valid).REDIS_LOCK_TRACE_ENABLED, false);
+  assert.equal(loadConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'true' }).REDIS_LOCK_TRACE_ENABLED, true);
+  assert.equal(loadConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'false' }).REDIS_LOCK_TRACE_ENABLED, false);
+  assert.equal(loadTrendingConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'true' }).REDIS_LOCK_TRACE_ENABLED, true);
+  assert.throws(() => loadConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'yes' }), /REDIS_LOCK_TRACE_ENABLED/);
+});
+
+test('Telegram polling trace defaults off and validates its independent switch', () => {
+  assert.equal(loadConfig(valid).TELEGRAM_POLL_TRACE_ENABLED, false);
+  assert.equal(loadConfig({ ...valid, TELEGRAM_POLL_TRACE_ENABLED: 'true' }).TELEGRAM_POLL_TRACE_ENABLED, true);
+  assert.equal(loadConfig({ ...valid, TELEGRAM_POLL_TRACE_ENABLED: 'false' }).TELEGRAM_POLL_TRACE_ENABLED, false);
+  assert.throws(() => loadConfig({ ...valid, TELEGRAM_POLL_TRACE_ENABLED: 'yes' }), /TELEGRAM_POLL_TRACE_ENABLED/);
+});
+
+test('scheduled scan tracing defaults off and validates its independent switch', () => {
+  assert.equal(loadConfig(valid).SCAN_TRACE_ENABLED, false);
+  assert.equal(loadConfig({ ...valid, SCAN_TRACE_ENABLED: 'true' }).SCAN_TRACE_ENABLED, true);
+  assert.equal(loadConfig({ ...valid, SCAN_TRACE_ENABLED: 'false' }).SCAN_TRACE_ENABLED, false);
+  assert.throws(() => loadConfig({ ...valid, SCAN_TRACE_ENABLED: 'yes' }), /SCAN_TRACE_ENABLED/);
+});

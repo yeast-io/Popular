@@ -5,7 +5,11 @@ import type {
 import type { MovieResourceSyncBatchDocument } from './movie-resource-sync-batch.schema.js';
 
 export class MongoMovieResourceSyncBatchStore implements MovieResourceSyncBatchStore {
-  constructor(private readonly batches: Model<MovieResourceSyncBatchDocument>) {}
+  constructor(
+    private readonly batches: Model<MovieResourceSyncBatchDocument>
+  )
+  {
+  }
 
   async createOrGetActive(ownerId: string, movieIds: number[], force: boolean, now: Date) {
     const existing = await this.batches.findOne({ ownerId, active: true }).lean().exec();

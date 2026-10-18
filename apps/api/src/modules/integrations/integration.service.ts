@@ -15,7 +15,8 @@ export class IntegrationValidationError extends Error {
     public readonly failureType: IntegrationFailureType | 'permission' | 'rate_limited',
     message: string,
     options?: ErrorOptions,
-  ) {
+  )
+  {
     super(message, options);
     this.name = 'IntegrationValidationError';
   }
@@ -29,7 +30,9 @@ export class IntegrationService {
     private readonly secrets: SecretCrypto,
     private readonly allowedMTeamHosts: ReadonlySet<string>,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+  )
+  {
+  }
 
   async getMTeam(token: string | undefined): Promise<MTeamConfiguration> {
     const ownerId = await this.auth.requireOwnerId(token);

@@ -7,7 +7,9 @@ export class RedisSessionStore implements SessionStore {
     private readonly redis: Redis,
     private readonly pepper: string,
     private readonly ttlSeconds: number,
-  ) {}
+  )
+  {
+  }
 
   async create(ownerId: string): Promise<string> {
     const token = randomBytes(32).toString('base64url');

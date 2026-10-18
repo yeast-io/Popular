@@ -26,7 +26,7 @@ try {
   const service = new TrendingSyncService(
     new TmdbClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS),
     store,
-    new RedisSyncLock(redis.getClient()),
+    new RedisSyncLock(redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED, loggers.app),
     scheduledLocale,
     config.TRENDING_SYNC_LOCK_TTL_SECONDS,
     {

@@ -12,7 +12,9 @@ export class UserService {
     private readonly avatars: AvatarStore,
     private readonly maxAvatarBytes: number,
     private readonly maxAvatarPixels: number,
-  ) {}
+  )
+  {
+  }
 
   async updateProfile(token: string | undefined, input: UpdateProfileRequest): Promise<AuthUser> {
     const ownerId = await this.auth.requireOwnerId(token);

@@ -5,6 +5,35 @@ import { BufferJSON, type UserFacingSocketConfig, type WASocket } from '@whiskey
 import { createBaileysConnector } from './baileys.connector.js';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
+test('self-chat replies cannot loop back into the receiver, even before send resolves', async () => {
+  const handlers = new Map<string, (data: unknown) => void>();
+  let received = 0;
+  const self = '61111111111@s.whatsapp.net';
+  const connector = createBaileysConnector((() => ({
+    user: { id: '61111111111:9@s.whatsapp.net' },
+    ev: { on: (event: string, handler: (data: unknown) => void) => handlers.set(event, handler) },
+    sendMessage: async (jid: string, content: { text: string }, options: { messageId: string }) => {
+      assert.equal(jid, self);
+      handlers.get('messages.upsert')!({ type: 'notify', messages: [{
+        key: { id: options.messageId, remoteJid: jid, fromMe: true }, message: { conversation: content.text },
+      }] });
+      return { key: { id: options.messageId } };
+    }, end: () => undefined,
+  })) as unknown as typeof import('@whiskeysockets/baileys').default);
+  const connection = await connector({ load: async () => null, save: async () => undefined, update: () => undefined,
+    receive: async () => { received++; } });
+  try {
+    assert.equal(connection.ownsChat!(self), true);
+    assert.equal(connection.ownsChat!('someone@s.whatsapp.net'), false);
+    await connection.sendReply!('AI reply'); await tick();
+    assert.equal(received, 0);
+    handlers.get('messages.upsert')!({ type: 'notify', messages: [{
+      key: { id: 'from-phone', remoteJid: self, fromMe: true }, message: { conversation: 'User reply' },
+    }] });
+    await tick(); assert.equal(received, 1);
+  } finally { await connection.stop(false); }
+});
+
 test('separate auth/key stores and socket-derived self recipients; no arbitrary recipient or content', async () => {
   const sockets: Array<{ config: UserFacingSocketConfig; handlers: Map<string, (data: never) => void>; sends: Array<{ jid: string; text: string }>; end: boolean }> = [];
   const connector = createBaileysConnector(((config: UserFacingSocketConfig) => {

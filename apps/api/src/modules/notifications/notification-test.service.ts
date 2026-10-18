@@ -13,10 +13,18 @@ export interface NotificationTestStore {
 export class NotificationTestService {
   private readonly sending = new Set<string>();
   private readonly lastSent = new Map<string, number>();
-  constructor(private readonly auth: Pick<AuthService, 'requireOwnerId'>, private readonly store: NotificationTestStore,
-    private readonly notifications: NotificationService, private readonly movies: Pick<MovieCatalogStore, 'readMovies'>,
-    private readonly locale: Locale, private readonly webOrigin: string,
-    private readonly payload = buildDownloadNotification, private readonly now: () => Date = () => new Date()) {}
+  constructor(
+    private readonly auth: Pick<AuthService, 'requireOwnerId'>,
+    private readonly store: NotificationTestStore,
+    private readonly notifications: NotificationService,
+    private readonly movies: Pick<MovieCatalogStore, 'readMovies'>,
+    private readonly locale: Locale,
+    private readonly webOrigin: string,
+    private readonly payload = buildDownloadNotification,
+    private readonly now: () => Date = () => new Date()
+  )
+  {
+  }
   async list(token: string | undefined, page: number): Promise<NotificationTestList> {
     const owner = await this.auth.requireOwnerId(token);
     const records = await this.store.listCompleted(owner, (page - 1) * 30, 31);

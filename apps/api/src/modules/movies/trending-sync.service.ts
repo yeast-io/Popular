@@ -30,7 +30,9 @@ export class TrendingSyncService {
     private readonly defaultLocale: Locale,
     private readonly lockTtlSeconds: number,
     private readonly logger: TrendingSyncLogger,
-  ) {}
+  )
+  {
+  }
 
   syncConfiguredPages(pageCount: number, concurrency: number, trigger: TrendingSyncTrigger): Promise<TrendingSyncResult> {
     const locale = this.defaultLocale;

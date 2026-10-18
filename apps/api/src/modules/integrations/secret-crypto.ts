@@ -3,7 +3,10 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 export class SecretCrypto {
   private readonly key: Buffer;
 
-  constructor(keyMaterial: string) {
+  constructor(
+    keyMaterial: string
+  )
+  {
     this.key = createHash('sha256').update('movie-hub:integration-secrets:v1\0').update(keyMaterial).digest();
   }
 

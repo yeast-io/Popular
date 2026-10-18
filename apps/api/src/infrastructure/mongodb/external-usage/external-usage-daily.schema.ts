@@ -21,6 +21,14 @@ const externalUsageDailySchema = new Schema({
   failureCount: { type: Number, required: true, min: 0 },
   totalDurationMs: { type: Number, required: true, min: 0 },
   maxDurationMs: { type: Number, required: true, min: 0 },
+  tokenUsage: { type: new Schema({
+    inputTokens: { type: Number, required: true, min: 0 },
+    outputTokens: { type: Number, required: true, min: 0 },
+    cachedInputTokens: { type: Number, required: true, min: 0 },
+    knownRequests: { type: Number, required: true, min: 0 },
+    unknownRequests: { type: Number, required: true, min: 0 },
+    unknownCachedRequests: { type: Number, required: true, min: 0 },
+  }, { _id: false }), required: false },
   expiresAt: { type: Date, required: true },
   updatedAt: { type: Date, required: true },
 }, { collection: 'external_usage_daily', versionKey: false });
