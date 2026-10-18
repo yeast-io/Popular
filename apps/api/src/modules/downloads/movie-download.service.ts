@@ -28,10 +28,8 @@ export class MovieDownloadService {
     private readonly resources: Pick<MovieResourceCheckService, 'listReleases'>,
     private readonly now: () => Date = () => new Date(),
     private readonly transmission?: { configs: TransmissionConfigStore; client: TransmissionClientPort },
-    private readonly notifications?: Pick<NotificationService, 'reserve' | 'submitted'>,
-  )
-  {
-  }
+    private readonly notifications?: Pick<NotificationService, 'reserve' | 'submitted'>
+  ) {}
 
   async providers(token: string | undefined): Promise<DownloadProviderListResponse> {
     return { providers: await this.providersFor(await this.auth.requireOwnerId(token)) };

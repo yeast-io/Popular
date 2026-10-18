@@ -5,8 +5,7 @@ export class SecretCrypto {
 
   constructor(
     keyMaterial: string
-  )
-  {
+  ) {
     this.key = createHash('sha256').update('movie-hub:integration-secrets:v1\0').update(keyMaterial).digest();
   }
 

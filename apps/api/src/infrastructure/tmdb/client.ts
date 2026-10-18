@@ -9,6 +9,7 @@ interface TmdbMovie {
   id: number;
   title?: string;
   original_title?: string;
+  original_language?: string;
   overview?: string;
   release_date?: string;
   poster_path?: string | null;
@@ -62,10 +63,8 @@ export class TmdbClient implements TrendingProvider {
     private readonly timeoutMs: number,
     private readonly baseUrl = 'https://api.themoviedb.org/3',
     private readonly fetcher: typeof fetch = globalThis.fetch,
-    private readonly usage?: ExternalRequestRecorder,
-  )
-  {
-  }
+    private readonly usage?: ExternalRequestRecorder
+  ) {}
 
   async fetchPage(page: number, locale: Locale, context?: ExternalRequestContext) {
     const url = new URL(`${this.baseUrl}/trending/movie/week`);
@@ -134,6 +133,28 @@ export class TmdbClient implements TrendingProvider {
       ...selectTrailer(payload.videos?.results, locale),
       cast, directors,
     };
+  }
+
+  async discover(filters: { genres: number[]; excludeGenres: number[]; maxRuntime: number | null; language: string | null }, page: number, locale: Locale, ownerId: string): Promise<MovieRecord[]> {
+    const url = new URL(`${this.baseUrl}/discover/movie`);
+    url.searchParams.set('language', locale); url.searchParams.set('page', String(page));
+    url.searchParams.set('include_adult', 'false'); url.searchParams.set('sort_by', 'popularity.desc');
+    url.searchParams.set('primary_release_date.lte', new Date().toISOString().slice(0, 10));
+    if (filters.genres.length) url.searchParams.set('with_genres', filters.genres.join(','));
+    if (filters.excludeGenres.length) url.searchParams.set('without_genres', filters.excludeGenres.join(','));
+    if (filters.maxRuntime) url.searchParams.set('with_runtime.lte', String(filters.maxRuntime));
+    if (filters.language) url.searchParams.set('with_original_language', filters.language);
+    const payload = await (await this.request(url, 'movie.discover', { actorType: 'user', ownerId, trigger: 'api_request' })).json() as TmdbTrendingResponse;
+    if (!isTrendingResponse(payload) || payload.page !== page) throw new Error('Invalid TMDB discovery response');
+    return payload.results.flatMap(mapMovie);
+  }
+
+  async related(tmdbId: number, locale: Locale, ownerId: string): Promise<MovieRecord[]> {
+    const url = new URL(`${this.baseUrl}/movie/${tmdbId}/recommendations`);
+    url.searchParams.set('language', locale);
+    const payload = await (await this.request(url, 'movie.recommendations', { actorType: 'user', ownerId, trigger: 'api_request' })).json() as TmdbTrendingResponse;
+    if (!isTrendingResponse(payload)) throw new Error('Invalid TMDB recommendation response');
+    return payload.results.flatMap(mapMovie);
   }
 
   private async request(url: URL, operation: string, context?: ExternalRequestContext): Promise<Response> {
@@ -288,6 +309,7 @@ function mapMovie(movie: TmdbMovie): MovieRecord[] {
   if (!Number.isInteger(movie.id) || movie.id < 1 || !movie.title?.trim()) return [];
   const result: MovieRecord = { tmdbId: movie.id, title: movie.title.trim(), genreIds: movie.genre_ids ?? [] };
   if (movie.original_title?.trim()) result.originalTitle = movie.original_title.trim();
+  if (movie.original_language?.trim()) result.originalLanguage = movie.original_language.trim();
   if (movie.overview?.trim()) result.overview = movie.overview.trim();
   if (movie.release_date && /^\d{4}-\d{2}-\d{2}$/.test(movie.release_date)) result.releaseDate = movie.release_date;
   if (movie.poster_path) result.posterPath = movie.poster_path;

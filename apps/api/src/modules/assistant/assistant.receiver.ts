@@ -1,17 +1,15 @@
 import { AiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
 import type { IncomingMessage } from '../incoming-message.js';
 import type { AssistantConversation, AssistantQueue } from './assistant.queue.js';
-import { AssistantInputSchema } from './assistant.runner.js';
+import { AssistantInputSchema } from './assistant.schema.js';
 
 /** Transport callbacks finish only after accepted text has been persisted. */
 export class AssistantMessageReceiver {
   constructor(
     private readonly queue: Pick<AssistantQueue, 'enqueue'>,
     private readonly wake: (conversation: AssistantConversation) => void = () => undefined,
-    private readonly logger?: AiLogger,
-  )
-  {
-  }
+    private readonly logger?: AiLogger
+  ) {}
 
   async receive(ownerId: string, message: IncomingMessage): Promise<void> {
     const trace = new AiTrace(this.logger, { event: 'assistant_receive', ownerId, channel: message.channel,

@@ -16,10 +16,8 @@ const MAX_SEARCH_RESPONSE_BYTES = 2 * 1024 * 1024;
 export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamTorrentDownloader {
   constructor(
     private readonly timeoutMs: number,
-    private readonly usage?: ExternalRequestRecorder,
-  )
-  {
-  }
+    private readonly usage?: ExternalRequestRecorder
+  ) {}
 
   async verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void> {
     const body = await withAbsoluteTimeout(this.timeoutMs, async (signal) => {

@@ -6,9 +6,7 @@ import type { QBittorrentConfigDocument } from './qbittorrent-config.schema.js';
 export class MongoQBittorrentConfigStore implements QBittorrentConfigStore {
   constructor(
     private readonly configs: Model<QBittorrentConfigDocument>
-  )
-  {
-  }
+  ) {}
 
   async find(ownerId: string): Promise<QBittorrentConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId }).select('+encryptedCredential').lean().exec();

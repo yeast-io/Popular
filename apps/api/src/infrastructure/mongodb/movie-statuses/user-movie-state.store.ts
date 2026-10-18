@@ -5,9 +5,7 @@ import type { UserMovieStateDocument } from './user-movie-state.schema.js';
 export class MongoMovieStatusStore implements MovieStatusStore {
   constructor(
     private readonly states: Model<UserMovieStateDocument>
-  )
-  {
-  }
+  ) {}
 
   async setStatus(ownerId: string, tmdbId: number, status: Exclude<MovieStatusRecord['status'], 'unwatched'>): Promise<MovieStatusRecord['status'] | null> {
     const previous = await this.states.findOne({ ownerId, tmdbId }).lean().exec();

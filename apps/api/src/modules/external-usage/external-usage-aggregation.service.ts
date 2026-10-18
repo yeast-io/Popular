@@ -18,10 +18,8 @@ export class ExternalUsageAggregationService {
     private readonly logger: ExternalUsageAggregationLogger,
     private readonly intervalMs = 5 * 60 * 1_000,
     private readonly now: () => Date = () => new Date(),
-    private readonly scanTraceEnabled = false,
-  )
-  {
-  }
+    private readonly scanTraceEnabled = false
+  ) {}
 
   start(): void {
     if (this.timer) return;

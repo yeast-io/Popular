@@ -1,6 +1,8 @@
 import { Static, Type } from '@sinclair/typebox';
 
 export const errorCodes = [
+  'INSUFFICIENT_MOVIE_RATINGS',
+  'PREFERENCE_VERSION_CONFLICT',
   'OPENAI_NOT_CONFIGURED',
   'OPENAI_AUTH_FAILED',
   'OPENAI_QUOTA_EXCEEDED',

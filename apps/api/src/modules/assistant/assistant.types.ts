@@ -1,5 +1,8 @@
+import type { PreferenceService } from '../preferences/preference.service.js';
+import type { RecommendationWorkflow } from '../recommendations/recommendation.workflow.js';
+
 /** Supported messaging channels, both using the same workflow entry point. */
-export type AssistantChannel = 'telegram' | 'whatsapp';
+export type AssistantChannel = 'telegram' | 'whatsapp' | 'web';
 
 /**
  * Normalized text message produced by a channel service, excluding the raw platform payload.
@@ -75,11 +78,29 @@ export interface AssistantWorkflowNodes {
 }
 
 /** Shared entry point for channel services, hiding internal nodes and graph structure. */
-export interface AssistantWorkflow {
+export interface AssistantWorkflowContract {
   /**
    * Process one message and return reply content; failures reject the promise for the caller to handle.
    * The caller retains the original input and sends replyText to the corresponding channel and chat.
    * This workflow does not send messages; delivery retries must not repeat business operations.
    */
   run(input: AssistantInputWorkflowMessage): Promise<AssistantWorkflowResult>;
+}
+
+export interface AssistantAgentOptions {
+  systemPrompt: string;
+  maxContextTokens: number;
+  maxOutputTokens: number;
+}
+
+export interface AssistantDetection {
+  intent: AssistantIntent;
+  preferenceSignal: 'none' | 'explicit' | 'uncertain';
+}
+
+export interface AssistantWorkflowOptions extends AssistantAgentOptions {
+  preferences?: PreferenceService;
+  recommendations?: RecommendationWorkflow;
+  report?: (event: string) => void;
+  deferDiscussion?: boolean;
 }

@@ -1863,7 +1863,8 @@ label small {
   line-height: 1.55;
 }
 .profile-card-heading {
-  align-items: flex-start;
+  align-items: center;
+  justify-content: flex-start;
 }
 .profile-avatar-editor {
   display: flex;
@@ -3687,6 +3688,7 @@ body:has(.settings-page)::after {
 }
 .settings-content .profile-card-heading {
   flex-wrap: wrap;
+  margin-bottom: 24px;
 }
 .settings-content .profile-avatar-editor {
   gap: 12px;
@@ -3697,7 +3699,9 @@ body:has(.settings-page)::after {
   border: 2px solid rgba(255, 255, 255, 0.1);
 }
 .settings-content .profile-avatar-actions {
-  max-width: 220px;
+  flex: 1;
+  min-width: 0;
+  max-width: 360px;
 }
 .settings-content .upload-button {
   padding: 8px 12px;

@@ -10,10 +10,8 @@ export class MovieService {
     private readonly sync: TrendingSyncService,
     private readonly provider?: MovieSearchProvider,
     private readonly catalog?: MovieCatalogStore,
-    private readonly statuses?: MovieStatusStore,
-  )
-  {
-  }
+    private readonly statuses?: MovieStatusStore
+  ) {}
 
   async trending(page: number, locale: Locale, ownerId: string | null, generation?: string): Promise<TrendingMoviesResponse> {
     let result = await this.store.readPage(page, locale, generation);

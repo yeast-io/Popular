@@ -20,10 +20,8 @@ export class QBittorrentIntegrationService {
     private readonly configs: QBittorrentConfigStore,
     private readonly client: QBittorrentClientPort,
     private readonly secrets: SecretCrypto,
-    private readonly now: () => Date = () => new Date(),
-  )
-  {
-  }
+    private readonly now: () => Date = () => new Date()
+  ) {}
 
   async get(token: string | undefined): Promise<QBittorrentConfiguration> {
     return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)));
@@ -94,7 +92,7 @@ export function decryptCredential(record: QBittorrentConfigRecord, secrets: Secr
     const value = JSON.parse(secrets.decrypt(record.encryptedCredential, credentialContext(record.ownerId))) as QBittorrentCredential;
     if (value.authMethod === 'api_key' && value.apiKey) return value;
     if (value.authMethod === 'username_password' && value.username && value.password) return value;
-  } catch {}
+  } catch { /* Return the same sanitized error for invalid ciphertext and invalid JSON. */ }
   throw new AppError(500, 'INTERNAL_ERROR', 'Stored qBittorrent credentials are invalid');
 }
 
@@ -102,7 +100,7 @@ function credentialFromInput(
   input: SaveQBittorrentConfigurationRequest,
   existing: QBittorrentConfigRecord | null,
   secrets: SecretCrypto,
-  ownerId: string,
+  _ownerId: string,
 ): QBittorrentCredential {
   const prior = existing?.authMethod === input.authMethod ? decryptCredential(existing, secrets) : null;
   if (input.authMethod === 'api_key') {

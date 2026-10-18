@@ -5,9 +5,7 @@ export class TransmissionClient implements TransmissionClientPort {
   constructor(
     private readonly timeoutMs: number,
     private readonly fetchImpl: typeof fetch = fetch
-  )
-  {
-  }
+  ) {}
 
   async verify(baseUrl: string, credential: TransmissionCredential): Promise<{ version: string }> {
     const args = await this.rpc(baseUrl, credential, 'session-get', { fields: ['version'] });

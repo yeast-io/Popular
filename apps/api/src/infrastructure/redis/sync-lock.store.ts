@@ -16,9 +16,8 @@ export class RedisSyncLock implements SyncLock {
   constructor(
     private readonly redis: Redis,
     traceEnabled = false,
-    logger?: AiLogger,
-  )
-  {
+    logger?: AiLogger
+  ) {
     this.trace = new RedisLockTrace(traceEnabled, logger, key => this.redis.ttl(key));
   }
 

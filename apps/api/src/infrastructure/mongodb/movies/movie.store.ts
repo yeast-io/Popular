@@ -17,10 +17,8 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     private readonly resultSets: Model<MovieResultSetDocument>,
     private readonly people?: Model<PersonDocument>,
     private readonly credits?: Model<MovieCreditDocument>,
-    private readonly trendingStates?: Model<TrendingStateDocument>,
-  )
-  {
-  }
+    private readonly trendingStates?: Model<TrendingStateDocument>
+  ) {}
 
   async publishSnapshot(record: TrendingSnapshotRecord, locale: Locale): Promise<void> {
     const states = this.requireTrendingStates();
@@ -311,7 +309,7 @@ export function searchKey(query: string, locale: Locale, page: number): string {
 
 function toBaseMovieUpdate(movie: MovieRecord): Record<string, unknown> {
   const update: Record<string, unknown> = { genreIds: movie.genreIds };
-  for (const key of ['originalTitle', 'releaseDate', 'voteAverage', 'voteCount'] as const) {
+  for (const key of ['originalTitle', 'originalLanguage', 'releaseDate', 'voteAverage', 'voteCount'] as const) {
     if (movie[key] !== undefined) update[key] = key === 'releaseDate' ? new Date(movie[key]) : movie[key];
   }
   return update;
@@ -380,6 +378,7 @@ function fromDocuments(movie: MovieDocument, localized: ResolvedLocalization): M
     localizationLocale: localized.locale as Locale,
   };
   if (movie.originalTitle) result.originalTitle = movie.originalTitle;
+  if (movie.originalLanguage) result.originalLanguage = movie.originalLanguage;
   if (localized.overview) result.overview = localized.overview;
   const posterPath = localized.posterPath ?? movie.posterPath;
   const backdropPath = localized.backdropPath ?? movie.backdropPath;

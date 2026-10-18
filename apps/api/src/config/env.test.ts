@@ -90,7 +90,7 @@ test('accepts a 50 MB avatar limit and rejects larger values', () => {
 
 test('enables OpenAI only with a complete bounded configuration', () => {
   const disabled = loadConfig(valid);
-  assert.equal(disabled.OPENAI_MODEL, 'gpt-4.1-mini');
+  assert.equal(disabled.OPENAI_MODEL, 'gpt-5.6-sol');
 
   const enabled = loadConfig({
     ...valid,
@@ -161,4 +161,23 @@ test('scheduled scan tracing defaults off and validates its independent switch',
   assert.equal(loadConfig({ ...valid, SCAN_TRACE_ENABLED: 'true' }).SCAN_TRACE_ENABLED, true);
   assert.equal(loadConfig({ ...valid, SCAN_TRACE_ENABLED: 'false' }).SCAN_TRACE_ENABLED, false);
   assert.throws(() => loadConfig({ ...valid, SCAN_TRACE_ENABLED: 'yes' }), /SCAN_TRACE_ENABLED/);
+});
+
+test('parses curated model IDs in display order and validates environment overrides', () => {
+  assert.deepEqual(loadConfig(valid).OPENAI_RECOMMENDED_MODELS, []);
+  assert.deepEqual(loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: ' gpt-6.1-sol, gpt-5.4-mini,gpt-6.1-sol,, ' }).OPENAI_RECOMMENDED_MODELS,
+    ['gpt-6.1-sol', 'gpt-5.4-mini']);
+  assert.deepEqual(loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: '' }).OPENAI_RECOMMENDED_MODELS, []);
+  assert.throws(() => loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: 'gpt-6-luna,invalid model' }), /OPENAI_RECOMMENDED_MODELS/);
+});
+
+test('validates experimental page switches as explicit booleans', () => {
+  const config = loadConfig(valid);
+  assert.equal(config.PAGE_AI_ASSISTANT_ENABLED, true);
+  assert.equal(config.PAGE_DOCS_ENABLED, false);
+  assert.equal(config.VERBOSE, false);
+  assert.equal(loadConfig({ ...valid, PAGE_AI_ASSISTANT_ENABLED: 'false', PAGE_DOCS_ENABLED: 'true' }).PAGE_DOCS_ENABLED, true);
+  for (const field of ['PAGE_AI_ASSISTANT_ENABLED', 'PAGE_DOCS_ENABLED', 'VERBOSE']) {
+    assert.throws(() => loadConfig({ ...valid, [field]: 'yes' }), new RegExp(field));
+  }
 });

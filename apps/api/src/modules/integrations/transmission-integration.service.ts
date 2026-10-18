@@ -20,10 +20,8 @@ export class TransmissionIntegrationService {
     private readonly configs: TransmissionConfigStore,
     private readonly client: Pick<TransmissionClientPort, 'verify'>,
     private readonly secrets: SecretCrypto,
-    private readonly now: () => Date = () => new Date(),
-  )
-  {
-  }
+    private readonly now: () => Date = () => new Date()
+  ) {}
 
   async get(token: string | undefined): Promise<TransmissionConfiguration> {
     return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)));
@@ -89,7 +87,7 @@ export function decryptCredential(record: TransmissionConfigRecord, secrets: Sec
   try {
     const value = JSON.parse(secrets.decrypt(record.encryptedCredential, credentialContext(record.ownerId))) as TransmissionCredential;
     if (typeof value.username === 'string' && value.username && typeof value.password === 'string' && value.password) return value;
-  } catch {}
+  } catch { /* Return the same sanitized error for invalid ciphertext and invalid JSON. */ }
   throw new AppError(500, 'INTERNAL_ERROR', 'Stored Transmission credentials are invalid');
 }
 

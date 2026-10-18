@@ -14,10 +14,8 @@ export class ApplicationShutdown {
   constructor(
     private readonly logger: AiLogger,
     private readonly startupSettled: Promise<void>,
-    private readonly timeoutMs: number,
-  )
-  {
-  }
+    private readonly timeoutMs: number
+  ) {}
 
   get requested(): boolean { return this.closing; }
   get exitCode(): number { return this.failed ? 1 : 0; }

@@ -33,10 +33,8 @@ export class TelegramService {
     private readonly transport?: TelegramTransport,
     private readonly now: () => Date = () => new Date(),
     private readonly receive: (ownerId: string, message: IncomingMessage) => void | Promise<void> = () => undefined,
-    private readonly logger?: AiLogger,
-  )
-  {
-  }
+    private readonly logger?: AiLogger
+  ) {}
   async get(token: string | undefined): Promise<TelegramConfiguration> {
     const owner = await this.auth.requireOwnerId(token);
     if (!this.transport) return { status: 'unavailable' };

@@ -13,6 +13,8 @@ export interface ConversationTurnOptions {
   historyLimit?: number;
   safetyMarginTokens?: number;
   messageOverheadTokens?: number;
+  reply?: (input: RunConversationTurnInput, messages: import('../llm/llm.types.js').LlmMessage[], llm: LlmClient) => Promise<LlmGenerateResult & { defer?: boolean }>;
+  profileContext?: (ownerId: string) => Promise<string>;
 }
 
 export interface RunConversationTurnInput {
@@ -42,10 +44,8 @@ export class ConversationTurnService {
     private readonly conversations: ConversationStore,
     private readonly llm: LlmClient | ((ownerId: string) => Promise<LlmClient>),
     private readonly tokenCounter: TokenCounter,
-    private readonly options: ConversationTurnOptions,
-  )
-  {
-  }
+    private readonly options: ConversationTurnOptions
+  ) {}
 
   run(input: RunConversationTurnInput): Promise<ConversationTurnResult> {
     const key = this.turnKey(input);
@@ -81,6 +81,21 @@ export class ConversationTurnService {
         return;
       }
 
+      let preludeUsage = { inputTokens: 0, outputTokens: 0 };
+      if (this.options.reply) {
+        const generated = await this.options.reply(input, prepared.context.messages, llm);
+        preludeUsage = { inputTokens: generated.inputTokens, outputTokens: generated.outputTokens };
+        if (!generated.defer) {
+          input.signal?.throwIfAborted();
+          if (!generated.content.trim()) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'AI returned an empty reply');
+          const usage = { inputTokens: generated.inputTokens, outputTokens: generated.outputTokens };
+          const assistantMessage = await this.appendAssistant(input, generated.content, usage);
+          yield { type: 'delta', delta: generated.content };
+          yield { type: 'completed', assistantMessage, usage };
+          return;
+        }
+      }
+
       currentAiTrace()?.event('model.stream.started', { maxOutputTokens: this.options.maxOutputTokens });
       let content = '';
       let usage: ConversationTurnResult['usage'] | undefined;
@@ -94,7 +109,7 @@ export class ConversationTurnService {
             content += event.delta;
             yield event;
           } else {
-            usage = { inputTokens: event.inputTokens, outputTokens: event.outputTokens };
+            usage = { inputTokens: event.inputTokens + preludeUsage.inputTokens, outputTokens: event.outputTokens + preludeUsage.outputTokens };
           }
         }
       } catch (error) {
@@ -118,7 +133,8 @@ export class ConversationTurnService {
     const prepared = await aiStep('turn.prepare', () => this.prepareTurn(input, llm));
     if (prepared.completed) return prepared.completed;
 
-    const generated = await this.generate(llm, {
+    const routed = this.options.reply ? await this.options.reply(input, prepared.context.messages, llm) : undefined;
+    const generated = routed && !routed.defer ? routed : await this.generate(llm, {
       messages: prepared.context.messages,
       maxOutputTokens: this.options.maxOutputTokens,
       ...(input.signal ? { signal: input.signal } : {}),
@@ -127,7 +143,7 @@ export class ConversationTurnService {
       throw new AppError(503, 'SERVICE_UNAVAILABLE', 'AI service returned no response');
     }
 
-    const usage = { inputTokens: generated.inputTokens, outputTokens: generated.outputTokens };
+    const usage = { inputTokens: generated.inputTokens + (routed?.defer ? routed.inputTokens : 0), outputTokens: generated.outputTokens + (routed?.defer ? routed.outputTokens : 0) };
     const assistantMessage = await this.appendAssistant(input, generated.content, usage);
     return { userMessage: prepared.userMessage, assistantMessage, usage };
   }
@@ -198,6 +214,7 @@ export class ConversationTurnService {
     let summary = thread.summary;
     if (summary) currentAiTrace()?.sensitive(summary.content);
     const historyLimit = this.options.historyLimit ?? 100;
+    const userContext = await this.options.profileContext?.(thread.ownerId) ?? '';
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const freshMessages = await aiStep('history.load', () => this.conversations.listMessagesAfterSequence(
@@ -207,7 +224,7 @@ export class ConversationTurnService {
         historyLimit + 1,
       ));
       for (const message of freshMessages) currentAiTrace()?.sensitive(message.content);
-      const context = this.selectContext(freshMessages, summary);
+      const context = this.selectContext(freshMessages, summary, userContext);
       const hasBacklog = freshMessages.length > historyLimit;
       if (!hasBacklog && context.omittedMessageCount === 0) {
         currentAiTrace()?.event('context.build.completed', { messageCount: context.messages.length, usedTokens: context.usedTokens });
@@ -276,8 +293,10 @@ export class ConversationTurnService {
   private selectContext(
     messages: ConversationMessage[],
     summary: ConversationSummary | undefined,
+    userContext = '',
   ): ContextBuilderResult {
     return buildConversationContext({
+      userContext,
       systemPrompt: systemPromptWithSummary(this.options.systemPrompt, summary),
       messages,
       maxContextTokens: this.options.maxContextTokens,

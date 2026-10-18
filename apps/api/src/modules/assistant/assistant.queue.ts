@@ -1,5 +1,5 @@
 import type { LlmMessage } from '../llm/llm.types.js';
-import type { AssistantInputWorkflowMessage, AssistantWorkflowResult } from './assistant.type.js';
+import type { AssistantInputWorkflowMessage, AssistantWorkflowResult } from './assistant.types.js';
 
 export type AssistantConversation = Pick<AssistantInputWorkflowMessage, 'ownerId' | 'channel' | 'chatId'>;
 

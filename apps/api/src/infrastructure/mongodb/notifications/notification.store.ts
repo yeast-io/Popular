@@ -14,9 +14,7 @@ export class MongoNotificationStore implements NotificationStore {
   constructor(
     private readonly downloads: Model<MovieDownloadDocument>,
     private readonly settings: Model<NotificationPreferencesDocument>
-  )
-  {
-  }
+  ) {}
   async preferences(ownerId: string) {
     const row = await this.settings.findOne({ ownerId }).lean().exec();
     return { enabled: row?.enabled ?? false, defaultChannel: row?.defaultChannel ?? 'whatsapp', additionalChannels: row?.additionalChannels ?? [], epoch: row?.epoch ?? 0 };

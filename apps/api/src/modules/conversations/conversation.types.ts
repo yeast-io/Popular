@@ -41,6 +41,7 @@ export interface TokenCounter {
 
 export interface ContextBuilderInput {
   systemPrompt: string;
+  userContext?: string;
   messages: ConversationMessage[];
   maxContextTokens: number;
   responseReserveTokens: number;

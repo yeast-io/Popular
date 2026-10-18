@@ -10,9 +10,8 @@ export class OpenAILlmClient implements LlmClient {
   constructor(
     private readonly client: Pick<OpenAI, 'responses'>,
     private readonly model: string,
-    accounting?: OpenAIAccountingOptions,
-  )
-  {
+    accounting?: OpenAIAccountingOptions
+  ) {
     this.accounting = new OpenAIRequestAccounting(model, accounting);
   }
 
@@ -39,7 +38,7 @@ export class OpenAILlmClient implements LlmClient {
       usage = readTokenUsage(response.usage);
       responseModel = response.model;
       if (response.status && response.status !== 'completed') {
-        throw new LlmProviderError('OpenAI response did not complete');
+        throw new LlmProviderError(`OpenAI response did not complete (${response.status}; reason: ${safeCode(response.incomplete_details?.reason) ?? 'unknown'})`);
       }
       if (!response.output_text.trim()) {
         throw new LlmProviderError('OpenAI returned no output text');

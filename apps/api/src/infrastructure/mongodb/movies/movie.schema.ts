@@ -3,6 +3,7 @@ import { Schema, type Connection, type InferSchemaType } from 'mongoose';
 const movieSchema = new Schema({
   tmdbId: { type: Number, required: true, min: 1 },
   originalTitle: { type: String },
+  originalLanguage: { type: String },
   // Legacy fallback during the locale-image migration. New writes store these
   // language-sensitive paths in movie_localizations.
   posterPath: { type: String },

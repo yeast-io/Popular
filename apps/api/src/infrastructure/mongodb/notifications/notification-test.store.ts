@@ -6,9 +6,7 @@ const completed = { $or: [{ 'notificationTask.downloaded': true }, { progress: {
 export class MongoNotificationTestStore implements NotificationTestStore {
   constructor(
     private readonly downloads: Model<MovieDownloadDocument>
-  )
-  {
-  }
+  ) {}
   async listCompleted(ownerId: string, skip: number, limit: number) {
     const rows = await this.downloads.find({ ownerId, ...completed }).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean().exec();
     return rows.map(toMovieDownloadRecord);

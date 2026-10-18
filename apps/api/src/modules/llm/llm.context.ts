@@ -1,8 +1,8 @@
-import type { LlmMessage } from '../llm/llm.types.js';
-import { Utf8ByteTokenCounter } from '../llm/utf8-byte-token-counter.js';
+import type { LlmMessage } from './llm.types.js';
+import { Utf8ByteTokenCounter } from './utf8-byte-token-counter.js';
 
 /** Select recent conversation messages while reserving room for the system prompt and model output. */
-export function buildAssistantContext(
+export function buildLlmContext(
   prompt: string,
   text: string,
   history: LlmMessage[],
@@ -10,8 +10,10 @@ export function buildAssistantContext(
   reserve: number,
 ): LlmMessage[] {
   const counter = new Utf8ByteTokenCounter();
-  let remaining = maxContextTokens - reserve - 256 - counter.count(prompt) - counter.count(text) - 8;
-  if (remaining < 0) throw new Error('Assistant input exceeds the context budget');
+  const promptTokens = counter.count(prompt);
+  const textTokens = counter.count(text);
+  let remaining = maxContextTokens - reserve - 256 - promptTokens - textTokens - 8;
+  if (remaining < 0) throw new Error(`Assistant input exceeds the context budget (limit=${maxContextTokens}, prompt=${promptTokens}, input=${textTokens}, outputReserve=${reserve}, overhead=264)`);
   const selected: LlmMessage[] = [];
   for (const message of [...history].reverse()) {
     if (message.role !== 'user' && message.role !== 'assistant') continue;

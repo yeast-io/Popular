@@ -15,7 +15,7 @@ flowchart TD
     J["isBound() 回调<br/>→ TelegramService.canReply()"]
     K{"已有保存的回复？"}
     L["MongoAssistantQueue.history()<br/>读取历史对话"]
-    M["AssistantWorkflowRunner.run()"]
+    M["AssistantWorkflow.run()"]
     N["createLlm(ownerId)<br/>获取用户 Key，创建模型客户端"]
     O["graph.invoke()<br/>执行 assistant 节点"]
     P["AssistantAgent.run()"]

@@ -9,9 +9,7 @@ export class MongoWhatsAppStore implements WhatsAppStore {
   constructor(
     private readonly model: Model<WhatsAppSessionDocument>,
     private readonly secrets: SecretCrypto
-  )
-  {
-  }
+  ) {}
   async exists(ownerId: string): Promise<boolean> {
     const row = await this.model.findOne({ ownerId }).select('+encryptedState').lean().exec();
     if (!row?.encryptedState) return false;

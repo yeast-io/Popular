@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEFAULT_OPENAI_SYSTEM_PROMPT } from './system-prompts.js';
+import { DEFAULT_OPENAI_SYSTEM_PROMPT } from './system-prompts/default.prompts.js';
 import { supportedLocales } from '@movie-hub/contract';
 
 const booleanString = z
@@ -37,6 +37,9 @@ const EnvSchema = z.object({
   TRUST_PROXY: z.string().default('false'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   ACCESS_LOG_ENABLED: booleanString.default(true),
+  VERBOSE: booleanString.default(false),
+  PAGE_AI_ASSISTANT_ENABLED: booleanString.default(true),
+  PAGE_DOCS_ENABLED: booleanString.default(false),
   ...mongodbFields,
   ...redisFields,
   SESSION_COOKIE_NAME: z.string().regex(/^[A-Za-z0-9_-]+$/).default('movie_hub_session'),
@@ -80,7 +83,10 @@ const EnvSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().trim().regex(/^\d+:[A-Za-z0-9_-]+$/).optional(),
   ASSISTANT_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
   ASSISTANT_SCAN_INTERVAL_MS: z.coerce.number().int().min(1_000).max(300_000).default(15_000),
-  OPENAI_MODEL: z.string().trim().min(1).max(100).default('gpt-4.1-mini'),
+  OPENAI_RECOMMENDED_MODELS: z.string().max(16_384).default('').transform(value =>
+    [...new Set(value.split(',').map(model => model.trim()).filter(Boolean))]
+  ).pipe(z.array(z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}$/)).max(100)),
+  OPENAI_MODEL: z.string().trim().min(1).max(100).default('gpt-5.6-sol'),
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(60_000),
   OPENAI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   OPENAI_MAX_CONTEXT_TOKENS: z.coerce.number().int().min(1_024).max(1_000_000).default(32_000),
@@ -122,8 +128,7 @@ export type MigrationConfig = z.infer<typeof MigrationEnvSchema>;
 export class InvalidEnvironmentError extends Error {
   constructor(
     public readonly issues: string[]
-  )
-  {
+  ) {
     super(`Invalid environment:\n${issues.map((issue) => `- ${issue}`).join('\n')}`);
     this.name = 'InvalidEnvironmentError';
   }
@@ -171,3 +176,9 @@ function parseTrustProxy(value: string): false | string[] {
 
 export const notificationTestEnabled = (config: Pick<AppConfig, 'NODE_ENV'>): boolean =>
   ['development', 'test', 'local', 'dev'].includes(config.NODE_ENV);
+
+/** Experimental pages are available only in the project's test/development environments. */
+export const aiAssistantPageEnabled = (config: Pick<AppConfig, 'NODE_ENV' | 'PAGE_AI_ASSISTANT_ENABLED'>): boolean =>
+  notificationTestEnabled(config) && config.PAGE_AI_ASSISTANT_ENABLED !== false;
+export const docsPageEnabled = (config: Pick<AppConfig, 'NODE_ENV' | 'PAGE_DOCS_ENABLED'>): boolean =>
+  notificationTestEnabled(config) && config.PAGE_DOCS_ENABLED === true;

@@ -18,3 +18,6 @@ export * from './integrations/notification.schema.js';
 export * from './integrations/notification-test.schema.js';
 
 export * from './integrations/telegram.schema.js';
+export * from './preferences/preference.types.js';
+
+export * from './docs/docs.schema.js';

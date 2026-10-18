@@ -11,10 +11,8 @@ export class RedisLockTrace {
   constructor(
     private readonly enabled: boolean,
     private readonly logger?: AiLogger,
-    private readonly ttl?: (key: string) => Promise<number>,
-  )
-  {
-  }
+    private readonly ttl?: (key: string) => Promise<number>
+  ) {}
 
   async run<T>(action: LockAction, keys: string[], execute: () => Promise<T>, fields: Fields = {}): Promise<T> {
     if (!this.enabled) return execute();

@@ -22,9 +22,8 @@ export class TelegramWorker {
     private readonly report: () => void,
     private readonly logger?: AiLogger,
     lockTraceEnabled = false,
-    private readonly pollTraceEnabled = false,
-  )
-  {
+    private readonly pollTraceEnabled = false
+  ) {
     this.lockTrace = new RedisLockTrace(lockTraceEnabled, logger, key => this.redis.ttl(key));
     this.key = `telegram:${createHash('sha256').update(token.split(':')[0]!).digest('hex')}`;
   }
@@ -93,7 +92,11 @@ export class TelegramWorker {
           try {
             await this.lockTrace.run('release', [lock], () => this.redis.eval(RELEASE, 1, lock, lease), { lockType: 'telegram_poll', pollId: lease });
           }
-          catch (error) { trace.fail(error, { event: 'telegram_lock_release_failed', stage: 'telegram.lock.release' }); throw error; }
+          catch (error) {
+            trace.fail(error, { event: 'telegram_lock_release_failed', stage: 'telegram.lock.release' });
+            // eslint-disable-next-line no-unsafe-finally -- A release failure must reject polling so the existing retry/report path still runs.
+            throw error;
+          }
         }
       }
     });

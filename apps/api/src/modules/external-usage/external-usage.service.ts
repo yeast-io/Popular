@@ -6,10 +6,8 @@ export class ExternalUsageService {
   constructor(
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly usage: ExternalUsageReader,
-    private readonly now: () => Date = () => new Date(),
-  )
-  {
-  }
+    private readonly now: () => Date = () => new Date()
+  ) {}
 
   async readMine(token: string | undefined, days: ExternalUsageDays): Promise<ExternalUsageResponse> {
     const ownerId = await this.auth.requireOwnerId(token);

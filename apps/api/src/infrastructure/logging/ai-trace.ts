@@ -17,9 +17,8 @@ export class AiTrace {
     private readonly bindings: Record<string, unknown>,
     content: string,
     private readonly operation?: string,
-    private readonly eventsEnabled = true,
-  )
-  {
+    private readonly eventsEnabled = true
+  ) {
     this.sensitive(content);
   }
   sensitive(value: string): void { if (value) this.secrets.add(value); }

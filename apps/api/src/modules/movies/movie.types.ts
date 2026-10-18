@@ -2,6 +2,7 @@ export interface MovieRecord {
   tmdbId: number;
   title: string;
   originalTitle?: string;
+  originalLanguage?: string;
   overview?: string;
   releaseDate?: string;
   posterPath?: string;

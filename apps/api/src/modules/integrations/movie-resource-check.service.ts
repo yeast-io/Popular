@@ -63,10 +63,8 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     private readonly logger: CheckLogger,
     private readonly now: () => Date = () => new Date(),
     private readonly wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
-      new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  )
-  {
-  }
+      new Promise((resolve) => setTimeout(resolve, milliseconds))
+  ) {}
 
   schedule(ownerId: string, tmdbId: number, options: { force?: boolean } = {}): void {
     if (this.stopped) return;

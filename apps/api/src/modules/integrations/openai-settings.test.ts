@@ -24,6 +24,12 @@ function setup() {
     find: async (id) => records.get(id) ?? null,
     save: async (record) => { records.set(record.ownerId, record); },
     delete: async (id) => { records.delete(id); },
+    selectModel: async (id, key, model) => {
+      const record = records.get(id);
+      if (!record || record.encryptedApiKey !== key || record.validation?.status !== 'valid' || !record.validation.models.includes(model)) return false;
+      records.set(id, { ...record, model });
+      return true;
+    },
     saveValidation: async (id, key, validation) => {
       const record = records.get(id); if (!record || record.encryptedApiKey !== key) return false;
       records.set(id, { ...record, validation }); return true;
@@ -110,18 +116,18 @@ test('missing key blocks normal and streaming turns before any message write', a
   } finally { await app.close(); }
 });
 
-test('connection tests validate only the saved owner key, persist results, and reset after key or model replacement', async () => {
+test('connection tests validate only the saved owner key, persist results, and reset after key replacement', async () => {
   const f = setup();
   const seen: string[] = [];
-  const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async key => { seen.push(key); } });
+  const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async key => { seen.push(key); return ['test-model', 'other-model']; } });
   await service.save('alice', aliceKey);
   const result = await service.test('alice');
-  assert.equal(result.validation?.status, 'valid'); assert.equal(result.validation?.model, 'test-model'); assert.ok(result.validation?.checkedAt);
+  assert.equal(result.validation?.status, 'valid'); assert.deepEqual(result.validation?.models, ['test-model', 'other-model']); assert.ok(result.validation?.checkedAt);
   assert.deepEqual(seen, [aliceKey]); assert.deepEqual((await service.get('alice')).validation, result.validation);
   assert.equal((await service.get('bob')).configured, false);
   assert.equal(JSON.stringify(result).includes(aliceKey), false);
-  const changedModel = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'new-model', verify: async () => undefined });
-  assert.equal((await changedModel.get('alice')).validation, undefined);
+  const changedModel = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'new-model', verify: async () => [] });
+  assert.deepEqual((await changedModel.get('alice')).validation, result.validation);
   assert.equal(f.records.get('alice')?.validation?.status, 'valid');
   await service.save('alice', bobKey); assert.equal((await service.get('alice')).validation, undefined);
 });
@@ -146,7 +152,7 @@ test('concurrent tests share one request, and a stale result cannot validate a r
     let calls = 0;
     const begun = new Promise<void>(resolve => { started = resolve; });
     const finished = new Promise<void>(resolve => { release = resolve; });
-    const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async () => { calls++; started(); await finished; } });
+    const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async () => { calls++; started(); await finished; return ['test-model']; } });
     const first = service.test('alice');
     const second = service.test('alice');
     await begun;
@@ -163,14 +169,83 @@ test('test HTTP route authenticates and ignores injected key, model and owner; r
   const f = setup();
   await f.service.save('alice', aliceKey);
   let calls = 0;
-  const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async key => { assert.equal(key, aliceKey); calls++; } });
+  const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), { model: 'test-model', verify: async key => { assert.equal(key, aliceKey); calls++; return ['test-model']; } });
   const app = await buildApp({ config, healthDependencies: [], openaiSettingsService: service });
   try {
     const url = '/api/v1/me/integrations/openai/test';
     assert.equal((await app.inject({ method: 'POST', url })).statusCode, 401);
     const result = await app.inject({ method: 'POST', url, headers: { cookie: 'movie_hub_session=alice' }, payload: { apiKey: 'attacker', ownerId: 'bob', model: 'unwanted-model' } });
-    assert.equal(result.statusCode, 200); assert.equal(result.json().validation.status, 'valid'); assert.equal(result.json().validation.model, 'test-model');
+    assert.equal(result.statusCode, 200); assert.equal(result.json().validation.status, 'valid'); assert.deepEqual(result.json().validation.models, ['test-model']);
     assert.equal(calls, 1); assert.equal(result.body.includes(aliceKey), false); assert.equal(result.body.includes('encryptedApiKey'), false);
     assert.deepEqual(await service.get('bob'), { configured: false });
   } finally { await app.close(); }
+});
+
+
+test('model selection is owner isolated, requires a verified list and drives actual credentials', async () => {
+  const f = setup();
+  const service = new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), {
+    model: 'default-model', verify: async key => key === aliceKey ? ['alice-model', 'second-model'] : ['bob-model'],
+  });
+  await service.save('alice', aliceKey);
+  await service.save('bob', bobKey);
+  await assert.rejects(service.selectModel('alice', 'alice-model'), { code: 'VALIDATION_ERROR' });
+  await service.test('alice');
+  await service.test('bob');
+  await assert.rejects(service.selectModel('alice', 'bob-model'), { code: 'VALIDATION_ERROR' });
+  await assert.rejects(service.selectModel(undefined, 'alice-model'), { code: 'UNAUTHORIZED' });
+  await service.selectModel('alice', 'alice-model');
+  assert.equal((await service.get('alice')).model, 'alice-model');
+  assert.deepEqual(await service.requireCredentials('alice'), { apiKey: aliceKey, model: 'alice-model' });
+  assert.deepEqual(await service.requireCredentials('bob'), { apiKey: bobKey, model: 'default-model' });
+  const app = await buildApp({ config, healthDependencies: [], openaiSettingsService: service });
+  try {
+    const url = '/api/v1/me/integrations/openai/model';
+    assert.equal((await app.inject({ method: 'PUT', url, payload: { model: 'second-model' } })).statusCode, 401);
+    const result = await app.inject({ method: 'PUT', url, headers: { cookie: 'movie_hub_session=alice' }, payload: { model: 'second-model', ownerId: 'bob' } });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.json().model, 'second-model');
+    assert.equal(result.json().validation.method, 'model_list');
+    assert.equal(result.body.includes(aliceKey), false);
+    assert.equal((await service.requireCredentials('alice')).model, 'second-model');
+    assert.equal((await service.requireCredentials('bob')).model, 'default-model');
+  } finally { await app.close(); }
+  await service.save('alice', bobKey);
+  assert.equal((await service.get('alice')).validation, undefined);
+  assert.equal(f.records.get('alice')?.model, undefined);
+  await assert.rejects(service.selectModel('alice', 'alice-model'), { code: 'VALIDATION_ERROR' });
+});
+
+test('model selection cannot update replaced credentials or a changed model list', async () => {
+  const f = setup();
+  await f.service.save('alice', aliceKey);
+  const service = new OpenAISettingsService(f.auth, { ...f.store, selectModel: async () => false }, new SecretCrypto(config.INTEGRATION_SECRET_KEY), {
+    model: 'default-model', verify: async () => ['test-model'],
+  });
+  await service.test('alice');
+  await assert.rejects(service.selectModel('alice', 'test-model'), { code: 'CONFLICT' });
+  assert.equal(f.records.get('alice')?.model, undefined);
+});
+
+test('curated models intersect key visibility in configured order and refresh from stored metadata', async () => {
+  const f = setup();
+  const createService = (recommendedModels: string[]) => new OpenAISettingsService(f.auth, f.store, new SecretCrypto(config.INTEGRATION_SECRET_KEY), {
+    model: 'default-model', recommendedModels,
+    verify: async () => ['gpt-4.1-mini', 'gpt-5.4-mini', 'gpt-6-luna', 'gpt-6.1-sol', 'whisper-1'],
+  });
+  const service = createService(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna']);
+  await service.save('alice', aliceKey);
+  assert.deepEqual((await service.test('alice')).validation?.models, ['gpt-6.1-sol', 'gpt-6-luna']);
+  assert.equal(f.records.get('alice')?.validation?.models.includes('whisper-1'), true);
+  await assert.rejects(service.selectModel('alice', 'gpt-4.1-mini'), { code: 'VALIDATION_ERROR' });
+  await assert.rejects(service.selectModel('alice', 'gpt-6-astra'), { code: 'VALIDATION_ERROR' });
+  await service.selectModel('alice', 'gpt-6-luna');
+  const reconfigured = createService(['gpt-5.4-mini', 'gpt-6.1-sol']);
+  const updated = await reconfigured.get('alice');
+  assert.deepEqual(updated.validation?.models, ['gpt-5.4-mini', 'gpt-6.1-sol']);
+  assert.equal(updated.model, 'gpt-6-luna');
+  assert.equal((await reconfigured.requireCredentials('alice')).model, 'gpt-6-luna');
+  await assert.rejects(reconfigured.selectModel('alice', 'gpt-6-luna'), { code: 'VALIDATION_ERROR' });
+  assert.deepEqual((await createService([]).get('alice')).validation?.models, []);
+  await assert.rejects(createService([]).selectModel('alice', 'gpt-6.1-sol'), { code: 'VALIDATION_ERROR' });
 });

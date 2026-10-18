@@ -12,9 +12,7 @@ export class MongoAuthUserStore implements AuthUserStore {
   constructor(
     private readonly users: UserModel,
     private readonly identities: IdentityModel
-  )
-  {
-  }
+  ) {}
 
   async countUsers(): Promise<number> {
     return this.users.countDocuments({}).exec();
@@ -60,7 +58,7 @@ export class MongoAuthUserStore implements AuthUserStore {
       try {
         await this.users.deleteOne({ _id: user._id }).exec();
       } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], 'Auth identity creation and user cleanup both failed');
+        throw new AggregateError([error, cleanupError], 'Auth identity creation and user cleanup both failed', { cause: cleanupError });
       }
       throw error;
     }

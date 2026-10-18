@@ -20,9 +20,7 @@ export class OpenAIRequestAccounting {
   constructor(
     private readonly model: string,
     private readonly options?: OpenAIAccountingOptions
-  )
-  {
-  }
+  ) {}
 
   async request<T>(input: LlmGenerateInput, send: () => Promise<T>): Promise<{ response: T; attempt: OpenAIRequestAttempt }> {
     const operationId = randomUUID();

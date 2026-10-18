@@ -1,4 +1,9 @@
+import { DocsService } from './modules/docs/docs.service.js';
+import { registerDocsRoutes } from './modules/docs/docs.routes.js';
+import { aiAssistantPageEnabled, docsPageEnabled } from './config/env.js';
 import { registerTelegramRoutes } from './modules/telegram/telegram.routes.js';
+import { registerPreferenceRoutes } from './modules/preferences/preference.routes.js';
+import type { PreferenceService } from './modules/preferences/preference.service.js';
 import type { TelegramService } from './modules/telegram/telegram.service.js';
 import { registerNotificationTestRoutes } from './modules/notifications/notification-test.routes.js';
 import type { NotificationTestService } from './modules/notifications/notification-test.service.js';
@@ -45,6 +50,7 @@ export interface BuildAppOptions {
   notificationTestService?: NotificationTestService;
   notificationService?: NotificationService;
   whatsappService?: WhatsAppService;
+  docsService?: DocsService;
   config: AppConfig;
   healthDependencies: HealthDependency[];
   authService?: AuthService;
@@ -60,9 +66,10 @@ export interface BuildAppOptions {
   openaiSettingsService?: OpenAISettingsService;
   conversationService?: ConversationService;
   conversationTurnService?: ConversationTurnService;
+  preferenceService?: PreferenceService;
 }
 
-export async function buildApp({ telegramService, notificationTestService, notificationService, whatsappService, config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, conversationTurnService, openaiSettingsService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ docsService, telegramService, notificationTestService, notificationService, whatsappService, config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, conversationTurnService, openaiSettingsService, preferenceService }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
@@ -79,8 +86,10 @@ export async function buildApp({ telegramService, notificationTestService, notif
     if (whatsappService) registerWhatsAppRoutes(api, whatsappService, config);
     if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config);
     registerPublicConfigRoutes(api, config);
+    if (docsPageEnabled(config) && authService) registerDocsRoutes(api, docsService ?? new DocsService(), authService, config, loggers.error);
     registerHealthRoutes(api, healthDependencies);
     if (authService) registerAuthRoutes(api, authService, config);
+    if (preferenceService && authService) registerPreferenceRoutes(api, preferenceService, authService, config);
     if (userService) registerUserRoutes(api, userService, config);
     if (movieService) registerMovieRoutes(api, movieService, authService, config);
     if (movieStatusService && authService) registerMovieStatusRoutes(api, movieStatusService, authService, config, movieResourceSyncService);
@@ -88,7 +97,7 @@ export async function buildApp({ telegramService, notificationTestService, notif
     if (integrationService) registerIntegrationRoutes(api, integrationService, config, qbittorrentIntegrationService);
     if (movieDownloadService) registerMovieDownloadRoutes(api, movieDownloadService, config);
     if (externalUsageService) registerExternalUsageRoutes(api, externalUsageService, config);
-    if (conversationService) registerConversationRoutes(api, conversationService, config, conversationTurnService, authService, loggers.error);
+    if (aiAssistantPageEnabled(config) && conversationService) registerConversationRoutes(api, conversationService, config, conversationTurnService, authService, loggers.error);
   }, { prefix: '/api/v1' });
 
   return app;

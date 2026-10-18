@@ -22,9 +22,7 @@ export class NotificationTestService {
     private readonly webOrigin: string,
     private readonly payload = buildDownloadNotification,
     private readonly now: () => Date = () => new Date()
-  )
-  {
-  }
+  ) {}
   async list(token: string | undefined, page: number): Promise<NotificationTestList> {
     const owner = await this.auth.requireOwnerId(token);
     const records = await this.store.listCompleted(owner, (page - 1) * 30, 31);

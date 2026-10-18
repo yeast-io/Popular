@@ -48,8 +48,7 @@ onMounted(() => { void refresh(false); });
 onUnmounted(() => { disposed = true; controller.abort(); });
 </script>
 <template>
-  <section class="settings-card notification-preferences" :aria-busy="loading || busy" aria-labelledby="notification-title">
-    <header class="notification-heading"><h3 id="notification-title">{{ t('notifications.title') }}</h3><p>{{ t('notifications.description') }}</p></header>
+  <section class="settings-card notification-preferences" :aria-busy="loading || busy" :aria-label="t('notifications.title')">
     <p v-if="loading" role="status">{{ t('notifications.loading') }}</p>
     <form v-else class="notification-form" @submit.prevent="save" @change="saved = false">
       <label class="notification-switch"><span class="notification-switch-copy">{{ t('notifications.enabled') }}</span><input v-model="draft.enabled" type="checkbox" role="switch" :disabled="busy" /></label>
@@ -81,9 +80,6 @@ onUnmounted(() => { disposed = true; controller.abort(); });
 </template>
 <style scoped>
 .notification-preferences { min-width: 0; }
-.notification-heading { display: block; margin: 0 0 24px; }
-.notification-heading h3 { margin: 0 0 8px; font-family: inherit; font-size: .95rem; font-weight: 600; }
-.notification-heading p { max-width: 72ch; margin: 0; color: #92968e; font-size: .78rem; line-height: 1.65; }
 .notification-form { display: grid; gap: 0; min-width: 0; }
 .notification-switch { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 0; color: #d8dbd2; font-size: .82rem; font-weight: 600; cursor: pointer; }
 .notification-preferences .notification-switch input { appearance: none; box-sizing: border-box; flex: 0 0 42px; width: 42px; min-width: 42px; max-width: 42px; height: 24px; min-height: 24px; max-height: 24px; margin: 0; padding: 0; border: 1px solid #555a54; border-radius: 24px; background: #373c36; cursor: pointer; position: relative; transition: background .15s; }
@@ -110,7 +106,6 @@ onUnmounted(() => { disposed = true; controller.abort(); });
 .notification-feedback p { margin: 0; }
 .notification-preferences .notification-footer button { flex-shrink: 0; width: auto; min-height: 36px; margin: 0; padding: 9px 15px; border-radius: 7px; font-size: .75rem; font-weight: 600; }
 @media (max-width: 600px) {
-  .notification-heading { margin-bottom: 20px; }
   .notification-footer { flex-wrap: wrap; }
   .notification-footer button { margin-left: auto; }
 }

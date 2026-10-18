@@ -7,9 +7,7 @@ import type { MovieResourceSyncBatchDocument } from './movie-resource-sync-batch
 export class MongoMovieResourceSyncBatchStore implements MovieResourceSyncBatchStore {
   constructor(
     private readonly batches: Model<MovieResourceSyncBatchDocument>
-  )
-  {
-  }
+  ) {}
 
   async createOrGetActive(ownerId: string, movieIds: number[], force: boolean, now: Date) {
     const existing = await this.batches.findOne({ ownerId, active: true }).lean().exec();
@@ -78,7 +76,7 @@ export class MongoMovieResourceSyncBatchStore implements MovieResourceSyncBatchS
   }
 }
 
-function mapBatch(row: MovieResourceSyncBatchDocument | Record<string, any>): StoredMovieResourceSyncBatch {
+function mapBatch(row: MovieResourceSyncBatchDocument): StoredMovieResourceSyncBatch {
   return {
     id: String(row._id), ownerId: String(row.ownerId), status: row.status,
     movieIds: [...row.movieIds], cursor: row.cursor, force: row.force, rateLimitRetries: row.rateLimitRetries ?? 0,

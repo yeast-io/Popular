@@ -9,9 +9,7 @@ export class MongoDbConnector implements HealthDependency {
   constructor(
     private readonly uri: string,
     private readonly databaseName: string
-  )
-  {
-  }
+  ) {}
 
   async connect(): Promise<Connection> {
     if (this.connection?.readyState === 1) return this.connection;

@@ -11,9 +11,7 @@ import type { MovieDownloadDocument } from './movie-download.schema.js';
 export class MongoMovieDownloadStore implements MovieDownloadStore {
   constructor(
     private readonly downloads: Model<MovieDownloadDocument>
-  )
-  {
-  }
+  ) {}
 
   async findByRelease(ownerId: string, tmdbId: number, releaseId: string): Promise<MovieDownloadRecord | null> {
     const row = await this.downloads.findOne({ ownerId, tmdbId, sourceProvider: 'mteam', sourceReleaseId: releaseId }).lean().exec();

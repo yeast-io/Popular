@@ -6,9 +6,7 @@ const duplicate = (error: unknown): boolean => typeof error === 'object' && erro
 export class MongoTelegramStore implements TelegramStore {
   constructor(
     private readonly model: Model<TelegramBindingDocument>
-  )
-  {
-  }
+  ) {}
   async findOwnerByChatId(chatId: string): Promise<string | null> {
     const row = await this.model.findOne({ chatId }).select('ownerId').lean().exec();
     return row ? String(row.ownerId) : null;

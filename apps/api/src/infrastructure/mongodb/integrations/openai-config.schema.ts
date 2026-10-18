@@ -4,10 +4,12 @@ const openAIConfigSchema = new Schema({
   ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
   encryptedApiKey: { type: String, required: true, select: false },
   maskedApiKey: { type: String, required: true },
+  model: { type: String },
   validation: { type: new Schema({
     status: { type: String, enum: ['valid', 'failed'], required: true },
-    method: { type: String, enum: ['model_lookup'], required: true },
-    checkedAt: { type: Date, required: true }, model: { type: String, required: true },
+    method: { type: String, enum: ['model_lookup', 'model_list'], required: true },
+    checkedAt: { type: Date, required: true },
+    models: { type: [String], default: [] },
     failureReason: { type: String, enum: ['authentication', 'quota', 'rate_limit', 'model', 'timeout', 'network', 'invalid_response', 'request_failed'] },
   }, { _id: false }) },
 }, { timestamps: true, collection: 'openai_configs' });

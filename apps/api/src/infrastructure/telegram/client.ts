@@ -7,10 +7,8 @@ export class TelegramClient implements TelegramTransport {
     private readonly token: string,
     private readonly fetcher: typeof fetch = fetch,
     private readonly logger?: AiLogger,
-    private readonly pollTraceEnabled = false,
-  )
-  {
-  }
+    private readonly pollTraceEnabled = false
+  ) {}
   private async call<T>(method: string, payload: object | FormData, signal?: AbortSignal): Promise<T> {
     const trace = currentAiTrace() ?? new AiTrace(this.logger, { event: 'telegram_http' }, '', 'telegram.http');
     trace.sensitive(this.token);

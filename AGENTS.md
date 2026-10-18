@@ -22,3 +22,11 @@
 - Challenge unsupported or flawed assumptions directly and constructively.
 - Clearly distinguish facts, reasonable inferences, uncertainties, and opinions.
 - Be concise and direct. Criticize the reasoning or work, not the person.
+
+## API and Workflow diagnostic logging
+
+- All API call chains and Workflow call chains must include structured diagnostic logs so failures can be traced end to end. Add or update this instrumentation whenever implementing or changing a chain.
+- Record entry, key stages, external calls, completion, and failure with a consistent correlation ID propagated across API, service, Agent, Workflow, and background-task boundaries. Include stage, duration, outcome, and applicable task IDs and retry attempts.
+- Use the validated boolean `.env` setting `VERBOSE=false` as the global switch for API and Workflow tracing and troubleshooting logs: default to `false`, enable verbose diagnostics only when `VERBOSE=true`, and respect `LOG_LEVEL`. Any chain-specific trace switch must also be gated by `VERBOSE`. Document `VERBOSE=false` in `.env.example` when implementing this configuration; do not hard-code logging switches or require source changes to enable tracing.
+- Failures must preserve the original error stack and cause chain and identify the failing stage. Do not swallow exceptions or replace diagnostics with a generic retry message. Disabling verbose tracing must not suppress error logs at an enabled error level.
+- Reuse the project's logging and redaction utilities. Never log API keys, credentials, session tokens, raw user conversations, preference content, or raw model payloads.

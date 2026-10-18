@@ -13,10 +13,8 @@ export class MongoExternalUsageStore implements ExternalRequestRecorder, Externa
   constructor(
     private readonly events: Model<ExternalRequestEventDocument>,
     private readonly daily: Model<ExternalUsageDailyDocument>,
-    private readonly logger: ExternalUsageLogger,
-  )
-  {
-  }
+    private readonly logger: ExternalUsageLogger
+  ) {}
 
   async record(input: ExternalRequestEventInput): Promise<void> {
     if ((input.actorType === 'user') !== Boolean(input.ownerId)) {

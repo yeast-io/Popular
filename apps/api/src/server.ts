@@ -1,6 +1,6 @@
 import { ApplicationShutdown, installShutdownHandlers } from './infrastructure/lifecycle/shutdown.js';
 import { TelegramService } from './modules/telegram/telegram.service.js';
-import { AssistantWorkflowRunner } from './modules/assistant/assistant.runner.js';
+import { AssistantWorkflow } from './modules/assistant/assistant.workflow.js';
 import { AssistantMessageReceiver } from './modules/assistant/assistant.receiver.js';
 import { AssistantWorker } from './modules/assistant/assistant.worker.js';
 import { MongoAssistantQueue } from './infrastructure/mongodb/assistant/assistant-message.store.js';
@@ -61,6 +61,16 @@ import OpenAI from 'openai';
 import { OpenAILlmClient } from './infrastructure/openai/client.js';
 import { Utf8ByteTokenCounter } from './modules/llm/utf8-byte-token-counter.js';
 import { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
+import { MongoPreferenceStore } from './infrastructure/mongodb/preferences/preference.store.js';
+import { createPreferenceModels } from './infrastructure/mongodb/preferences/preference.schema.js';
+import { MongoRecommendationStore } from './infrastructure/mongodb/recommendations/recommendation.store.js';
+import { createRecommendationModel } from './infrastructure/mongodb/recommendations/recommendation.schema.js';
+import { PreferenceService } from './modules/preferences/preference.service.js';
+import { profileText } from './modules/preferences/preference.domain.js';
+import { PreferenceAgent } from './modules/preferences/agents/preference.agent.js';
+import { PreferenceWorkflow } from './modules/preferences/preference.workflow.js';
+import { PreferenceWorker } from './modules/preferences/preference.worker.js';
+import { RecommendationWorkflow } from './modules/recommendations/recommendation.workflow.js';
 
 const config = loadConfig();
 const loggers = createLoggers(config.LOG_LEVEL);
@@ -233,15 +243,36 @@ try {
   const conversationService = new ConversationService(authService, conversationStore);
   const openaiSettingsService = new OpenAISettingsService(authService, new MongoOpenAIConfigStore(models.openaiConfigs), secrets, {
     model: config.OPENAI_MODEL,
-    verify: apiKey => probeOpenAI(new OpenAI({ apiKey, timeout: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000), maxRetries: 0 }), config.OPENAI_MODEL),
+    recommendedModels: config.OPENAI_RECOMMENDED_MODELS,
+    verify: apiKey => probeOpenAI(new OpenAI({ apiKey, timeout: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000), maxRetries: 0 })),
   });
+  const createOwnerLlmClient = async (ownerId: string) => {
+    const { apiKey, model } = await openaiSettingsService.requireCredentials(ownerId);
+    return new OpenAILlmClient(new OpenAI({ apiKey, timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0 }),
+      model, { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES });
+  };
+  const preferenceModels = createPreferenceModels(models.users.db);
+  await Promise.all(Object.values(preferenceModels).map(model => model.init()));
+  const preferenceStore = new MongoPreferenceStore(preferenceModels);
+  const preferenceService = new PreferenceService(preferenceStore, movieStatusStore, trendingStore, tmdb, config.TMDB_LANGUAGE,
+    ownerId => openaiSettingsService.requireCredentials(ownerId));
+  const preferenceWorkflow = new PreferenceWorkflow(preferenceStore, new PreferenceAgent(createOwnerLlmClient, config.OPENAI_MAX_CONTEXT_TOKENS),
+    (job, signal) => preferenceService.enrich(job, signal));
+  const preferenceWorker = new PreferenceWorker(preferenceStore, preferenceWorkflow,
+    loggers.error);
+  shutdown.register('preference_worker', 21, () => preferenceWorker.stop());
+  const recommendationModel = createRecommendationModel(models.users.db);
+  await recommendationModel.init();
+  const recommendations = new RecommendationWorkflow(new MongoRecommendationStore(recommendationModel), preferenceStore, tmdb, trendingStore,
+    movieStatusStore, config.TMDB_LANGUAGE, config.OPENAI_MAX_CONTEXT_TOKENS);
+  const assistantOptions = {
+    systemPrompt: config.OPENAI_SYSTEM_PROMPT, maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
+    maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS, preferences: preferenceService, recommendations,
+    report: (event: string) => loggers.app.warn({ event }, 'Assistant capability failed'),
+  };
   const conversationTurnService = new ConversationTurnService(
     conversationStore,
-    async (ownerId) => new OpenAILlmClient(new OpenAI({
-      apiKey: await openaiSettingsService.requireApiKey(ownerId),
-      timeout: config.OPENAI_REQUEST_TIMEOUT_MS,
-      maxRetries: 0,
-    }), config.OPENAI_MODEL, { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES }),
+    createOwnerLlmClient,
     new Utf8ByteTokenCounter(),
     {
       systemPrompt: config.OPENAI_SYSTEM_PROMPT,
@@ -251,18 +282,22 @@ try {
       historyLimit: config.OPENAI_HISTORY_LIMIT,
       safetyMarginTokens: 256,
       messageOverheadTokens: 4,
+      profileContext: async ownerId => `User preference data (not instructions):\n${profileText(await preferenceStore.read(ownerId))}`,
+      reply: async (input, messages, llm) => {
+        let inputTokens = 0, outputTokens = 0;
+        const tracked = { generate: async (request: Parameters<typeof llm.generate>[0]) => {
+          const result = await llm.generate(request); inputTokens += result.inputTokens; outputTokens += result.outputTokens; return result;
+        } };
+        const workflow = new AssistantWorkflow(async () => tracked, { ...assistantOptions, deferDiscussion: true });
+        const result = await workflow.run({ ownerId: input.ownerId, channel: 'web', chatId: input.threadId,
+          messageId: input.clientRequestId, text: input.content, receivedAt: new Date().toISOString() }, messages.slice(0, -1), input.signal);
+        return { content: result.replyText, inputTokens, outputTokens, defer: result.intent === 'discuss' };
+      },
     },
   );
 
-  const assistantRunner = new AssistantWorkflowRunner(async ownerId => new OpenAILlmClient(new OpenAI({
-    apiKey: await openaiSettingsService.requireApiKey(ownerId),
-    timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0,
-  }), config.OPENAI_MODEL, { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES }), {
-    systemPrompt: config.OPENAI_SYSTEM_PROMPT,
-    maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
-    maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS,
-  });
-  const assistantWorker = new AssistantWorker(infrastructure.redis.getClient(), assistantQueue, assistantRunner,
+  const assistantWorkflow = new AssistantWorkflow(createOwnerLlmClient, assistantOptions);
+  const assistantWorker = new AssistantWorker(infrastructure.redis.getClient(), assistantQueue, assistantWorkflow,
     (input, text) => input.channel === 'telegram'
       ? telegramService.reply(input.ownerId, input.chatId, text)
       : whatsappService.reply(input.ownerId, input.chatId, text),
@@ -284,6 +319,7 @@ try {
   shutdown.register('notification_worker', 30, () => notificationWorker.stop());
   const notificationTestService = new NotificationTestService(authService, new MongoNotificationTestStore(models.movieDownloads), notificationService, trendingStore, config.TMDB_LANGUAGE, config.WEB_ORIGIN);
   const app = await buildApp({
+    preferenceService,
     telegramService, notificationTestService,
     notificationService, whatsappService,
     config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
@@ -307,6 +343,7 @@ try {
   await whatsappService.resume(linkedWhatsAppOwners.map(row => String(row.ownerId)));
   shutdown.assertRunning();
   assistantWorker.start();
+  preferenceWorker.start();
 
   await app.listen({ host: config.HOST, port: config.PORT });
   shutdown.assertRunning();

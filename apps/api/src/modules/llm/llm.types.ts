@@ -10,7 +10,7 @@ export interface LlmGenerateInput {
   /** Optional strict JSON response schema for non-streaming classification. */
   outputSchema?: { name: string; schema: Record<string, unknown> };
   /** Attribution for request statistics; not included in the provider payload. */
-  operation?: 'conversation.reply' | 'conversation.summary' | 'assistant.intent' | 'assistant.discuss';
+  operation?: 'conversation.reply' | 'conversation.summary' | 'assistant.intent' | 'assistant.discuss' | 'preference.update' | 'assistant.recommend';
 }
 
 export interface LlmGenerateResult {
@@ -44,8 +44,7 @@ export class LlmProviderError extends Error {
     message: string,
     options?: ErrorOptions,
     public readonly diagnostics?: LlmFailureDiagnostics
-  )
-  {
+  ) {
     super(message, options);
     this.name = 'LlmProviderError';
   }

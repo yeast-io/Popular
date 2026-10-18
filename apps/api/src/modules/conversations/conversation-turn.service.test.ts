@@ -21,9 +21,7 @@ class FakeLlmClient implements LlmClient {
       inputTokens: 20,
       outputTokens: 3,
     }
-  )
-  {
-  }
+  ) {}
 
   async generate(input: LlmGenerateInput): Promise<LlmGenerateResult> {
     this.calls += 1;
@@ -59,9 +57,7 @@ class QueueLlmClient implements LlmClient {
 
   constructor(
     private readonly results: LlmGenerateResult[]
-  )
-  {
-  }
+  ) {}
 
   async generate(input: LlmGenerateInput): Promise<LlmGenerateResult> {
     this.inputs.push(input);
@@ -170,6 +166,23 @@ class MemoryConversationStore implements ConversationStore {
 }
 
 const tokenCounter: TokenCounter = { count: (text) => text.length };
+
+test('web discussion keeps streaming and counts classification usage with the preference context budget', async () => {
+  const store = new MemoryConversationStore();
+  const llm = new FakeLlmClient();
+  const service = new ConversationTurnService(store, llm, tokenCounter, {
+    systemPrompt: 'Be concise', maxContextTokens: 4000, maxOutputTokens: 100, summaryMaxOutputTokens: 100,
+    profileContext: async () => 'User preference data: likes history movies',
+    reply: async () => ({ content: '', inputTokens: 5, outputTokens: 2, defer: true }),
+  });
+  const events = [];
+  for await (const event of service.stream({ ownerId: 'owner-1', threadId: 'thread-1', clientRequestId: 'web-profile-1', content: 'Hello' })) events.push(event);
+  assert.equal(events.filter(event => event.type === 'delta').length, 2);
+  assert.equal(events.at(-1)?.type, 'completed');
+  const completed = events.at(-1);
+  if (completed?.type === 'completed') assert.deepEqual(completed.usage, { inputTokens: 25, outputTokens: 5 });
+  assert.ok(llm.lastInput?.messages.some(message => message.role === 'user' && message.content.includes('likes history movies')));
+});
 const options = {
   systemPrompt: 'You are concise.',
   maxContextTokens: 200,

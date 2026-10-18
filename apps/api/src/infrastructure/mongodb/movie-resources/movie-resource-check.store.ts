@@ -11,10 +11,8 @@ import type { MovieResourceCheckTaskDocument } from './movie-resource-check-task
 export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
   constructor(
     private readonly checks: Model<MovieResourceCheckDocument>,
-    private readonly tasks: Model<MovieResourceCheckTaskDocument>,
-  )
-  {
-  }
+    private readonly tasks: Model<MovieResourceCheckTaskDocument>
+  ) {}
 
   async readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieResourceCheckRecord[]> {
     if (tmdbIds.length === 0) return [];

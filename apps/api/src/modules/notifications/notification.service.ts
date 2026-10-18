@@ -11,8 +11,7 @@ export class NotificationService {
     readonly store: NotificationStore,
     channels: NotificationChannel[],
     private readonly now: () => Date = () => new Date()
-  )
-  {
+  ) {
     this.channels = new Map(channels.map(channel => [channel.id, channel]));
   }
   channel(id: string): NotificationChannel | undefined { return this.channels.get(id); }

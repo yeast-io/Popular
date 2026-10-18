@@ -11,10 +11,8 @@ export class AuthService {
   constructor(
     private readonly users: AuthUserStore,
     private readonly sessions: SessionStore,
-    private readonly registrationUserLimit: number,
-  )
-  {
-  }
+    private readonly registrationUserLimit: number
+  ) {}
 
   async register(input: RegisterRequest): Promise<{ user: AuthUser; token: string }> {
     const email = normalizeEmail(input.email);

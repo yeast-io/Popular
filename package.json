@@ -3,9 +3,20 @@
   "private": true,
   "packageManager": "pnpm@12.10.1",
   "scripts": {
-    "build": "pnpm -r build",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "lint:test": "node --test tools/eslint/*.test.mjs",
+    "check": "pnpm lint:test && pnpm lint && pnpm typecheck",
+    "build": "pnpm lint && pnpm -r build",
     "dev": "pnpm --parallel --filter @movie-hub/api --filter @movie-hub/web dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm --filter @movie-hub/contract build && pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-vue": "^10.11.1",
+    "globals": "^17.13.0",
+    "typescript-eslint": "^8.71.2"
   }
 }

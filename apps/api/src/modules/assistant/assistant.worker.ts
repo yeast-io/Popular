@@ -5,8 +5,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AssistantConversation, AssistantJob, AssistantQueue } from './assistant.queue.js';
-import type { AssistantWorkflowRunner } from './assistant.runner.js';
-import type { AssistantInputWorkflowMessage } from './assistant.type.js';
+import type { AssistantWorkflow } from './assistant.workflow.js';
+import type { AssistantInputWorkflowMessage } from './assistant.types.js';
 
 // Shared slots cap concurrency across API instances. All instances must use the same limit.
 const PREFIX = '{assistant}:worker';
@@ -36,15 +36,14 @@ export class AssistantWorker {
   constructor(
     private readonly redis: Pick<Redis, 'set' | 'eval' | 'ttl'>,
     private readonly queue: AssistantQueue,
-    private readonly workflow: Pick<AssistantWorkflowRunner, 'run'>,
+    private readonly workflow: Pick<AssistantWorkflow, 'run'>,
     private readonly send: (input: AssistantInputWorkflowMessage, text: string) => Promise<unknown>,
     private readonly isBound: (input: AssistantInputWorkflowMessage) => Promise<boolean>,
     private readonly report: (event: string) => void,
     private readonly options: AssistantWorkerOptions = { maxConcurrency: 4, scanIntervalMs: 15_000 },
     private readonly logger?: AiLogger,
-    private readonly lockTraceEnabled = false,
-  )
-  {
+    private readonly lockTraceEnabled = false
+  ) {
     this.lockTrace = new RedisLockTrace(lockTraceEnabled, logger, key => this.redis.ttl(key));
     if (!Number.isInteger(options.maxConcurrency) || options.maxConcurrency < 1 || options.scanIntervalMs < 1) {
       throw new Error('Invalid assistant worker limits');
@@ -184,7 +183,7 @@ export class AssistantWorker {
             await trace.step('assistant.job.retry', () => this.queue.retry(currentJob.id, leaseId, currentJob.attempts >= 5));
           } catch (retryError) {
             trace.fail(retryError);
-            throw new Error('Assistant retry scheduling failed; see correlated job error');
+            throw new Error('Assistant retry scheduling failed; see correlated job error', { cause: retryError });
           }
           return;
         } finally {

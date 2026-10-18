@@ -1,15 +1,13 @@
 import { Types } from 'mongoose';
 import type { AssistantQueue, AssistantJob, AssistantConversation } from '../../../modules/assistant/assistant.queue.js';
-import type { AssistantInputWorkflowMessage, AssistantIntent, AssistantWorkflowResult } from '../../../modules/assistant/assistant.type.js';
+import type { AssistantInputWorkflowMessage, AssistantIntent, AssistantWorkflowResult } from '../../../modules/assistant/assistant.types.js';
 import type { LlmMessage } from '../../../modules/llm/llm.types.js';
 import type { AssistantMessageModel } from './assistant-message.schema.js';
 
 export class MongoAssistantQueue implements AssistantQueue {
   constructor(
     private readonly model: AssistantMessageModel
-  )
-  {
-  }
+  ) {}
 
   async enqueue(input: AssistantInputWorkflowMessage): Promise<void> {
     const { ownerId, channel, chatId, messageId } = input;

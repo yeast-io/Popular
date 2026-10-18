@@ -229,6 +229,7 @@ export function registerConversationRoutes(
             await iterator.return?.();
           } catch (error) {
             trace.fail(error, { stage: 'iterator.cleanup' });
+            // eslint-disable-next-line no-unsafe-finally -- Preserve observable cleanup failures after the primary stream failure was traced.
             throw error;
           }
         }

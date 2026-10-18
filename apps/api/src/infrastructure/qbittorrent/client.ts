@@ -11,9 +11,7 @@ export class QBittorrentClient implements QBittorrentClientPort {
   constructor(
     private readonly timeoutMs: number,
     private readonly fetchImpl: FetchLike = fetch
-  )
-  {
-  }
+  ) {}
 
   async verify(baseUrl: string, credential: QBittorrentCredential): Promise<{ version: string }> {
     const response = await this.request(baseUrl, credential, 'app/version');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AssistantMessageReceiver } from './assistant.receiver.js';
-import type { AssistantInputWorkflowMessage } from './assistant.type.js';
+import type { AssistantInputWorkflowMessage } from './assistant.types.js';
 
 test('only stable text messages from Telegram or WhatsApp self-chat enter the durable inbox', async () => {
   const inputs: AssistantInputWorkflowMessage[] = [];

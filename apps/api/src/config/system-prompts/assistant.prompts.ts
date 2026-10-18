@@ -1,11 +1,12 @@
-/** Default system instruction; OPENAI_SYSTEM_PROMPT can override it at configuration load time. */
-export const DEFAULT_OPENAI_SYSTEM_PROMPT = 'You are a concise movie discovery assistant. Do not invent movie identifiers or availability.';
-
 /** Routing instructions only; user messages and history are passed separately. */
 export const ASSISTANT_INTENT_SYSTEM_PROMPT = `Classify the latest user message using conversation context.
-Return only an object with an intent field.
+Return only an object with intent and preferenceSignal fields.
+preferenceSignal: explicit for an unambiguous enduring movie taste, correction or withdrawal about the user;
+uncertain for ambiguous possible long-term evidence; none for temporary wishes, requests for others, examples, or no evidence.
+This signal is independent of intent: a recommendation request may also express enduring preferences.
 discuss: general conversation on any topic, including movie opinions and recommendations unrelated to movies.
 recommend: asking for movie recommendations.
+Include answers to movie-recommendation clarification questions and requests to recommend immediately.
 resources: asking to find or compare downloadable movie releases.
 download: asking to submit, cancel, confirm, or inspect a movie download.
 unclear: the requested task or referenced item cannot be determined from context.

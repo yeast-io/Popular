@@ -3,8 +3,7 @@ import type { ContextBuilderInput, ContextBuilderResult, ConversationMessage, To
 export class ContextBudgetExceededError extends Error {
   constructor(
     message: string
-  )
-  {
+  ) {
     super(message);
     this.name = 'ContextBudgetExceededError';
   }
@@ -21,7 +20,8 @@ export function buildConversationContext(
   }
 
   const systemTokens = input.systemPrompt ? tokenCounter.count(input.systemPrompt) + messageOverhead : 0;
-  const available = input.maxContextTokens - input.responseReserveTokens - safetyMargin - systemTokens;
+  const contextTokens = input.userContext ? tokenCounter.count(input.userContext) + messageOverhead : 0;
+  const available = input.maxContextTokens - input.responseReserveTokens - safetyMargin - systemTokens - contextTokens;
   if (available < 0) throw new ContextBudgetExceededError('System prompt and reserved tokens exceed the context budget');
 
   const selected: ConversationMessage[] = [];
@@ -42,9 +42,10 @@ export function buildConversationContext(
   return {
     messages: [
       ...(input.systemPrompt ? [{ role: 'system' as const, content: input.systemPrompt }] : []),
+      ...(input.userContext ? [{ role: 'user' as const, content: input.userContext }] : []),
       ...selected.map(({ role, content }) => ({ role, content })),
     ],
-    usedTokens: systemTokens + selectedTokens,
+    usedTokens: systemTokens + contextTokens + selectedTokens,
     omittedMessageCount: input.messages.length - selected.length,
   };
 }

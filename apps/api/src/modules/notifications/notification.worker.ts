@@ -18,10 +18,8 @@ export class NotificationWorker {
     private readonly report: (event: string, fields?: Record<string, unknown>) => void = () => undefined,
     private readonly now: () => Date = () => new Date(),
     private readonly poster: (path: string) => Promise<Buffer | undefined> = loadPoster,
-    private readonly scanTraceEnabled = false,
-  )
-  {
-  }
+    private readonly scanTraceEnabled = false
+  ) {}
   start() {
     this.stopped = false;
     this.timer = setInterval(() => { void this.tick(); }, 5_000);

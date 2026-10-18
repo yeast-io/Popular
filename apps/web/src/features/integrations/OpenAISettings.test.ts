@@ -49,7 +49,7 @@ it('keeps connection load failures visible while the configuration form is colla
 });
 
 it('tests the saved key, updates the status and timestamp, and disables testing an unsaved replacement', async () => {
-  const validation = { method: 'model_lookup', status: 'valid', checkedAt: '2026-10-18T00:00:00Z', model: 'configured-model' };
+  const validation = { method: 'model_list', status: 'valid', checkedAt: '2026-10-18T00:00:00Z', models: ['configured-model', 'other-model'] };
   const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => Response.json({ configured: true, maskedApiKey: '••••1234', model: 'configured-model', ...(url.endsWith('/test') ? { validation } : {}) }));
   vi.stubGlobal('fetch', fetchMock);
   const wrapper = mount(OpenAISettings); await flushPromises();
@@ -65,9 +65,49 @@ it('tests the saved key, updates the status and timestamp, and disables testing 
 });
 
 it('shows a persisted failure while collapsed instead of pretending the key is still unvalidated', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ configured: true, maskedApiKey: '••••1234', validation: { method: 'model_lookup', status: 'failed', checkedAt: '2026-10-18T00:00:00Z', model: 'configured-model', failureReason: 'quota' } })));
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ configured: true, maskedApiKey: '••••1234', validation: { method: 'model_list', status: 'failed', checkedAt: '2026-10-18T00:00:00Z', models: ['configured-model', 'other-model'], failureReason: 'quota' } })));
   const wrapper = mount(OpenAISettings, { attachTo: document.body }); await flushPromises();
   expect(wrapper.get('.integration-status').text()).toBe('Verification failed');
   expect(wrapper.get('.connection-card-notice').isVisible()).toBe(true);
   expect(wrapper.get('.connection-card-notice').text()).toContain('quota'); wrapper.unmount();
+});
+
+
+it('displays fetched models and persists selection without sending the key', async () => {
+  const validation = { method: 'model_list', status: 'valid', checkedAt: '2026-10-18T00:00:00Z', models: ['model-a', 'model-b'] };
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => Response.json({
+    configured: true, maskedApiKey: '••••1234', validation,
+    model: init?.body ? JSON.parse(String(init.body)).model : 'model-a',
+  }));
+  vi.stubGlobal('fetch', fetchMock);
+  const wrapper = mount(OpenAISettings);
+  await flushPromises();
+  expect(wrapper.findAll('select option').map(option => option.attributes('value'))).toEqual(['', 'model-a', 'model-b']);
+  expect(wrapper.get('.openai-model-save').attributes('disabled')).toBeDefined();
+  await wrapper.get('select').setValue('model-b');
+  await wrapper.get('.openai-model-save').trigger('click');
+  await flushPromises();
+  expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/openai/model'), expect.objectContaining({
+    method: 'PUT', credentials: 'include', body: JSON.stringify({ model: 'model-b' }),
+  }));
+  expect(wrapper.text()).toContain('Current model: model-b');
+  expect(wrapper.text()).toContain('Model saved.');
+  await wrapper.get('input').setValue('sk-unsaved-replacement-key');
+  expect(wrapper.get('select').attributes('disabled')).toBeDefined();
+  expect(wrapper.get('.openai-model-save').attributes('disabled')).toBeDefined();
+  await wrapper.get('form').trigger('submit');
+  await flushPromises();
+  wrapper.unmount();
+});
+
+it('handles an authenticated empty model list without offering a selection', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ configured: true, validation: {
+    method: 'model_list', status: 'valid', checkedAt: '2026-10-18T00:00:00Z', models: [],
+  } })));
+  const wrapper = mount(OpenAISettings);
+  await flushPromises();
+  expect(wrapper.text()).toContain('no curated models are visible to this key');
+  expect(wrapper.get('select').attributes('disabled')).toBeDefined();
+  expect(wrapper.get('.openai-model-save').attributes('disabled')).toBeDefined();
+  wrapper.unmount();
 });

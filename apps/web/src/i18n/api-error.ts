@@ -2,6 +2,8 @@ import type { ApiError, ErrorCode } from '@movie-hub/contract';
 import { t, type TranslationKey } from './index';
 
 const errorKeys = {
+  INSUFFICIENT_MOVIE_RATINGS: 'preferences.insufficient',
+  PREFERENCE_VERSION_CONFLICT: 'preferences.conflict',
   OPENAI_NOT_CONFIGURED: 'openai.required',
   OPENAI_AUTH_FAILED: 'openai.authFailed',
   OPENAI_QUOTA_EXCEEDED: 'openai.quotaExceeded',
@@ -50,8 +52,7 @@ const errorKeys = {
 export class LocalizedApiError extends Error {
   constructor(
     readonly translationKey: TranslationKey
-  )
-  {
+  ) {
     super(translationKey);
     this.name = 'LocalizedApiError';
   }

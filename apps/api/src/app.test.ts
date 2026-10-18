@@ -38,6 +38,8 @@ test('public config exposes avatar limits from the environment', async () => {
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), {
     notificationTestEnabled: true,
+    aiAssistantEnabled: true,
+    docsEnabled: false,
     avatar: { maxBytes: config.AVATAR_MAX_BYTES, maxPixels: config.AVATAR_MAX_PIXELS },
   });
   await app.close();
@@ -74,4 +76,43 @@ test('movie routes reject an unsupported locale before calling the service', asy
   }
   assert.equal(called, false);
   await app.close();
+});
+
+test('experimental page flags gate their APIs and production overrides both flags', async () => {
+  for (const mode of ['test', 'development', 'local', 'dev', 'production'] as const) {
+    for (const enabled of [false, true]) {
+      const app = await buildApp({ config: { ...config, NODE_ENV: mode, PAGE_AI_ASSISTANT_ENABLED: enabled, PAGE_DOCS_ENABLED: enabled }, healthDependencies: [],
+        authService: { requireOwnerId: async () => 'alice' } as unknown as import('./modules/auth/auth.service.js').AuthService,
+        conversationService: { listThreads: async () => ({ items: [] }) } as unknown as import('./modules/conversations/conversation.service.js').ConversationService,
+        docsService: { list: async () => [{ path: 'a.md', title: 'A' }], read: async () => ({ path: 'a.md', title: 'A', markdown: '# A' }) } as unknown as import('./modules/docs/docs.service.js').DocsService,
+        preferenceService: { get: async () => ({ version: 1 }), generate: async () => ({ task: { status: 'pending' } }) } as unknown as import('./modules/preferences/preference.service.js').PreferenceService,
+      });
+      try {
+        const allowed = mode !== 'production' && enabled;
+        const publicConfig = (await app.inject('/api/v1/config')).json();
+        assert.equal(publicConfig.aiAssistantEnabled, allowed);
+        assert.equal(publicConfig.docsEnabled, allowed);
+        assert.equal((await app.inject('/api/v1/conversations')).statusCode, allowed ? 200 : 404);
+        assert.equal((await app.inject('/api/v1/docs')).statusCode, allowed ? 200 : 404);
+        assert.equal((await app.inject('/api/v1/docs/content?path=a.md')).statusCode, allowed ? 200 : 404);
+        // The page flag does not disable preference workflows or their generation endpoint.
+        assert.equal((await app.inject('/api/v1/me/preferences')).statusCode, 200);
+        assert.equal((await app.inject({ method: 'POST', url: '/api/v1/me/preferences/generate' })).statusCode, 202);
+      } finally { await app.close(); }
+    }
+  }
+});
+
+test('Docs APIs require authentication before scanning files', async () => {
+  let scanned = false;
+  const { AppError } = await import('./infrastructure/http/app-error.js');
+  const app = await buildApp({ config: { ...config, PAGE_DOCS_ENABLED: true }, healthDependencies: [],
+    authService: { requireOwnerId: async () => { throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); } } as unknown as import('./modules/auth/auth.service.js').AuthService,
+    docsService: { list: async () => { scanned = true; return []; } } as unknown as import('./modules/docs/docs.service.js').DocsService,
+  });
+  try {
+    assert.equal((await app.inject('/api/v1/docs')).statusCode, 401);
+    assert.equal((await app.inject('/api/v1/docs/content?path=anything.md')).statusCode, 401);
+    assert.equal(scanned, false);
+  } finally { await app.close(); }
 });

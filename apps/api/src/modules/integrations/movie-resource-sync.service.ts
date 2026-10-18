@@ -31,10 +31,8 @@ export class MovieResourceSyncService {
     private readonly logger: SyncLogger,
     private readonly now: () => Date = () => new Date(),
     private readonly wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
-      new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  )
-  {
-  }
+      new Promise((resolve) => setTimeout(resolve, milliseconds))
+  ) {}
 
   async start(ownerId: string): Promise<MovieResourceSyncBatch> {
     const active = await this.batches.readCurrent(ownerId);

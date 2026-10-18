@@ -282,13 +282,13 @@ describe('settings workspace', () => {
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/integrations/'))).toBe(false);
     await wrapper.get('#profile-display-name').setValue('Unsaved profile');
     await wrapper.get('[data-settings-section="ai"]').trigger('click'); await flushPromises();
-    expect(wrapper.get('.settings-content-heading h2').text()).toBe('AI assistant');
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('AI Assistant');
     expect(wrapper.get('.integration-disclosure').attributes('aria-expanded')).toBe('false');
     expect(wrapper.get('#openai-api-key').isVisible()).toBe(false);
     await wrapper.get('.integration-disclosure').trigger('click');
     await wrapper.get('#openai-api-key').setValue('sk-unsaved-personal-key');
     await wrapper.get('[data-settings-section="downloads"]').trigger('click'); await flushPromises();
-    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Sources & downloads');
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Sources & Downloads');
     expect(wrapper.findAll('.connection-copy h3').map(node => node.text())).toContain('M-Team');
     expect(wrapper.get('#openai-api-key').isVisible()).toBe(false);
     await wrapper.get('[data-settings-section="ai"]').trigger('click');
@@ -328,5 +328,27 @@ describe('notification test page environment gate', () => {
     expect(wrapper.findAll('.account-options button').some(button => button.text() === 'Notification tests')).toBe(enabled);
     expect(window.location.pathname).toBe(enabled ? '/dev/notification-tests' : '/');
     wrapper.unmount();
+  });
+});
+
+describe('experimental page switches', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); window.history.replaceState({}, '', '/'); });
+  it.each([{ path: '/ai', enabled: true }, { path: '/ai', enabled: false }, { path: '/docs', enabled: true }, { path: '/docs', enabled: false }])('gates navigation and direct access for $path when enabled=$enabled', async ({ path, enabled }) => {
+    setLocale('en-US');
+    window.history.replaceState({}, '', path);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/config')) return Response.json({ aiAssistantEnabled: enabled, docsEnabled: enabled, notificationTestEnabled: false, avatar: { maxBytes: 1000, maxPixels: 1000 } });
+      if (String(input).endsWith('/auth/me')) return Response.json({ user: { id: 'alice', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null } });
+      return Response.json({ items: [] });
+    }));
+    const wrapper = mount(App, { global: { stubs: { MovieBrowser: true, AiChat: { template: '<div data-ai-page />' }, DocsPage: { template: '<div data-docs-page />' } } } });
+    try {
+      await flushPromises();
+      expect(wrapper.find(path === '/ai' ? '[data-ai-page]' : '[data-docs-page]').exists()).toBe(enabled);
+      const labels = wrapper.findAll('.site-nav > button').map(button => button.text());
+      expect(labels.includes('AI Assistant')).toBe(enabled);
+      expect(labels.includes('Docs')).toBe(enabled);
+      expect(window.location.pathname).toBe(enabled ? path : '/');
+    } finally { wrapper.unmount(); }
   });
 });

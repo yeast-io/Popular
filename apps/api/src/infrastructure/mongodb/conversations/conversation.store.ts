@@ -6,10 +6,8 @@ import type { ConversationThreadDocument } from './conversation-thread.schema.js
 export class MongoConversationStore implements ConversationStore {
   constructor(
     private readonly threads: Model<ConversationThreadDocument>,
-    private readonly messages: Model<ConversationMessageDocument>,
-  )
-  {
-  }
+    private readonly messages: Model<ConversationMessageDocument>
+  ) {}
 
   async createThread(ownerId: string): Promise<ConversationThread> {
     const row = await this.threads.create({ ownerId, status: 'active' });

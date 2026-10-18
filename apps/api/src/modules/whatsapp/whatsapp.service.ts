@@ -22,9 +22,7 @@ export class WhatsAppService {
     private readonly connect: WhatsAppConnector,
     private readonly report: (ownerId: string, event: WhatsAppDiagnostic) => void = () => undefined,
     private readonly receive: (ownerId: string, message: IncomingMessage) => void | Promise<void> = () => undefined
-  )
-  {
-  }
+  ) {}
 
   private async owned<T>(token: string | undefined, work: (ownerId: string) => Promise<T>): Promise<T> {
     const ownerId = await this.auth.requireOwnerId(token);
