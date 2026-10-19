@@ -149,4 +149,6 @@ vite.config.ts.timestamp-*
 .turbo
 
 
-.idea
+.idea/
+
+.vscode/
