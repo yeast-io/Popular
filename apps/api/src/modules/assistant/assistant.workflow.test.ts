@@ -414,3 +414,95 @@ test('recommendation tools use the same owner assistant for intent, planning and
   assert.equal(credentials, 1);
   assert.deepEqual(operations, ['assistant.intent', 'assistant.recommend', 'assistant.recommend']);
 });
+
+for (const channel of ['web', 'telegram', 'whatsapp'] as const) {
+  test(`resource queries use shared owner agent planning on ${channel}`, async () => {
+    const operations: Array<string | undefined> = [];
+    let invoked = false;
+    const resources: import('../resource-query/resource-query.types.js').ResourceQueryCapability = {
+      active: async () => true,
+      run: async (ownerId, conversation, eventId, text, history, decisions, signal) => {
+        invoked = true;
+        assert.equal(ownerId, 'alice');
+        assert.equal(conversation, `${channel}:101`);
+        assert.equal(eventId, `${channel}:101:1`);
+        const plan = await decisions.plan(text, history, {
+          candidates: [], movie: null, resolution: null, providers: [],
+          sources: [{ id: 'mteam', name: 'M-Team' }], releaseCount: 0, page: 1, pageCount: 0,
+        }, 'zh-CN', signal ?? new AbortController().signal
+        );
+        assert.equal(plan.title, 'Interstellar');
+        assert.equal(plan.resolution, '2160p');
+        return { replyText: 'M-Team: found a real release' };
+      },
+    };
+    const workflow = createWorkflow({ generate: async (request) => {
+      operations.push(request.operation);
+      const content = request.operation === 'assistant.intent'
+        ? { intent: 'resources', preferenceSignal: 'none' }
+        : { title: 'Interstellar', year: 2014, candidateId: null, resolution: '2160p',
+          providers: null, releaseIndex: null, page: null, refresh: false, question: null, unsupported: [] };
+      return { content: JSON.stringify(content), inputTokens: 1, outputTokens: 1 };
+    } }, { ...options, resources }
+    );
+    const result = await workflow.run({ ...input, channel });
+    assert.equal(invoked, true);
+    assert.equal(result.intent, 'resources');
+    assert.match(result.replyText, /real release/);
+    assert.deepEqual(operations, ['assistant.intent', 'assistant.resources.plan']);
+  });
+}
+
+test('unclear resource follow-ups use persisted context, while download intent cannot invoke resource operations', async () => {
+  let calls = 0;
+  let intent = 'unclear';
+  const resources: import('../resource-query/resource-query.types.js').ResourceQueryCapability = {
+    active: async () => true,
+    run: async () => { calls++; return { replyText: 'Filtered result' }; },
+  };
+  const workflow = createWorkflow({ generate: async () => {
+    return ({
+      content: JSON.stringify({ intent, preferenceSignal: 'none' }), inputTokens: 1, outputTokens: 1,
+    });
+  } }, { ...options, resources }
+  );
+  assert.equal((await workflow.run(input)).intent, 'resources');
+  intent = 'download';
+  const result = await workflow.run({ ...input, messageId: '2' });
+  assert.equal(result.intent, 'download');
+  assert.match(result.replyText, /没有创建/);
+  assert.equal(calls, 1);
+});
+
+test('resource tool failure cannot masquerade as no resources or a successful query', async () => {
+  const workflow = createWorkflow({ generate: async () => {
+    return ({
+      content: '{"intent":"resources","preferenceSignal":"none"}', inputTokens: 1, outputTokens: 1,
+    });
+  } }, { ...options, resources: {
+    active: async () => false,
+    run: async () => { throw new Error('TMDB unreachable'); },
+  } }
+  );
+  assert.match((await workflow.run(input)).replyText, /未完成.*无法判断/);
+});
+
+for (const channel of ['telegram', 'whatsapp'] as const) {
+  test(`resource replies preserve all ten rows and long detail metadata on ${channel}`, async () => {
+    const replyText = Array.from(
+      { length: 10 },
+      (_, i) => `${i + 1}. 4K · ${'组'.repeat(40)} · 50.00 GiB · 做种 1069`
+    ).join(
+      '\n'
+    ) +
+      '\n' + '完整文件名'.repeat(300) + '\nID: last-release';
+    assert.ok(replyText.length > 1800 && replyText.length < 4000);
+    const workflow = createWorkflow({ generate: async () => {
+      return ({
+        content: '{"intent":"resources","preferenceSignal":"none"}', inputTokens: 1, outputTokens: 1,
+      });
+    } }, { ...options, resources: { active: async () => false, run: async () => ({ replyText }) } }
+    );
+    assert.equal((await workflow.run({ ...input, channel })).replyText, replyText);
+  });
+}

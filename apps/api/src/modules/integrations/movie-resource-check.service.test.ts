@@ -347,3 +347,16 @@ test('shutdown waits for accepted background checks and prevents new scheduled w
   assert.equal(await service.request('owner-a', 604), false);
   assert.equal(checks.completed.length, 1);
 });
+
+test('explicit release refresh bypasses cached values and refreshes later reads', async () => {
+  const { mteam, service } = harness();
+  mteam.releases = [{ id: '1', title: 'First', imdbId: 'tt0133093', visible: true, banned: false, seeders: 8 }];
+  await service.listReleases('owner-a', 603);
+  mteam.releases = [{ id: '2', title: 'New', imdbId: 'tt0133093', visible: true, banned: false, seeders: 9 }];
+  assert.equal((await service.listReleases('owner-a', 603)).releases[0]?.id, '1');
+  const fresh = await service.listReleases('owner-a', 603, { force: true });
+  assert.equal(fresh.cached, false);
+  assert.equal(fresh.releases[0]?.id, '2');
+  assert.equal((await service.listReleases('owner-a', 603)).releases[0]?.id, '2');
+  assert.equal(mteam.queries.length, 2);
+});

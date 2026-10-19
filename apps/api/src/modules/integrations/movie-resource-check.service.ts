@@ -1,3 +1,4 @@
+import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import {
   MTEAM_DEFAULT_WEB_BASE_URL,
   type Locale,
@@ -93,7 +94,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     return this.enqueue(ownerId, tmdbId, force);
   }
 
-  async listReleases(ownerId: string, tmdbId: number): Promise<MovieReleaseListResponse> {
+  async listReleases(ownerId: string, tmdbId: number, options: { force?: boolean } = {}): Promise<MovieReleaseListResponse> {
     if (!(await this.movies.hasMovie(tmdbId))) {
       throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded before its releases can be queried.');
     }
@@ -107,7 +108,8 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     }
     const cacheKey = `${taskKey(ownerId, tmdbId, 'mteam')}:${config.verifiedAt?.getTime() ?? 0}`;
     const cached = this.releaseCache.get(cacheKey);
-    if (cached) return { ...cached.value, cached: true };
+    if (cached && !options.force) return { ...cached.value, cached: true };
+    if (options.force) this.releaseCache.delete(cacheKey);
 
     const pending = this.releaseRequests.get(cacheKey);
     if (pending) return pending;
@@ -146,12 +148,14 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
           cause: error,
         });
       }
+      currentAiTrace()?.sensitive(apiKey);
       const lookup = await this.withMTeamRequestSlot(() => {
         return this.lookupReleases(ownerId, baseUrl, apiKey, tmdbId);
       });
       const completion = this.toSuccessfulCompletion(lookup);
       await this.checks.recordAttempt(key, attemptedAt, completion);
-      this.logger.info(
+      if (currentAiTrace()) currentAiTrace()?.event('resources.mteam.lookup.completed', { tmdbId, outcome: completion.availability, durationMs: Date.now() - startedAt });
+      else this.logger.info(
         {
           ownerId,
           tmdbId,
@@ -174,7 +178,8 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       if (failure.lastErrorCode === 'authentication') {
         await this.configs.recordFailure(ownerId, 'mteam', attemptedAt, 'authentication');
       }
-      this.logger.error(
+      if (currentAiTrace()) currentAiTrace()?.fail(error, { stage: 'resources.mteam.lookup', tmdbId, provider: 'mteam', outcome: 'failure', durationMs: Date.now() - startedAt });
+      else this.logger.error(
         {
           err: error,
           ownerId,
@@ -185,7 +190,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
         },
         'Live M-Team release query failed',
       );
-      throw publicMTeamAppError(failure.lastErrorCode);
+      throw publicMTeamAppError(failure.lastErrorCode, error);
     }
   }
 
@@ -356,23 +361,27 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }> {
     let identity = (await this.movies.readMovieIdentity?.(tmdbId, this.locale)) ?? null;
     if (!identity?.imdbId) {
-      const detail = await this.tmdb.fetchDetails(
-        tmdbId,
-        this.locale,
-        userExternalRequestContext(ownerId, 'background_check'),
-      );
+      const detail = await aiStep('resources.movie.identity.refresh', () => {
+        return this.tmdb.fetchDetails(
+          tmdbId,
+          this.locale,
+          userExternalRequestContext(ownerId, 'background_check'),
+        );
+      }, { provider: 'tmdb', tmdbId });
       await this.movies.writeMovieDetail(detail, this.now(), this.locale);
       identity = { title: detail.title, ...(detail.imdbId ? { imdbId: detail.imdbId } : {}) };
     }
 
     if (identity.imdbId) {
       const imdbId = normalizeImdbId(identity.imdbId);
-      const releases = await this.mteam.searchMovies(
-        baseUrl,
-        apiKey,
-        { imdbId },
-        userExternalRequestContext(ownerId, 'background_check'),
-      );
+      const releases = await aiStep('resources.mteam.search', () => {
+        return this.mteam.searchMovies(
+          baseUrl,
+          apiKey,
+          { imdbId },
+          userExternalRequestContext(ownerId, 'background_check'),
+        );
+      }, { provider: 'mteam', tmdbId, attempt: 1 });
       const exact = releases.filter((release) => release.imdbId === imdbId);
       const checkedAt = this.now();
       return {
@@ -384,12 +393,14 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
 
     // A title query is only candidate discovery. Phase one cannot promote a
     // title-only candidate to a reliable match or an available resource.
-    await this.mteam.searchMovies(
-      baseUrl,
-      apiKey,
-      { title: identity.title },
-      userExternalRequestContext(ownerId, 'background_check'),
-    );
+    await aiStep('resources.mteam.search.title', () => {
+      return this.mteam.searchMovies(
+        baseUrl,
+        apiKey,
+        { title: identity.title },
+        userExternalRequestContext(ownerId, 'background_check'),
+      );
+    }, { provider: 'mteam', tmdbId, attempt: 1 });
     const checkedAt = this.now();
     return {
       availability: 'unmatchable',
@@ -506,7 +517,7 @@ function toDisplayRelease(release: MTeamRelease, webBaseUrl: string): MovieRelea
   ];
 }
 
-function publicMTeamAppError(code: MovieResourceCheckErrorCode): AppError {
+function publicMTeamAppError(code: MovieResourceCheckErrorCode, cause: unknown): AppError {
   const mapping = {
     authentication: [502, 'MTEAM_AUTH_FAILED'],
     permission: [502, 'MTEAM_AUTH_FAILED'],
@@ -518,5 +529,5 @@ function publicMTeamAppError(code: MovieResourceCheckErrorCode): AppError {
     internal_error: [502, 'MTEAM_UNEXPECTED_RESPONSE'],
   } as const;
   const [status, publicCode] = mapping[code];
-  return new AppError(status, publicCode, 'Could not query M-Team releases.');
+  return new AppError(status, publicCode, 'Could not query M-Team releases.', undefined, { cause });
 }

@@ -16,7 +16,8 @@ export interface LlmGenerateInput {
     | 'assistant.intent'
     | 'assistant.discuss'
     | 'preference.update'
-    | 'assistant.recommend';
+    | 'assistant.recommend'
+    | 'assistant.resources.plan';
 }
 
 export interface LlmGenerateResult {

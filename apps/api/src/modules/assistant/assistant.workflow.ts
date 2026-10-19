@@ -41,6 +41,7 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     // Resolve the owner's key once; never fall back to a shared system key.
     const llm = await aiStep('assistant.credentials.load', () => this.createLlm(input.ownerId));
     const agent = new AssistantAgent(llm, this.options, {
+      ...(this.options.resources ? { resources: this.options.resources } : {}),
       ...(this.options.recommendations ? { recommendations: this.options.recommendations } : {}),
       ...(this.options.preferences ? { profile: this.options.preferences.store } : {}),
     });
@@ -48,22 +49,25 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
       .addNode('detect_intent', (state) => {
         return aiStep('assistant.intent.detect', () => agent.detectIntent(state.input, history, signal));
       })
-      .addNode('handle', (state) => {
+      .addNode('handler', (state) => {
         return aiStep('assistant.intent.handle', () => {
-          return this.handle(state.input, state, agent, history, signal, streamDiscussion);
+          return this.handler(state.input, state, agent, history, signal, streamDiscussion);
         },
         );
       })
       .addEdge(START, 'detect_intent')
-      .addEdge('detect_intent', 'handle')
-      .addEdge('handle', END)
+      .addEdge('detect_intent', 'handler')
+      .addEdge('handler', END)
       .compile();
     const result = await graph.invoke({ input }, { ...(signal ? { signal } : {}), recursionLimit: 5 });
     if (!result.replyText?.trim() && !result.stream) throw new Error('Assistant returned an empty reply');
+    // Resource pages are compact and bounded by their renderer; preserve all ten rows and detail metadata.
+    if (result.intent === 'resources' && result.replyText.length > 4_000)
+      throw new Error('Resource reply exceeds the messaging text limit');
     // Leave room below Telegram's UTF-16 text limit, even for surrogate pairs.
     const movies = input.channel === 'web' ? undefined : result.movies;
     const replyText =
-      input.channel === 'web' || movies?.length ? result.replyText : [...result.replyText].slice(0, 1_800).join('');
+      input.channel === 'web' || movies?.length || result.intent === 'resources' ? result.replyText : [...result.replyText].slice(0, 1_800).join('');
     return {
       replyText,
       intent: result.intent,
@@ -72,7 +76,7 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     };
   }
 
-  private async handle(
+  private async handler(
     input: AssistantInputWorkflowMessage,
     detected: AssistantDetection,
     agent: AssistantAgent,
@@ -98,6 +102,6 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
         this.options.report?.('preference_enqueue_failed');
       }
     }
-    return agent.handle(input, detected.intent, history, signal, streamDiscussion);
+    return agent.handler(input, detected.intent, history, signal, streamDiscussion);
   }
 }

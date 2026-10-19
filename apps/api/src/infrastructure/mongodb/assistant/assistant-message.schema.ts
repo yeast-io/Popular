@@ -19,6 +19,8 @@ const schema = new Schema(
     leaseId: String,
     leaseUntil: Date,
     replyText: String,
+    completedAt: Date,
+    expiresAt: Date,
     intent: String,
     movies: {
       type: [
@@ -40,6 +42,8 @@ schema.index({ ownerId: 1, channel: 1, chatId: 1, messageId: 1 }, { unique: true
 schema.index({ status: 1, nextAttemptAt: 1, receivedAt: 1 });
 schema.index({ status: 1, receivedAt: 1, _id: 1 });
 schema.index({ ownerId: 1, channel: 1, chatId: 1, status: 1, receivedAt: -1 });
+// Unfinished messages never receive expiresAt; claim/retry also clear terminal retention fields.
+schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 export const createAssistantMessageModel = (connection: Connection) => {
   return connection.model('AssistantMessage', schema);
 };

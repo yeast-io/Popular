@@ -122,3 +122,56 @@ test('persisted movie metadata and delivery progress survive reclaiming a messag
   assert.equal(await queue.markMovieDelivered(String(id), 'new-lease', 2), true);
   assert.deepEqual(updates.at(-1)?.$max, { deliveredMovieCount: 2 });
 });
+
+test('only final delivery/failure starts 90-day retention; pending retry clears expiration atomically', async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  const filters: Array<Record<string, unknown>> = [];
+  const model = { updateOne: async (filter: Record<string, unknown>, update: Record<string, unknown>) => {
+    filters.push(filter); updates.push(update); return { matchedCount: 1 };
+  } } as unknown as AssistantMessageModel;
+  const queue = new MongoAssistantQueue(model);
+  await queue.delivered(String(id), 'lease');
+  await queue.retry(String(id), 'lease', true);
+  await queue.retry(String(id), 'lease', false);
+  for (const update of updates.slice(0, 2)) {
+    const set = update.$set as { status: string; completedAt: Date; expiresAt: Date };
+    assert.ok(['delivered', 'failed'].includes(set.status));
+    assert.equal(set.expiresAt.getTime() - set.completedAt.getTime(), 90 * 24 * 60 * 60_000);
+  }
+  const retry = updates[2]!;
+  assert.equal((retry.$set as Record<string, unknown>).status, 'pending');
+  assert.equal((retry.$set as Record<string, unknown>).expiresAt, undefined);
+  assert.deepEqual(retry.$unset, { leaseId: 1, leaseUntil: 1, completedAt: 1, expiresAt: 1 });
+  for (const filter of filters) {
+    assert.equal(filter.status, 'processing');
+    assert.equal(filter.leaseId, 'lease');
+    assert.ok(filter.leaseUntil);
+  }
+});
+
+test('claiming unfinished work clears any stale retention fields before processing', async () => {
+  let update: Record<string, unknown> = {};
+  const model = {
+    findOne: () => ({ sort: () => ({ select: () => ({ lean: async () => ({ _id: id }) }) }) }),
+    findOneAndUpdate: (_filter: unknown, change: Record<string, unknown>) => {
+      update = change; return { lean: async () => null };
+    },
+  } as unknown as AssistantMessageModel;
+  await new MongoAssistantQueue(model).claim(conversation, 'lease');
+  assert.deepEqual(update.$unset, { completedAt: 1, expiresAt: 1 });
+});
+
+test('expired delivered messages are excluded from model history before TTL physically removes them', async () => {
+  let scope: Record<string, unknown> = {};
+  const model = { find: (filter: Record<string, unknown>) => {
+    scope = filter; return { sort: () => ({ limit: () => ({ lean: async () => [] }) }) };
+  } } as unknown as AssistantMessageModel;
+  await new MongoAssistantQueue(model).history(
+    { ...conversation, messageId: 'm1', text: 'query', receivedAt: new Date().toISOString() }
+  );
+  assert.equal(String(scope.ownerId), conversation.ownerId);
+  assert.equal(scope.status, 'delivered');
+  const conditions = scope.$or as Array<{ expiresAt: { $gt?: Date; $exists?: boolean } }>;
+  assert.ok(conditions[0]?.expiresAt.$gt instanceof Date);
+  assert.equal(conditions[1]?.expiresAt.$exists, false);
+});

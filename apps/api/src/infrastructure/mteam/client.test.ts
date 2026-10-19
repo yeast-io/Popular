@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  MTeamClient,
   classifyMTeamHttpFailure,
   createPinnedLookup,
   isPublicAddress,
@@ -139,4 +140,46 @@ test('classifies rate limiting separately while sanitizing other upstream server
   assert.equal(classifyMTeamHttpFailure(403), 'permission');
   assert.equal(classifyMTeamHttpFailure(429), 'rate_limited');
   assert.equal(classifyMTeamHttpFailure(500), 'remote_error');
+});
+
+test('search client records terminal pre-HTTP errors once with attempt metadata and safe standalone diagnostics', async () => {
+  const events: Array<{ attempt: number; operationId: string; outcome: string }> = [];
+  const errors: Record<string, unknown>[] = [];
+  const infos: unknown[] = [];
+  const client = new MTeamClient(100, { record: async (event) => { events.push(event); } }, {
+    minimumIntervalMs: 0, verbose: false,
+    logger: { error: (entry: Record<string, unknown>) => {
+      return errors.push(entry);
+    }, info: (entry: Record<string, unknown>) => {
+      return infos.push(entry);
+    } },
+  });
+  await assert.rejects(client.searchMovies('https://127.0.0.1', 'private-api-key', { title: 'private movie query' }, {
+    actorType: 'user', ownerId: 'alice', trigger: 'api_request',
+  }
+  ), /Private network addresses/
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.attempt, 1);
+  assert.equal(events[0]?.outcome, 'failure');
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]?.ownerId, 'alice');
+  assert.ok(errors[0]?.correlationId);
+  assert.equal(infos.length, 0);
+  assert.doesNotMatch(JSON.stringify(errors), /private-api-key|private movie query/);
+});
+
+test('absolute request timeout respects parent cancellation and keeps its original reason', async () => {
+  const controller = new AbortController();
+  const reason = new Error('parent query cancelled');
+  const work = withAbsoluteTimeout(1000, async () => {
+    controller.abort(reason);
+    return new Promise<never>(() => undefined);
+  }, { signal: controller.signal }
+  );
+  await assert.rejects(work, (error) => error === reason);
+  await assert.rejects(withAbsoluteTimeout(1000, async () => 'must not execute', {
+    signal: AbortSignal.abort(reason),
+  }), (error) => error === reason
+  );
 });

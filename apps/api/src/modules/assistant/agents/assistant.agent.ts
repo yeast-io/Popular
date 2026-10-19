@@ -1,3 +1,5 @@
+import { RESOURCE_QUERY_PLAN_PROMPT } from '../../../config/system-prompts/resource-query.prompts.js';
+import type { ResourceDecisions, ResourcePlan } from '../../resource-query/resource-query.types.js';
 import type { Locale, TasteProfile } from '@movie-hub/contract';
 import { RECOMMENDATION_POLICY } from '../../recommendations/recommendation.policy.js';
 import type { LlmGenerateInput, LlmStreamEvent } from '../../llm/llm.types.js';
@@ -49,6 +51,18 @@ const RankSchema = z.strictObject({
 const IntentResultSchema = z.strictObject({
   intent: z.enum(['discuss', 'recommend', 'resources', 'download', 'unclear']),
   preferenceSignal: z.enum(['none', 'explicit', 'uncertain']).default('none'),
+});
+const ResourcePlanSchema = z.strictObject({
+  title: z.string().trim().min(1).max(200).nullable(),
+  year: z.number().int().min(1870).max(2200).nullable(),
+  candidateId: z.number().int().positive().nullable(),
+  resolution: z.enum(['2160p', '1080p', '720p', 'any']).nullable(),
+  providers: z.array(z.string().min(1).max(32)).max(10).nullable(),
+  releaseIndex: z.number().int().min(1).max(100_000).nullable(),
+  page: z.union([z.number().int().min(1).max(10_000), z.enum(['next', 'previous'])]).nullable(),
+  refresh: z.boolean(),
+  question: z.string().trim().min(1).max(300).nullable(),
+  unsupported: z.array(z.string().max(100)).max(5),
 });
 const OUTPUT_TOKEN_LIMIT = 256;
 
@@ -161,7 +175,7 @@ export class AssistantAgent {
     }
   }
 
-  async handle(
+  async handler(
     input: AssistantInputWorkflowMessage,
     intent: AssistantIntent,
     history: LlmMessage[] = [],
@@ -170,6 +184,9 @@ export class AssistantAgent {
   ): Promise<AssistantWorkflowResult> {
     signal?.throwIfAborted();
     const conversation = `${input.channel}:${input.chatId}`;
+    if (intent === 'unclear' && this.tools.resources && await this.tools.resources.active(input.ownerId, conversation)) {
+      intent = 'resources';
+    }
     if (
       intent === 'unclear' &&
       this.tools.recommendations &&
@@ -200,6 +217,25 @@ export class AssistantAgent {
         return { intent, replyText: '本次电影推荐查询未完成，请稍后重试。我没有确认到符合条件的推荐结果。' };
       }
     }
+    if (intent === 'resources' && this.tools.resources) {
+      try {
+        return {
+          intent,
+          ...(await aiStep('assistant.tool.resources', () => {
+            return this.tools.resources!.run(
+              input.ownerId, conversation, `${conversation}:${input.messageId}`, input.text, history,
+              { plan: this.planResources.bind(this) }, signal,
+            );
+          })),
+        };
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        // The capability records the original failure using its redaction and correlation context.
+        currentAiTrace()?.event('assistant.tool.resources.failed', { outcome: 'failure' });
+        currentAiTrace()?.clearFailure();
+        return { intent, replyText: '本次资源查询未完成，暂时无法判断是否有可用资源，请稍后重试。' };
+      }
+    }
     if (intent === 'discuss') {
       let profileContext = '';
       if (this.tools.profile) {
@@ -221,6 +257,22 @@ export class AssistantAgent {
       unclear: '你希望我聊聊这个话题、推荐电影、查电影资源，还是处理下载？请补充一下具体需求。',
     };
     return { intent, replyText: replies[intent] };
+  }
+
+  async planResources(
+    ...[text, history, context, locale, signal]: Parameters<ResourceDecisions['plan']>
+  ): Promise<ResourcePlan> {
+    const result = await this.generate({
+      messages: [
+        { role: 'system', content: RESOURCE_QUERY_PLAN_PROMPT },
+        { role: 'user', content: JSON.stringify({ text, history: history.slice(-12), context, locale }) },
+      ],
+      maxOutputTokens: 800,
+      operation: 'assistant.resources.plan',
+      signal,
+      outputSchema: { name: 'resource_query_plan', schema: z.toJSONSchema(ResourcePlanSchema) },
+    });
+    return ResourcePlanSchema.parse(JSON.parse(result.content));
   }
 
   private async generate(input: LlmGenerateInput) {

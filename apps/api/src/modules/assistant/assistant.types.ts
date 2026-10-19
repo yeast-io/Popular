@@ -1,3 +1,4 @@
+import type { ResourceQueryCapability } from '../resource-query/resource-query.types.js';
 import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
 import type { PreferenceService } from '../preferences/preference.service.js';
 import type { RecommendationCapability, RecommendationProfileReader } from '../recommendations/recommendation.types.js';
@@ -102,12 +103,14 @@ export interface AssistantDetection {
 }
 
 export interface AssistantTools {
+  resources?: ResourceQueryCapability;
   recommendations?: RecommendationCapability;
   profile?: RecommendationProfileReader;
 }
 
 export interface AssistantWorkflowOptions extends AssistantAgentOptions {
   preferences?: PreferenceService;
+  resources?: ResourceQueryCapability;
   recommendations?: RecommendationCapability;
   report?: (event: string) => void;
 }

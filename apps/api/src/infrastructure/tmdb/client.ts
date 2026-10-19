@@ -1,3 +1,4 @@
+import { aiStep, currentAiTrace } from '../logging/ai-trace.js';
 import type { Locale } from '@movie-hub/contract';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -202,6 +203,7 @@ export class TmdbClient implements TrendingProvider {
   }
 
   private async request(url: URL, operation: string, context?: ExternalRequestContext): Promise<Response> {
+    currentAiTrace()?.sensitive(this.credential);
     const isV3ApiKey = /^[0-9a-f]{32}$/i.test(this.credential);
     if (isV3ApiKey) url.searchParams.set('api_key', this.credential);
     const operationId = randomUUID();
@@ -209,13 +211,16 @@ export class TmdbClient implements TrendingProvider {
       const startedAt = Date.now();
       let response: Response;
       try {
-        response = await this.fetcher(url, {
-          headers: {
-            accept: 'application/json',
-            ...(isV3ApiKey ? {} : { authorization: `Bearer ${this.credential}` }),
-          },
-          signal: AbortSignal.timeout(this.timeoutMs),
-        });
+        response = await aiStep('external.tmdb.request', () => {
+          return this.fetcher(url, {
+            headers: {
+              accept: 'application/json',
+              ...(isV3ApiKey ? {} : { authorization: `Bearer ${this.credential}` }),
+            },
+            signal: AbortSignal.timeout(this.timeoutMs),
+          }
+          );
+        }, { provider: 'tmdb', operation, operationId, attempt: attempt + 1 });
       } catch (error) {
         await this.record(context, {
           operation,
@@ -236,6 +241,10 @@ export class TmdbClient implements TrendingProvider {
         httpStatus: response.status,
         durationMs: Date.now() - startedAt,
       });
+      currentAiTrace()?.event('external.tmdb.response', {
+        provider: 'tmdb', operation, operationId, attempt: attempt + 1, httpStatus: response.status,
+        durationMs: Date.now() - startedAt, outcome: response.ok ? 'success' : 'failure',
+      });
       if (response.ok) return response;
       if (response.status !== 429 || attempt === 2)
         throw new Error(`TMDB request failed with status ${response.status}`);
@@ -244,6 +253,7 @@ export class TmdbClient implements TrendingProvider {
         Number.isFinite(retryAfter) && retryAfter >= 0
           ? retryAfter * 1_000
           : 250 * 2 ** attempt + Math.floor(Math.random() * 150);
+      currentAiTrace()?.event('external.tmdb.retry', { provider: 'tmdb', operation, operationId, attempt: attempt + 1, delayMs });
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
     throw new Error('TMDB retry loop ended unexpectedly');

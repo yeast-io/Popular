@@ -1,3 +1,7 @@
+import { initializeAssistantRetention } from './infrastructure/mongodb/assistant-retention.js';
+import { ResourceQueryTool } from './modules/resource-query/resource-query.tool.js';
+import { MTeamResourceProvider } from './modules/resource-query/mteam-resource.provider.js';
+import { createResourceQueryModel, MongoResourceQueryStore } from './infrastructure/mongodb/resource-query/resource-query.store.js';
 import { createAssistantConversationReply } from './modules/assistant/assistant.conversation.js';
 import { ApplicationShutdown, installShutdownHandlers } from './infrastructure/lifecycle/shutdown.js';
 import { TelegramService } from './modules/telegram/telegram.service.js';
@@ -152,7 +156,7 @@ try {
   );
   const movieStatusStore = new MongoMovieStatusStore(models.userMovieStates);
   const integrationConfigStore = new MongoIntegrationConfigStore(models.integrationConfigs);
-  const mteam = new MTeamClient(config.MTEAM_REQUEST_TIMEOUT_MS, externalUsageStore);
+  const mteam = new MTeamClient(config.MTEAM_REQUEST_TIMEOUT_MS, externalUsageStore, { minimumIntervalMs: config.MTEAM_SEARCH_MIN_INTERVAL_MS, logger: loggers.error, verbose: config.VERBOSE });
   const secrets = new SecretCrypto(config.INTEGRATION_SECRET_KEY);
   const movieResourceCheckStore = new MongoMovieResourceCheckStore(
     models.movieResourceChecks,
@@ -378,12 +382,26 @@ try {
     config.TMDB_LANGUAGE,
     { logger: loggers.error, verbose: config.VERBOSE },
   );
+  const resourceQueryModel = createResourceQueryModel(models.users.db);
+  await resourceQueryModel.init();
+  await initializeAssistantRetention(models.assistantMessages, resourceQueryModel, {
+    logger: loggers.error, verbose: config.VERBOSE,
+  });
+  const resources = new ResourceQueryTool(
+    new MongoResourceQueryStore(resourceQueryModel),
+    [new MTeamResourceProvider(movieResourceChecks)],
+    tmdb,
+    trendingStore,
+    config.TMDB_LANGUAGE,
+    { logger: loggers.error, verbose: config.VERBOSE },
+  );
   const assistantOptions = {
     systemPrompt: config.OPENAI_SYSTEM_PROMPT,
     maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
     maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS,
     preferences: preferenceService,
     recommendations,
+    resources,
     report: (event: string) => loggers.app.warn({ event }, 'Assistant capability failed'),
   };
   const conversationTurnService = new ConversationTurnService(

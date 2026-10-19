@@ -1,3 +1,5 @@
+import { AiTrace, currentAiTrace, withAiTrace, type AiLogger } from '../logging/ai-trace.js';
+import { MTeamHttpError, parseRetryAfter, retryMTeamSearch } from './search-retry.js';
 import type { LookupAddress } from 'node:dns';
 import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
@@ -22,7 +24,8 @@ const MAX_SEARCH_RESPONSE_BYTES = 2 * 1024 * 1024;
 export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamTorrentDownloader {
   constructor(
     private readonly timeoutMs: number,
-    private readonly usage?: ExternalRequestRecorder
+    private readonly usage?: ExternalRequestRecorder,
+    private readonly searchOptions: { minimumIntervalMs: number; logger?: AiLogger; verbose?: boolean } = { minimumIntervalMs: 2500 }
   ) {}
 
   async verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void> {
@@ -56,48 +59,47 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     query: { imdbId: string } | { title: string },
     context?: ExternalRequestContext,
   ): Promise<MTeamRelease[]> {
-    const body = await withAbsoluteTimeout(this.timeoutMs, async (signal) => {
-      const url = apiUrl(baseUrl, 'torrent/search');
-      const addresses = await resolvePublicAddresses(url.hostname);
-      const address = addresses[0];
-      if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
-      return this.observe('release.search', context, () => {
-        return postJson(
-          url,
-          apiKey,
-          address,
-          {
-            pageNumber: 1,
-            pageSize: 100,
-            mode: 'movie',
-            visible: 1,
-            sortField: 'SEEDERS',
-            sortDirection: 'DESC',
-            ...('imdbId' in query
-              ? { imdb: `https://www.imdb.com/title/${normalizeImdbId(query.imdbId)}/` }
-              : { keyword: query.title }),
-          },
-          signal,
-          MAX_SEARCH_RESPONSE_BYTES,
+    const execute = async () => {
+      currentAiTrace()?.sensitive(apiKey);
+      return retryMTeamSearch(async (attempt, operationId, parentSignal, remainingMs) => {
+        return this.observe('release.search', context, async () => {
+          const body = await withAbsoluteTimeout(Math.min(this.timeoutMs, remainingMs), async (signal) => {
+            const url = apiUrl(baseUrl, 'torrent/search');
+            const addresses = await resolvePublicAddresses(url.hostname);
+            const address = addresses[0];
+            if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
+            return postJson(url, apiKey, address, {
+              pageNumber: 1, pageSize: 100, mode: 'movie', visible: 1,
+              sortField: 'SEEDERS', sortDirection: 'DESC',
+              ...('imdbId' in query
+                ? { imdb: `https://www.imdb.com/title/${normalizeImdbId(query.imdbId)}/` }
+                : { keyword: query.title }),
+            }, signal, MAX_SEARCH_RESPONSE_BYTES
+            );
+          }, { signal: parentSignal, message: 'M-Team resource query timed out' }
+          );
+          let payload: unknown;
+          try {
+            payload = JSON.parse(body);
+          } catch (error) {
+            throw new IntegrationValidationError('invalid_response', 'M-Team returned invalid JSON', { cause: error });
+          }
+          if (!isSuccessPayload(payload)) {
+            const failureType = isAuthenticationFailure(payload) ? 'authentication'
+              : isPermissionFailure(payload) ? 'permission' : 'remote_error';
+            throw new IntegrationValidationError(failureType, 'M-Team rejected the search request');
+          }
+          return parseSearchReleases(payload);
+        }, { attempt, operationId }
         );
-      });
-    });
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(body);
-    } catch (error) {
-      throw new IntegrationValidationError('invalid_response', 'M-Team returned invalid JSON', { cause: error });
-    }
-    if (!isSuccessPayload(payload)) {
-      const failureType = isAuthenticationFailure(payload)
-        ? 'authentication'
-        : isPermissionFailure(payload)
-          ? 'permission'
-          : 'remote_error';
-      throw new IntegrationValidationError(failureType, 'M-Team rejected the search request');
-    }
-    return parseSearchReleases(payload);
+      }, this.searchOptions
+      );
+    };
+    if (currentAiTrace()) return execute();
+    const trace = new AiTrace(this.searchOptions.logger, {
+      provider: 'mteam', ...(context?.ownerId ? { ownerId: context.ownerId } : {}),
+    }, apiKey, 'mteam.search', this.searchOptions.verbose ?? false);
+    return withAiTrace(trace, execute);
   }
 
   async downloadTorrent(
@@ -148,14 +150,16 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     operation: string,
     context: ExternalRequestContext | undefined,
     requestOperation: () => Promise<T>,
+    metadata?: { attempt: number; operationId: string },
   ): Promise<T> {
     const startedAt = Date.now();
-    const operationId = randomUUID();
+    const operationId = metadata?.operationId ?? randomUUID();
     try {
       const result = await requestOperation();
       await this.record(context, {
         operation,
         operationId,
+        attempt: metadata?.attempt ?? 1,
         outcome: 'success',
         durationMs: Date.now() - startedAt,
       });
@@ -164,6 +168,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
       await this.record(context, {
         operation,
         operationId,
+        attempt: metadata?.attempt ?? 1,
         outcome: 'failure',
         durationMs: Date.now() - startedAt,
         errorCode: mteamErrorCode(error),
@@ -177,6 +182,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     event: {
       operation: string;
       operationId: string;
+      attempt?: number;
       outcome: 'success' | 'failure';
       durationMs: number;
       errorCode?: ExternalRequestErrorCode;
@@ -188,7 +194,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
         ...context,
         ...event,
         provider: 'mteam',
-        attempt: 1,
+        attempt: event.attempt ?? 1,
         occurredAt: new Date(),
       });
     } catch {
@@ -204,17 +210,23 @@ function mteamErrorCode(error: unknown): ExternalRequestErrorCode {
 export async function withAbsoluteTimeout<T>(
   timeoutMs: number,
   operation: (signal: AbortSignal) => Promise<T>,
+  options: { signal?: AbortSignal; message?: string } = {},
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutError = new IntegrationValidationError('timeout', 'M-Team validation timed out');
+  const timeoutError = new IntegrationValidationError('timeout', options.message ?? 'M-Team request timed out');
   const timer = setTimeout(() => controller.abort(timeoutError), timeoutMs);
+  const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
+  let abort!: () => void;
   const aborted = new Promise<never>((_resolve, reject) => {
-    controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
+    abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
   });
   try {
-    return await Promise.race([operation(controller.signal), aborted]);
+    signal.throwIfAborted();
+    return await Promise.race([operation(signal), aborted]);
   } finally {
     clearTimeout(timer);
+    signal.removeEventListener('abort', abort);
   }
 }
 
@@ -308,9 +320,13 @@ function postJson(
       if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
         response.resume();
         reject(
-          new IntegrationValidationError(
-            classifyMTeamHttpFailure(response.statusCode),
-            `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`,
+          new MTeamHttpError(
+            classifyMTeamHttpFailure(response.statusCode), response.statusCode ?? 0,
+            parseRetryAfter(
+              Array.isArray(
+                response.headers['retry-after']
+              ) ? response.headers['retry-after'][0] : response.headers['retry-after']
+            ),
           ),
         );
         return;
@@ -326,7 +342,7 @@ function postJson(
       response.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
       response.on('error', (error) => {
         return reject(
-          new IntegrationValidationError('invalid_response', 'Could not read M-Team response', { cause: error }),
+          error instanceof IntegrationValidationError ? error : new IntegrationValidationError('network', 'Could not read M-Team response', { cause: error }),
         );
       });
     });
@@ -514,6 +530,7 @@ export function classifyMTeamHttpFailure(statusCode: number | undefined): Integr
   if (statusCode === 401) return 'authentication';
   if (statusCode === 403) return 'permission';
   if (statusCode === 429) return 'rate_limited';
+  if (statusCode === 408) return 'timeout';
   return 'remote_error';
 }
 
