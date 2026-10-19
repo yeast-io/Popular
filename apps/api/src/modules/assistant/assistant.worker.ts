@@ -1,3 +1,5 @@
+import { loadTmdbPoster } from '../../infrastructure/tmdb/poster.js';
+import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
 import { RedisLockTrace } from '../../infrastructure/redis/lock-trace.js';
 import { AiTrace, aiStep, currentAiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
 import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
@@ -7,6 +9,7 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AssistantConversation, AssistantJob, AssistantQueue } from './assistant.queue.js';
 import type { AssistantWorkflow } from './assistant.workflow.js';
 import type { AssistantInputWorkflowMessage } from './assistant.types.js';
+import { startTyping } from './assistant.typing.js';
 
 // Shared slots cap concurrency across API instances. All instances must use the same limit.
 const PREFIX = '{assistant}:worker';
@@ -21,6 +24,8 @@ export interface AssistantWorkerOptions {
   maxConcurrency: number;
   scanIntervalMs: number;
   scanTraceEnabled?: boolean;
+  verbose?: boolean;
+  setTyping?: (input: AssistantInputWorkflowMessage, active: boolean, signal: AbortSignal) => Promise<void>;
 }
 
 /** Durable messages are authoritative; wakeups only reduce pickup latency. */
@@ -37,12 +42,13 @@ export class AssistantWorker {
     private readonly redis: Pick<Redis, 'set' | 'eval' | 'ttl'>,
     private readonly queue: AssistantQueue,
     private readonly workflow: Pick<AssistantWorkflow, 'run'>,
-    private readonly send: (input: AssistantInputWorkflowMessage, text: string) => Promise<unknown>,
+    private readonly send: (input: AssistantInputWorkflowMessage, text: string, poster?: Buffer) => Promise<unknown>,
     private readonly isBound: (input: AssistantInputWorkflowMessage) => Promise<boolean>,
     private readonly report: (event: string) => void,
     private readonly options: AssistantWorkerOptions = { maxConcurrency: 4, scanIntervalMs: 15_000 },
     private readonly logger?: AiLogger,
-    private readonly lockTraceEnabled = false
+    private readonly lockTraceEnabled = false,
+    private readonly poster: (path: string, signal?: AbortSignal) => Promise<Buffer | undefined> = loadTmdbPoster
   ) {
     this.lockTrace = new RedisLockTrace(lockTraceEnabled, logger, key => this.redis.ttl(key));
     if (!Number.isInteger(options.maxConcurrency) || options.maxConcurrency < 1 || options.scanIntervalMs < 1) {
@@ -165,7 +171,7 @@ export class AssistantWorker {
         }
         const currentJob = job;
         const trace = new AiTrace(this.logger, { event: 'assistant_job', ...conversation, messageId: job.input.messageId,
-          jobId: job.id, attempt: job.attempts }, job.input.text, 'assistant.job');
+          jobId: job.id, attempt: job.attempts }, job.input.text, 'assistant.job', this.options.verbose ?? false);
         trace.event('assistant.job.claimed', { reusedReply: Boolean(job.result) });
         const finishRenewal = async (): Promise<void> => {
           job = null;
@@ -226,6 +232,21 @@ export class AssistantWorker {
       await aiStep('assistant.job.cancel', () => this.queue.retry(job.id, leaseId, true));
       return;
     }
+    const stopTyping = this.options.setTyping
+      ? startTyping((active, updateSignal) => this.options.setTyping!(job.input, active, updateSignal), signal,
+        new AiTrace(this.logger, { event: 'assistant_typing', ownerId: job.input.ownerId, channel: job.input.channel,
+          chatId: job.input.chatId, messageId: job.input.messageId, jobId: job.id, attempt: job.attempts,
+          correlationId: currentAiTrace()?.correlationId }, job.input.text, 'assistant.typing', this.options.verbose ?? false))
+      : async () => undefined;
+    try {
+      await this.executeWithTyping(job, leaseId, signal, renew, finishRenewal);
+    } finally {
+      await stopTyping();
+    }
+  }
+
+  private async executeWithTyping(job: AssistantJob, leaseId: string, signal: AbortSignal,
+    renew: () => Promise<void>, finishRenewal: () => Promise<void>): Promise<void> {
     let result = job.result;
     if (!result) {
       try {
@@ -254,9 +275,56 @@ export class AssistantWorker {
       return;
     }
     signal.throwIfAborted();
-    await aiStep('assistant.reply.send', () => this.send(job.input, result!.replyText));
+    if (result.movies?.length) {
+      for (let index = job.deliveredMovieCount ?? 0; index < result.movies.length; index++) {
+        await this.sendMovie(job, result.movies[index]!, index, signal, renew);
+        await aiStep('assistant.movie.checkpoint', async () => {
+          if (!await this.queue.markMovieDelivered(job.id, leaseId, index + 1)) throw new Error('Assistant movie delivery lease lost');
+        }, { movieIndex: index, tmdbId: result.movies[index]!.tmdbId });
+      }
+    } else {
+      await aiStep('assistant.reply.send', () => this.send(job.input, result!.replyText));
+    }
     await finishRenewal();
     await aiStep('assistant.job.delivered', () => this.queue.delivered(job.id, leaseId));
+  }
+
+  private async sendMovie(job: AssistantJob, movie: RecommendationMovie, index: number, signal: AbortSignal,
+    renew: () => Promise<void>): Promise<void> {
+    const fields = { tmdbId: movie.tmdbId, movieIndex: index, attempt: job.attempts };
+    // At most 800 UTF-16 units for the title/reason, leaving room for the index and link in a Telegram caption.
+    const caption = `${index + 1}. ${[...movie.title].slice(0, 180).join('')}\n${[...movie.reason].slice(0, 220).join('')}\nhttps://www.themoviedb.org/movie/${movie.tmdbId}`;
+    currentAiTrace()?.sensitive(caption);
+    const check = async () => {
+      signal.throwIfAborted();
+      await renew();
+      if (!await aiStep('assistant.movie.binding.check', () => this.isBound(job.input), fields)) throw new Error('Assistant binding changed');
+      signal.throwIfAborted();
+    };
+    await check();
+    let poster: Buffer | undefined;
+    if (movie.posterPath) {
+      try { poster = await aiStep('assistant.movie.poster.load', () => this.poster(movie.posterPath!, signal), fields); }
+      catch (error) {
+        currentAiTrace()?.fail(error, { ...fields, outcome: 'text_fallback' });
+        currentAiTrace()?.clearFailure();
+        signal.throwIfAborted();
+      }
+    }
+    if (poster?.length) {
+      await check();
+      try {
+        await aiStep('assistant.movie.photo.send', () => this.send(job.input, caption, poster), fields);
+        return;
+      } catch (error) {
+        currentAiTrace()?.fail(error, { ...fields, outcome: 'text_fallback' });
+        currentAiTrace()?.clearFailure();
+        signal.throwIfAborted();
+      }
+    }
+    await check();
+    currentAiTrace()?.event('assistant.movie.text_fallback', { ...fields, outcome: 'text' });
+    await aiStep('assistant.movie.text.send', () => this.send(job.input, caption), fields);
   }
 
   async stop(): Promise<void> {

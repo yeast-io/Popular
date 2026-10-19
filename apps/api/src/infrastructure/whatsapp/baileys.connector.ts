@@ -181,7 +181,12 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
     }
     open();
     return {
-      sendReply: text => sendOwnMessage({ text }),
+      async setTyping(active) {
+        const current = socket;
+        if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
+        await current.sendPresenceUpdate(active ? 'composing' : 'paused', jidNormalizedUser(current.user.id));
+      },
+      sendReply: (text, poster) => sendOwnMessage(poster?.length ? { image: poster, caption: text } : { text }),
       ownsChat: chatId => [socket?.user?.id, socket?.user?.lid].some(id => id && jidNormalizedUser(id) === jidNormalizedUser(chatId)),
       async sendSelf() {
         const current = socket;

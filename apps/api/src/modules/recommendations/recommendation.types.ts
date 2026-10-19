@@ -10,6 +10,10 @@ export interface RecommendationFilters {
 }
 
 export interface RecommendationPlan extends RecommendationFilters {
+  recommendNow: boolean;
+  requestedCount: number;
+  /** Subjective tastes influence ranking and never block retrieval by themselves. */
+  softPreferences: string[];
   question: string | null;
   referenceTitle: string | null;
   unverifiableRestrictions: string[];
@@ -20,11 +24,26 @@ export interface RankedMovie {
   reason: string;
 }
 
+export interface RecommendationMovie {
+  tmdbId: number;
+  title: string;
+  reason: string;
+  posterPath?: string;
+}
+
+export interface RecommendationResult {
+  replyText: string;
+  movies?: RecommendationMovie[];
+}
+
 export interface RecommendationState {
   questions: number;
   active: boolean;
+  /** ISO time of the last successfully processed new interaction; absent on legacy records. */
+  lastInteractionAt?: string | null;
   history: LlmMessage[];
   events: Record<string, string>;
+  eventMovies?: Record<string, RecommendationMovie[]>;
   batches: Array<{ id: string; movieIds: number[]; profileVersion: number; at: string }>;
 }
 

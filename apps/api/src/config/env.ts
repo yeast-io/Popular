@@ -9,12 +9,12 @@ const booleanString = z
 const optionalUrl = z.string().url().optional().or(z.literal('').transform(() => undefined));
 
 const mongodbFields = {
-  MONGODB_URI: z.string().url().refine((url) => ['mongodb:', 'mongodb+srv:'].includes(new URL(url).protocol), 'must use mongodb:// or mongodb+srv://'),
+  MONGODB_URI: z.url().refine((url) => ['mongodb:', 'mongodb+srv:'].includes(new URL(url).protocol), 'must use mongodb:// or mongodb+srv://'),
   MONGODB_DB_NAME: z.string().regex(/^[^/\\. "*$<>:|?]+$/, 'contains characters MongoDB does not allow').default('movie_hub'),
 };
 
 const redisFields = {
-  REDIS_URL: z.string().url().refine((url) => ['redis:', 'rediss:'].includes(new URL(url).protocol), 'must use redis:// or rediss://'),
+  REDIS_URL: z.url().refine((url) => ['redis:', 'rediss:'].includes(new URL(url).protocol), 'must use redis:// or rediss://'),
   REDIS_KEY_PREFIX: z.string().min(1).default('movie_hub:'),
   REDIS_LOCK_TRACE_ENABLED: booleanString.default(false),
 };
@@ -179,6 +179,6 @@ export const notificationTestEnabled = (config: Pick<AppConfig, 'NODE_ENV'>): bo
 
 /** Experimental pages are available only in the project's test/development environments. */
 export const aiAssistantPageEnabled = (config: Pick<AppConfig, 'NODE_ENV' | 'PAGE_AI_ASSISTANT_ENABLED'>): boolean =>
-  notificationTestEnabled(config) && config.PAGE_AI_ASSISTANT_ENABLED !== false;
+  notificationTestEnabled(config) && config.PAGE_AI_ASSISTANT_ENABLED === true;
 export const docsPageEnabled = (config: Pick<AppConfig, 'NODE_ENV' | 'PAGE_DOCS_ENABLED'>): boolean =>
   notificationTestEnabled(config) && config.PAGE_DOCS_ENABLED === true;

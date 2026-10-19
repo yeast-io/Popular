@@ -1,3 +1,4 @@
+import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
 import type { PreferenceService } from '../preferences/preference.service.js';
 import type { RecommendationWorkflow } from '../recommendations/recommendation.workflow.js';
 
@@ -45,6 +46,8 @@ export interface AssistantWorkflowResult {
   intent?: AssistantIntent;
   /** Non-empty reply text; the unclear branch returns a clarification question here. */
   replyText: string;
+  /** Structured movies for Telegram/WhatsApp delivery; text remains the history/fallback representation. */
+  movies?: RecommendationMovie[];
 }
 
 /**

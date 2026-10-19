@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { setImmediate, setTimeout } from 'node:timers/promises';
 import { AssistantWorker } from './assistant.worker.js';
+import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
 import type { AssistantConversation, AssistantJob, AssistantQueue } from './assistant.queue.js';
 
 function deferred() {
@@ -46,6 +47,12 @@ function fixture(redis = redisFixture(), concurrency = 2, lockTraceEnabled = fal
   const rows: Row[] = [];
   const generated: string[] = [];
   const sent: string[] = [];
+  const payloads: Array<{ text: string; poster?: Buffer }> = [];
+  const typing: boolean[] = [];
+  let typingHook: ((active: boolean) => Promise<void>) | undefined;
+  let movies: RecommendationMovie[] | undefined;
+  let sendHook: ((text: string, poster?: Buffer) => Promise<void>) | undefined;
+  let posterLoader: (path: string) => Promise<Buffer | undefined> = async () => Buffer.from('poster');
   const events: string[] = [];
   const logs: Array<Record<string, unknown>> = [];
   const logger = { info: (fields: Record<string, unknown>) => { logs.push(fields); }, error: (fields: Record<string, unknown>) => { logs.push(fields); } };
@@ -77,6 +84,12 @@ function fixture(redis = redisFixture(), concurrency = 2, lockTraceEnabled = fal
       row.result = result;
       return true;
     },
+    markMovieDelivered: async (id, lease, count) => {
+      const row = rows.find(row => row.id === id && row.lease === lease);
+      if (!row) return false;
+      row.deliveredMovieCount = count;
+      return true;
+    },
     delivered: async id => { rows.find(row => row.id === id)!.status = 'delivered'; },
     retry: async (id, _lease, exhausted) => {
       const row = rows.find(row => row.id === id)!;
@@ -89,18 +102,25 @@ function fixture(redis = redisFixture(), concurrency = 2, lockTraceEnabled = fal
     generated.push(input.messageId);
     await generation?.();
     if (failGenerate) throw new Error('secret upstream text');
-    return { replyText: 'hello back' };
-  } }, async (input, text) => {
+    return { replyText: 'hello back', ...(movies ? { movies } : {}) };
+  } }, async (input, text, poster) => {
     assert.ok(!text.includes('secret'));
     sent.push(input.messageId);
+    payloads.push({ text, ...(poster ? { poster } : {}) });
+    await sendHook?.(text, poster);
     if (failSend) throw new Error('network failed');
-  }, async () => bound, event => events.push(event), { maxConcurrency: concurrency, scanIntervalMs: 60_000, scanTraceEnabled }, logger, lockTraceEnabled);
+  }, async () => bound, event => events.push(event), { maxConcurrency: concurrency, scanIntervalMs: 60_000, scanTraceEnabled, verbose: true,
+    setTyping: async (_input, active) => { typing.push(active); await typingHook?.(active); } }, logger, lockTraceEnabled, path => posterLoader(path));
   const add = async (id: string, chatId = '101', ownerId = 'alice', channel: 'telegram' | 'whatsapp' = 'telegram') => {
     const input = { ownerId, channel, chatId, messageId: id, text: 'hello', receivedAt: '2026-10-18T00:00:00.000Z' };
     await queue.enqueue(input);
     return input;
   };
-  return { worker, queue, rows, generated, sent, events, add, redis, logs,
+  return { worker, queue, rows, generated, sent, events, add, redis, logs, payloads, typing,
+    onTyping: (callback: typeof typingHook) => { typingHook = callback; },
+    recommend: (items: RecommendationMovie[]) => { movies = items; },
+    onSend: (callback: typeof sendHook) => { sendHook = callback; },
+    loadPoster: (loader: typeof posterLoader) => { posterLoader = loader; },
     get signal() { return signal; },
     block: (callback: () => Promise<void>) => { generation = callback; },
     failSend: () => { failSend = true; }, restoreSend: () => { failSend = false; },
@@ -108,6 +128,34 @@ function fixture(redis = redisFixture(), concurrency = 2, lockTraceEnabled = fal
     loseLease: () => { loseMessageLease = true; },
   };
 }
+
+test('typing failures do not prevent delivery, and completion, generation errors and shutdown clear typing', async () => {
+  for (const scenario of ['success', 'generation_error', 'typing_error', 'shutdown']) {
+    const f = fixture();
+    const gate = deferred();
+    f.block(() => gate.promise);
+    if (scenario === 'generation_error') f.failGenerate();
+    if (scenario === 'typing_error') f.onTyping(async () => { throw new Error('presence failed'); });
+    await f.add('1');
+    f.worker.start();
+    try {
+      await waitFor(() => f.generated.length === 1);
+      assert.deepEqual(f.typing, [true]);
+      if (scenario === 'shutdown') {
+        const stopping = f.worker.stop();
+        await waitFor(() => f.typing.includes(false));
+        gate.resolve();
+        await stopping;
+        assert.equal(f.sent.length, 0);
+      } else {
+        gate.resolve();
+        await waitFor(() => f.rows[0]!.status === 'delivered' && f.typing.includes(false));
+        assert.equal(f.sent.length, 1);
+      }
+      assert.deepEqual(f.typing, [true, false]);
+    } finally { gate.resolve(); await f.worker.stop(); }
+  }
+});
 
 test('wake begins immediately without waiting for a scan, and duplicate wakes preserve conversation order', async t => {
   const f = fixture();
@@ -398,4 +446,109 @@ test('recovery scan tracing follows its switch while task progress and failures 
   f.worker.start();
   t.after(() => f.worker.stop());
   await waitFor(() => f.logs.some(line => line.event === 'assistant_scan_failed'));
+});
+
+for (const channel of ['telegram', 'whatsapp'] as const) {
+  test(`${channel} sends one poster/caption per movie and text for a missing poster`, async t => {
+    const f = fixture();
+    t.after(() => f.worker.stop());
+    f.recommend([{ tmdbId: 1, title: 'First', reason: 'Reason one', posterPath: '/one.jpg' },
+      { tmdbId: 2, title: 'Second', reason: 'Reason two' }]);
+    await f.add('posters', '101', 'alice', channel);
+    f.worker.start();
+    await waitFor(() => f.rows[0]?.status === 'delivered');
+    assert.equal(f.payloads.length, 2);
+    assert.equal(f.payloads[0]?.poster?.toString(), 'poster');
+    assert.equal(f.payloads[0]?.text, '1. First\nReason one\nhttps://www.themoviedb.org/movie/1');
+    assert.equal(f.payloads[1]?.poster, undefined);
+    assert.match(f.payloads[1]!.text, /^2\. Second/);
+    assert.equal(f.rows[0]?.deliveredMovieCount, 2);
+  });
+}
+
+test('failed poster download falls back to text and records the failing stage without content', async t => {
+  const f = fixture();
+  t.after(() => f.worker.stop());
+  f.recommend([{ tmdbId: 1, title: 'First', reason: 'Private reason', posterPath: '/one.jpg' }]);
+  f.loadPoster(async () => { throw new Error('image service unavailable'); });
+  await f.add('posters');
+  f.worker.start();
+  await waitFor(() => f.rows[0]?.status === 'delivered');
+  assert.equal(f.payloads.length, 1);
+  assert.equal(f.payloads[0]?.poster, undefined);
+  assert.ok(f.logs.some(line => line.stage === 'assistant.movie.poster.load' && line.outcome === 'text_fallback' && line.error));
+  assert.doesNotMatch(JSON.stringify(f.logs), /Private reason/);
+});
+
+test('photo rejection falls back to the same caption as text', async t => {
+  const f = fixture();
+  t.after(() => f.worker.stop());
+  f.recommend([{ tmdbId: 1, title: 'First', reason: 'Reason', posterPath: '/one.jpg' }]);
+  f.onSend(async (_text, poster) => { if (poster) throw new Error('photo rejected'); });
+  await f.add('posters');
+  f.worker.start();
+  await waitFor(() => f.rows[0]?.status === 'delivered');
+  assert.equal(f.payloads.length, 2);
+  assert.ok(f.payloads[0]?.poster);
+  assert.equal(f.payloads[1]?.poster, undefined);
+  assert.equal(f.payloads[0]?.text, f.payloads[1]?.text);
+  assert.equal(f.rows[0]?.deliveredMovieCount, 1);
+});
+
+test('partial batch retry skips checkpointed movies and reuses persisted recommendations', async t => {
+  const f = fixture();
+  t.after(() => f.worker.stop());
+  f.recommend([{ tmdbId: 1, title: 'First', reason: 'Reason', posterPath: '/one.jpg' },
+    { tmdbId: 2, title: 'Second', reason: 'Reason', posterPath: '/two.jpg' }]);
+  f.onSend(async text => { if (text.startsWith('2.')) throw new Error('channel unavailable'); });
+  await f.add('posters');
+  f.worker.start();
+  await waitFor(() => f.rows[0]?.status === 'pending' && f.rows[0]?.attempts === 1);
+  assert.equal(f.rows[0]?.deliveredMovieCount, 1);
+  assert.equal(f.generated.length, 1);
+  f.onSend(undefined);
+  f.rows[0]!.due = true;
+  await f.worker.tick();
+  await waitFor(() => f.rows[0]?.status === 'delivered');
+  assert.equal(f.generated.length, 1);
+  assert.equal(f.rows[0]?.deliveredMovieCount, 2);
+  assert.equal(f.payloads.filter(item => item.text.startsWith('1.')).length, 1);
+  assert.match(f.payloads.at(-1)!.text, /^2\. Second/);
+});
+
+test('binding change during poster download prevents delivery', async t => {
+  const f = fixture();
+  t.after(() => f.worker.stop());
+  f.recommend([{ tmdbId: 1, title: 'First', reason: 'Reason', posterPath: '/one.jpg' }]);
+  f.loadPoster(async () => { f.unbind(); return Buffer.from('poster'); });
+  await f.add('posters');
+  f.worker.start();
+  await waitFor(() => f.rows[0]?.status === 'pending' && f.rows[0]?.attempts === 1);
+  assert.equal(f.payloads.length, 0);
+});
+
+test('long Unicode metadata stays inside Telegram caption limits', async t => {
+  const f = fixture();
+  t.after(() => f.worker.stop());
+  f.recommend([{ tmdbId: 1, title: '🎬'.repeat(500), reason: '🎬'.repeat(500), posterPath: '/one.jpg' }]);
+  await f.add('posters');
+  f.worker.start();
+  await waitFor(() => f.rows[0]?.status === 'delivered');
+  assert.ok(f.payloads[0]!.text.length < 1024);
+  assert.doesNotMatch(f.payloads[0]!.text, /\uD83C\n/);
+});
+
+test('lost delivery checkpoint stops the batch and does not send a text fallback for an accepted photo', async t => {
+  const f = fixture();
+  t.after(() => f.worker.stop());
+  f.recommend([{ tmdbId: 1, title: 'First', reason: 'Reason', posterPath: '/one.jpg' },
+    { tmdbId: 2, title: 'Second', reason: 'Reason', posterPath: '/two.jpg' }]);
+  f.queue.markMovieDelivered = async () => false;
+  await f.add('posters');
+  f.worker.start();
+  await waitFor(() => f.rows[0]?.status === 'pending' && f.rows[0]?.attempts === 1);
+  assert.equal(f.payloads.length, 1);
+  assert.ok(f.payloads[0]?.poster);
+  assert.equal(f.rows[0]?.deliveredMovieCount, undefined);
+  assert.ok(f.logs.some(line => line.stage === 'assistant.movie.checkpoint' && line.error));
 });

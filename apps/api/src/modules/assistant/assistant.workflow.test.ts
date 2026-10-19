@@ -175,3 +175,19 @@ test('discussion rejects empty responses and discards late results after cancell
   } }, routingOptions);
   await assert.rejects(agent.run(routingInput, [], controller.signal), { name: 'AbortError' });
 });
+
+for (const channel of ['telegram', 'whatsapp', 'web'] as const) {
+  test(`${channel} preserves the textual recommendation and only messaging channels receive poster metadata`, async () => {
+    const replyText = 'Recommendation '.repeat(200);
+    const movies = [{ tmdbId: 1, title: 'Movie', reason: 'Reason', posterPath: '/poster.jpg' }];
+    const recommendations = { runResult: async () => ({ replyText, movies }) } as unknown as
+      import('../recommendations/recommendation.workflow.js').RecommendationWorkflow;
+    const workflow = new AssistantWorkflow(async () => ({ generate: async () => ({
+      content: '{"intent":"recommend","preferenceSignal":"none"}', inputTokens: 1, outputTokens: 1,
+    }) }), { ...options, recommendations });
+    const result = await workflow.run({ ...input, channel });
+    assert.equal(result.replyText, replyText);
+    assert.equal(result.intent, 'recommend');
+    assert.deepEqual(result.movies, channel === 'web' ? undefined : movies);
+  });
+}

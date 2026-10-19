@@ -1,3 +1,4 @@
+import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import type { LlmClient, LlmMessage } from '../llm/llm.types.js';
@@ -11,6 +12,7 @@ const GraphState = Annotation.Root({
   intent: Annotation<AssistantIntent>(),
   preferenceSignal: Annotation<AssistantDetection['preferenceSignal']>(),
   replyText: Annotation<string>(),
+  movies: Annotation<RecommendationMovie[] | undefined>(),
 });
 
 /** A shared graph runner. Durable inbox storage and message delivery live outside the graph. */
@@ -34,8 +36,9 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     const result = await graph.invoke({ input }, { ...(signal ? { signal } : {}), recursionLimit: 5 });
     if (!result.replyText?.trim() && !(this.options.deferDiscussion && result.intent === 'discuss')) throw new Error('Assistant returned an empty reply');
     // Leave room below Telegram's UTF-16 text limit, even for surrogate pairs.
-    const replyText = input.channel === 'web' ? result.replyText : [...result.replyText].slice(0, 1_800).join('');
-    return { replyText, intent: result.intent };
+    const movies = input.channel === 'web' ? undefined : result.movies;
+    const replyText = input.channel === 'web' || movies?.length ? result.replyText : [...result.replyText].slice(0, 1_800).join('');
+    return { replyText, intent: result.intent, ...(movies?.length ? { movies } : {}) };
   }
 
   private async handle(input: AssistantInputWorkflowMessage, detected: AssistantDetection, agent: AssistantAgent,
@@ -52,7 +55,7 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
       && await this.options.recommendations.active(input.ownerId, conversation)) intent = 'recommend';
     currentAiTrace()?.event('assistant.intent.selected', { intent });
     if (intent === 'recommend' && this.options.recommendations) {
-      try { return { intent, replyText: await this.options.recommendations.run(input.ownerId, conversation, eventId, input.text, history, llm, signal) }; }
+      try { return { intent, ...await this.options.recommendations.runResult(input.ownerId, conversation, eventId, input.text, history, llm, signal) }; }
       catch (error) {
         if (signal?.aborted) throw error;
         this.options.report?.('recommendation_failed');

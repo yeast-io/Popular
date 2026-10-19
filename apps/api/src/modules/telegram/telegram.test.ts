@@ -7,6 +7,7 @@ import { buildApp } from '../../app.js';
 import { loadConfig } from '../../config/env.js';
 
 function fixture() {
+  const typing: string[] = [];
   let now = new Date('2026-10-18T00:00:00Z');
   const rows = new Map<string, TelegramRecord & { hash?: string; testAt?: number }>();
   const sent: Array<{ chatId: string; text: string; photo?: Buffer; parseMode?: 'HTML' }> = [];
@@ -36,12 +37,23 @@ function fixture() {
     },
   };
   const transport = { username: async () => 'PopularTestBot', send: async (chatId: string, text: string, parseMode?: 'HTML') => { sent.push({ chatId, text, ...(parseMode ? { parseMode } : {}) }); return String(sent.length); }, sendPhoto: async (chatId: string, photo: Buffer, text: string) => { sent.push({ chatId, photo, text, parseMode: 'HTML' }); return String(sent.length); }, updates: async () => [] };
-  const service = new TelegramService(auth, store, transport, () => now);
+  const service = new TelegramService(auth, store, { ...transport, typing: async (chatId: string) => { typing.push(chatId); } }, () => now);
   const update = (url: string, id = 101, type = 'private'): TelegramUpdate => ({ update_id: 1, message: {
     text: `/start ${new URL(url).searchParams.get('start')}`, from: { id, username: `person${id}` }, chat: { id, type },
   } });
-  return { service, auth, store, rows, sent, transport, update, advance: (ms: number) => { now = new Date(now.getTime() + ms); } };
+  return { service, auth, store, rows, sent, transport, update, typing, advance: (ms: number) => { now = new Date(now.getTime() + ms); } };
 }
+
+test('typing only reaches the bound owner chat and stops by expiry without another action', async () => {
+  const f = fixture();
+  f.rows.set('alice', { chatId: '101' });
+  await f.service.setTyping('alice', '101', true);
+  await f.service.setTyping('alice', '101', false);
+  await assert.rejects(f.service.setTyping('bob', '101', true), { code: 'CONFLICT' });
+  f.rows.delete('alice');
+  await assert.rejects(f.service.setTyping('alice', '101', true), { code: 'CONFLICT' });
+  assert.deepEqual(f.typing, ['101']);
+});
 
 test('receiving awaits durable acceptance and replies recheck the owner binding', async () => {
   const f = fixture();
@@ -246,4 +258,18 @@ test('receive diagnostics explain filtering and binding matches without logging 
   await service.accept(update);
   assert.ok(logs.some(line => line.stage === 'telegram.message.accepted' && line.ownerId === 'alice'));
   assert.ok(!JSON.stringify(logs).includes('private message text'));
+});
+
+test('recommendation replies send escaped photo captions only to the current owner binding', async () => {
+  const f = fixture();
+  f.rows.set('alice', { chatId: '101' });
+  const poster = Buffer.from('poster');
+  await f.service.reply('alice', '101', '1. <Movie> & friends\nReason\nhttps://www.themoviedb.org/movie/1', poster);
+  assert.equal(f.sent[0]?.photo, poster);
+  assert.equal(f.sent[0]?.parseMode, 'HTML');
+  assert.match(f.sent[0]!.text, /&lt;Movie&gt; &amp; friends/);
+  await assert.rejects(f.service.reply('bob', '101', 'Movie', poster), { code: 'CONFLICT' });
+  f.rows.delete('alice');
+  await assert.rejects(f.service.reply('alice', '101', 'Movie', poster), { code: 'CONFLICT' });
+  assert.equal(f.sent.length, 1);
 });

@@ -67,6 +67,9 @@ export class TelegramClient implements TelegramTransport {
     if (!Number.isSafeInteger(result.message_id)) throw new AppError(502, 'SERVICE_UNAVAILABLE', 'Invalid Telegram response');
     return String(result.message_id);
   }
+  async typing(chatId: string, signal?: AbortSignal): Promise<void> {
+    await this.call<boolean>('sendChatAction', { chat_id: chatId, action: 'typing' }, signal);
+  }
   async updates(offset: number, signal?: AbortSignal): Promise<TelegramUpdate[]> {
     const result = await this.call<TelegramUpdate[]>('getUpdates', { offset, timeout: 5, limit: 25, allowed_updates: ['message'] }, signal);
     if (!Array.isArray(result) || result.some(item => !Number.isSafeInteger(item.update_id) || item.update_id < 0)) throw new AppError(502, 'SERVICE_UNAVAILABLE', 'Invalid Telegram updates');

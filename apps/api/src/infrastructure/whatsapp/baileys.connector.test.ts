@@ -8,14 +8,18 @@ const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 test('self-chat replies cannot loop back into the receiver, even before send resolves', async () => {
   const handlers = new Map<string, (data: unknown) => void>();
   let received = 0;
+  const presence: Array<{ state: string; jid: string }> = [];
+  const payloads: Array<{ text?: string; image?: Buffer; caption?: string }> = [];
   const self = '61111111111@s.whatsapp.net';
   const connector = createBaileysConnector((() => ({
     user: { id: '61111111111:9@s.whatsapp.net' },
+    sendPresenceUpdate: async (state: string, jid: string) => { presence.push({ state, jid }); },
     ev: { on: (event: string, handler: (data: unknown) => void) => handlers.set(event, handler) },
-    sendMessage: async (jid: string, content: { text: string }, options: { messageId: string }) => {
+    sendMessage: async (jid: string, content: { text?: string; image?: Buffer; caption?: string }, options: { messageId: string }) => {
       assert.equal(jid, self);
+      payloads.push(content);
       handlers.get('messages.upsert')!({ type: 'notify', messages: [{
-        key: { id: options.messageId, remoteJid: jid, fromMe: true }, message: { conversation: content.text },
+        key: { id: options.messageId, remoteJid: jid, fromMe: true }, message: content.image ? { imageMessage: { caption: content.caption } } : { conversation: content.text },
       }] });
       return { key: { id: options.messageId } };
     }, end: () => undefined,
@@ -25,7 +29,13 @@ test('self-chat replies cannot loop back into the receiver, even before send res
   try {
     assert.equal(connection.ownsChat!(self), true);
     assert.equal(connection.ownsChat!('someone@s.whatsapp.net'), false);
+    await connection.setTyping!(true);
+    await connection.setTyping!(false);
+    assert.deepEqual(presence, [{ state: 'composing', jid: self }, { state: 'paused', jid: self }]);
     await connection.sendReply!('AI reply'); await tick();
+    const poster = Buffer.from('poster');
+    await connection.sendReply!('Movie reason and link', poster); await tick();
+    assert.deepEqual(payloads[1], { image: poster, caption: 'Movie reason and link' });
     assert.equal(received, 0);
     handlers.get('messages.upsert')!({ type: 'notify', messages: [{
       key: { id: 'from-phone', remoteJid: self, fromMe: true }, message: { conversation: 'User reply' },

@@ -1,4 +1,5 @@
 import type { RecommendationState, RecommendationStore } from '../../../modules/recommendations/recommendation.types.js';
+import { emptyRecommendationState } from '../../../modules/recommendations/recommendation.domain.js';
 import type { createRecommendationModel } from './recommendation.schema.js';
 
 export class MongoRecommendationStore implements RecommendationStore {
@@ -7,7 +8,7 @@ export class MongoRecommendationStore implements RecommendationStore {
   ) {}
 
   async ensure(ownerId: string, conversation: string): Promise<void> {
-    const state: RecommendationState = { questions: 0, active: false, history: [], events: {}, batches: [] };
+    const state = emptyRecommendationState();
     try {
       await this.model.updateOne({ ownerId, conversation }, { $setOnInsert: { data: state } }, { upsert: true }).exec();
     } catch (error) {

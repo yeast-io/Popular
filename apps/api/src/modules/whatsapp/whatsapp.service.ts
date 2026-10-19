@@ -119,13 +119,24 @@ export class WhatsAppService {
     if (!session?.connection || session.state.status !== 'connected') throw new Error('WhatsApp unavailable');
     return session.connection.ownsChat?.(chatId) === true;
   }
-  async reply(ownerId: string, chatId: string, text: string): Promise<string> {
+  async setTyping(ownerId: string, chatId: string, active: boolean, signal?: AbortSignal): Promise<void> {
+    return this.serial(ownerId, async () => {
+      signal?.throwIfAborted();
+      const session = this.sessions.get(ownerId);
+      if (this.closed || !session?.connection?.setTyping || session.state.status !== 'connected'
+        || session.connection.ownsChat?.(chatId) !== true
+        || !await this.store.renew(ownerId, session.leaseId)) throw new Error('WhatsApp unavailable');
+      signal?.throwIfAborted();
+      await session.connection.setTyping(active);
+    });
+  }
+  async reply(ownerId: string, chatId: string, text: string, poster?: Buffer): Promise<string> {
     return this.serial(ownerId, async () => {
       const session = this.sessions.get(ownerId);
       if (this.closed || !session?.connection?.sendReply || session.state.status !== 'connected'
         || session.connection.ownsChat?.(chatId) !== true
         || !await this.store.renew(ownerId, session.leaseId)) throw new Error('WhatsApp unavailable');
-      return session.connection.sendReply(text);
+      return session.connection.sendReply(text, poster);
     });
   }
   async sendNotification(ownerId: string, notification: import('../notifications/notification.types.js').DownloadNotification): Promise<{ messageId: string }> {

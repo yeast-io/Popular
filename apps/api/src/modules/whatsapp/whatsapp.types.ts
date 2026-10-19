@@ -13,7 +13,8 @@ export interface WhatsAppStore {
 }
 export interface WhatsAppConnection {
   /** Only replies to the linked account itself; no arbitrary recipient is accepted. */
-  sendReply?(text: string): Promise<string>;
+  sendReply?(text: string, poster?: Buffer): Promise<string>;
+  setTyping?(active: boolean): Promise<void>;
   ownsChat?(chatId: string): boolean;
   sendSelf(): Promise<string>;
   sendNotification(notification: import('../notifications/notification.types.js').DownloadNotification): Promise<string>;

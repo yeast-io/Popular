@@ -54,10 +54,11 @@ export class MongoAssistantQueue implements AssistantQueue {
     ] }, { $set: { status: 'processing', leaseId, leaseUntil: new Date(now.getTime() + 60_000) },
       $inc: { attempts: 1 } }, { new: true }).lean();
     if (!row) return null;
-    return { id: String(row._id), attempts: row.attempts,
+    return { id: String(row._id), attempts: row.attempts, deliveredMovieCount: row.deliveredMovieCount ?? 0,
       input: { ownerId: String(row.ownerId), channel: row.channel as AssistantInputWorkflowMessage['channel'],
         chatId: row.chatId, messageId: row.messageId, text: row.text, receivedAt: row.receivedAt.toISOString() },
-      ...(row.replyText ? { result: { replyText: row.replyText, ...(row.intent ? { intent: row.intent as AssistantIntent } : {}) } } : {}),
+      ...(row.replyText ? { result: { replyText: row.replyText, ...(row.movies?.length ? { movies: row.movies.map(movie => ({ tmdbId: movie.tmdbId, title: movie.title, reason: movie.reason,
+        ...(movie.posterPath ? { posterPath: movie.posterPath } : {}) })) } : {}), ...(row.intent ? { intent: row.intent as AssistantIntent } : {}) } } : {}),
     };
   }
 
@@ -83,6 +84,11 @@ export class MongoAssistantQueue implements AssistantQueue {
 
   async saveResult(id: string, leaseId: string, result: AssistantWorkflowResult): Promise<boolean> {
     const saved = await this.model.updateOne(this.owned(id, leaseId), { $set: result });
+    return saved.matchedCount === 1;
+  }
+
+  async markMovieDelivered(id: string, leaseId: string, count: number): Promise<boolean> {
+    const saved = await this.model.updateOne(this.owned(id, leaseId), { $max: { deliveredMovieCount: count } });
     return saved.matchedCount === 1;
   }
 

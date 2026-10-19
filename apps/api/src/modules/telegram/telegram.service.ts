@@ -23,6 +23,7 @@ export interface TelegramTransport {
   username(): Promise<string>;
   send(chatId: string, text: string, parseMode?: 'HTML'): Promise<string>;
   sendPhoto(chatId: string, photo: Buffer, caption: string): Promise<string>;
+  typing?(chatId: string, signal?: AbortSignal): Promise<void>;
   updates(offset: number, signal?: AbortSignal): Promise<TelegramUpdate[]>;
 }
 export const bindingHash = (value: string): string => createHash('sha256').update(value).digest('hex');
@@ -94,9 +95,19 @@ export class TelegramService {
   async canReply(ownerId: string, chatId: string): Promise<boolean> {
     return !!this.transport && (await this.store.find(ownerId))?.chatId === chatId;
   }
-  async reply(ownerId: string, chatId: string, text: string): Promise<string> {
+  async setTyping(ownerId: string, chatId: string, active: boolean, signal?: AbortSignal): Promise<void> {
+    // Telegram clears typing on reply or expiry; Bot API has no explicit stop action.
+    if (!active) return;
+    signal?.throwIfAborted();
     if (!await this.canReply(ownerId, chatId)) throw new AppError(409, 'CONFLICT', 'Telegram binding changed');
-    return this.transport!.send(chatId, text);
+    signal?.throwIfAborted();
+    await this.transport?.typing?.(chatId, signal);
+  }
+  async reply(ownerId: string, chatId: string, text: string, poster?: Buffer): Promise<string> {
+    if (!await this.canReply(ownerId, chatId)) throw new AppError(409, 'CONFLICT', 'Telegram binding changed');
+    return poster?.length
+      ? this.transport!.sendPhoto(chatId, poster, escapeHtml(text))
+      : this.transport!.send(chatId, text);
   }
   async test(token: string | undefined): Promise<{ messageId: string }> {
     const owner = await this.auth.requireOwnerId(token);

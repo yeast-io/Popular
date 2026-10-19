@@ -1,3 +1,4 @@
+import { loadTmdbPoster as loadPoster } from '../../infrastructure/tmdb/poster.js';
 import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
 import type { Locale } from '@movie-hub/contract';
 import type { MovieDownloadService } from '../downloads/movie-download.service.js';
@@ -100,23 +101,4 @@ export async function buildDownloadNotification(record: import('../downloads/mov
   return { id, title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`, resourceName: record.name ?? `TMDB ${record.tmdbId}`,
     provider: record.provider, totalBytes: record.totalBytes ?? 0, completedAt,
     detailUrl: `${webOrigin.replace(/\/$/, '')}/movies/${record.tmdbId}`, ...(poster ? { poster } : {}) };
-}
-
-async function loadPoster(path: string): Promise<Buffer | undefined> {
-  if (!/^\/[a-zA-Z0-9_.-]+\.(jpg|png|webp)$/i.test(path)) return;
-  const response = await fetch(`https://image.tmdb.org/t/p/w500${path}`, { signal: AbortSignal.timeout(10_000), redirect: 'error' });
-  if (!response.ok || !/^image\/(jpeg|png|webp)(;|$)/i.test(response.headers.get('content-type') ?? '') || !response.body) { await response.body?.cancel(); return; }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > 5 * 1024 * 1024) return;
-      chunks.push(value);
-    }
-    return size ? Buffer.concat(chunks) : undefined;
-  } finally { await reader.cancel().catch(() => undefined); }
 }

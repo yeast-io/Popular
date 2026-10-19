@@ -3,6 +3,18 @@ import test from 'node:test';
 import { TelegramClient } from './client.js';
 
 const token = '123456789:private-bot-credential';
+test('typing uses sendChatAction with the chat and propagates cancellation', async () => {
+  const controller = new AbortController();
+  const client = new TelegramClient(token, (async (url, options) => {
+    assert.ok(String(url).endsWith('/sendChatAction'));
+    assert.deepEqual(JSON.parse(String(options?.body)), { chat_id: '101', action: 'typing' });
+    assert.equal(options?.signal?.aborted, false);
+    controller.abort();
+    assert.equal(options?.signal?.aborted, true);
+    throw controller.signal.reason;
+  }) as typeof fetch);
+  await assert.rejects(client.typing('101', controller.signal), { name: 'AbortError' });
+});
 function logFixture() {
   const logs: Array<Record<string, unknown>> = [];
   const logger = { info: (fields: Record<string, unknown>) => { logs.push(fields); }, error: (fields: Record<string, unknown>) => { logs.push(fields); } };

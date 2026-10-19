@@ -9,7 +9,7 @@ import { loadConfig } from '../../config/env.js';
 function fixture() {
   const records = new Map<string, string>();
   const leases = new Map<string, string>();
-  const connections: Array<{ options: WhatsAppConnectionOptions; sent: number; stopped: boolean; logouts: boolean[] }> = [];
+  const connections: Array<{ options: WhatsAppConnectionOptions; sent: number; replies: Array<{ text: string; poster?: Buffer }>; typing: boolean[]; stopped: boolean; logouts: boolean[] }> = [];
   const store: WhatsAppStore = {
     exists: async owner => records.has(owner),
     acquire: async (owner, lease) => { if (leases.has(owner)) return false; leases.set(owner, lease); return true; },
@@ -24,9 +24,13 @@ function fixture() {
     return token;
   } };
   const connect = async (options: WhatsAppConnectionOptions) => {
-    const entry = { options, sent: 0, stopped: false, logouts: [] as boolean[] }; connections.push(entry);
+    const entry = { options, sent: 0, replies: [] as Array<{ text: string; poster?: Buffer }>, typing: [] as boolean[], stopped: false, logouts: [] as boolean[] }; connections.push(entry);
     await options.save(await options.load() ?? `private-state-${connections.length}`);
-    return { sendSelf: async () => { entry.sent++; return `message-${connections.indexOf(entry)}`; }, sendNotification: async () => { entry.sent++; return `download-${connections.indexOf(entry)}`; }, stop: async (logout: boolean) => { entry.stopped = true; entry.logouts.push(logout); } };
+    return { ownsChat: (chatId: string) => chatId === `self-${connections.indexOf(entry)}`,
+      setTyping: async (active: boolean) => { entry.typing.push(active); },
+      sendReply: async (text: string, poster?: Buffer) => {
+        entry.replies.push({ text, ...(poster ? { poster } : {}) }); return `reply-${entry.replies.length}`;
+      }, sendSelf: async () => { entry.sent++; return `message-${connections.indexOf(entry)}`; }, sendNotification: async () => { entry.sent++; return `download-${connections.indexOf(entry)}`; }, stop: async (logout: boolean) => { entry.stopped = true; entry.logouts.push(logout); } };
   };
   const service = new WhatsAppService(auth, store, connect);
   return { service, store, auth, connect, connections, records, leases };
@@ -209,4 +213,40 @@ test('background notifications restore only the requested linked owner after res
     await assert.rejects(() => restored.sendNotification('alice', notification), /lease lost/);
     assert.equal(f.connections[0]?.sent, 1);
   } finally { await restored.close(); await f.service.close(); }
+});
+
+test('typing is restricted to the owned live session and cancelled updates cannot send', async () => {
+  const f = fixture();
+  try {
+    await f.service.start('alice');
+    await f.service.start('bob');
+    f.connections[0]!.options.update({ status: 'connected' });
+    f.connections[1]!.options.update({ status: 'connected' });
+    await f.service.setTyping('alice', 'self-0', true);
+    await f.service.setTyping('alice', 'self-0', false);
+    await assert.rejects(f.service.setTyping('bob', 'self-0', true));
+    await assert.rejects(f.service.setTyping('alice', 'self-0', true, AbortSignal.abort()));
+    f.leases.set('alice', 'another-process');
+    await assert.rejects(f.service.setTyping('alice', 'self-0', true));
+    assert.deepEqual(f.connections[0]!.typing, [true, false]);
+    assert.deepEqual(f.connections[1]!.typing, []);
+  } finally { await f.service.close(); }
+});
+
+test('recommendation posters use the owned WhatsApp session and cannot cross chat bindings', async () => {
+  const f = fixture();
+  try {
+    await f.service.start('alice');
+    await f.service.start('bob');
+    f.connections[0]!.options.update({ status: 'connected', account: '••••1111' });
+    f.connections[1]!.options.update({ status: 'connected', account: '••••2222' });
+    const poster = Buffer.from('poster');
+    await f.service.reply('alice', 'self-0', 'Movie reason and link', poster);
+    assert.deepEqual(f.connections[0]!.replies, [{ text: 'Movie reason and link', poster }]);
+    assert.deepEqual(f.connections[1]!.replies, []);
+    await assert.rejects(f.service.reply('bob', 'self-0', 'Movie', poster));
+    f.leases.set('alice', 'another-process');
+    await assert.rejects(f.service.reply('alice', 'self-0', 'Movie', poster));
+    assert.equal(f.connections[0]!.replies.length, 1);
+  } finally { await f.service.close(); }
 });

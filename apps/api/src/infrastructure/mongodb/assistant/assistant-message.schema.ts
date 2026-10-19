@@ -9,6 +9,9 @@ const schema = new Schema({
   attempts: { type: Number, required: true, default: 0 },
   nextAttemptAt: { type: Date, required: true }, leaseId: String, leaseUntil: Date,
   replyText: String, intent: String,
+  movies: { type: [{ tmdbId: { type: Number, required: true }, title: { type: String, required: true },
+    reason: { type: String, required: true }, posterPath: String }], default: undefined, _id: false },
+  deliveredMovieCount: { type: Number, default: 0, min: 0 },
 }, { timestamps: true, collection: 'assistant_messages' });
 schema.index({ ownerId: 1, channel: 1, chatId: 1, messageId: 1 }, { unique: true });
 schema.index({ status: 1, nextAttemptAt: 1, receivedAt: 1 });

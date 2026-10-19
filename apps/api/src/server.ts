@@ -264,7 +264,7 @@ try {
   const recommendationModel = createRecommendationModel(models.users.db);
   await recommendationModel.init();
   const recommendations = new RecommendationWorkflow(new MongoRecommendationStore(recommendationModel), preferenceStore, tmdb, trendingStore,
-    movieStatusStore, config.TMDB_LANGUAGE, config.OPENAI_MAX_CONTEXT_TOKENS);
+    movieStatusStore, config.TMDB_LANGUAGE, config.OPENAI_MAX_CONTEXT_TOKENS, { logger: loggers.error, verbose: config.VERBOSE });
   const assistantOptions = {
     systemPrompt: config.OPENAI_SYSTEM_PROMPT, maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
     maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS, preferences: preferenceService, recommendations,
@@ -298,14 +298,17 @@ try {
 
   const assistantWorkflow = new AssistantWorkflow(createOwnerLlmClient, assistantOptions);
   const assistantWorker = new AssistantWorker(infrastructure.redis.getClient(), assistantQueue, assistantWorkflow,
-    (input, text) => input.channel === 'telegram'
-      ? telegramService.reply(input.ownerId, input.chatId, text)
-      : whatsappService.reply(input.ownerId, input.chatId, text),
+    (input, text, poster) => input.channel === 'telegram'
+      ? telegramService.reply(input.ownerId, input.chatId, text, poster)
+      : whatsappService.reply(input.ownerId, input.chatId, text, poster),
     input => input.channel === 'telegram'
       ? telegramService.canReply(input.ownerId, input.chatId)
       : whatsappService.canReply(input.ownerId, input.chatId),
     event => loggers.app.warn({ event }, 'Assistant workflow'),
-    { maxConcurrency: config.ASSISTANT_MAX_CONCURRENCY, scanIntervalMs: config.ASSISTANT_SCAN_INTERVAL_MS, scanTraceEnabled: config.SCAN_TRACE_ENABLED },
+    { maxConcurrency: config.ASSISTANT_MAX_CONCURRENCY, scanIntervalMs: config.ASSISTANT_SCAN_INTERVAL_MS, scanTraceEnabled: config.SCAN_TRACE_ENABLED, verbose: config.VERBOSE,
+      setTyping: (input, active, signal) => input.channel === 'telegram'
+        ? telegramService.setTyping(input.ownerId, input.chatId, active, signal)
+        : whatsappService.setTyping(input.ownerId, input.chatId, active, signal) },
     loggers.app,
     config.REDIS_LOCK_TRACE_ENABLED,
   );

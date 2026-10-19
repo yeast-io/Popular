@@ -56,6 +56,8 @@ function operationLabel(operation: string): string {
     'movie.search': 'usage.operation.movieSearch',
     'movie.details': 'usage.operation.movieDetails',
     'movie.trending': 'usage.operation.movieTrending',
+    'movie.discover': 'usage.operation.movieDiscover',
+    'movie.recommendations': 'usage.operation.movieRecommendations',
     'release.search': 'usage.operation.releaseSearch',
     'connection.test': 'usage.operation.connectionTest',
     'torrent.download_token': 'usage.operation.downloadToken',
@@ -64,6 +66,8 @@ function operationLabel(operation: string): string {
     'conversation.summary': 'usage.operation.conversationSummary',
     'assistant.intent': 'usage.operation.assistantIntent',
     'assistant.discuss': 'usage.operation.assistantDiscuss',
+    'assistant.recommend': 'usage.operation.assistantRecommend',
+    'preference.update': 'usage.operation.preferenceUpdate',
   } as const;
   const key = known[operation as keyof typeof known];
   return key ? t(key) : operation;

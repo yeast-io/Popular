@@ -78,3 +78,27 @@ test('renewals and result transitions are fenced by token, status, and an unexpi
   matched = 1;
   assert.equal(await queue.renew(String(id), 'current'), true);
 });
+
+test('persisted movie metadata and delivery progress survive reclaiming a message', async () => {
+  const result = { intent: 'recommend' as const, replyText: 'Movie text', movies: [
+    { tmdbId: 1, title: 'Movie', reason: 'Reason', posterPath: '/one.jpg' },
+    { tmdbId: 2, title: 'No poster', reason: 'Reason' },
+  ] };
+  const updates: Array<Record<string, unknown>> = [];
+  const row = { _id: id, ...conversation, ownerId: new Types.ObjectId(conversation.ownerId), messageId: 'message',
+    text: 'Recommend', receivedAt: new Date(), attempts: 2, deliveredMovieCount: 1,
+    ...result, movies: [result.movies[0], { ...result.movies[1], posterPath: null }] };
+  const model = {
+    findOne: () => ({ sort: () => ({ select: () => ({ lean: async () => ({ _id: id }) }) }) }),
+    findOneAndUpdate: () => ({ lean: async () => row }),
+    updateOne: async (_filter: unknown, update: Record<string, unknown>) => { updates.push(update); return { matchedCount: 1 }; },
+  } as unknown as AssistantMessageModel;
+  const queue = new MongoAssistantQueue(model);
+  assert.equal(await queue.saveResult(String(id), 'lease', result), true);
+  assert.deepEqual(updates[0]?.$set, result);
+  const job = await queue.claim(conversation, 'new-lease');
+  assert.deepEqual(job?.result, result);
+  assert.equal(job?.deliveredMovieCount, 1);
+  assert.equal(await queue.markMovieDelivered(String(id), 'new-lease', 2), true);
+  assert.deepEqual(updates.at(-1)?.$max, { deliveredMovieCount: 2 });
+});

@@ -7,6 +7,7 @@ export interface AssistantJob {
   id: string;
   input: AssistantInputWorkflowMessage;
   attempts: number;
+  deliveredMovieCount?: number;
   result?: AssistantWorkflowResult;
 }
 
@@ -20,6 +21,7 @@ export interface AssistantQueue {
   renew(id: string, leaseId: string): Promise<boolean>;
   history(input: AssistantInputWorkflowMessage): Promise<LlmMessage[]>;
   saveResult(id: string, leaseId: string, result: AssistantWorkflowResult): Promise<boolean>;
+  markMovieDelivered(id: string, leaseId: string, count: number): Promise<boolean>;
   delivered(id: string, leaseId: string): Promise<void>;
   retry(id: string, leaseId: string, exhausted: boolean): Promise<void>;
 }
