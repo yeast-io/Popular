@@ -1,7 +1,7 @@
 import type { OpenAIValidation } from '@movie-hub/contract';
 import type { Model } from 'mongoose';
 import type { OpenAIConfigDocument } from './openai-config.schema.js';
-import type { OpenAIConfigRecord, OpenAIConfigStore } from '../../../modules/integrations/openai-settings.service.js';
+import type { OpenAIConfigRecord, OpenAIConfigStore } from '../../../modules/integrations/openai-settings.types.js';
 
 export class MongoOpenAIConfigStore implements OpenAIConfigStore {
   constructor(

@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type {
-  SyncLock,
-  TrendingPageRecord,
-  TrendingProvider,
-  TrendingSnapshotRecord,
-  TrendingStore,
-} from './movie.types.js';
+import type { SyncLock, TrendingPageRecord, TrendingProvider, TrendingSnapshotRecord, TrendingStore } from './movie.types.js';
 import { TrendingSyncService } from './trending-sync.service.js';
 
 class MemoryLogger {

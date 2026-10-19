@@ -2,12 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
 import { ConversationService } from './conversation.service.js';
-import type {
-  AppendMessageInput,
-  ConversationMessage,
-  ConversationStore,
-  ConversationThread,
-} from './conversation.types.js';
+import type { AppendMessageInput, ConversationMessage, ConversationStore, ConversationThread } from './conversation.types.js';
 
 const ownerId = '507f1f77bcf86cd799439011';
 const threadId = '507f1f77bcf86cd799439012';

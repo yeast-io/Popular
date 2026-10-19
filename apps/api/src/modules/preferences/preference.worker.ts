@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { AiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
 import type { PreferenceStore } from './preference.types.js';
 import type { PreferenceWorkflow } from './preference.workflow.js';

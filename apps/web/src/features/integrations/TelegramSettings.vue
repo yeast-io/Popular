@@ -5,6 +5,7 @@ import IntegrationCard from '../settings/IntegrationCard.vue';
 import { loadWebConfig } from '../../config/env';
 import { t, formatDate } from '../../i18n';
 import { localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
+
 const emit = defineEmits<{ bindingChange: [] }>();
 const { apiBaseUrl } = loadWebConfig();
 const state = ref<TelegramConfiguration>({ status: 'unbound' });

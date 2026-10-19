@@ -1,5 +1,5 @@
 import { aiStep } from '../../infrastructure/logging/ai-trace.js';
-import type { ConversationTurnOptions } from '../conversations/conversation-turn.service.js';
+import type { ConversationTurnOptions } from '../conversations/conversation-turn.types.js';
 import type { AssistantWorkflowOptions } from './assistant.types.js';
 import { AssistantWorkflow } from './assistant.workflow.js';
 

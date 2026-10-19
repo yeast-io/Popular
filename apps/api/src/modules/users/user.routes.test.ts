@@ -4,7 +4,8 @@ import test from 'node:test';
 import { buildApp } from '../../app.js';
 import { loadConfig } from '../../config/env.js';
 import { AuthService } from '../auth/auth.service.js';
-import { DuplicateEmailError, type AuthUserStore, type SessionStore, type StoredUser } from '../auth/auth.types.js';
+import { DuplicateEmailError } from '../auth/auth.errors.js';
+import type { AuthUserStore, SessionStore, StoredUser } from '../auth/auth.types.js';
 import { UserService } from './user.service.js';
 import type { AvatarStore } from './user.types.js';
 

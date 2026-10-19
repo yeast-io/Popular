@@ -2,12 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { NotificationPreferences, SaveNotificationPreferences } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
-import {
-  CHECK_INTERVAL_MS,
-  type NotificationChannel,
-  type NotificationPlan,
-  type NotificationStore,
-} from './notification.types.js';
+import { CHECK_INTERVAL_MS } from './notification.policy.js';
+import type { NotificationChannel, NotificationPlan, NotificationStore } from './notification.types.js';
 
 export class NotificationService {
   private readonly channels: Map<string, NotificationChannel>;

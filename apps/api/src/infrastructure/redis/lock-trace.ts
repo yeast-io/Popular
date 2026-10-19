@@ -1,9 +1,7 @@
+import type { LockAction, Fields } from './lock-trace.types.js';
 import { randomUUID } from 'node:crypto';
-import type { AiLogger } from '../logging/ai-trace.js';
+import type { AiLogger } from '../logging/ai-trace.types.js';
 import { serializeDiagnosticError } from '../logging/diagnostic-error.js';
-
-type LockAction = 'acquire' | 'renew' | 'release' | 'checkpoint';
-type Fields = Record<string, unknown>;
 const instanceId = randomUUID();
 
 /** Trace lock commands without changing their result or logging ownership tokens. */

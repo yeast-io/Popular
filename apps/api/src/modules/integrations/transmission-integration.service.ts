@@ -1,18 +1,9 @@
-import type {
-  IntegrationFailureType,
-  TransmissionConfiguration,
-  SaveTransmissionConfigurationRequest,
-} from '@movie-hub/contract';
+import type { IntegrationFailureType, TransmissionConfiguration, SaveTransmissionConfigurationRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import { IntegrationValidationError } from './integration.service.js';
 import { SecretCrypto } from './secret-crypto.js';
-import type {
-  TransmissionClientPort,
-  TransmissionConfigRecord,
-  TransmissionConfigStore,
-  TransmissionCredential,
-} from './transmission.types.js';
+import type { TransmissionClientPort, TransmissionConfigRecord, TransmissionConfigStore, TransmissionCredential } from './transmission.types.js';
 
 export class TransmissionIntegrationService {
   constructor(

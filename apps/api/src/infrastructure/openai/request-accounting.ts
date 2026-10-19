@@ -1,28 +1,8 @@
+import type { OpenAIAccountingOptions, RecordedTokenUsage, OpenAIRequestAttempt } from './request-accounting.types.js';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import type {
-  ExternalRequestEventInput,
-  ExternalRequestRecorder,
-  ExternalRequestErrorCode,
-} from '../../modules/external-usage/external-usage.types.js';
+import type { ExternalRequestErrorCode } from '../../modules/external-usage/external-usage.types.js';
 import type { LlmGenerateInput } from '../../modules/llm/llm.types.js';
-
-export interface OpenAIAccountingOptions {
-  ownerId: string;
-  recorder: ExternalRequestRecorder;
-  maxRetries?: number;
-  retryDelayMs?: number;
-}
-export type RecordedTokenUsage = NonNullable<ExternalRequestEventInput['tokenUsage']>;
-
-export interface OpenAIRequestAttempt {
-  finish(
-    outcome: 'success' | 'failure',
-    usage?: RecordedTokenUsage,
-    responseModel?: string,
-    error?: unknown,
-  ): Promise<void>;
-}
 
 /** Own retries at the SDK boundary so each physical request is recorded exactly once locally. */
 export class OpenAIRequestAccounting {

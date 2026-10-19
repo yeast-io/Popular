@@ -1,18 +1,9 @@
-import type {
-  IntegrationFailureType,
-  QBittorrentConfiguration,
-  SaveQBittorrentConfigurationRequest,
-} from '@movie-hub/contract';
+import type { IntegrationFailureType, QBittorrentConfiguration, SaveQBittorrentConfigurationRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import { IntegrationValidationError } from './integration.service.js';
 import { SecretCrypto } from './secret-crypto.js';
-import type {
-  QBittorrentClientPort,
-  QBittorrentConfigRecord,
-  QBittorrentConfigStore,
-  QBittorrentCredential,
-} from './qbittorrent.types.js';
+import type { QBittorrentClientPort, QBittorrentConfigRecord, QBittorrentConfigStore, QBittorrentCredential } from './qbittorrent.types.js';
 
 export class QBittorrentIntegrationService {
   constructor(

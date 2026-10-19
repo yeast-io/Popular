@@ -1,6 +1,7 @@
-import { AiTrace, currentAiTrace, type AiLogger } from '../logging/ai-trace.js';
+import { AiTrace, currentAiTrace } from '../logging/ai-trace.js';
+import type { AiLogger } from '../logging/ai-trace.types.js';
 import { AppError } from '../http/app-error.js';
-import type { TelegramTransport, TelegramUpdate } from '../../modules/telegram/telegram.service.js';
+import type { TelegramTransport, TelegramUpdate } from '../../modules/telegram/telegram.types.js';
 export class TelegramClient implements TelegramTransport {
   private botUsername?: string;
   constructor(

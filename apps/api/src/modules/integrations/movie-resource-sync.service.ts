@@ -1,22 +1,10 @@
+import type { SyncLogger } from './movie-resource-sync.types.js';
 import type { MovieResourceSyncBatch } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieStatusStore } from '../movies/movie.types.js';
 import type { MovieResourceCheckService } from './movie-resource-check.service.js';
-import type {
-  MovieResourceCheckCompletion,
-  MovieResourceCheckRecord,
-  MovieResourceCheckStore,
-} from './movie-resource-check.types.js';
-import type {
-  MovieResourceSyncBatchStore,
-  StoredMovieResourceSyncBatch,
-  SyncCounter,
-} from './movie-resource-sync.types.js';
-
-interface SyncLogger {
-  info(bindings: Record<string, unknown>, message: string): void;
-  error(bindings: Record<string, unknown>, message: string): void;
-}
+import type { MovieResourceCheckCompletion, MovieResourceCheckRecord, MovieResourceCheckStore } from './movie-resource-check.types.js';
+import type { MovieResourceSyncBatchStore, StoredMovieResourceSyncBatch, SyncCounter } from './movie-resource-sync.types.js';
 
 export class MovieResourceSyncService {
   private readonly running = new Set<string>();

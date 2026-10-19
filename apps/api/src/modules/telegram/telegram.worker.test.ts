@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Redis } from 'ioredis';
 import { TelegramWorker } from './telegram.worker.js';
-import type { TelegramService, TelegramUpdate } from './telegram.service.js';
+import type { TelegramService } from './telegram.service.js';
+import type { TelegramUpdate } from './telegram.types.js';
 
 function fixture(lockTraceEnabled = true, pollTraceEnabled = true) {
   const values = new Map<string, string>();

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { AppError } from './app-error.js';
 import { logErrorOnce } from '../logging/error-logger.js';
-import type { AppLoggers } from '../logging/logger.js';
+import type { AppLoggers } from '../logging/logger.types.js';
 
 export function registerErrorHandler(app: FastifyInstance, loggers: AppLoggers): void {
   app.setErrorHandler((error, request, reply) => {

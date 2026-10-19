@@ -1,33 +1,8 @@
+import type { TrendingSyncResult, TrendingSyncTrigger, TrendingSyncLogger, SyncContext } from './trending-sync.types.js';
 import { randomUUID } from 'node:crypto';
 import type { Locale } from '@movie-hub/contract';
-import type {
-  MovieRecord,
-  SyncLock,
-  TrendingPageRecord,
-  TrendingProvider,
-  TrendingSnapshotRecord,
-  TrendingStore,
-} from './movie.types.js';
-import { systemExternalRequestContext } from '../external-usage/external-usage.types.js';
-
-export interface TrendingSyncResult {
-  status: 'completed' | 'skipped';
-  pages: number;
-  movies: number;
-}
-
-export type TrendingSyncTrigger = 'manual' | 'load-more' | 'request' | 'scheduler';
-
-export interface TrendingSyncLogger {
-  info(bindings: Record<string, unknown>, message: string): void;
-  error(bindings: Record<string, unknown>, message: string): void;
-}
-
-interface SyncContext {
-  runId: string;
-  trigger: TrendingSyncTrigger;
-  scope: 'configured-pages' | 'page';
-}
+import type { MovieRecord, SyncLock, TrendingPageRecord, TrendingProvider, TrendingSnapshotRecord, TrendingStore } from './movie.types.js';
+import { systemExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class TrendingSyncService {
   constructor(

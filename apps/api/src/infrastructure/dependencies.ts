@@ -1,15 +1,9 @@
-import type { AppConfig } from '../config/env.js';
-import type { HealthDependency } from './health/dependency.js';
+import type { Infrastructure } from './dependencies.types.js';
+import type { AppConfig } from '../config/env.schema.js';
+
 import { MinioConnector } from './minio/connector.js';
 import { MongoDbConnector } from './mongodb/connector.js';
 import { RedisConnector } from './redis/connector.js';
-
-export interface Infrastructure {
-  mongodb: MongoDbConnector;
-  redis: RedisConnector;
-  minio: MinioConnector;
-  healthDependencies: HealthDependency[];
-}
 
 export function createInfrastructure(config: AppConfig): Infrastructure {
   const mongodb = new MongoDbConnector(config.MONGODB_URI, config.MONGODB_DB_NAME);

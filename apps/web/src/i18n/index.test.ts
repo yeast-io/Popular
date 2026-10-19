@@ -1,15 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import enUS from './locales/en-US';
 import zhCN from './locales/zh-CN';
-import {
-  formatDuration,
-  initializeI18n,
-  localeStorageKey,
-  selectInitialLocale,
-  setLocale,
-  translate,
-  useI18n,
-} from './index';
+import { formatDuration, initializeI18n, localeStorageKey, selectInitialLocale, setLocale, translate, useI18n } from './index';
 
 describe('i18n', () => {
   beforeEach(() => setLocale('zh-CN'));

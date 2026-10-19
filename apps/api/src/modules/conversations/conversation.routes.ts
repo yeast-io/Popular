@@ -1,30 +1,16 @@
 import { streamErrorDiagnostics } from './stream-error-diagnostics.js';
-import {
-  ApiErrorSchema,
-  AppendConversationMessageRequestSchema,
-  ConversationMessageSchema,
-  ConversationMessagesQuerySchema,
-  ConversationMessagesResponseSchema,
-  ConversationParamsSchema,
-  ConversationThreadSchema,
-  ConversationThreadsResponseSchema,
-  ConversationTurnResponseSchema,
-  RunConversationTurnRequestSchema,
-  type AppendConversationMessageRequest,
-  type ConversationMessagesQuery,
-  type ConversationParams,
-  type ConversationTurnResponse,
-  type RunConversationTurnRequest,
-} from '@movie-hub/contract';
-import { AiTrace, currentAiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
-import { LlmProviderError } from '../llm/llm.types.js';
+import { ApiErrorSchema, AppendConversationMessageRequestSchema, ConversationMessageSchema, ConversationMessagesQuerySchema, ConversationMessagesResponseSchema, ConversationParamsSchema, ConversationThreadSchema, ConversationThreadsResponseSchema, ConversationTurnResponseSchema, RunConversationTurnRequestSchema, type AppendConversationMessageRequest, type ConversationMessagesQuery, type ConversationParams, type ConversationTurnResponse, type RunConversationTurnRequest } from '@movie-hub/contract';
+import { AiTrace, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
+import { LlmProviderError } from '../llm/llm.errors.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { ConversationService } from './conversation.service.js';
 import type { AuthService } from '../auth/auth.service.js';
-import type { ConversationTurnService, ConversationTurnResult } from './conversation-turn.service.js';
+import type { ConversationTurnService } from './conversation-turn.service.js';
+import type { ConversationTurnResult } from './conversation-turn.types.js';
 import type { ConversationMessage } from './conversation.types.js';
 
 export function registerConversationRoutes(
@@ -321,7 +307,7 @@ function toMessageResponse(message: ConversationMessage): ConversationTurnRespon
   };
 }
 
-function toStreamPayload(event: import('./conversation-turn.service.js').ConversationTurnStreamEvent) {
+function toStreamPayload(event: import("./conversation-turn.types.js").ConversationTurnStreamEvent) {
   if (event.type === 'user_message') {
     return { type: event.type, message: toMessageResponse(event.message) };
   }

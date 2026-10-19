@@ -1,21 +1,10 @@
 import { currentAiTrace } from '../logging/ai-trace.js';
 import { AppError } from '../http/app-error.js';
 import type OpenAI from 'openai';
-import type {
-  LlmClient,
-  LlmGenerateInput,
-  LlmGenerateResult,
-  LlmStreamEvent,
-  LlmFailureDiagnostics,
-} from '../../modules/llm/llm.types.js';
-import { LlmProviderError } from '../../modules/llm/llm.types.js';
-import {
-  OpenAIRequestAccounting,
-  readTokenUsage,
-  type OpenAIAccountingOptions,
-  type OpenAIRequestAttempt,
-  type RecordedTokenUsage,
-} from './request-accounting.js';
+import type { LlmClient, LlmGenerateInput, LlmGenerateResult, LlmStreamEvent, LlmFailureDiagnostics } from '../../modules/llm/llm.types.js';
+import { LlmProviderError } from '../../modules/llm/llm.errors.js';
+import { OpenAIRequestAccounting, readTokenUsage } from './request-accounting.js';
+import type { OpenAIAccountingOptions, OpenAIRequestAttempt, RecordedTokenUsage } from './request-accounting.types.js';
 
 export class OpenAILlmClient implements LlmClient {
   private readonly accounting: OpenAIRequestAccounting;

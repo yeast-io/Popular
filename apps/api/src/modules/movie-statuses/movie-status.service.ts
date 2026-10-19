@@ -1,22 +1,9 @@
-import type {
-  Locale,
-  MovieReleaseListResponse,
-  MovieResourceCheckResponse,
-  MyMoviesFilter,
-  MyMoviesResponse,
-  TrackedMoviePreference,
-  TrackedMovieStatus,
-} from '@movie-hub/contract';
+import type { MovieResourceCheckDispatcher } from './movie-status.types.js';
+import type { Locale, MovieReleaseListResponse, MovieResourceCheckResponse, MyMoviesFilter, MyMoviesResponse, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieCatalogStore, MovieStatusStore } from '../movies/movie.types.js';
 import { toMovieSummary } from '../movies/movie.service.js';
 import type { MovieResourceCheckStore } from '../integrations/movie-resource-check.types.js';
-
-export interface MovieResourceCheckDispatcher {
-  schedule(ownerId: string, tmdbId: number, options?: { force?: boolean }): void;
-  request?(ownerId: string, tmdbId: number, force?: boolean): Promise<boolean>;
-  listReleases?(ownerId: string, tmdbId: number): Promise<MovieReleaseListResponse>;
-}
 
 export class MovieStatusService {
   constructor(

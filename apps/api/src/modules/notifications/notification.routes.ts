@@ -1,11 +1,6 @@
-import {
-  ApiErrorSchema,
-  NotificationPreferencesSchema,
-  SaveNotificationPreferencesSchema,
-  type SaveNotificationPreferences,
-} from '@movie-hub/contract';
+import { ApiErrorSchema, NotificationPreferencesSchema, SaveNotificationPreferencesSchema, type SaveNotificationPreferences } from '@movie-hub/contract';
 import type { FastifyInstance } from 'fastify';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { NotificationService } from './notification.service.js';
 export function registerNotificationRoutes(

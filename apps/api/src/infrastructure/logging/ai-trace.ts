@@ -1,9 +1,8 @@
+import type { AiLogger } from './ai-trace.types.js';
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { Logger } from 'pino';
-import { serializeDiagnosticError } from './diagnostic-error.js';
 
-export type AiLogger = Pick<Logger, 'error'> & Partial<Pick<Logger, 'info' | 'debug' | 'warn'>>;
+import { serializeDiagnosticError } from './diagnostic-error.js';
 const context = new AsyncLocalStorage<AiTrace>();
 export const currentAiTrace = () => context.getStore();
 export const withAiTrace = <T>(trace: AiTrace, action: () => T): T => context.run(trace, action);

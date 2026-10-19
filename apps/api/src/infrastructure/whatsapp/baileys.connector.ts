@@ -1,19 +1,4 @@
-import makeWASocket, {
-  BufferJSON,
-  Browsers,
-  DisconnectReason,
-  getContentType,
-  normalizeMessageContent,
-  initAuthCreds,
-  jidNormalizedUser,
-  proto,
-  generateMessageIDV2,
-  type AnyMessageContent,
-  type AuthenticationCreds,
-  type AuthenticationState,
-  type SignalDataSet,
-  type BinaryNode,
-} from '@whiskeysockets/baileys';
+import makeWASocket, { BufferJSON, Browsers, DisconnectReason, getContentType, normalizeMessageContent, initAuthCreds, jidNormalizedUser, proto, generateMessageIDV2, type AnyMessageContent, type AuthenticationCreds, type AuthenticationState, type SignalDataSet, type BinaryNode } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import type { WhatsAppConfiguration } from '@movie-hub/contract';

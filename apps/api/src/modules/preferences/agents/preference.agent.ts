@@ -3,21 +3,9 @@ import { z } from 'zod';
 import type { TasteProfile } from '@movie-hub/contract';
 import type { LlmClient } from '../../llm/llm.types.js';
 import type { PreferenceJob, PreferenceProposal } from '../preference.types.js';
-import {
-  PREFERENCE_PROMPT_VERSION,
-  PREFERENCE_SYSTEM_PROMPT,
-} from '../../../config/system-prompts/preference.prompts.js';
+import { PREFERENCE_PROMPT_VERSION, PREFERENCE_SYSTEM_PROMPT } from '../../../config/system-prompts/preference.prompts.js';
 import { buildLlmContext } from '../../llm/llm.context.js';
-
-const ChangeSchema = z.strictObject({
-  operation: z.enum(['add', 'replace', 'remove']),
-  entryId: z.string().nullable(),
-  section: z.enum(['explicit', 'inferred']),
-  content: z.string().max(500),
-  evidenceRefs: z.array(z.string()).min(1).max(20),
-  reason: z.string().max(500),
-});
-const ProposalSchema = z.strictObject({ changes: z.array(ChangeSchema).max(20) });
+import { ProposalSchema } from '../preference-proposal.schema.js';
 
 export class PreferenceAgent {
   constructor(

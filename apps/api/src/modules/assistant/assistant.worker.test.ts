@@ -3,7 +3,7 @@ import test from 'node:test';
 import { setImmediate, setTimeout } from 'node:timers/promises';
 import { AssistantWorker } from './assistant.worker.js';
 import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
-import type { AssistantConversation, AssistantJob, AssistantQueue } from './assistant.queue.js';
+import type { AssistantConversation, AssistantJob, AssistantQueue } from './assistant.types.js';
 
 function deferred() {
   let resolve!: () => void;

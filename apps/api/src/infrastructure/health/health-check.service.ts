@@ -1,7 +1,4 @@
-export interface DependencyHealth {
-  status: 'up' | 'down';
-  latencyMs: number;
-}
+import type { DependencyHealth } from './health.types.js';
 
 export async function timedHealthCheck(check: () => Promise<unknown>): Promise<DependencyHealth> {
   const started = performance.now();

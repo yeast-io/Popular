@@ -1,8 +1,4 @@
-export type AvatarImage = {
-  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
-  width: number;
-  height: number;
-};
+import type { AvatarImage } from './avatar-image.types.js';
 
 export function inspectAvatarImage(bytes: Buffer): AvatarImage | undefined {
   return inspectPng(bytes) ?? inspectJpeg(bytes) ?? inspectWebp(bytes);

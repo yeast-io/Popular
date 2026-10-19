@@ -1,4 +1,4 @@
-import type { DependencyHealth } from './types.js';
+import type { DependencyHealth } from './health.types.js';
 
 export interface HealthDependency {
   readonly name: 'mongodb' | 'redis' | 'minio';

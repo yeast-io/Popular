@@ -1,12 +1,5 @@
 <script setup lang="ts">
-import type {
-  OpenAIConfiguration,
-  ConversationMessageResponse,
-  ConversationMessagesResponse,
-  ConversationThreadResponse,
-  ConversationThreadsResponse,
-  ConversationTurnStreamEvent,
-} from '@movie-hub/contract';
+import type { OpenAIConfiguration, ConversationMessageResponse, ConversationMessagesResponse, ConversationThreadResponse, ConversationThreadsResponse, ConversationTurnStreamEvent } from '@movie-hub/contract';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';

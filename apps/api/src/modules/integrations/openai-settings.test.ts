@@ -7,7 +7,8 @@ import { ConversationTurnService } from '../conversations/conversation-turn.serv
 import type { ConversationStore } from '../conversations/conversation.types.js';
 import type { ConversationService } from '../conversations/conversation.service.js';
 import { SecretCrypto } from './secret-crypto.js';
-import { OpenAISettingsService, type OpenAIConfigRecord, type OpenAIConfigStore } from './openai-settings.service.js';
+import { OpenAISettingsService } from './openai-settings.service.js';
+import type { OpenAIConfigRecord, OpenAIConfigStore } from './openai-settings.types.js';
 
 const config = loadConfig({
   WEB_ORIGIN: 'http://localhost:5173',

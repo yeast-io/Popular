@@ -1,6 +1,7 @@
-import { AiTrace, aiStep, withAiTrace, type AiLogger } from '../logging/ai-trace.js';
+import { AiTrace, aiStep, withAiTrace } from '../logging/ai-trace.js';
+import type { AiLogger } from '../logging/ai-trace.types.js';
 import type { AssistantMessageModel } from './assistant/assistant-message.schema.js';
-import type { createResourceQueryModel } from './resource-query/resource-query.store.js';
+import type { createResourceQueryModel } from './resource-query/resource-query.schema.js';
 
 export const ASSISTANT_MESSAGE_RETENTION_MS = 90 * 24 * 60 * 60_000;
 export const RESOURCE_QUERY_RETENTION_MS = 24 * 60 * 60_000;

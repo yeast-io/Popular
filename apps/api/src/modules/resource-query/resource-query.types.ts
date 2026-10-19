@@ -79,6 +79,8 @@ export interface ResourceDecisions {
   ): Promise<ResourcePlan>;
 }
 export interface ResourceQueryCapability {
+  /** Owner/conversation-scoped context. Expired interactive snapshots must not be selected. */
+  context?(ownerId: string, conversation: string): Promise<ResourceQueryState | null>;
   active(ownerId: string, conversation: string): Promise<boolean>;
   run(
     ownerId: string,
@@ -88,9 +90,6 @@ export interface ResourceQueryCapability {
     history: LlmMessage[],
     decisions: ResourceDecisions,
     signal?: AbortSignal,
+    locale?: Locale,
   ): Promise<{ replyText: string }>;
-}
-export const RESOURCE_SESSION_MS = 30 * 60_000;
-export function emptyResourceState(): ResourceQueryState {
-  return { updatedAt: '', candidates: [], movie: null, resolution: null, providers: [], releases: [], events: [] };
 }

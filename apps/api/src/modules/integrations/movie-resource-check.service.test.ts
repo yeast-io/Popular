@@ -4,13 +4,7 @@ import type { MovieCatalogStore, MovieDetailRecord, MovieSearchProvider } from '
 import { IntegrationValidationError } from './integration.service.js';
 import type { IntegrationConfigStore } from './integration.types.js';
 import { isActiveRelease, MovieResourceCheckService } from './movie-resource-check.service.js';
-import type {
-  MTeamRelease,
-  MTeamResourceSearcher,
-  MovieResourceCheckCompletion,
-  MovieResourceCheckKey,
-  MovieResourceCheckStore,
-} from './movie-resource-check.types.js';
+import type { MTeamRelease, MTeamResourceSearcher, MovieResourceCheckCompletion, MovieResourceCheckKey, MovieResourceCheckStore } from './movie-resource-check.types.js';
 import { SecretCrypto } from './secret-crypto.js';
 
 const now = new Date('2026-10-13T00:00:00.000Z');

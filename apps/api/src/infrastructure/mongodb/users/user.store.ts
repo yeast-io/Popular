@@ -1,10 +1,8 @@
-import type { Model } from 'mongoose';
-import type { AuthIdentityDocument } from './auth-identity.schema.js';
-import type { UserDocument } from './user.schema.js';
-import { DuplicateEmailError, type AuthUserStore, type StoredUser } from '../../../modules/auth/auth.types.js';
+import type { UserModel, IdentityModel } from './user-store.types.js';
 
-type UserModel = Model<UserDocument>;
-type IdentityModel = Model<AuthIdentityDocument>;
+import type { UserDocument } from './user.schema.js';
+import { DuplicateEmailError } from '../../../modules/auth/auth.errors.js';
+import type { AuthUserStore, StoredUser } from '../../../modules/auth/auth.types.js';
 
 export class MongoAuthUserStore implements AuthUserStore {
   private transactionsSupported: boolean | undefined;

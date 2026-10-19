@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
 import { localizedErrorMessage } from '../../i18n/api-error';
+import type { TokenUsage } from './usage-statistics.types.js';
 
 const { apiBaseUrl } = loadWebConfig();
 const { formatDate, formatNumber, t } = useI18n();
@@ -98,8 +99,6 @@ function duration(milliseconds: number): string {
     ? t('usage.durationMs', { value: formatNumber(milliseconds) })
     : t('usage.durationSeconds', { value: formatNumber(milliseconds / 1_000, { maximumFractionDigits: 1 }) });
 }
-
-type TokenUsage = NonNullable<ExternalUsageResponse['totals']['tokenUsage']>;
 function tokens(usage: TokenUsage | undefined, field: 'inputTokens' | 'outputTokens' | 'cachedInputTokens'): string {
   if (!usage) return '—';
   const unknown = field === 'cachedInputTokens' ? usage.unknownCachedRequests : usage.unknownRequests;

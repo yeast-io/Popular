@@ -1,3 +1,4 @@
+
 import { createTelegramModel } from './telegram/telegram.schema.js';
 import { createAssistantMessageModel } from './assistant/assistant-message.schema.js';
 import { createNotificationPreferencesModel } from './notifications/notification-preferences.schema.js';
@@ -56,5 +57,3 @@ export function createModels(connection: Connection) {
     conversationMessages: createConversationMessageModel(connection),
   };
 }
-
-export type Models = ReturnType<typeof createModels>;

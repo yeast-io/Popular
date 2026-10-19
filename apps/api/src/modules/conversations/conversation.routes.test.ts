@@ -235,7 +235,7 @@ test('turn route requires an idempotency key and returns persisted turn messages
 test('logs safe diagnostics after SSE starts while keeping client errors generic', async () => {
   const { default: Fastify } = await import('fastify');
   const { registerConversationRoutes } = await import('./conversation.routes.js');
-  const { LlmProviderError } = await import('../llm/llm.types.js');
+  const { LlmProviderError } = await import('../llm/llm.errors.js');
   const { AppError } = await import('../../infrastructure/http/app-error.js');
   const logs: unknown[] = [];
   const app = Fastify();

@@ -1,9 +1,6 @@
 import type { Model } from 'mongoose';
 import type { IntegrationFailureType } from '@movie-hub/contract';
-import type {
-  TransmissionConfigRecord,
-  TransmissionConfigStore,
-} from '../../../modules/integrations/transmission.types.js';
+import type { TransmissionConfigRecord, TransmissionConfigStore } from '../../../modules/integrations/transmission.types.js';
 import type { TransmissionConfigDocument } from './transmission-config.schema.js';
 
 export class MongoTransmissionConfigStore implements TransmissionConfigStore {

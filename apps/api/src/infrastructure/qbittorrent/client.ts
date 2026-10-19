@@ -1,11 +1,6 @@
+import type { FetchLike } from './qbittorrent-client.types.js';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
-import type {
-  QBittorrentClientPort,
-  QBittorrentCredential,
-  QBittorrentTorrent,
-} from '../../modules/integrations/qbittorrent.types.js';
-
-type FetchLike = typeof fetch;
+import type { QBittorrentClientPort, QBittorrentCredential, QBittorrentTorrent } from '../../modules/integrations/qbittorrent.types.js';
 
 export class QBittorrentClient implements QBittorrentClientPort {
   constructor(

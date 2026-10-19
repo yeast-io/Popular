@@ -1,16 +1,7 @@
+import type { MinioOptions } from './minio-connector.types.js';
 import { Client } from 'minio';
-import type { HealthDependency } from '../health/dependency.js';
-import { timedHealthCheck } from '../health/types.js';
-
-interface MinioOptions {
-  endpoint: string;
-  port: number;
-  useSSL: boolean;
-  accessKey: string;
-  secretKey: string;
-  bucket: string;
-  region?: string;
-}
+import type { HealthDependency } from '../health/health-dependency.types.js';
+import { timedHealthCheck } from '../health/health-check.service.js';
 
 export class MinioConnector implements HealthDependency {
   readonly name = 'minio' as const;

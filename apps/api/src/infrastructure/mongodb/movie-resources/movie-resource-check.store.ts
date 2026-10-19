@@ -1,10 +1,5 @@
 import type { Model } from 'mongoose';
-import type {
-  MovieResourceCheckKey,
-  MovieResourceCheckCompletion,
-  MovieResourceCheckRecord,
-  MovieResourceCheckStore,
-} from '../../../modules/integrations/movie-resource-check.types.js';
+import type { MovieResourceCheckKey, MovieResourceCheckCompletion, MovieResourceCheckRecord, MovieResourceCheckStore } from '../../../modules/integrations/movie-resource-check.types.js';
 import type { MovieResourceCheckDocument } from './movie-resource-check.schema.js';
 import type { MovieResourceCheckTaskDocument } from './movie-resource-check-task.schema.js';
 

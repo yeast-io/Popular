@@ -20,10 +20,3 @@ export interface SessionStore {
   getOwnerId(token: string): Promise<string | null>;
   delete(token: string): Promise<void>;
 }
-
-export class DuplicateEmailError extends Error {
-  constructor() {
-    super('Email is already registered');
-    this.name = 'DuplicateEmailError';
-  }
-}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createConnection } from 'mongoose';
 import { createAssistantMessageModel, type AssistantMessageModel } from './assistant/assistant-message.schema.js';
-import type { createResourceQueryModel } from './resource-query/resource-query.store.js';
+import type { createResourceQueryModel } from './resource-query/resource-query.schema.js';
 import { initializeAssistantRetention, ASSISTANT_MESSAGE_RETENTION_MS, RESOURCE_QUERY_RETENTION_MS } from './assistant-retention.js';
 
 test('message expiry has an independent TTL index and date fields without a default expiration', async () => {

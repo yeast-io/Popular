@@ -1,26 +1,6 @@
-import {
-  ApiErrorSchema,
-  MovieIdParamsSchema,
-  MoviePreferenceResponseSchema,
-  MovieReleaseListResponseSchema,
-  MovieResourceCheckResponseSchema,
-  MovieResourceSyncBatchSchema,
-  MovieResourceSyncParamsSchema,
-  MovieStatusResponseSchema,
-  MyMoviesQuerySchema,
-  MyMoviesResponseSchema,
-  StartMovieResourceSyncRequestSchema,
-  SetMoviePreferenceRequestSchema,
-  SetMovieStatusRequestSchema,
-  type MovieIdParams,
-  type MovieResourceSyncParams,
-  type MyMoviesQuery,
-  type SetMoviePreferenceRequest,
-  type SetMovieStatusRequest,
-  type StartMovieResourceSyncRequest,
-} from '@movie-hub/contract';
+import { ApiErrorSchema, MovieIdParamsSchema, MoviePreferenceResponseSchema, MovieReleaseListResponseSchema, MovieResourceCheckResponseSchema, MovieResourceSyncBatchSchema, MovieResourceSyncParamsSchema, MovieStatusResponseSchema, MyMoviesQuerySchema, MyMoviesResponseSchema, StartMovieResourceSyncRequestSchema, SetMoviePreferenceRequestSchema, SetMovieStatusRequestSchema, type MovieIdParams, type MovieResourceSyncParams, type MyMoviesQuery, type SetMoviePreferenceRequest, type SetMovieStatusRequest, type StartMovieResourceSyncRequest } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { AuthService } from '../auth/auth.service.js';
 import type { MovieStatusService } from './movie-status.service.js';

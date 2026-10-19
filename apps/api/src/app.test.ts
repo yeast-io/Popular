@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildApp } from './app.js';
 import { loadConfig } from './config/env.js';
-import type { HealthDependency } from './infrastructure/health/dependency.js';
+import type { HealthDependency } from './infrastructure/health/health-dependency.types.js';
 import type { MovieService } from './modules/movies/movie.service.js';
 
 const config = loadConfig({

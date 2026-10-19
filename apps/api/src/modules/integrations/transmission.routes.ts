@@ -1,11 +1,6 @@
-import {
-  ApiErrorSchema,
-  TransmissionConfigurationSchema,
-  SaveTransmissionConfigurationRequestSchema,
-  type SaveTransmissionConfigurationRequest,
-} from '@movie-hub/contract';
+import { ApiErrorSchema, TransmissionConfigurationSchema, SaveTransmissionConfigurationRequestSchema, type SaveTransmissionConfigurationRequest } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { TransmissionIntegrationService } from './transmission-integration.service.js';
 

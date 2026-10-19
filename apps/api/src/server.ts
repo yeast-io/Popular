@@ -1,7 +1,10 @@
+import { createAssistantSessionModel } from './infrastructure/mongodb/assistant/assistant-session.schema.js';
+import { MongoAssistantSessionStore } from './infrastructure/mongodb/assistant/assistant-session.store.js';
 import { initializeAssistantRetention } from './infrastructure/mongodb/assistant-retention.js';
 import { ResourceQueryTool } from './modules/resource-query/resource-query.tool.js';
 import { MTeamResourceProvider } from './modules/resource-query/mteam-resource.provider.js';
-import { createResourceQueryModel, MongoResourceQueryStore } from './infrastructure/mongodb/resource-query/resource-query.store.js';
+import { createResourceQueryModel } from './infrastructure/mongodb/resource-query/resource-query.schema.js';
+import { MongoResourceQueryStore } from './infrastructure/mongodb/resource-query/resource-query.store.js';
 import { createAssistantConversationReply } from './modules/assistant/assistant.conversation.js';
 import { ApplicationShutdown, installShutdownHandlers } from './infrastructure/lifecycle/shutdown.js';
 import { TelegramService } from './modules/telegram/telegram.service.js';
@@ -239,7 +242,7 @@ try {
   const telegramClient = config.TELEGRAM_BOT_TOKEN
     ? new TelegramClient(config.TELEGRAM_BOT_TOKEN, undefined, loggers.app, config.TELEGRAM_POLL_TRACE_ENABLED)
     : undefined;
-  const receiveMessage = async (ownerId: string, message: import('./modules/incoming-message.js').IncomingMessage) => {
+  const receiveMessage = async (ownerId: string, message: import("./modules/incoming-message.types.js").IncomingMessage) => {
     await assistantReceiver.receive(ownerId, message);
     loggers.app.info(
       {
@@ -395,7 +398,13 @@ try {
     config.TMDB_LANGUAGE,
     { logger: loggers.error, verbose: config.VERBOSE },
   );
+  const assistantSessionModel = createAssistantSessionModel(models.users.db);
+  await assistantSessionModel.init();
   const assistantOptions = {
+    locale: config.TMDB_LANGUAGE,
+    sessions: new MongoAssistantSessionStore(assistantSessionModel),
+    downloads: movieDownloadService,
+    diagnostics: { logger: loggers.error, verbose: config.VERBOSE },
     systemPrompt: config.OPENAI_SYSTEM_PROMPT,
     maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
     maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS,

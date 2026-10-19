@@ -1,73 +1,44 @@
+import type { BuildAppOptions } from './app.types.js';
 import { DocsService } from './modules/docs/docs.service.js';
 import { registerDocsRoutes } from './modules/docs/docs.routes.js';
 import { aiAssistantPageEnabled, docsPageEnabled } from './config/env.js';
 import { registerTelegramRoutes } from './modules/telegram/telegram.routes.js';
 import { registerPreferenceRoutes } from './modules/preferences/preference.routes.js';
-import type { PreferenceService } from './modules/preferences/preference.service.js';
-import type { TelegramService } from './modules/telegram/telegram.service.js';
+
 import { registerNotificationTestRoutes } from './modules/notifications/notification-test.routes.js';
-import type { NotificationTestService } from './modules/notifications/notification-test.service.js';
+
 import { registerNotificationRoutes } from './modules/notifications/notification.routes.js';
-import type { NotificationService } from './modules/notifications/notification.service.js';
+
 import { registerWhatsAppRoutes } from './modules/whatsapp/whatsapp.routes.js';
-import type { WhatsAppService } from './modules/whatsapp/whatsapp.service.js';
+
 import { randomUUID } from 'node:crypto';
 import { registerOpenAISettingsRoutes } from './modules/integrations/openai-settings.routes.js';
-import type { OpenAISettingsService } from './modules/integrations/openai-settings.service.js';
+
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
-import type { AppConfig } from './config/env.js';
-import type { HealthDependency } from './infrastructure/health/dependency.js';
+
 import { registerErrorHandler } from './infrastructure/http/error-handler.js';
 import { registerAccessLog } from './infrastructure/logging/access-log.js';
 import { createLoggers, createPrettyLoggers } from './infrastructure/logging/logger.js';
 import { registerHealthRoutes } from './modules/health/health.routes.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
-import type { AuthService } from './modules/auth/auth.service.js';
+
 import { registerUserRoutes } from './modules/users/user.routes.js';
-import type { UserService } from './modules/users/user.service.js';
+
 import { registerMovieRoutes } from './modules/movies/movie.routes.js';
-import type { MovieService } from './modules/movies/movie.service.js';
+
 import { registerMovieStatusRoutes } from './modules/movie-statuses/movie-status.routes.js';
-import type { MovieStatusService } from './modules/movie-statuses/movie-status.service.js';
+
 import { registerIntegrationRoutes } from './modules/integrations/integration.routes.js';
-import type { IntegrationService } from './modules/integrations/integration.service.js';
-import type { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
+
 import { registerTransmissionRoutes } from './modules/integrations/transmission.routes.js';
-import type { TransmissionIntegrationService } from './modules/integrations/transmission-integration.service.js';
-import type { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
+
 import { registerMovieDownloadRoutes } from './modules/downloads/movie-download.routes.js';
-import type { MovieDownloadService } from './modules/downloads/movie-download.service.js';
+
 import { registerExternalUsageRoutes } from './modules/external-usage/external-usage.routes.js';
-import type { ExternalUsageService } from './modules/external-usage/external-usage.service.js';
+
 import { registerPublicConfigRoutes } from './modules/config/public-config.routes.js';
 import { registerConversationRoutes } from './modules/conversations/conversation.routes.js';
-import type { ConversationService } from './modules/conversations/conversation.service.js';
-import type { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
-
-export interface BuildAppOptions {
-  telegramService?: TelegramService;
-  notificationTestService?: NotificationTestService;
-  notificationService?: NotificationService;
-  whatsappService?: WhatsAppService;
-  docsService?: DocsService;
-  config: AppConfig;
-  healthDependencies: HealthDependency[];
-  authService?: AuthService;
-  userService?: UserService;
-  movieService?: MovieService;
-  movieStatusService?: MovieStatusService;
-  integrationService?: IntegrationService;
-  movieResourceSyncService?: MovieResourceSyncService;
-  transmissionIntegrationService?: TransmissionIntegrationService;
-  qbittorrentIntegrationService?: QBittorrentIntegrationService;
-  movieDownloadService?: MovieDownloadService;
-  externalUsageService?: ExternalUsageService;
-  openaiSettingsService?: OpenAISettingsService;
-  conversationService?: ConversationService;
-  conversationTurnService?: ConversationTurnService;
-  preferenceService?: PreferenceService;
-}
 
 export async function buildApp({
   docsService,

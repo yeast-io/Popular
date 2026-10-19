@@ -1,6 +1,4 @@
-import type zhCN from './zh-CN';
-
-type TranslationMessages = Record<keyof typeof zhCN, string>;
+import type { TranslationMessages } from '../translation-messages.types.js';
 
 const enUS = {
   'nav.docs': 'Docs',

@@ -2,16 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { DownloadProvider } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
-import type {
-  QBittorrentClientPort,
-  QBittorrentConfigStore,
-  QBittorrentTorrent,
-} from '../integrations/qbittorrent.types.js';
-import type {
-  TransmissionClientPort,
-  TransmissionConfigStore,
-  TransmissionTorrent,
-} from '../integrations/transmission.types.js';
+import type { QBittorrentClientPort, QBittorrentConfigStore, QBittorrentTorrent } from '../integrations/qbittorrent.types.js';
+import type { TransmissionClientPort, TransmissionConfigStore, TransmissionTorrent } from '../integrations/transmission.types.js';
 import type { IntegrationConfigStore } from '../integrations/integration.types.js';
 import { IntegrationValidationError, integrationSecretContext } from '../integrations/integration.service.js';
 import { SecretCrypto } from '../integrations/secret-crypto.js';
@@ -465,4 +457,19 @@ test('failure to persist notification intent fails safely before submitting and 
   fail = false;
   await f.service.create('owner', 603, '991');
   assert.deepEqual(f.adds, ['transmission']);
+});
+
+test('trusted owner download entry reuses the existing claim and does not require an HTTP token', async () => {
+  const { service, adds } = fixture(['transmission']);
+  const ownerId = '507f1f77bcf86cd799439011';
+  assert.deepEqual(await service.providersFor(ownerId), ['transmission']);
+  const first = await service.createForOwner(ownerId, 603, '991', 'transmission');
+  const replay = await service.createForOwner(ownerId, 603, '991', 'transmission');
+  assert.equal(first.id, replay.id);
+  assert.deepEqual(adds, ['transmission']);
+  await assert.rejects(service.create(undefined, 603, '991'), { code: 'UNAUTHORIZED' });
+  await assert.rejects(
+    service.createForOwner('507f1f77bcf86cd799439099', 603, '991', 'transmission'),
+    { code: 'TRANSMISSION_NOT_CONFIGURED' }
+  );
 });

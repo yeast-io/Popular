@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type {
-  MovieRecord,
-  MovieStatusRecord,
-  TrendingPageRecord,
-  TrendingSnapshotRecord,
-  TrendingStore,
-} from './movie.types.js';
+import type { MovieRecord, MovieStatusRecord, TrendingPageRecord, TrendingSnapshotRecord, TrendingStore } from './movie.types.js';
 import { MovieService } from './movie.service.js';
 
 const generation = '00000000-0000-4000-8000-000000000001';

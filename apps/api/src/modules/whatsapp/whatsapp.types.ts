@@ -1,5 +1,8 @@
+
+
+import type { DownloadNotification } from '../notifications/notification.types.js';
 import type { WhatsAppConfiguration } from '@movie-hub/contract';
-import type { IncomingMessage } from '../incoming-message.js';
+import type { IncomingMessage } from '../incoming-message.types.js';
 
 // Every operation, including lease checks, is scoped to the authenticated owner.
 export interface WhatsAppStore {
@@ -18,7 +21,7 @@ export interface WhatsAppConnection {
   ownsChat?(chatId: string): boolean;
   sendSelf(): Promise<string>;
   sendNotification(
-    notification: import('../notifications/notification.types.js').DownloadNotification,
+    notification: DownloadNotification,
   ): Promise<string>;
   stop(logout: boolean): Promise<void>;
 }
@@ -51,3 +54,13 @@ export interface WhatsAppConnectionOptions {
   update(state: WhatsAppConfiguration): void;
 }
 export type WhatsAppConnector = (options: WhatsAppConnectionOptions) => Promise<WhatsAppConnection>;
+
+export type Session = {
+  leaseId: string;
+  state: WhatsAppConfiguration;
+  connection?: WhatsAppConnection;
+  heartbeat?: ReturnType<typeof setInterval>;
+  deadline?: ReturnType<typeof setTimeout>;
+  lastTestAt?: number;
+  listeners?: Set<() => void>;
+};

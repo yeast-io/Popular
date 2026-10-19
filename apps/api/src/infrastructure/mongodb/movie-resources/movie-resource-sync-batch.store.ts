@@ -1,9 +1,5 @@
 import type { Model } from 'mongoose';
-import type {
-  MovieResourceSyncBatchStore,
-  StoredMovieResourceSyncBatch,
-  SyncCounter,
-} from '../../../modules/integrations/movie-resource-sync.types.js';
+import type { MovieResourceSyncBatchStore, StoredMovieResourceSyncBatch, SyncCounter } from '../../../modules/integrations/movie-resource-sync.types.js';
 import type { MovieResourceSyncBatchDocument } from './movie-resource-sync-batch.schema.js';
 
 export class MongoMovieResourceSyncBatchStore implements MovieResourceSyncBatchStore {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type OpenAI from 'openai';
-import { LlmProviderError } from '../../modules/llm/llm.types.js';
+import { LlmProviderError } from '../../modules/llm/llm.errors.js';
 import { OpenAILlmClient } from './client.js';
 
 test('maps messages to a non-persisted Responses API request and returns usage', async () => {

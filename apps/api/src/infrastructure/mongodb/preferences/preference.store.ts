@@ -2,11 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { currentAiTrace } from '../../logging/ai-trace.js';
 import type { TasteProfile } from '@movie-hub/contract';
 import { emptyProfile } from '../../../modules/preferences/preference.domain.js';
-import type {
-  PreferenceEvidence,
-  PreferenceJob,
-  PreferenceStore,
-} from '../../../modules/preferences/preference.types.js';
+import type { PreferenceEvidence, PreferenceJob, PreferenceStore } from '../../../modules/preferences/preference.types.js';
 import type { createPreferenceModels } from './preference.schema.js';
 
 export class MongoPreferenceStore implements PreferenceStore {

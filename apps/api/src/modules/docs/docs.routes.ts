@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { DocsDocumentSchema, DocsIndexSchema } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
-import { AiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import type { DocsService } from './docs.service.js';
 
 export function registerDocsRoutes(

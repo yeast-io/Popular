@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ResourceQueryTool } from './resource-query.tool.js';
-import { emptyResourceState, type ResourceQueryState, type ResourceQueryStore, type ResourcePlan, type ResourceProvider } from './resource-query.types.js';
+import { emptyResourceState } from './resource-query.domain.js';
+import type { ResourceQueryState, ResourceQueryStore, ResourcePlan, ResourceProvider } from './resource-query.types.js';
 import type { MovieCatalogStore, MovieDetailRecord, MovieSearchProvider } from '../movies/movie.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
@@ -78,8 +79,8 @@ test('queries real provider data, persists identity and replays a message withou
   const result = await f.run();
   assert.match(result.replyText, /M-Team · 本次返回 2 条/);
   assert.match(result.replyText, /缓存/);
-  assert.match(result.replyText, /1\. 1080p · 未知发布组/);
-  assert.match(result.replyText, /2\. 4K · 未知发布组/);
+  assert.match(result.replyText, /【1】 1080p · 未知发布组/);
+  assert.match(result.replyText, /【2】 4K · 未知发布组/);
   assert.equal((await f.run()).replyText, result.replyText);
   assert.deepEqual(f.counts(), { searches: 1, queries: 1, persisted: 1 });
 });
@@ -123,7 +124,7 @@ test('partial provider failure preserves other sources and errors are not report
   };
   const tool = new ResourceQueryTool(f.store, [f.provider, broken], f.movies, f.catalog, 'zh-CN');
   const result = await tool.run('alice', 'web:thread', 'm1', 'query', [], { plan: async () => defaults });
-  assert.match(result.replyText, /1\. \[M-Team\] 1080p/);
+  assert.match(result.replyText, /【1】 \[M-Team\] 1080p/);
   assert.match(result.replyText, /Other · 查询失败，无法判断有无资源/);
   const g = fixture([broken]);
   const failure = await g.run();
@@ -262,22 +263,22 @@ test('62 resources sort by seeders before paging; each page has ten continuous g
   const first = await f.run();
   assert.match(first.replyText, /M-Team · 本次返回 62 条/);
   assert.match(first.replyText, /第 1\/7 页/);
-  assert.match(first.replyText, /1\. 1080p · FRDS · 1.00 GiB · 做种 62/);
-  assert.match(first.replyText, /10\. 4K · FRDS · 1.00 GiB · 做种 53/);
-  assert.doesNotMatch(first.replyText, /Full.Movie.Version|ID:|T00:|11\. /);
-  assert.equal(first.replyText.match(/^\d+\. /gm)?.length, 10);
+  assert.match(first.replyText, /【1】 1080p · FRDS · 1.00 GiB · 做种 62/);
+  assert.match(first.replyText, /【10】 4K · FRDS · 1.00 GiB · 做种 53/);
+  assert.doesNotMatch(first.replyText, /Full.Movie.Version|ID:|T00:|【11】 /);
+  assert.equal(first.replyText.match(/^【\d+】 /gm)?.length, 10);
   const second = await f.run({ title: null, page: 'next' }, 'm2');
   assert.match(second.replyText, /第 2\/7 页/);
-  assert.match(second.replyText, /11\. 1080p .*做种 52/);
-  assert.match(second.replyText, /20\. 4K .*做种 43/);
-  assert.equal(second.replyText.match(/^\d+\. /gm)?.length, 10);
+  assert.match(second.replyText, /【11】 1080p .*做种 52/);
+  assert.match(second.replyText, /【20】 4K .*做种 43/);
+  assert.equal(second.replyText.match(/^【\d+】 /gm)?.length, 10);
   const detail = await f.run({ title: null, releaseIndex: 12 }, 'm3');
   assert.match(detail.replyText, /Full.Movie.Version.12.2160p.x265-FRDS/);
   assert.match(detail.replyText, /ID: 12/);
   const last = await f.run({ title: null, page: 7 }, 'm4');
-  assert.match(last.replyText, /61\. 1080p .*做种 2/);
-  assert.match(last.replyText, /62\. 4K .*做种 1/);
-  assert.equal(last.replyText.match(/^\d+\. /gm)?.length, 2);
+  assert.match(last.replyText, /【61】 1080p .*做种 2/);
+  assert.match(last.replyText, /【62】 4K .*做种 1/);
+  assert.equal(last.replyText.match(/^【\d+】 /gm)?.length, 2);
   assert.doesNotMatch(last.replyText, /回复“下一页”/);
   assert.match((await f.run({ title: null, page: 'next' }, 'm5')).replyText, /没有该页/);
   assert.match((await f.run({ title: null, page: 'previous' }, 'm6')).replyText, /第 6\/7 页/);
@@ -291,7 +292,7 @@ test('snapshot filtering returns to page one, keeps stable indices and never re-
   await f.run({ title: null, page: 'next' }, 'm2');
   const reply = await f.run({ title: null, resolution: '2160p' }, 'm3');
   assert.match(reply.replyText, /31 个资源 · 4K · 第 1\/4 页/);
-  assert.match(reply.replyText, /1\. 4K .*做种 61/);
+  assert.match(reply.replyText, /【1】 4K .*做种 61/);
   assert.doesNotMatch(reply.replyText, /1080p/);
   assert.match((await f.run({ title: null, releaseIndex: 1 }, 'm4')).replyText, /ID: 02/);
   assert.equal(f.calls(), 1);
@@ -308,7 +309,7 @@ test('explicit refresh bypasses source caches and starts page one in a newly sor
   assert.equal(f.refreshed(), true);
   assert.equal(f.calls(), 2);
   assert.match(refreshed.replyText, /第 1\/7 页/);
-  assert.match(refreshed.replyText, /1\. 4K .*做种 999/);
+  assert.match(refreshed.replyText, /【1】 4K .*做种 999/);
   assert.match((await f.run({ title: null, releaseIndex: 1 }, 'm4')).replyText, /ID: 62/);
   assert.equal((await f.run({ title: null, refresh: true }, 'm3')).replyText, refreshed.replyText);
   assert.equal(f.calls(), 2);
@@ -349,7 +350,7 @@ test('a failed source is queried again on a new interaction rather than reused a
     return { provider: 'mteam', status: 'available', releases: [{ provider: 'mteam', id: 'new', title: 'Film 4K-FRDS', seeders: 9 }] };
   };
   assert.match((await f.run()).replyText, /查询失败/);
-  assert.match((await f.run({ title: null }, 'm2')).replyText, /1\. 4K · FRDS/);
+  assert.match((await f.run({ title: null }, 'm2')).replyText, /【1】 4K · FRDS/);
   assert.equal(calls, 2);
   // Delivery replay of a prior failure remains stable; it is not a new user query.
   assert.match((await f.run({}, 'm1')).replyText, /查询失败/);
@@ -380,3 +381,67 @@ test('retrying a partially failed snapshot preserves successful sources and thei
   assert.equal(otherCalls, 2);
   assert.equal((await f.store.read('alice', 'web:thread'))?.snapshot?.createdAt, originalTime);
 });
+
+test('per-turn locale overrides the shared resource tool default without leaking across conversations', async () => {
+  const f = fixture();
+  const [english, chinese] = await Promise.all([
+    f.tool.run(
+      'alice', 'telegram:english', 'en1', 'find Interstellar',
+      [],
+      { plan: async () => ({ ...defaults }) },
+      undefined, 'en-US'
+    ),
+    f.tool.run(
+      'alice', 'telegram:chinese', 'zh1', '查询星际穿越',
+      [],
+      { plan: async () => ({ ...defaults }) },
+      undefined, 'zh-CN'
+    ),
+  ]
+  );
+  assert.match(english.replyText, /releases returned/);
+  assert.match(english.replyText, /Reply “details/);
+  assert.doesNotMatch(english.replyText, /回复|未知发布组|本次返回/);
+  assert.match(chinese.replyText, /本次返回/);
+  const detail = await f.tool.run('alice', 'telegram:english', 'en2', 'details 2', [], {
+    plan: async (_text, _history, _context, locale) => {
+      assert.equal(locale, 'en-US');
+      return { ...defaults, title: null, releaseIndex: 2 };
+    },
+  }, undefined, 'en-US'
+  );
+  assert.match(detail.replyText, /Release 2 · previous query/);
+});
+
+for (const locale of ['zh-CN', 'en-US'] as const) {
+  test(`page two uses clearly separated release labels with unchanged global numbers (${locale})`, async () => {
+    const f = fixture();
+    f.provider.query = async () => {
+      return ({
+        provider: 'mteam', status: 'available', releases: Array.from({ length: 20 }, (_, index) => {
+          return ({
+            provider: 'mteam', id: String(index + 1), title: 'Movie.2160p-WiKi',
+            resolution: '2160p', seeders: 20 - index,
+          });
+        }),
+      });
+    };
+    await f.tool.run(
+      'alice', 'whatsapp:chat', 'first', 'find resources',
+      [],
+      { plan: async () => defaults },
+      undefined, locale
+    );
+    const second = await f.tool.run('alice', 'whatsapp:chat', 'second', 'next page', [], {
+      plan: async () => ({ ...defaults, title: null, page: 'next' }),
+    }, undefined, locale
+    );
+    assert.match(second.replyText, /^【11】 4K · WiKi/m);
+    assert.match(second.replyText, /^【20】 4K · WiKi/m);
+    assert.equal(second.replyText.match(/^【\d+】 /gm)?.length, 10);
+    assert.doesNotMatch(second.replyText, /^\d+\.\s*4K/m);
+    const state = await f.store.read('alice', 'whatsapp:chat');
+    assert.equal(state?.releases[2]?.id, '3');
+    assert.equal(state?.releases[10]?.id, '11');
+  });
+}

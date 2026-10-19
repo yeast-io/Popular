@@ -1,18 +1,17 @@
+import type { TranslationKey, TranslationParams } from './translation.types.js';
 import { readonly, ref } from 'vue';
 import enUS from './locales/en-US';
 import zhCN from './locales/zh-CN';
-import { defaultLocale, localeStorageKey, selectInitialLocale, supportedLocales, type SupportedLocale } from './locale';
+import { defaultLocale, localeStorageKey, selectInitialLocale, supportedLocales } from './locale';
+import type { SupportedLocale } from './locale.types';
 
 export { defaultLocale, localeStorageKey, selectInitialLocale, supportedLocales } from './locale';
-export type { SupportedLocale } from './locale';
+export type { SupportedLocale } from './locale.types';
 
 const messages = {
   'zh-CN': zhCN,
   'en-US': enUS,
 } as const;
-
-export type TranslationKey = keyof typeof zhCN;
-export type TranslationParams = Readonly<Record<string, string | number>>;
 
 const activeLocale = ref<SupportedLocale>(defaultLocale);
 

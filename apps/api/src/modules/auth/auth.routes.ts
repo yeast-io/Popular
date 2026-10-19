@@ -1,13 +1,6 @@
-import {
-  ApiErrorSchema,
-  AuthResponseSchema,
-  LoginRequestSchema,
-  RegisterRequestSchema,
-  type LoginRequest,
-  type RegisterRequest,
-} from '@movie-hub/contract';
+import { ApiErrorSchema, AuthResponseSchema, LoginRequestSchema, RegisterRequestSchema, type LoginRequest, type RegisterRequest } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { AuthService } from './auth.service.js';
 
 export function registerAuthRoutes(app: FastifyInstance, service: AuthService, config: AppConfig): void {

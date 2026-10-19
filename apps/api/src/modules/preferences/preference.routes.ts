@@ -1,18 +1,10 @@
-import { z } from 'zod';
+import { EditSchema } from './preference-edit.schema.js';
 import type { FastifyInstance } from 'fastify';
 import type { AuthService } from '../auth/auth.service.js';
 import { readSessionToken } from '../auth/auth.routes.js';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import type { PreferenceService } from './preference.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
-
-const EditSchema = z.strictObject({
-  expectedVersion: z.number().int().nonnegative(),
-  autoMaintain: z.boolean().optional(),
-  entryId: z.string().min(1).max(100).optional(),
-  content: z.string().trim().min(1).max(500).optional(),
-  clear: z.boolean().optional(),
-});
 export function registerPreferenceRoutes(
   app: FastifyInstance,
   service: PreferenceService,

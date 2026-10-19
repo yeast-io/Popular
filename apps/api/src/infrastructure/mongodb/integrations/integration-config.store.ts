@@ -1,9 +1,6 @@
 import type { Model } from 'mongoose';
 import type { IntegrationFailureType } from '@movie-hub/contract';
-import type {
-  IntegrationConfigRecord,
-  IntegrationConfigStore,
-} from '../../../modules/integrations/integration.types.js';
+import type { IntegrationConfigRecord, IntegrationConfigStore } from '../../../modules/integrations/integration.types.js';
 import type { IntegrationConfigDocument } from './integration-config.schema.js';
 
 export class MongoIntegrationConfigStore implements IntegrationConfigStore {

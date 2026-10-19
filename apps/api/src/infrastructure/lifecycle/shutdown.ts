@@ -1,7 +1,6 @@
-import type { AiLogger } from '../logging/ai-trace.js';
+import type { Cleanup } from './shutdown.types.js';
+import type { AiLogger } from '../logging/ai-trace.types.js';
 import { serializeDiagnosticError } from '../logging/diagnostic-error.js';
-
-type Cleanup = { name: string; order: number; close: () => void | Promise<void> };
 
 /** One shutdown path for signals, fatal errors, startup failure and natural exit. */
 export class ApplicationShutdown {

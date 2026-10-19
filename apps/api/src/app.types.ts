@@ -1,0 +1,45 @@
+import type { DocsService } from './modules/docs/docs.service.js';
+import type { PreferenceService } from './modules/preferences/preference.service.js';
+import type { TelegramService } from './modules/telegram/telegram.service.js';
+import type { NotificationTestService } from './modules/notifications/notification-test.service.js';
+import type { NotificationService } from './modules/notifications/notification.service.js';
+import type { WhatsAppService } from './modules/whatsapp/whatsapp.service.js';
+import type { OpenAISettingsService } from './modules/integrations/openai-settings.service.js';
+import type { AppConfig } from './config/env.schema.js';
+import type { HealthDependency } from './infrastructure/health/health-dependency.types.js';
+import type { AuthService } from './modules/auth/auth.service.js';
+import type { UserService } from './modules/users/user.service.js';
+import type { MovieService } from './modules/movies/movie.service.js';
+import type { MovieStatusService } from './modules/movie-statuses/movie-status.service.js';
+import type { IntegrationService } from './modules/integrations/integration.service.js';
+import type { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
+import type { TransmissionIntegrationService } from './modules/integrations/transmission-integration.service.js';
+import type { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
+import type { MovieDownloadService } from './modules/downloads/movie-download.service.js';
+import type { ExternalUsageService } from './modules/external-usage/external-usage.service.js';
+import type { ConversationService } from './modules/conversations/conversation.service.js';
+import type { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
+
+export interface BuildAppOptions {
+  telegramService?: TelegramService;
+  notificationTestService?: NotificationTestService;
+  notificationService?: NotificationService;
+  whatsappService?: WhatsAppService;
+  docsService?: DocsService;
+  config: AppConfig;
+  healthDependencies: HealthDependency[];
+  authService?: AuthService;
+  userService?: UserService;
+  movieService?: MovieService;
+  movieStatusService?: MovieStatusService;
+  integrationService?: IntegrationService;
+  movieResourceSyncService?: MovieResourceSyncService;
+  transmissionIntegrationService?: TransmissionIntegrationService;
+  qbittorrentIntegrationService?: QBittorrentIntegrationService;
+  movieDownloadService?: MovieDownloadService;
+  externalUsageService?: ExternalUsageService;
+  openaiSettingsService?: OpenAISettingsService;
+  conversationService?: ConversationService;
+  conversationTurnService?: ConversationTurnService;
+  preferenceService?: PreferenceService;
+}

@@ -1,6 +1,4 @@
-export interface WebConfig {
-  apiBaseUrl: string;
-}
+import type { WebConfig } from './env.types.js';
 
 export function loadWebConfig(environment: ImportMetaEnv = import.meta.env): WebConfig {
   const apiBaseUrl = environment.VITE_API_BASE_URL;

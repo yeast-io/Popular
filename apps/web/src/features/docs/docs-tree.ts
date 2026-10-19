@@ -1,11 +1,5 @@
+import type { DocsNode } from './docs-tree.types.js';
 import type { DocsEntry } from '@movie-hub/contract';
-
-export interface DocsNode {
-  name: string;
-  path: string;
-  document?: DocsEntry;
-  children: DocsNode[];
-}
 
 export function buildDocsTree(entries: DocsEntry[]): DocsNode[] {
   const root: DocsNode[] = [];

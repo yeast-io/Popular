@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Model } from 'mongoose';
-import { DuplicateEmailError } from '../../../modules/auth/auth.types.js';
+import { DuplicateEmailError } from '../../../modules/auth/auth.errors.js';
 import type { AuthIdentityDocument } from './auth-identity.schema.js';
 import { MongoAuthUserStore } from './user.store.js';
 import type { UserDocument } from './user.schema.js';

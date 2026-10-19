@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { DocsNode } from './docs-tree';
+import type { DocsNode } from './docs-tree.types';
+
 defineProps<{ nodes: DocsNode[]; selected: string }>();
 defineEmits<{ select: [path: string] }>();
 </script>

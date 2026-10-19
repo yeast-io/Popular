@@ -1,16 +1,14 @@
-import { compactField, compareReleases, matchesResolution, releaseGroup, releaseResolution, RESOURCE_PAGE_SIZE } from './resource-query.presentation.js';
+import { compactField, releaseNumberLabel, compareReleases, matchesResolution, releaseGroup, releaseResolution, RESOURCE_PAGE_SIZE } from './resource-query.presentation.js';
 import { randomUUID } from 'node:crypto';
 import type { Locale } from '@movie-hub/contract';
-import { AiTrace, aiStep, currentAiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
+import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { LlmMessage } from '../llm/llm.types.js';
 import type { MovieCatalogStore, MovieRecord, MovieSearchProvider } from '../movies/movie.types.js';
-import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
-import {
-  emptyResourceState, RESOURCE_SESSION_MS,
-  type ResourceDecisions, type ResourceMovie, type ResourceProvider, type ResourceQueryCapability,
-  type ResourceQueryState, type ResourceQueryStore, type ResourceRelease, type ResourceSourceResult,
-} from './resource-query.types.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
+import { emptyResourceState, RESOURCE_SESSION_MS } from './resource-query.domain.js';
+import type { ResourceDecisions, ResourceMovie, ResourceProvider, ResourceQueryCapability, ResourceQueryState, ResourceQueryStore, ResourceRelease, ResourceSourceResult } from './resource-query.types.js';
 
 export class ResourceQueryTool implements ResourceQueryCapability {
   private readonly sources: Map<string, ResourceProvider>;
@@ -26,13 +24,17 @@ export class ResourceQueryTool implements ResourceQueryCapability {
     if (this.sources.size !== sources.length || sources.some((source) => !/^[a-z][a-z0-9_-]{0,31}$/.test(source.id)))
       throw new Error('Resource providers require unique registry IDs');
   }
+  async context(ownerId: string, conversation: string): Promise<ResourceQueryState | null> {
+    const state = await aiStep('resources.context.read', () => this.store.read(ownerId, conversation));
+    return state && isActive(state) ? state : null;
+  }
   async active(ownerId: string, conversation: string): Promise<boolean> {
     const state = await aiStep('resources.active.read', () => this.store.read(ownerId, conversation));
     return Boolean(state && isActive(state));
   }
   async run(
     ownerId: string, conversation: string, eventId: string, text: string,
-    history: LlmMessage[], decisions: ResourceDecisions, signal?: AbortSignal,
+    history: LlmMessage[], decisions: ResourceDecisions, signal?: AbortSignal, locale: Locale = this.locale,
   ): Promise<{ replyText: string }> {
     const trace = new AiTrace(this.diagnostics.logger, {
       correlationId: currentAiTrace()?.correlationId ?? randomUUID(), ownerId, eventId,
@@ -60,7 +62,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
           const state = previous && isActive(previous) ? previous : emptyResourceState();
           // Keep bounded replay receipts even after the interactive context expires.
           state.events = previous?.events ?? [];
-          const reply = await this.execute(ownerId, text, history, state, decisions, executionSignal);
+          const reply = await this.execute(ownerId, text, history, state, decisions, executionSignal, locale);
           trace.sensitive(reply);
           executionSignal.throwIfAborted();
           state.updatedAt = new Date().toISOString();
@@ -91,16 +93,16 @@ export class ResourceQueryTool implements ResourceQueryCapability {
   }
   private async execute(
     ownerId: string, text: string, history: LlmMessage[], state: ResourceQueryState,
-    decisions: ResourceDecisions, signal: AbortSignal,
+    decisions: ResourceDecisions, signal: AbortSignal, locale: Locale,
   ): Promise<string> {
-    const zh = this.locale === 'zh-CN';
+    const zh = locale === 'zh-CN';
     const plan = await aiStep('resources.plan', () => {
       return decisions.plan(text, history, {
         candidates: state.candidates, movie: state.movie, resolution: state.resolution,
         providers: state.providers, sources: [...this.sources.values()].map(({ id, name }) => ({ id, name })),
         releaseCount: state.releases.length, page: state.page ?? 1,
         pageCount: Math.ceil(state.releases.length / RESOURCE_PAGE_SIZE),
-      }, this.locale, signal
+      }, locale, signal
       );
     });
     signal.throwIfAborted();
@@ -121,7 +123,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
       if (plan.releaseIndex !== null) {
         const release = state.releases[plan.releaseIndex - 1];
         currentAiTrace()?.event('resources.snapshot.inspect', { releaseIndex: plan.releaseIndex, outcome: release ? 'success' : 'invalid_index' });
-        return release ? this.releaseDetail(release, plan.releaseIndex)
+        return release ? this.releaseDetail(release, plan.releaseIndex, locale)
           : zh ? `资源编号无效，本次结果共 ${state.releases.length} 条。` : `Invalid release number. This snapshot has ${state.releases.length} releases.`;
       }
       const page = plan.page === 'next' ? (state.page ?? 1) + 1 : plan.page === 'previous' ? (state.page ?? 1) - 1 : plan.page!;
@@ -132,7 +134,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
         return zh ? `当前为第 ${state.page ?? 1}/${pages} 页，没有该页。` : `Currently on page ${state.page ?? 1}/${pages}; that page does not exist.`;
       state.page = page;
       currentAiTrace()?.event('resources.snapshot.page', { page, pageCount: pages, outcome: 'reused' });
-      return this.renderPage(state);
+      return this.renderPage(state, locale);
     }
     if (plan.candidateId !== null && plan.title)
       return zh ? '请明确是选择候选电影，还是查询另一部电影。' : 'Please choose a candidate or search for a different title.';
@@ -153,7 +155,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
       state.candidates = [];
       state.releases = [];
       const found = await aiStep('resources.movie.search', () => {
-        return this.movies.search(plan.title!, 1, this.locale, userExternalRequestContext(ownerId, 'api_request'));
+        return this.movies.search(plan.title!, 1, locale, userExternalRequestContext(ownerId, 'api_request'));
       });
       signal.throwIfAborted();
       const matches = found.movies.filter((movie) => !plan.year || movie.releaseDate?.startsWith(String(plan.year)));
@@ -195,15 +197,15 @@ export class ResourceQueryTool implements ResourceQueryCapability {
     if (reusable.length === providers.length) {
       this.applySnapshot(state);
       currentAiTrace()?.event('resources.snapshot.filter', { releaseCount: state.releases.length, outcome: 'reused' });
-      return this.renderPage(state);
+      return this.renderPage(state, locale);
     }
     // Existing M-Team lookups require a catalog entry. Identity is obtained from TMDB, never from the model.
     const detail = await aiStep('resources.movie.detail', () => {
-      return this.movies.fetchDetails(movie.tmdbId, this.locale, userExternalRequestContext(ownerId, 'api_request'));
+      return this.movies.fetchDetails(movie.tmdbId, locale, userExternalRequestContext(ownerId, 'api_request'));
     }, { tmdbId: movie.tmdbId });
     signal.throwIfAborted();
     if (detail.tmdbId !== movie.tmdbId) throw new Error('Movie detail identity did not match the selected film');
-    await aiStep('resources.movie.persist', () => this.catalog.writeMovieDetail(detail, new Date(), this.locale));
+    await aiStep('resources.movie.persist', () => this.catalog.writeMovieDetail(detail, new Date(), locale));
     const results = await Promise.all(providers.map(async (source): Promise<ResourceSourceResult> => {
       const previous = reusable.find((result) => result.provider === source.id);
       if (previous) {
@@ -243,7 +245,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
     // Reusing a successful source must not extend its freshness when another source is retried.
     state.snapshot = { createdAt: reusable.length ? state.snapshot!.createdAt : new Date().toISOString(), results };
     this.applySnapshot(state);
-    return this.renderPage(state);
+    return this.renderPage(state, locale);
   }
   private applySnapshot(state: ResourceQueryState): void {
     const releases = state.snapshot!.results.flatMap((result) => {
@@ -257,8 +259,8 @@ export class ResourceQueryTool implements ResourceQueryCapability {
     })).values()].sort(compareReleases);
     state.page = 1;
   }
-  private renderPage(state: ResourceQueryState): string {
-    const zh = this.locale === 'zh-CN';
+  private renderPage(state: ResourceQueryState, locale: Locale): string {
+    const zh = locale === 'zh-CN';
     const movie = state.movie!;
     const results = state.snapshot!.results.filter((result) => {
       return !state.providers.length || state.providers.includes(result.provider);
@@ -288,7 +290,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
       const seeders = release.seeders !== undefined && Number.isFinite(
         release.seeders
       ) && release.seeders >= 0 ? release.seeders : zh ? '未知' : 'unknown';
-      return `${index}.${source} ${releaseResolution(
+      return `${releaseNumberLabel(index)}${source} ${releaseResolution(
         release
       ) ?? (zh ? '分辨率未知' : 'unknown resolution')} · ${group} · ${size} · ${zh ? '做种' : 'seeders'} ${seeders}`;
     });
@@ -306,8 +308,8 @@ export class ResourceQueryTool implements ResourceQueryCapability {
         return line !== undefined;
       }).join('\n').trim();
   }
-  private releaseDetail(release: ResourceRelease, index: number): string {
-    const zh = this.locale === 'zh-CN';
+  private releaseDetail(release: ResourceRelease, index: number, locale: Locale): string {
+    const zh = locale === 'zh-CN';
     return [zh ? `资源 ${index} · 上次查询结果` : `Release ${index} · previous query`,
       compactField(this.sources.get(release.provider)?.name ?? release.provider, 32),
       // Keep the full filename in details; only control characters are removed.

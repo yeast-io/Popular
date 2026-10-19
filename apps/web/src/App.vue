@@ -1,12 +1,5 @@
 <script setup lang="ts">
-import type {
-  ApiError,
-  AuthResponse,
-  AuthUser,
-  LoginRequest,
-  PublicConfig,
-  RegisterRequest,
-} from '@movie-hub/contract';
+import type { ApiError, AuthResponse, AuthUser, LoginRequest, PublicConfig, RegisterRequest } from '@movie-hub/contract';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { loadWebConfig } from './config/env';
 import MovieBrowser from './features/movies/MovieBrowser.vue';
@@ -26,6 +19,7 @@ import TransmissionSettings from './features/integrations/TransmissionSettings.v
 import QBittorrentSettings from './features/integrations/QBittorrentSettings.vue';
 import UsageStatistics from './features/usage/UsageStatistics.vue';
 import AiChat from './features/ai/AiChat.vue';
+import type { AuthField, Page, SettingsSection } from './app.types.js';
 
 const DocsPage = defineAsyncComponent(() => import('./features/docs/DocsPage.vue'));
 const { apiBaseUrl } = loadWebConfig();
@@ -46,26 +40,13 @@ const avatarFile = ref<File | null>(null);
 const avatarRemoved = ref(false);
 const avatarPreview = ref('');
 const avatarLimits = ref<PublicConfig['avatar'] | null>(null);
-type AuthField = 'displayName' | 'email' | 'password';
 const authFieldErrors = ref<Partial<Record<AuthField, string>>>({});
 const profileNameError = ref('');
 const notificationTestEnabled = ref(false);
 const aiAssistantEnabled = ref(false);
 const docsEnabled = ref(false);
-type Page =
-  | 'docs'
-  | 'notification-tests'
-  | 'home'
-  | 'my-movies'
-  | 'ai'
-  | 'settings'
-  | 'usage'
-  | 'movie-detail'
-  | 'login'
-  | 'register';
 const currentPage = ref<Page>(pageFromPath());
 const notificationSettings = ref<InstanceType<typeof NotificationSettings>>();
-type SettingsSection = 'profile' | 'ai' | 'preferences' | 'downloads' | 'notifications';
 const settingsSection = ref<SettingsSection>('profile');
 const settingsVisited = ref(new Set<SettingsSection>(['profile']));
 const settingsSections = ['profile', 'ai', 'preferences', 'downloads', 'notifications'] as const;

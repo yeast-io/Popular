@@ -57,3 +57,8 @@ export function compactField(value: string, maxLength: number): string {
   if (/[\uD800-\uDBFF]$/.test(shortened)) shortened = shortened.slice(0, -1);
   return shortened + '…';
 }
+
+/** Brackets separate the resource number from numeric resolutions in plain-text chat clients. */
+export function releaseNumberLabel(index: number): string {
+  return `【${index}】`;
+}

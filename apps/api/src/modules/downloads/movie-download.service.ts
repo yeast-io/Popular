@@ -1,10 +1,6 @@
-import type {
-  DownloadProvider,
-  DownloadProviderListResponse,
-  MovieDownload,
-  MovieDownloadListResponse,
-  MovieDownloadStatus,
-} from '@movie-hub/contract';
+import type { TorrentSnapshot, DownloadClient } from './movie-download-client.types.js';
+import type { DownloadProvider, DownloadProviderListResponse, MovieDownload, MovieDownloadListResponse, MovieDownloadStatus } from '@movie-hub/contract';
+import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import type { IntegrationConfigStore } from '../integrations/integration.types.js';
@@ -12,24 +8,13 @@ import { integrationSecretContext } from '../integrations/integration.service.js
 import type { MTeamTorrentDownloader } from '../integrations/movie-resource-check.types.js';
 import type { MovieResourceCheckService } from '../integrations/movie-resource-check.service.js';
 import { decryptCredential, qbittorrentAppError } from '../integrations/qbittorrent-integration.service.js';
-import type {
-  QBittorrentClientPort,
-  QBittorrentConfigStore,
-  QBittorrentTorrent,
-} from '../integrations/qbittorrent.types.js';
-import {
-  decryptCredential as decryptTransmissionCredential,
-  transmissionAppError,
-} from '../integrations/transmission-integration.service.js';
-import type {
-  TransmissionClientPort,
-  TransmissionConfigStore,
-  TransmissionTorrent,
-} from '../integrations/transmission.types.js';
+import type { QBittorrentClientPort, QBittorrentConfigStore, QBittorrentTorrent } from '../integrations/qbittorrent.types.js';
+import { decryptCredential as decryptTransmissionCredential, transmissionAppError } from '../integrations/transmission-integration.service.js';
+import type { TransmissionClientPort, TransmissionConfigStore, TransmissionTorrent } from '../integrations/transmission.types.js';
 import { SecretCrypto } from '../integrations/secret-crypto.js';
 import type { MovieDownloadProgress, MovieDownloadRecord, MovieDownloadStore } from './movie-download.types.js';
 import type { NotificationService } from '../notifications/notification.service.js';
-import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class MovieDownloadService {
   private readonly syncs = new Map<string, Promise<MovieDownloadRecord[]>>();
@@ -52,7 +37,7 @@ export class MovieDownloadService {
     return { providers: await this.providersFor(await this.auth.requireOwnerId(token)) };
   }
 
-  private async providersFor(ownerId: string): Promise<DownloadProvider[]> {
+  async providersFor(ownerId: string): Promise<DownloadProvider[]> {
     const [qb, tr] = await Promise.all([
       this.qbittorrentConfigs.find(ownerId),
       this.transmission?.configs.find(ownerId),
@@ -66,7 +51,13 @@ export class MovieDownloadService {
     releaseId: string,
     requestedProvider?: DownloadProvider,
   ): Promise<MovieDownload> {
-    const ownerId = await this.auth.requireOwnerId(token);
+    return this.createForOwner(await this.auth.requireOwnerId(token), tmdbId, releaseId, requestedProvider);
+  }
+
+  /** Internal entry: owner identity must come from a verified channel binding or authenticated conversation. */
+  async createForOwner(
+    ownerId: string, tmdbId: number, releaseId: string, requestedProvider?: DownloadProvider,
+  ): Promise<MovieDownload> {
     const existing = await this.downloads.findByRelease(ownerId, tmdbId, releaseId);
     if (existing && requestedProvider && existing.provider !== requestedProvider) {
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'This release already belongs to another downloader');
@@ -80,7 +71,7 @@ export class MovieDownloadService {
       if (providers.length !== 1) throw new AppError(409, 'DOWNLOAD_PROVIDER_REQUIRED', 'Choose a downloader');
       provider = providers[0]!;
     }
-    const client = await this.clientFor(ownerId, provider);
+    const client = await aiStep('download.client.load', () => this.clientFor(ownerId, provider));
     if (existing) {
       // Do not retry if recovery cannot reach the original downloader: an earlier add may have succeeded.
       let added: TorrentSnapshot | null;
@@ -98,12 +89,14 @@ export class MovieDownloadService {
     }
     const mteamConfig = await this.mteamConfigs.find(ownerId, 'mteam');
     if (!mteamConfig) throw new AppError(409, 'MTEAM_NOT_CONFIGURED', 'Configure M-Team before downloading');
-    const releaseList = await this.resources.listReleases(ownerId, tmdbId);
+    const releaseList = await aiStep('download.resources.validate', () => this.resources.listReleases(ownerId, tmdbId));
     const release = releaseList.releases.find((release) => release.id === releaseId);
     if (!release) throw new AppError(404, 'NOT_FOUND', 'The selected M-Team release is no longer available');
     const claim = existing
-      ? await this.downloads.retry(existing.id)
-      : await this.downloads.createSubmitting(ownerId, tmdbId, releaseId, provider);
+      ? await aiStep('download.task.retry', () => this.downloads.retry(existing.id))
+      : await aiStep('download.task.claim', () => {
+        return this.downloads.createSubmitting(ownerId, tmdbId, releaseId, provider);
+      });
     let record = claim.record;
     // A different request or instance may have won the unique release claim.
     if (record.provider !== provider)
@@ -111,12 +104,14 @@ export class MovieDownloadService {
     if (!claim.claimed) return toResponse(record);
     let torrent: Uint8Array;
     try {
-      torrent = await this.mteam.downloadTorrent(
-        mteamConfig.baseUrl,
-        this.secrets.decrypt(mteamConfig.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
-        releaseId,
-        userExternalRequestContext(ownerId, 'api_request'),
-      );
+      torrent = await aiStep('download.torrent.fetch', () => {
+        return this.mteam.downloadTorrent(
+          mteamConfig.baseUrl,
+          this.secrets.decrypt(mteamConfig.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
+          releaseId,
+          userExternalRequestContext(ownerId, 'api_request'),
+        );
+      });
     } catch (error) {
       await this.downloads.markFailed(record.id, 'MOVIE_DOWNLOAD_FAILED', this.now());
       throw new AppError(502, 'MOVIE_DOWNLOAD_FAILED', 'Could not retrieve the selected M-Team release', undefined, {
@@ -130,7 +125,9 @@ export class MovieDownloadService {
       throw error;
     }
     try {
-      const hash = await client.add(torrent, record.lookupTag);
+      const hash = await aiStep('download.downloader.submit', () => {
+        return client.add(torrent, record.lookupTag);
+      }, { provider, taskId: record.id });
       await this.notifications?.submitted(ownerId, record.id);
       if (hash) {
         record = await this.downloads.updateProgress(record.id, {
@@ -150,7 +147,9 @@ export class MovieDownloadService {
         const added = hash ? (await client.list([hash]))[0] : await client.findByTag(record.lookupTag);
         if (added)
           record = await this.downloads.updateProgress(record.id, withSyncTime(added, this.now(), record.addedAt));
-      } catch {
+      } catch (error) {
+        currentAiTrace()?.fail(error, { stage: 'download.progress.inspect', taskId: record.id });
+        currentAiTrace()?.clearFailure();
         // The add succeeded. Later polling can refresh the hash or lookup tag.
       }
       return toResponse(record);
@@ -296,14 +295,6 @@ function toResponse(record: MovieDownloadRecord): MovieDownload {
     ...(record.addedAt ? { addedAt: record.addedAt.toISOString() } : {}),
     ...(record.lastSyncedAt ? { lastSyncedAt: record.lastSyncedAt.toISOString() } : {}),
   };
-}
-
-type TorrentSnapshot = Omit<MovieDownloadProgress, 'addedAt' | 'lastSyncedAt'>;
-
-interface DownloadClient {
-  add(torrent: Uint8Array, tag: string): Promise<string | undefined>;
-  list(hashes: string[]): Promise<TorrentSnapshot[]>;
-  findByTag(tag: string): Promise<TorrentSnapshot | null>;
 }
 
 function transmissionSnapshot(torrent: TransmissionTorrent): TorrentSnapshot {

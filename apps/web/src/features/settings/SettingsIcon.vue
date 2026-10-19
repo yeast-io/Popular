@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 defineProps<{ name: 'profile' | 'ai' | 'preferences' | 'downloads' | 'notifications' }>();
 const paths = {
   preferences: 'M4 5h16M4 12h16M4 19h16M8 3v4M16 10v4M10 17v4',

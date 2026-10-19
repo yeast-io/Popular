@@ -1,8 +1,5 @@
 import { Schema, type Connection, type InferSchemaType, type Types } from 'mongoose';
-import {
-  EXTERNAL_PROVIDER_ID_MAX_LENGTH,
-  EXTERNAL_PROVIDER_ID_PATTERN,
-} from '../../../modules/external-usage/external-usage.types.js';
+import { EXTERNAL_PROVIDER_ID_MAX_LENGTH, EXTERNAL_PROVIDER_ID_PATTERN } from '../../../modules/external-usage/external-usage.policy.js';
 
 export const EXTERNAL_USAGE_RETENTION_DAYS = 90;
 

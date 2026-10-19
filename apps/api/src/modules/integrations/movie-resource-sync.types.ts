@@ -1,3 +1,5 @@
+
+
 import type { MovieResourceSyncBatch, MovieResourceSyncStatus } from '@movie-hub/contract';
 
 export interface StoredMovieResourceSyncBatch extends MovieResourceSyncBatch {
@@ -28,4 +30,9 @@ export interface MovieResourceSyncBatchStore {
     status: Extract<MovieResourceSyncStatus, 'completed' | 'failed'>,
     needsAction?: 'update_api_key',
   ): Promise<void>;
+}
+
+export interface SyncLogger {
+  info(bindings: Record<string, unknown>, message: string): void;
+  error(bindings: Record<string, unknown>, message: string): void;
 }

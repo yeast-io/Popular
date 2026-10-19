@@ -1,5 +1,5 @@
 import { RedisLockTrace } from './lock-trace.js';
-import type { AiLogger } from '../logging/ai-trace.js';
+import type { AiLogger } from '../logging/ai-trace.types.js';
 import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import type { SyncLock } from '../../modules/movies/movie.types.js';

@@ -3,12 +3,7 @@ import test from 'node:test';
 import { PreferenceService } from './preference.service.js';
 import { emptyProfile } from './preference.domain.js';
 import type { MongoPreferenceStore } from '../../infrastructure/mongodb/preferences/preference.store.js';
-import type {
-  MovieCatalogStore,
-  MovieSearchProvider,
-  MovieStatusRecord,
-  MovieStatusStore,
-} from '../movies/movie.types.js';
+import type { MovieCatalogStore, MovieSearchProvider, MovieStatusRecord, MovieStatusStore } from '../movies/movie.types.js';
 
 function setup(count: number) {
   let profile = emptyProfile();

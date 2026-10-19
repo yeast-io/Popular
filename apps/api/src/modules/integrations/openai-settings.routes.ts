@@ -1,13 +1,6 @@
-import {
-  ApiErrorSchema,
-  SelectOpenAIModelRequestSchema,
-  type SelectOpenAIModelRequest,
-  OpenAIConfigurationSchema,
-  SaveOpenAIConfigurationRequestSchema,
-  type SaveOpenAIConfigurationRequest,
-} from '@movie-hub/contract';
+import { ApiErrorSchema, SelectOpenAIModelRequestSchema, type SelectOpenAIModelRequest, OpenAIConfigurationSchema, SaveOpenAIConfigurationRequestSchema, type SaveOpenAIConfigurationRequest } from '@movie-hub/contract';
 import type { FastifyInstance } from 'fastify';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { OpenAISettingsService } from './openai-settings.service.js';
 

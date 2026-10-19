@@ -1,3 +1,5 @@
+
+
 import type { IntegrationFailureType, MovieRelease } from '@movie-hub/contract';
 import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
 
@@ -99,3 +101,25 @@ export interface MTeamTorrentDownloader {
     context?: ExternalRequestContext,
   ): Promise<Uint8Array>;
 }
+
+export interface CheckLogger {
+  info(bindings: Record<string, unknown>, message: string): void;
+  error(bindings: Record<string, unknown>, message: string): void;
+}
+
+export interface MovieResourceCheckOptions {
+  availableTtlMs: number;
+  unavailableTtlMs: number;
+  retryDelayMs: number;
+  leaseMs: number;
+  minimumIntervalMs: number;
+  releaseListTtlMs: number;
+}
+
+export interface QueuedCheck {
+  ownerId: string;
+  tmdbId: number;
+  attemptedAt: Date;
+}
+
+export type MovieResourceCheckExecution = { started: false } | { started: true; result: MovieResourceCheckCompletion };

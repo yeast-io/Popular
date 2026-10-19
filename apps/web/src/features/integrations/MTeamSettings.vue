@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import IntegrationCard from '../settings/IntegrationCard.vue';
-import {
-  MTEAM_DEFAULT_BASE_URL,
-  MTEAM_DEFAULT_WEB_BASE_URL,
-  type ApiError,
-  type IntegrationFailureType,
-  type IntegrationStatus,
-  type MTeamConfiguration,
-} from '@movie-hub/contract';
+import { MTEAM_DEFAULT_BASE_URL, MTEAM_DEFAULT_WEB_BASE_URL, type ApiError, type IntegrationFailureType, type IntegrationStatus, type MTeamConfiguration } from '@movie-hub/contract';
 import { computed, onMounted, ref } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { formatDate, t } from '../../i18n';

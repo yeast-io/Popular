@@ -1,18 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { AiTrace, aiStep, currentAiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
+import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import { profileText } from '../preferences/preference.domain.js';
 import { RECOMMENDATION_POLICY as policy } from './recommendation.policy.js';
 import { recommendationMessages } from './recommendation.messages.js';
 import type { Locale } from '@movie-hub/contract';
 import type { LlmMessage } from '../llm/llm.types.js';
 import type { MovieCatalogStore, MovieDetailRecord, MovieRecord, MovieStatusStore } from '../movies/movie.types.js';
-import type {
-  DiscoveryProvider,
-  RecommendationProfileReader,
-  RecommendationStore,
-  RecommendationResult,
-  RecommendationMovie,
-} from './recommendation.types.js';
+import type { DiscoveryProvider, RecommendationProfileReader, RecommendationStore, RecommendationResult, RecommendationMovie } from './recommendation.types.js';
 import { RECOMMENDATION_GENRE_IDS, emptyRecommendationState, isRecommendationActive } from './recommendation.domain.js';
 import type { RecommendationDecisions } from './recommendation.types.js';
 
@@ -51,6 +46,7 @@ export class RecommendationTool {
     history: LlmMessage[],
     decisions: RecommendationDecisions,
     signal?: AbortSignal,
+    locale: Locale = this.locale,
   ): Promise<RecommendationResult> {
     const trace = new AiTrace(
       this.diagnostics.logger,
@@ -87,6 +83,7 @@ export class RecommendationTool {
             decisions,
             leaseId,
             signal ? AbortSignal.any([signal, deadline]) : deadline,
+            locale,
           );
         });
       } catch (error) {
@@ -115,13 +112,14 @@ export class RecommendationTool {
     decisions: RecommendationDecisions,
     leaseId: string,
     signal: AbortSignal,
+    locale: Locale,
   ): Promise<RecommendationResult> {
     signal.throwIfAborted();
     const interactionAt = new Date();
     const row = await aiStep('recommendation.state.read', () => {
       return this.store.read(ownerId, conversation);
     });
-    const messages = recommendationMessages(this.locale);
+    const messages = recommendationMessages(locale);
     const state = row?.state ?? emptyRecommendationState();
     if (state.events[eventId]) {
       currentAiTrace()?.event('recommendation.replay', { outcome: 'reused' });
@@ -147,7 +145,7 @@ export class RecommendationTool {
         state.active ? state.questions : 0,
         combined.slice(-policy.historyMessages),
         signal,
-        this.locale,
+        locale,
       );
     });
     currentAiTrace()?.event('recommendation.plan.selected', {
@@ -192,7 +190,7 @@ export class RecommendationTool {
       let candidates: MovieRecord[] = [];
       if (plan.referenceTitle) {
         const search = await aiStep('recommendation.reference.search', () => {
-          return this.provider.search(plan.referenceTitle!, 1, this.locale, {
+          return this.provider.search(plan.referenceTitle!, 1, locale, {
             actorType: 'user',
             ownerId,
             trigger: 'api_request',
@@ -202,7 +200,7 @@ export class RecommendationTool {
         if (search.movies[0])
           candidates.push(
             ...(await aiStep('recommendation.reference.related', () => {
-              return this.provider.related(search.movies[0]!.tmdbId, this.locale, ownerId);
+              return this.provider.related(search.movies[0]!.tmdbId, locale, ownerId);
             })),
           );
       } else {
@@ -215,7 +213,7 @@ export class RecommendationTool {
             ...(await aiStep(
               'recommendation.seed.related',
               () => {
-                return this.provider.related(movie.tmdbId, this.locale, ownerId);
+                return this.provider.related(movie.tmdbId, locale, ownerId);
               },
               { tmdbId: movie.tmdbId },
             )),
@@ -227,7 +225,7 @@ export class RecommendationTool {
           ...(await aiStep(
             'recommendation.discover',
             () => {
-              return this.provider.discover(filters, page, this.locale, ownerId);
+              return this.provider.discover(filters, page, locale, ownerId);
             },
             { page },
           )),
@@ -269,7 +267,7 @@ export class RecommendationTool {
         const detail = await aiStep(
           'recommendation.details.fetch',
           () => {
-            return this.provider.fetchDetails(movie.tmdbId, this.locale, {
+            return this.provider.fetchDetails(movie.tmdbId, locale, {
               actorType: 'user',
               ownerId,
               trigger: 'api_request',
@@ -283,7 +281,7 @@ export class RecommendationTool {
         await aiStep(
           'recommendation.details.persist',
           () => {
-            return this.catalog.writeMovieDetail(detail, new Date(), this.locale);
+            return this.catalog.writeMovieDetail(detail, new Date(), locale);
           },
           { tmdbId: movie.tmdbId },
         );
@@ -294,7 +292,7 @@ export class RecommendationTool {
         const ranked = await aiStep(
           'recommendation.rank',
           () => {
-            return decisions.rank(profile, combined.slice(-policy.historyMessages), details, signal, this.locale, plan);
+            return decisions.rank(profile, combined.slice(-policy.historyMessages), details, signal, locale, plan);
           },
           { candidateCount: details.length, requestedCount: plan.requestedCount },
         );

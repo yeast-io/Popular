@@ -1,15 +1,7 @@
-import {
-  ApiErrorSchema,
-  DownloadProviderListResponseSchema,
-  CreateMovieDownloadRequestSchema,
-  MovieDownloadListResponseSchema,
-  MovieDownloadSchema,
-  MovieIdParamsSchema,
-  type CreateMovieDownloadRequest,
-  type MovieIdParams,
-} from '@movie-hub/contract';
+import { AiTrace, aiStep, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import { ApiErrorSchema, DownloadProviderListResponseSchema, CreateMovieDownloadRequestSchema, MovieDownloadListResponseSchema, MovieDownloadSchema, MovieIdParamsSchema, type CreateMovieDownloadRequest, type MovieIdParams } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { MovieDownloadService } from './movie-download.service.js';
 
@@ -55,16 +47,24 @@ export function registerMovieDownloadRoutes(
       },
     },
     async (request, reply) => {
-      return reply
-        .status(201)
-        .send(
-        await service.create(
-          token(request),
-          request.params.tmdbId,
-          request.body.sourceReleaseId,
-          request.body.provider,
-        ),
-      );
+      const trace = new AiTrace(app.log, { requestId: request.id, tmdbId: request.params.tmdbId }, '', 'download.create', config.VERBOSE === true);
+      return withAiTrace(trace, async () => {
+        try {
+          const result = await aiStep('download.create', () => {
+            return service.create(
+              token(request), request.params.tmdbId, request.body.sourceReleaseId, request.body.provider,
+            );
+          });
+          trace.event(
+            'download.create.completed',
+            { taskId: result.id, provider: result.provider, outcome: result.status }
+          );
+          return reply.status(201).send(result);
+        } catch (error) {
+          trace.fail(error);
+          throw error;
+        }
+      });
     },
   );
 }

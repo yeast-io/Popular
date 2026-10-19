@@ -1,19 +1,10 @@
+import type { Session } from './whatsapp.types.js';
 import { randomUUID } from 'node:crypto';
 import type { WhatsAppConfiguration } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import type { WhatsAppConnection, WhatsAppConnector, WhatsAppDiagnostic, WhatsAppStore } from './whatsapp.types.js';
-import type { IncomingMessage } from '../incoming-message.js';
-
-type Session = {
-  leaseId: string;
-  state: WhatsAppConfiguration;
-  connection?: WhatsAppConnection;
-  heartbeat?: ReturnType<typeof setInterval>;
-  deadline?: ReturnType<typeof setTimeout>;
-  lastTestAt?: number;
-  listeners?: Set<() => void>;
-};
+import type { WhatsAppConnector, WhatsAppDiagnostic, WhatsAppStore } from './whatsapp.types.js';
+import type { IncomingMessage } from '../incoming-message.types.js';
 export class WhatsAppService {
   private readonly sessions = new Map<string, Session>();
   private readonly queues = new Map<string, Promise<unknown>>();

@@ -1,15 +1,12 @@
+import type { NotificationTestStore } from './notification-test.types.js';
 import { randomUUID } from 'node:crypto';
 import type { Locale, NotificationTestList, NotificationTestResult } from '@movie-hub/contract';
-import type { MovieDownloadRecord } from '../downloads/movie-download.types.js';
+
 import type { MovieCatalogStore } from '../movies/movie.types.js';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { NotificationService } from './notification.service.js';
 import { buildDownloadNotification } from './notification.worker.js';
-export interface NotificationTestStore {
-  listCompleted(ownerId: string, skip: number, limit: number): Promise<MovieDownloadRecord[]>;
-  findCompleted(ownerId: string, id: string): Promise<MovieDownloadRecord | null>;
-}
 export class NotificationTestService {
   private readonly sending = new Set<string>();
   private readonly lastSent = new Map<string, number>();

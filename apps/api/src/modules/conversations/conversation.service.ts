@@ -1,9 +1,4 @@
-import type {
-  ConversationMessageResponse,
-  ConversationMessagesResponse,
-  ConversationThreadResponse,
-  ConversationThreadsResponse,
-} from '@movie-hub/contract';
+import type { ConversationMessageResponse, ConversationMessagesResponse, ConversationThreadResponse, ConversationThreadsResponse } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import type { ConversationMessage, ConversationStore, ConversationThread } from './conversation.types.js';

@@ -1,6 +1,6 @@
 import { ApiErrorSchema, LivenessSchema, ReadinessSchema } from '@movie-hub/contract';
 import type { FastifyInstance } from 'fastify';
-import type { HealthDependency } from '../../infrastructure/health/dependency.js';
+import type { HealthDependency } from '../../infrastructure/health/health-dependency.types.js';
 
 export function registerHealthRoutes(app: FastifyInstance, dependencies: HealthDependency[]): void {
   app.get(

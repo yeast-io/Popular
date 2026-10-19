@@ -3,22 +3,11 @@ import { emptyProfile } from '../preferences/preference.domain.js';
 import type { PreferenceService } from '../preferences/preference.service.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  LlmProviderError,
-  type LlmClient,
-  type LlmGenerateInput,
-  type LlmGenerateResult,
-  type LlmStreamEvent,
-} from '../llm/llm.types.js';
+import { LlmProviderError } from '../llm/llm.errors.js';
+import type { LlmClient, LlmGenerateInput, LlmGenerateResult, LlmStreamEvent } from '../llm/llm.types.js';
 import { ContextBudgetExceededError } from './context-builder.js';
 import { ConversationTurnService } from './conversation-turn.service.js';
-import type {
-  AppendMessageInput,
-  ConversationMessage,
-  ConversationStore,
-  ConversationThread,
-  TokenCounter,
-} from './conversation.types.js';
+import type { AppendMessageInput, ConversationMessage, ConversationStore, ConversationThread, TokenCounter } from './conversation.types.js';
 
 class FakeLlmClient implements LlmClient {
   lastInput: LlmGenerateInput | null = null;

@@ -1,7 +1,16 @@
+
+
+import type { LlmMessage } from '../llm/llm.types.js';
+
+import type { messages } from './assistant.presentation.js';
+
+import type { DownloadProvider, Locale, MovieDownload } from '@movie-hub/contract';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
+import type { AssistantSessionStore } from './assistant-session.types.js';
 import type { ResourceQueryCapability } from '../resource-query/resource-query.types.js';
 import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
 import type { PreferenceService } from '../preferences/preference.service.js';
-import type { RecommendationCapability, RecommendationProfileReader } from '../recommendations/recommendation.types.js';
+import type { RecommendationCapability } from '../recommendations/recommendation.types.js';
 import type { LlmStreamEvent } from '../llm/llm.types.js';
 
 /** Supported messaging channels, both using the same workflow entry point. */
@@ -54,33 +63,6 @@ export interface AssistantWorkflowResult {
   stream?: AsyncIterable<LlmStreamEvent>;
 }
 
-/**
- * Minimal workflow state: input -> intent -> reply.
- * Optional fields indicate pending node output, not permission to skip required nodes.
- * This data contract does not provide persistence, idempotency, or concurrency control.
- */
-export interface AssistantWorkflowState {
-  input: AssistantInputWorkflowMessage;
-  intent?: AssistantIntent;
-  replyText?: string;
-}
-
-/**
- * Business contracts for internal nodes; the workflow implementation defines their connections.
- * LangGraph nodes can wrap these methods without implementing this interface directly.
- */
-export interface AssistantWorkflowNodes {
-  /**
-   * Detect intent from the message and any context loaded by the implementation.
-   * Natural language typically requires an asynchronous AI call.
-   * Model failures must throw rather than be classified as unclear.
-   */
-  detectIntent(input: AssistantInputWorkflowMessage): Promise<AssistantIntent>;
-
-  /** Route using the detected intent; download handling must still enforce confirmation rules. */
-  handleIntent(input: AssistantInputWorkflowMessage, intent: AssistantIntent): Promise<AssistantWorkflowResult>;
-}
-
 /** Shared entry point for channel services, hiding internal nodes and graph structure. */
 export interface AssistantWorkflowContract {
   /**
@@ -92,25 +74,63 @@ export interface AssistantWorkflowContract {
 }
 
 export interface AssistantAgentOptions {
+  locale?: Locale;
   systemPrompt: string;
   maxContextTokens: number;
   maxOutputTokens: number;
 }
 
-export interface AssistantDetection {
+export interface AssistantRequestClassification {
   intent: AssistantIntent;
+  handling?: 'answer' | 'tool' | 'clarify';
   preferenceSignal: 'none' | 'explicit' | 'uncertain';
-}
-
-export interface AssistantTools {
-  resources?: ResourceQueryCapability;
-  recommendations?: RecommendationCapability;
-  profile?: RecommendationProfileReader;
+  locale?: Locale;
 }
 
 export interface AssistantWorkflowOptions extends AssistantAgentOptions {
   preferences?: PreferenceService;
   resources?: ResourceQueryCapability;
   recommendations?: RecommendationCapability;
+  diagnostics?: { logger?: AiLogger; verbose: boolean };
+  sessions?: AssistantSessionStore;
+  downloads?: {
+    providersFor(ownerId: string): Promise<DownloadProvider[]>;
+    createForOwner(ownerId: string, tmdbId: number, releaseId: string, provider: DownloadProvider): Promise<MovieDownload>;
+  };
   report?: (event: string) => void;
+}
+
+export type MessageKey = keyof typeof messages['zh-CN'];
+
+export type AssistantConversation = Pick<AssistantInputWorkflowMessage, 'ownerId' | 'channel' | 'chatId'>;
+
+export interface AssistantJob {
+  id: string;
+  input: AssistantInputWorkflowMessage;
+  attempts: number;
+  deliveredMovieCount?: number;
+  result?: AssistantWorkflowResult;
+}
+
+/** Durable inbox/outbox contract. Completed replies are reused when delivery is retried. */
+export interface AssistantQueue {
+  enqueue(input: AssistantInputWorkflowMessage): Promise<void>;
+  /** Return due conversation heads, including abandoned processing leases. */
+  readyConversations(limit: number): Promise<AssistantConversation[]>;
+  /** Claim only the oldest unfinished message in this conversation. */
+  claim(conversation: AssistantConversation, leaseId: string): Promise<AssistantJob | null>;
+  renew(id: string, leaseId: string): Promise<boolean>;
+  history(input: AssistantInputWorkflowMessage): Promise<LlmMessage[]>;
+  saveResult(id: string, leaseId: string, result: AssistantWorkflowResult): Promise<boolean>;
+  markMovieDelivered(id: string, leaseId: string, count: number): Promise<boolean>;
+  delivered(id: string, leaseId: string): Promise<void>;
+  retry(id: string, leaseId: string, exhausted: boolean): Promise<void>;
+}
+
+export interface AssistantWorkerOptions {
+  maxConcurrency: number;
+  scanIntervalMs: number;
+  scanTraceEnabled?: boolean;
+  verbose?: boolean;
+  setTyping?: (input: AssistantInputWorkflowMessage, active: boolean, signal: AbortSignal) => Promise<void>;
 }

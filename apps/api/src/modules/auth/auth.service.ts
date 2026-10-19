@@ -1,7 +1,8 @@
 import type { AuthUser, LoginRequest, RegisterRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { hashPassword, verifyPassword } from './password.js';
-import { DuplicateEmailError, type AuthUserStore, type SessionStore, type StoredUser } from './auth.types.js';
+import { DuplicateEmailError } from './auth.errors.js';
+import type { AuthUserStore, SessionStore, StoredUser } from './auth.types.js';
 
 const DUMMY_PASSWORD_HASH = `scrypt$AAAAAAAAAAAAAAAAAAAAAA$${Buffer.alloc(64).toString('base64url')}`;
 

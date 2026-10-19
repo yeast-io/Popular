@@ -1,13 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
-import { MyMoviesQuerySchema } from '../movie_statuses/movie-status.schema.js';
-import {
-  LoadMoreTrendingRequestSchema,
-  MovieDetailQuerySchema,
-  SearchMoviesQuerySchema,
-  TrendingQuerySchema,
-} from '../movies/movie.schema.js';
+import { MyMoviesQuerySchema } from '../movie-statuses/movie-status.schema.js';
+import { LoadMoreTrendingRequestSchema, MovieDetailQuerySchema, SearchMoviesQuerySchema, TrendingQuerySchema } from '../movies/movie.schema.js';
 import { LocaleSchema } from './locale.schema.js';
 
 test('locale contract accepts only the two supported locale values', () => {

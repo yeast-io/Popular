@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { Locale } from '@movie-hub/contract';
-import { AiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import test from 'node:test';
 import { RecommendationTool } from './recommendation.tool.js';
 import type { DiscoveryProvider, RecommendationFilters } from './recommendation.types.js';
@@ -32,8 +33,8 @@ function setup(
   let blockOnRecheck = false,
     stateReads = 0;
   const discoveryFilters: RecommendationFilters[] = [];
-  const rankingInputs: Array<{ requestedCount: number; softPreferences: string[] }> = [];
-  const planInputs: Array<{ questions: number; conversation: Array<{ content: string }> }> = [];
+  const rankingInputs: Array<{ requestedCount: number; softPreferences: string[]; responseLocale: Locale }> = [];
+  const planInputs: Array<{ questions: number; conversation: Array<{ content: string }>; responseLocale: Locale }> = [];
   const query = (get: () => unknown) => ({ lean: () => ({ exec: async () => get() }) });
   const model = {
     // Mongo timestamps are fresh after ensure/acquire; expiry must not depend on them.
@@ -155,6 +156,7 @@ function setup(
     text: string,
     history: LlmMessage[],
     client: Pick<LlmClient, 'generate'>,
+    locale?: Locale,
   ) => {
     const agent = new AssistantAgent(client, {
       systemPrompt: 'Be concise.',
@@ -164,7 +166,7 @@ function setup(
     return tool.runResult(ownerId, conversation, eventId, text, history, {
       plan: agent.planRecommendation.bind(agent),
       rank: agent.rankRecommendations.bind(agent),
-    }
+    }, undefined, locale
     );
   };
   const service = {
@@ -619,4 +621,17 @@ test('too few eligible movies are returned without padding and the shortfall is 
     }),
   );
   assert.doesNotMatch(JSON.stringify(logs), /private subjective taste/);
+});
+
+test('resolved per-turn locale reaches recommendation planning, ranking and fixed replies without changing the tool default', async () => {
+  const empty = setup({ locale: 'zh-CN', noCandidates: true, recommendNow: true, question: null });
+  const english = await empty.service.runResult('alice', 'web:thread', 'en', 'Recommend now', [], empty.llm, 'en-US');
+  assert.match(english.replyText, /No movies matched/);
+  assert.equal(empty.plans().at(-1)?.responseLocale, 'en-US');
+  const chinese = await empty.service.runResult('alice', 'web:thread', 'zh', '直接推荐', [], empty.llm);
+  assert.match(chinese.replyText, /本次没有找到/);
+  assert.equal(empty.plans().at(-1)?.responseLocale, 'zh-CN');
+  const ranked = setup({ locale: 'zh-CN', recommendNow: true, question: null });
+  await ranked.service.runResult('alice', 'web:thread', 'rank-en', 'Recommend now', [], ranked.llm, 'en-US');
+  assert.equal(ranked.rankings().at(-1)?.responseLocale, 'en-US');
 });

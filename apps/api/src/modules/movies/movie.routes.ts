@@ -1,21 +1,6 @@
-import {
-  ApiErrorSchema,
-  LoadMoreTrendingRequestSchema,
-  MovieDetailParamsSchema,
-  MovieDetailQuerySchema,
-  MovieDetailSchema,
-  SearchMoviesQuerySchema,
-  SearchMoviesResponseSchema,
-  TrendingMoviesResponseSchema,
-  TrendingQuerySchema,
-  type LoadMoreTrendingRequest,
-  type MovieDetailParams,
-  type MovieDetailQuery,
-  type SearchMoviesQuery,
-  type TrendingQuery,
-} from '@movie-hub/contract';
+import { ApiErrorSchema, LoadMoreTrendingRequestSchema, MovieDetailParamsSchema, MovieDetailQuerySchema, MovieDetailSchema, SearchMoviesQuerySchema, SearchMoviesResponseSchema, TrendingMoviesResponseSchema, TrendingQuerySchema, type LoadMoreTrendingRequest, type MovieDetailParams, type MovieDetailQuery, type SearchMoviesQuery, type TrendingQuery } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { AuthService } from '../auth/auth.service.js';
 import type { MovieService } from './movie.service.js';

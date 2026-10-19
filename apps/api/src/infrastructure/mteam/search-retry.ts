@@ -1,3 +1,4 @@
+import type { SearchRetryOptions } from './search-retry.types.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { currentAiTrace } from '../logging/ai-trace.js';
@@ -31,14 +32,6 @@ export function isRetryableSearchError(error: unknown): boolean {
     'EAI_AGAIN', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED',
     'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE',
   ].includes(cause.code));
-}
-interface SearchRetryOptions {
-  minimumIntervalMs?: number;
-  /** Injectable clock/wait only for deterministic policy tests. */
-  now?: () => number;
-  wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
-  random?: () => number;
-  budgetMs?: number;
 }
 /** A single logical read: at most three attempts, including waits, within a 40-second budget. */
 export async function retryMTeamSearch<T>(

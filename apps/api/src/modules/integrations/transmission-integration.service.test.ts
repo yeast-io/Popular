@@ -3,16 +3,8 @@ import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { SecretCrypto } from './secret-crypto.js';
-import {
-  TransmissionIntegrationService,
-  normalizeTransmissionBaseUrl,
-  decryptCredential,
-} from './transmission-integration.service.js';
-import type {
-  TransmissionConfigRecord,
-  TransmissionConfigStore,
-  TransmissionCredential,
-} from './transmission.types.js';
+import { TransmissionIntegrationService, normalizeTransmissionBaseUrl, decryptCredential } from './transmission-integration.service.js';
+import type { TransmissionConfigRecord, TransmissionConfigStore, TransmissionCredential } from './transmission.types.js';
 import { IntegrationValidationError } from './integration.service.js';
 
 function fixture() {

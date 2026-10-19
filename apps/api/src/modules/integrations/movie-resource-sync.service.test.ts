@@ -1,14 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { MovieStatusStore } from '../movies/movie.types.js';
-import type { MovieResourceCheckService, MovieResourceCheckExecution } from './movie-resource-check.service.js';
+import type { MovieResourceCheckService } from './movie-resource-check.service.js';
+import type { MovieResourceCheckExecution } from './movie-resource-check.types.js';
 import type { MovieResourceCheckRecord, MovieResourceCheckStore } from './movie-resource-check.types.js';
 import { MovieResourceSyncService } from './movie-resource-sync.service.js';
-import type {
-  MovieResourceSyncBatchStore,
-  StoredMovieResourceSyncBatch,
-  SyncCounter,
-} from './movie-resource-sync.types.js';
+import type { MovieResourceSyncBatchStore, StoredMovieResourceSyncBatch, SyncCounter } from './movie-resource-sync.types.js';
 
 const now = new Date('2026-10-13T00:00:00.000Z');
 

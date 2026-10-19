@@ -252,7 +252,7 @@ function fakeSockets() {
 
 test('incoming notify batches include text, wrapped media and phone self-chat; ignore history, groups, protocol and outgoing traffic', async () => {
   const f = fakeSockets();
-  const received: import('../../modules/incoming-message.js').IncomingMessage[] = [];
+  const received: import("../../modules/incoming-message.types.js").IncomingMessage[] = [];
   const connection = await createBaileysConnector(f.makeSocket)({
     load: async () => {
       return null;

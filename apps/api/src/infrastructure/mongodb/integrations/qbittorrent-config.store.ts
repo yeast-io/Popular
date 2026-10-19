@@ -1,9 +1,6 @@
 import type { Model } from 'mongoose';
 import type { IntegrationFailureType, QBittorrentAuthMethod } from '@movie-hub/contract';
-import type {
-  QBittorrentConfigRecord,
-  QBittorrentConfigStore,
-} from '../../../modules/integrations/qbittorrent.types.js';
+import type { QBittorrentConfigRecord, QBittorrentConfigStore } from '../../../modules/integrations/qbittorrent.types.js';
 import type { QBittorrentConfigDocument } from './qbittorrent-config.schema.js';
 
 export class MongoQBittorrentConfigStore implements QBittorrentConfigStore {

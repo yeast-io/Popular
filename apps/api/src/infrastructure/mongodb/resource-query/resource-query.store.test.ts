@@ -1,20 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createConnection } from 'mongoose';
-import { createResourceQueryModel, MongoResourceQueryStore } from './resource-query.store.js';
-import { emptyResourceState } from '../../../modules/resource-query/resource-query.types.js';
-
-test('resource query schema enforces owner/conversation uniqueness', async () => {
-  const connection = createConnection();
-  const model = createResourceQueryModel(connection);
-  assert.equal(model.collection.name, 'assistantresourcequeries');
-  assert.ok(
-    model.schema.indexes().some(
-      ([fields, options]) => fields.ownerId === 1 && fields.conversation === 1 && options.unique
-    )
-  );
-  await connection.close();
-});
+import type { createResourceQueryModel } from './resource-query.schema.js';
+import { MongoResourceQueryStore } from './resource-query.store.js';
+import { emptyResourceState } from '../../../modules/resource-query/resource-query.domain.js';
 
 test('resource query reads, lease acquisition, saves and release always scope the owner and conversation', async () => {
   const queries: Record<string, unknown>[] = [];
@@ -51,13 +39,6 @@ test('resource query reads, lease acquisition, saves and release always scope th
 });
 
 test('resource TTL uses a root BSON date, and ensure resets expired state while protecting active leases', async () => {
-  const connection = createConnection();
-  const model = createResourceQueryModel(connection);
-  assert.equal(model.schema.path('expiresAt').instance, 'Date');
-  assert.ok(
-    model.schema.indexes().some(([fields, options]) => fields.expiresAt === 1 && options.expireAfterSeconds === 0)
-  );
-  await connection.close();
   let pipeline: Array<{ $set: Record<string, unknown> }> = [];
   const now = Date.now();
   const store = new MongoResourceQueryStore({ updateOne: (_filter: unknown, update: typeof pipeline) => {

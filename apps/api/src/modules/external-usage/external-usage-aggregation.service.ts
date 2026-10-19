@@ -1,13 +1,5 @@
+import type { ExternalUsageAggregator, ExternalUsageAggregationLogger } from './external-usage-aggregation.types.js';
 import { EXTERNAL_USAGE_RETENTION_DAYS } from '../../infrastructure/mongodb/external-usage/external-request-event.schema.js';
-
-export interface ExternalUsageAggregator {
-  rebuildDaily(since: Date): Promise<void>;
-}
-
-export interface ExternalUsageAggregationLogger {
-  info?(bindings: Record<string, unknown>, message: string): void;
-  error(bindings: Record<string, unknown>, message: string): void;
-}
 
 export class ExternalUsageAggregationService {
   private timer: NodeJS.Timeout | undefined;

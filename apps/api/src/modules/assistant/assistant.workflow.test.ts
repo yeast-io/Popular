@@ -68,20 +68,22 @@ test('discussion routes through the graph using the owner client and bounded cha
 });
 
 for (const intent of ['recommend', 'resources', 'download', 'unclear'] as const) {
-  test(`${intent} routes to an explicit placeholder without invoking business actions`, async () => {
+  test(`${intent} answers unavailable capabilities without invoking business actions`, async () => {
     let calls = 0;
     const runner = new AssistantWorkflow(async () => {
       return {
-        generate: async () => {
+        generate: async (request) => {
           calls++;
-          return { content: JSON.stringify({ intent }), inputTokens: 1, outputTokens: 1 };
+          return { content: request.operation === 'assistant.intent' ? JSON.stringify(
+            { intent }
+          ) : 'Capability-aware answer', inputTokens: 1, outputTokens: 1 };
         },
       };
     }, options);
     const result = await runner.run(input);
     assert.equal(result.intent, intent);
-    assert.equal(calls, 1);
-    assert.match(result.replyText, intent === 'unclear' ? /补充/ : /尚未接通/);
+    assert.equal(calls, intent === 'unclear' ? 1 : 2);
+    assert.match(result.replyText, intent === 'unclear' ? /补充/ : /Capability-aware answer/);
   });
 }
 
@@ -181,7 +183,7 @@ test('personal assistant detects intent using the latest message and conversatio
   const agent = createWorkflow(
     {
       generate: async (value) => {
-        request = value;
+        if (value.operation === 'assistant.intent') request = value;
         return { content: '{"intent":"download"}', inputTokens: 1, outputTokens: 1 };
       },
     },
@@ -237,8 +239,9 @@ test('provider failures propagate and cancellation discards late classification 
   const agent = createWorkflow(
     {
       generate: async (request) => {
-        assert.equal(request.signal, controller.signal);
+        assert.ok(request.signal);
         controller.abort();
+        assert.equal(request.signal.aborted, true);
         return { content: '{"intent":"download"}', inputTokens: 1, outputTokens: 1 };
       },
     },
@@ -268,22 +271,24 @@ test('the same personal assistant detects an intent and handles the discussion r
   assert.equal(requests[1]!.maxOutputTokens, routingOptions.maxOutputTokens);
 });
 
-test('unavailable capabilities and clarification only call the model to classify the request', async () => {
+test('unavailable capabilities generate an answer while ambiguous legacy requests still clarify', async () => {
   for (const intent of ['recommend', 'resources', 'download', 'unclear'] as const) {
     let calls = 0;
     const agent = createWorkflow(
       {
-        generate: async () => {
+        generate: async (request) => {
           calls++;
-          return { content: JSON.stringify({ intent }), inputTokens: 1, outputTokens: 1 };
+          return { content: request.operation === 'assistant.intent' ? JSON.stringify(
+            { intent }
+          ) : 'Capability-aware answer', inputTokens: 1, outputTokens: 1 };
         },
       },
       routingOptions,
     );
     const result = await agent.run(routingInput);
-    assert.equal(calls, 1);
+    assert.equal(calls, intent === 'unclear' ? 1 : 2);
     assert.equal(result.intent, intent);
-    assert.match(result.replyText, intent === 'unclear' ? /补充/ : /尚未接通/);
+    assert.match(result.replyText, intent === 'unclear' ? /补充/ : /Capability-aware answer/);
   }
 });
 
@@ -460,9 +465,11 @@ test('unclear resource follow-ups use persisted context, while download intent c
     active: async () => true,
     run: async () => { calls++; return { replyText: 'Filtered result' }; },
   };
-  const workflow = createWorkflow({ generate: async () => {
+  const workflow = createWorkflow({ generate: async (request) => {
     return ({
-      content: JSON.stringify({ intent, preferenceSignal: 'none' }), inputTokens: 1, outputTokens: 1,
+      content: request.operation === 'assistant.intent' ? JSON.stringify(
+        { intent, preferenceSignal: 'none' }
+      ) : 'Cannot submit downloads here', inputTokens: 1, outputTokens: 1,
     });
   } }, { ...options, resources }
   );
@@ -470,7 +477,7 @@ test('unclear resource follow-ups use persisted context, while download intent c
   intent = 'download';
   const result = await workflow.run({ ...input, messageId: '2' });
   assert.equal(result.intent, 'download');
-  assert.match(result.replyText, /没有创建/);
+  assert.equal(result.replyText, 'Cannot submit downloads here');
   assert.equal(calls, 1);
 });
 

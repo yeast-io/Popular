@@ -1,12 +1,14 @@
+import type { AssistantWorkerOptions } from './assistant.types.js';
 import { loadTmdbPoster } from '../../infrastructure/tmdb/poster.js';
 import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
 import { RedisLockTrace } from '../../infrastructure/redis/lock-trace.js';
-import { AiTrace, aiStep, currentAiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
+import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import type { AssistantConversation, AssistantJob, AssistantQueue } from './assistant.queue.js';
+import type { AssistantConversation, AssistantJob, AssistantQueue } from './assistant.types.js';
 import type { AssistantWorkflow } from './assistant.workflow.js';
 import type { AssistantInputWorkflowMessage } from './assistant.types.js';
 import { startTyping } from './assistant.typing.js';
@@ -19,14 +21,6 @@ redis.call('expire',KEYS[1],60)
 redis.call('expire',KEYS[2],60)
 return 1`;
 const RELEASE = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) end return 0";
-
-export interface AssistantWorkerOptions {
-  maxConcurrency: number;
-  scanIntervalMs: number;
-  scanTraceEnabled?: boolean;
-  verbose?: boolean;
-  setTyping?: (input: AssistantInputWorkflowMessage, active: boolean, signal: AbortSignal) => Promise<void>;
-}
 
 /** Durable messages are authoritative; wakeups only reduce pickup latency. */
 export class AssistantWorker {

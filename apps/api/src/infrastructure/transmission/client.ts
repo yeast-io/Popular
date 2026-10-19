@@ -1,9 +1,5 @@
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
-import type {
-  TransmissionClientPort,
-  TransmissionCredential,
-  TransmissionTorrent,
-} from '../../modules/integrations/transmission.types.js';
+import type { TransmissionClientPort, TransmissionCredential, TransmissionTorrent } from '../../modules/integrations/transmission.types.js';
 
 export class TransmissionClient implements TransmissionClientPort {
   constructor(

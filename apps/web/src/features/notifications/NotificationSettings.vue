@@ -4,6 +4,7 @@ import type { NotificationPreferences, SaveNotificationPreferences } from '@movi
 import { loadWebConfig } from '../../config/env';
 import { t } from '../../i18n';
 import { localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
+
 const { apiBaseUrl } = loadWebConfig();
 const draft = ref<SaveNotificationPreferences>({ enabled: false, defaultChannel: 'whatsapp', additionalChannels: [] });
 const channels = ref<NotificationPreferences['channels']>([]);

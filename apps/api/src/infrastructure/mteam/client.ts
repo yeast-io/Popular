@@ -1,4 +1,5 @@
-import { AiTrace, currentAiTrace, withAiTrace, type AiLogger } from '../logging/ai-trace.js';
+import { AiTrace, currentAiTrace, withAiTrace } from '../logging/ai-trace.js';
+import type { AiLogger } from '../logging/ai-trace.types.js';
 import { MTeamHttpError, parseRetryAfter, retryMTeamSearch } from './search-retry.js';
 import type { LookupAddress } from 'node:dns';
 import { randomUUID } from 'node:crypto';
@@ -6,17 +7,9 @@ import { lookup } from 'node:dns/promises';
 import { request } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
-import type {
-  MTeamRelease,
-  MTeamResourceSearcher,
-  MTeamTorrentDownloader,
-} from '../../modules/integrations/movie-resource-check.types.js';
+import type { MTeamRelease, MTeamResourceSearcher, MTeamTorrentDownloader } from '../../modules/integrations/movie-resource-check.types.js';
 import type { MTeamVerifier } from '../../modules/integrations/integration.types.js';
-import type {
-  ExternalRequestContext,
-  ExternalRequestErrorCode,
-  ExternalRequestRecorder,
-} from '../../modules/external-usage/external-usage.types.js';
+import type { ExternalRequestContext, ExternalRequestErrorCode, ExternalRequestRecorder } from '../../modules/external-usage/external-usage.types.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_SEARCH_RESPONSE_BYTES = 2 * 1024 * 1024;

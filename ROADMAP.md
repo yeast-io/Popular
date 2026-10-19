@@ -151,7 +151,7 @@ apps/
         movies/
           movie.routes.ts
           movie.service.ts
-        movie_statuses/
+        movie-statuses/
           movie_status.routes.ts
           movie_status.service.ts
         sync/
@@ -167,7 +167,7 @@ apps/
         auth/
         users/
         movies/
-        movie_statuses/
+        movie-statuses/
 packages/
   contract/
     src/
@@ -177,7 +177,7 @@ packages/
       auth/
       users/
       movies/
-      movie_statuses/
+      movie-statuses/
 ```
 
 目录表达模块归属，文件名表达单一职责。共享基础设施可以被多个业务模块调用，但业务模块之间不能通过导入对方的 Mongoose schema 形成隐式耦合。

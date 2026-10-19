@@ -1,14 +1,9 @@
-import {
-  MTEAM_DEFAULT_WEB_BASE_URL,
-  type IntegrationFailureType,
-  type MTeamConfiguration,
-  type SaveMTeamConfigurationRequest,
-} from '@movie-hub/contract';
+import { MTEAM_DEFAULT_WEB_BASE_URL, type IntegrationFailureType, type MTeamConfiguration, type SaveMTeamConfigurationRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier } from './integration.types.js';
 import { SecretCrypto } from './secret-crypto.js';
-import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class IntegrationValidationError extends Error {
   constructor(

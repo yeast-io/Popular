@@ -1,7 +1,7 @@
-import { supportedLocales, type Locale } from '@movie-hub/contract';
+import type { SupportedLocale } from './locale.types.js';
+import { supportedLocales } from '@movie-hub/contract';
 
 export { supportedLocales };
-export type SupportedLocale = Locale;
 
 export const defaultLocale: SupportedLocale = 'zh-CN';
 export const localeStorageKey = 'movie-hub.locale';

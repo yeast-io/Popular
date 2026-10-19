@@ -1,23 +1,9 @@
+import type { OpenAIConfigRecord, OpenAIConfigStore } from './openai-settings.types.js';
 import { currentAiTrace, aiStep } from '../../infrastructure/logging/ai-trace.js';
 import type { OpenAIConfiguration, OpenAIValidation } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { SecretCrypto } from './secret-crypto.js';
-
-export interface OpenAIConfigRecord {
-  ownerId: string;
-  encryptedApiKey: string;
-  maskedApiKey: string;
-  model?: string;
-  validation?: OpenAIValidation;
-}
-export interface OpenAIConfigStore {
-  find(ownerId: string): Promise<OpenAIConfigRecord | null>;
-  save(record: OpenAIConfigRecord): Promise<void>;
-  delete(ownerId: string): Promise<void>;
-  selectModel(ownerId: string, encryptedApiKey: string, model: string): Promise<boolean>;
-  saveValidation(ownerId: string, encryptedApiKey: string, validation: OpenAIValidation): Promise<boolean>;
-}
 export class OpenAIProbeError extends Error {
   constructor(
     readonly reason: NonNullable<OpenAIValidation['failureReason']>

@@ -1,8 +1,10 @@
 import { RedisLockTrace } from '../../infrastructure/redis/lock-trace.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { AiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import type { Redis } from 'ioredis';
-import type { TelegramService, TelegramTransport } from './telegram.service.js';
+import type { TelegramService } from './telegram.service.js';
+import type { TelegramTransport } from './telegram.types.js';
 // Shared cursor and renewable lease allow multiple API instances without competing getUpdates consumers.
 const RENEW = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('expire',KEYS[1],60) end return 0";
 const CHECKPOINT =

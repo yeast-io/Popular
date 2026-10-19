@@ -2,13 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Model } from 'mongoose';
 import type { NotificationPreferencesDocument } from './notification-preferences.schema.js';
 import type { SaveNotificationPreferences } from '@movie-hub/contract';
-import {
-  CHECK_INTERVAL_MS,
-  type ClaimedDownload,
-  type ClaimedIntent,
-  type NotificationPlan,
-  type NotificationStore,
-} from '../../../modules/notifications/notification.types.js';
+import { CHECK_INTERVAL_MS } from '../../../modules/notifications/notification.policy.js';
+import type { ClaimedDownload, ClaimedIntent, NotificationPlan, NotificationStore } from '../../../modules/notifications/notification.types.js';
 import type { MovieDownloadProgress } from '../../../modules/downloads/movie-download.types.js';
 import type { MovieDownloadDocument } from '../downloads/movie-download.schema.js';
 import { toMovieDownloadRecord } from '../downloads/movie-download.store.js';

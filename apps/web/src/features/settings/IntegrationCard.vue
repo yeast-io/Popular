@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { t } from '../../i18n';
 import { getIntegrationLogo } from './integration-logos';
+
 const props = defineProps<{
   id: string;
   title: string;

@@ -2,13 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FormatRegistry } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
-import {
-  AppendConversationMessageRequestSchema,
-  ConversationMessageSchema,
-  ConversationParamsSchema,
-  ConversationTurnStreamEventSchema,
-  RunConversationTurnRequestSchema,
-} from './conversation.schema.js';
+import { AppendConversationMessageRequestSchema, ConversationMessageSchema, ConversationParamsSchema, ConversationTurnStreamEventSchema, RunConversationTurnRequestSchema } from './conversation.schema.js';
 
 FormatRegistry.Set('date-time', (value) => !Number.isNaN(Date.parse(value)));
 

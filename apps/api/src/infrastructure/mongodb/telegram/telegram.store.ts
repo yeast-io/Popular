@@ -1,6 +1,6 @@
 import type { Model } from 'mongoose';
 import type { TelegramBindingDocument } from './telegram.schema.js';
-import type { TelegramStore, TelegramRecord } from '../../../modules/telegram/telegram.service.js';
+import type { TelegramStore, TelegramRecord } from '../../../modules/telegram/telegram.types.js';
 
 const duplicate = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;

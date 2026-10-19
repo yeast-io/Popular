@@ -1,5 +1,5 @@
 import type { Model } from 'mongoose';
-import type { NotificationTestStore } from '../../../modules/notifications/notification-test.service.js';
+import type { NotificationTestStore } from '../../../modules/notifications/notification-test.types.js';
 import type { MovieDownloadDocument } from '../downloads/movie-download.schema.js';
 import { toMovieDownloadRecord } from '../downloads/movie-download.store.js';
 const completed = {

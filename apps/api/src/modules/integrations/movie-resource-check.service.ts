@@ -1,47 +1,14 @@
+import type { CheckLogger, MovieResourceCheckOptions, QueuedCheck, MovieResourceCheckExecution } from './movie-resource-check.types.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
-import {
-  MTEAM_DEFAULT_WEB_BASE_URL,
-  type Locale,
-  type MovieRelease,
-  type MovieReleaseListResponse,
-} from '@movie-hub/contract';
+import { MTEAM_DEFAULT_WEB_BASE_URL, type Locale, type MovieRelease, type MovieReleaseListResponse } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import type { MovieResourceCheckDispatcher } from '../movie-statuses/movie-status.service.js';
+import type { MovieResourceCheckDispatcher } from '../movie-statuses/movie-status.types.js';
 import type { MovieCatalogStore, MovieSearchProvider } from '../movies/movie.types.js';
 import { IntegrationValidationError, integrationSecretContext } from './integration.service.js';
 import type { IntegrationConfigStore } from './integration.types.js';
-import type {
-  MTeamRelease,
-  MTeamResourceSearcher,
-  MovieResourceCheckErrorCode,
-  MovieResourceCheckKey,
-  MovieResourceCheckCompletion,
-  MovieResourceCheckStore,
-} from './movie-resource-check.types.js';
-import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
+import type { MTeamRelease, MTeamResourceSearcher, MovieResourceCheckErrorCode, MovieResourceCheckKey, MovieResourceCheckCompletion, MovieResourceCheckStore } from './movie-resource-check.types.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 import type { SecretCrypto } from './secret-crypto.js';
-
-interface CheckLogger {
-  info(bindings: Record<string, unknown>, message: string): void;
-  error(bindings: Record<string, unknown>, message: string): void;
-}
-
-export interface MovieResourceCheckOptions {
-  availableTtlMs: number;
-  unavailableTtlMs: number;
-  retryDelayMs: number;
-  leaseMs: number;
-  minimumIntervalMs: number;
-  releaseListTtlMs: number;
-}
-
-interface QueuedCheck {
-  ownerId: string;
-  tmdbId: number;
-  attemptedAt: Date;
-}
-
-export type MovieResourceCheckExecution = { started: false } | { started: true; result: MovieResourceCheckCompletion };
 
 export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   private readonly queue = new Map<string, QueuedCheck>();

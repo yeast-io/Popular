@@ -1,11 +1,6 @@
 import { Types, type Model } from 'mongoose';
 import type { DownloadProvider, MovieDownloadStatus } from '@movie-hub/contract';
-import type {
-  DownloadClaim,
-  MovieDownloadProgress,
-  MovieDownloadRecord,
-  MovieDownloadStore,
-} from '../../../modules/downloads/movie-download.types.js';
+import type { DownloadClaim, MovieDownloadProgress, MovieDownloadRecord, MovieDownloadStore } from '../../../modules/downloads/movie-download.types.js';
 import type { MovieDownloadDocument } from './movie-download.schema.js';
 
 export class MongoMovieDownloadStore implements MovieDownloadStore {

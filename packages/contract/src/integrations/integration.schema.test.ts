@@ -2,14 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FormatRegistry } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
-import {
-  TransmissionConfigurationSchema,
-  SaveTransmissionConfigurationRequestSchema,
-  MTeamConfigurationSchema,
-  QBittorrentConfigurationSchema,
-  SaveMTeamConfigurationRequestSchema,
-  SaveQBittorrentConfigurationRequestSchema,
-} from './integration.schema.js';
+import { TransmissionConfigurationSchema, SaveTransmissionConfigurationRequestSchema, MTeamConfigurationSchema, QBittorrentConfigurationSchema, SaveMTeamConfigurationRequestSchema, SaveQBittorrentConfigurationRequestSchema } from './integration.schema.js';
 
 FormatRegistry.Set('uri', (value) => {
   try {

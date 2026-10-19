@@ -1,14 +1,5 @@
 <script setup lang="ts">
-import type {
-  ApiError,
-  MoviePreference,
-  MovieStatus,
-  MovieSummary,
-  SearchMoviesResponse,
-  TrackedMoviePreference,
-  TrackedMovieStatus,
-  TrendingMoviesResponse,
-} from '@movie-hub/contract';
+import type { ApiError, MoviePreference, MovieStatus, MovieSummary, SearchMoviesResponse, TrackedMoviePreference, TrackedMovieStatus, TrendingMoviesResponse } from '@movie-hub/contract';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';

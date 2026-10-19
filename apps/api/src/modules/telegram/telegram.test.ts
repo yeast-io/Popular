@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { TelegramService, type TelegramStore, type TelegramRecord, type TelegramUpdate } from './telegram.service.js';
+import { TelegramService } from './telegram.service.js';
+import type { TelegramStore, TelegramRecord, TelegramUpdate } from './telegram.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { TelegramClient } from '../../infrastructure/telegram/client.js';
 import { buildApp } from '../../app.js';
@@ -195,7 +196,7 @@ test('test and download notifications always use authenticated owner binding; un
 
 test('incoming messages resolve the linked owner, log text/media only, and exclude binding secrets and unlinked chats', async () => {
   const f = fixture();
-  const received: Array<{ ownerId: string; message: import('../incoming-message.js').IncomingMessage }> = [];
+  const received: Array<{ ownerId: string; message: import("../incoming-message.types.js").IncomingMessage }> = [];
   const service = new TelegramService(f.auth, f.store, f.transport, undefined, (ownerId, message) => {
     received.push({ ownerId, message });
   });

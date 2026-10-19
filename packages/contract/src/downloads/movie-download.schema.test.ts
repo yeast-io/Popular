@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
-import {
-  CreateMovieDownloadRequestSchema,
-  DownloadProviderListResponseSchema,
-  MovieDownloadSchema,
-} from './movie-download.schema.js';
+import { CreateMovieDownloadRequestSchema, DownloadProviderListResponseSchema, MovieDownloadSchema } from './movie-download.schema.js';
 
 test('download contracts accept only supported provider choices and preserve legacy omitted choices', () => {
   assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceReleaseId: '991' }), true);

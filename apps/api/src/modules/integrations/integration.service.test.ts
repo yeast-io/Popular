@@ -2,12 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import {
-  IntegrationService,
-  IntegrationValidationError,
-  normalizeMTeamBaseUrl,
-  normalizeMTeamWebBaseUrl,
-} from './integration.service.js';
+import { IntegrationService, IntegrationValidationError, normalizeMTeamBaseUrl, normalizeMTeamWebBaseUrl } from './integration.service.js';
 import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier } from './integration.types.js';
 import { SecretCrypto } from './secret-crypto.js';
 

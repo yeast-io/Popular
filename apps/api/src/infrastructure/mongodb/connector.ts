@@ -1,6 +1,6 @@
 import mongoose, { type Connection } from 'mongoose';
-import type { HealthDependency } from '../health/dependency.js';
-import { timedHealthCheck } from '../health/types.js';
+import type { HealthDependency } from '../health/health-dependency.types.js';
+import { timedHealthCheck } from '../health/health-check.service.js';
 
 export class MongoDbConnector implements HealthDependency {
   readonly name = 'mongodb' as const;

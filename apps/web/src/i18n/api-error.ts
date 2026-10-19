@@ -1,5 +1,6 @@
 import type { ApiError, ErrorCode } from '@movie-hub/contract';
-import { t, type TranslationKey } from './index';
+import { t } from './index';
+import type { TranslationKey } from './translation.types';
 
 const errorKeys = {
   INSUFFICIENT_MOVIE_RATINGS: 'preferences.insufficient',

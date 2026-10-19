@@ -1,3 +1,4 @@
+import type { ResolvedLocalization } from './movie-store.types.js';
 import type { Locale } from '@movie-hub/contract';
 import type { Model } from 'mongoose';
 import type { MovieCreditDocument } from './movie-credit.schema.js';
@@ -6,14 +7,7 @@ import type { MovieResultSetDocument } from './movie-result-set.schema.js';
 import type { MovieDocument } from './movie.schema.js';
 import type { PersonDocument } from './person.schema.js';
 import type { TrendingStateDocument } from '../sync/trending-state.schema.js';
-import type {
-  MovieCatalogStore,
-  MovieDetailRecord,
-  MovieRecord,
-  TrendingPageRecord,
-  TrendingSnapshotRecord,
-  TrendingStore,
-} from '../../../modules/movies/movie.types.js';
+import type { MovieCatalogStore, MovieDetailRecord, MovieRecord, TrendingPageRecord, TrendingSnapshotRecord, TrendingStore } from '../../../modules/movies/movie.types.js';
 
 export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
   constructor(
@@ -443,20 +437,6 @@ function toSummaryLocalizationUpdate(movie: MovieRecord, syncedAt: Date): Record
     if (movie[key] !== undefined) update[key] = movie[key];
   }
   return update;
-}
-
-interface ResolvedLocalization {
-  locale: string;
-  title: string;
-  overview?: string;
-  tagline?: string;
-  posterPath?: string;
-  backdropPath?: string;
-  genres?: Array<{ tmdbId: number; name: string }>;
-  trailer?: MovieDetailRecord['trailer'];
-  summarySyncedAt: Date;
-  detailSyncedAt?: Date;
-  trailerSyncedAt?: Date;
 }
 
 function resolveLocalization(

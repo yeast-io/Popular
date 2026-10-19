@@ -1,22 +1,8 @@
-import type {
-  Locale,
-  MovieDetail,
-  MoviePreference,
-  MovieStatus,
-  MovieSummary,
-  SearchMoviesResponse,
-  TrendingMoviesResponse,
-} from '@movie-hub/contract';
+import type { Locale, MovieDetail, MoviePreference, MovieStatus, MovieSummary, SearchMoviesResponse, TrendingMoviesResponse } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import type {
-  MovieCatalogStore,
-  MovieRecord,
-  MovieSearchProvider,
-  MovieStatusStore,
-  TrendingStore,
-} from './movie.types.js';
+import type { MovieCatalogStore, MovieRecord, MovieSearchProvider, MovieStatusStore, TrendingStore } from './movie.types.js';
 import type { TrendingSyncService } from './trending-sync.service.js';
-import { userExternalRequestContext } from '../external-usage/external-usage.types.js';
+import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class MovieService {
   constructor(

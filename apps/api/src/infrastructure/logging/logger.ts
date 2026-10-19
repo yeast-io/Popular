@@ -1,5 +1,6 @@
+import type { AppLoggers } from './logger.types.js';
 import { serializeDiagnosticError } from './diagnostic-error.js';
-import pino, { type Logger } from 'pino';
+import pino from 'pino';
 
 const redactPaths = [
   'password',
@@ -21,11 +22,6 @@ const redactPaths = [
   'accessKey',
   'secretKey',
 ];
-
-export interface AppLoggers {
-  app: Logger;
-  error: Logger;
-}
 
 export function createLoggers(level: string): AppLoggers {
   const base = { service: 'movie-hub-api' };

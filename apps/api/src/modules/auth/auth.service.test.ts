@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { AuthService } from './auth.service.js';
-import { DuplicateEmailError, type AuthUserStore, type SessionStore, type StoredUser } from './auth.types.js';
+import { DuplicateEmailError } from './auth.errors.js';
+import type { AuthUserStore, SessionStore, StoredUser } from './auth.types.js';
 
 class MemoryUsers implements AuthUserStore {
   readonly users = new Map<string, StoredUser>();

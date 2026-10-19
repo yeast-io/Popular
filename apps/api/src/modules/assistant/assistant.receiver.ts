@@ -1,6 +1,7 @@
-import { AiTrace, withAiTrace, type AiLogger } from '../../infrastructure/logging/ai-trace.js';
-import type { IncomingMessage } from '../incoming-message.js';
-import type { AssistantConversation, AssistantQueue } from './assistant.queue.js';
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
+import type { IncomingMessage } from '../incoming-message.types.js';
+import type { AssistantConversation, AssistantQueue } from './assistant.types.js';
 import { AssistantInputSchema } from './assistant.schema.js';
 
 /** Transport callbacks finish only after accepted text has been persisted. */

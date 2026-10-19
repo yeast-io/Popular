@@ -4,6 +4,7 @@ import type { NotificationTestList, NotificationTestResult } from '@movie-hub/co
 import { loadWebConfig } from '../../config/env';
 import { t } from '../../i18n';
 import { localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
+
 const { apiBaseUrl } = loadWebConfig();
 const channels = ref<NotificationTestList['channels']>([]);
 const items = ref<NotificationTestList['items']>([]);

@@ -67,4 +67,3 @@ export interface NotificationStore {
   channelNotified(claim: ClaimedDownload, channel: string, messageId: string): Promise<boolean>;
   finish(claim: ClaimedDownload, now: Date, error?: string): Promise<void>;
 }
-export const CHECK_INTERVAL_MS = 120_000;

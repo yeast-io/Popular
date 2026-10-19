@@ -23,6 +23,30 @@
 - Clearly distinguish facts, reasonable inferences, uncertainties, and opinions.
 - Be concise and direct. Criticize the reasoning or work, not the person.
 
+## File and directory naming
+
+- Use lowercase kebab-case for directories and business-name segments, grouping files by feature and responsibility. Keep model decisions in `agents/` and persistence implementations under `infrastructure/`; do not create generic `types/`, `interfaces/`, or `utils/` directories merely to separate file kinds.
+- Name backend TypeScript files `<business-name>.<role>.ts`, joining business words with hyphens and reserving dots for role, test, and extension suffixes. For example, use `assistant-session.types.ts`, not `assistant.session.ts`. Preserve framework-required filenames and the existing PascalCase convention for Vue components.
+- Put all named interfaces, type aliases, and storage contracts in `*.types.ts`, including private types currently used by only one implementation. This applies to backend modules, infrastructure, frontend TypeScript, and Vue scripts, not just Workflows. Use type-only imports and exports. Put initialization functions and business invariants in `*.domain.ts`, policy constants in `*.policy.ts`, and runtime validation in `*.schema.ts`; do not mix runtime initialization into a type-definition file.
+- Choose role suffixes that describe the actual responsibility: `*.agent.ts`, `*.workflow.ts`, `*.tool.ts`, `*.service.ts`, `*.worker.ts`, `*.routes.ts`, `*.store.ts`, `*.domain.ts`, `*.policy.ts`, `*.schema.ts`, `*.presentation.ts`, `*.messages.ts`, `*.errors.ts`, or `*.prompts.ts`. Create only the files the feature needs; do not add empty layers for naming symmetry.
+- Keep tests beside their implementation as `<business-name>.<role>.test.ts`. When moving, splitting, or renaming a file, update imports, tests, documentation links, and directory trees together. Apply these rules to new files and the explicitly scoped refactor; do not mass-rename unrelated existing files.
+
+## Schema, model, and store boundaries
+
+- Define runtime validation schemas in `<business-name>.schema.ts`. Define Mongoose schemas, indexes, schema hooks, and model factories in the matching schema file under `infrastructure/mongodb/<feature>/`; never construct schemas or register models inside a store, service, route, Agent, Workflow, or server assembly file.
+- Keep `<business-name>.store.ts` limited to persistence operations and document/domain mapping. Import its model type or factory type from the matching schema module; obtain actual models through dependency injection. Put shared storage contracts in the feature's `*.types.ts`, not in the store implementation.
+- Keep queue contracts, execution contexts, options, callbacks, and named action/result types in the feature's `*.types.ts`, even when only one implementation currently consumes them. Do not declare named interfaces or type aliases in implementation modules or Vue scripts. Test-local fixture types and framework ambient declaration files may remain with their test/declaration context.
+- Keep shared, independently consumed type/interface definitions in `*.types.ts`, without executable values or initialization. Schema-derived types such as `Static<typeof Schema>`, `z.infer<typeof Schema>`, Mongoose document types, and model factory return types may stay beside the schema they describe; do not duplicate the schema's source of truth just to separate these dependent types.
+- Schema modules may compose other schema modules but must not execute business workflows, access credentials, perform queries, or import store implementations. Business initialization and pure domain operations belong in `*.domain.ts`; provider errors and other executable classes must use an appropriate implementation module rather than `*.types.ts`.
+- When correcting these boundaries, preserve model and collection names, fields, defaults, indexes, validation behavior, and persisted data formats. Update every consumer and split schema-focused tests from store-operation tests where necessary. Scan first and change actual responsibility violations; retain framework entrypoints and dependency-driven composition modules such as `models.ts`.
+
+## Localization
+
+- All user-facing features must support both English (`en-US`) and Simplified Chinese (`zh-CN`).
+- Keep all user-facing text in dedicated localization resources or presentation modules. Never hardcode user-facing text in business logic, API handlers, Agents, or Workflows.
+- Use the resolved locale consistently for prompts, validation messages, errors, labels, and status names. Language-neutral follow-ups must retain the conversation's locale; use the configured default only when no locale is available.
+- Verify both languages when adding or changing user-facing behavior.
+
 ## API and Workflow diagnostic logging
 
 - All API call chains and Workflow call chains must include structured diagnostic logs so failures can be traced end to end. Add or update this instrumentation whenever implementing or changing a chain.

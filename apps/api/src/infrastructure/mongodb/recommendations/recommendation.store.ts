@@ -1,7 +1,4 @@
-import type {
-  RecommendationState,
-  RecommendationStore,
-} from '../../../modules/recommendations/recommendation.types.js';
+import type { RecommendationState, RecommendationStore } from '../../../modules/recommendations/recommendation.types.js';
 import { emptyRecommendationState } from '../../../modules/recommendations/recommendation.domain.js';
 import type { createRecommendationModel } from './recommendation.schema.js';
 

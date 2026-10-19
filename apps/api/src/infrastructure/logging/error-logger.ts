@@ -1,11 +1,7 @@
+import type { ErrorContext } from './error-logger.types.js';
 import type { Logger } from 'pino';
 
 const loggedErrors = new WeakSet<object>();
-
-export interface ErrorContext {
-  operation: string;
-  requestId?: string;
-}
 
 export function logErrorOnce(logger: Logger, error: unknown, context: ErrorContext): Error {
   const normalized = normalizeError(error);

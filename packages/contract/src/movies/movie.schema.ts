@@ -1,6 +1,6 @@
 import { Static, Type } from '@sinclair/typebox';
 import { LocaleSchema } from '../common/locale.schema.js';
-import { MoviePreferenceSchema, MovieStatusSchema } from '../movie_statuses/movie-status.schema.js';
+import { MoviePreferenceSchema, MovieStatusSchema } from '../movie-statuses/movie-status.schema.js';
 
 export const MovieSummarySchema = Type.Object(
   {

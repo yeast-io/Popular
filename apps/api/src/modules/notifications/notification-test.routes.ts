@@ -1,12 +1,7 @@
-import {
-  ApiErrorSchema,
-  NotificationTestListSchema,
-  NotificationTestResultSchema,
-  SendNotificationTestSchema,
-  type SendNotificationTest,
-} from '@movie-hub/contract';
+import { ApiErrorSchema, NotificationTestListSchema, NotificationTestResultSchema, SendNotificationTestSchema, type SendNotificationTest } from '@movie-hub/contract';
 import type { FastifyInstance } from 'fastify';
-import { notificationTestEnabled, type AppConfig } from '../../config/env.js';
+import { notificationTestEnabled } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { NotificationTestService } from './notification-test.service.js';
 export function registerNotificationTestRoutes(

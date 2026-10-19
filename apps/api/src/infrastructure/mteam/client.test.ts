@@ -1,15 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  MTeamClient,
-  classifyMTeamHttpFailure,
-  createPinnedLookup,
-  isPublicAddress,
-  parseSearchReleases,
-  resolvePublicAddresses,
-  verificationUrl,
-  withAbsoluteTimeout,
-} from './client.js';
+import { MTeamClient, classifyMTeamHttpFailure, createPinnedLookup, isPublicAddress, parseSearchReleases, resolvePublicAddresses, verificationUrl, withAbsoluteTimeout } from './client.js';
 
 test('uses the authenticated M-Team endpoint that requires no request parameters', () => {
   assert.equal(verificationUrl('https://api.m-team.cc').href, 'https://api.m-team.cc/api/member/sysRoleList');

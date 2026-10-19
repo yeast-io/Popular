@@ -1,16 +1,8 @@
+import type { ExternalUsageLogger } from './external-usage-store.types.js';
 import { Types, type Model, type PipelineStage } from 'mongoose';
-import type {
-  ExternalRequestRecorder,
-  ExternalRequestEventInput,
-  ExternalUsageQueryResult,
-  ExternalUsageReader,
-} from '../../../modules/external-usage/external-usage.types.js';
+import type { ExternalRequestRecorder, ExternalRequestEventInput, ExternalUsageQueryResult, ExternalUsageReader } from '../../../modules/external-usage/external-usage.types.js';
 import { EXTERNAL_USAGE_RETENTION_DAYS, type ExternalRequestEventDocument } from './external-request-event.schema.js';
 import type { ExternalUsageDailyDocument } from './external-usage-daily.schema.js';
-
-export interface ExternalUsageLogger {
-  error(bindings: Record<string, unknown>, message: string): void;
-}
 
 export class MongoExternalUsageStore implements ExternalRequestRecorder, ExternalUsageReader {
   constructor(

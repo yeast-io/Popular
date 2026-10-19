@@ -93,5 +93,6 @@ export interface RecommendationCapability {
     history: LlmMessage[],
     decisions: RecommendationDecisions,
     signal?: AbortSignal,
+    locale?: Locale,
   ): Promise<RecommendationResult>;
 }

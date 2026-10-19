@@ -17,7 +17,8 @@ export interface LlmGenerateInput {
     | 'assistant.discuss'
     | 'preference.update'
     | 'assistant.recommend'
-    | 'assistant.resources.plan';
+    | 'assistant.resources.plan'
+    | 'assistant.download.plan';
 }
 
 export interface LlmGenerateResult {
@@ -43,15 +44,4 @@ export interface LlmFailureDiagnostics {
   upstreamCode?: string | undefined;
   incompleteReason?: string | undefined;
   receivedText?: boolean;
-}
-
-export class LlmProviderError extends Error {
-  constructor(
-    message: string,
-    options?: ErrorOptions,
-    public readonly diagnostics?: LlmFailureDiagnostics
-  ) {
-    super(message, options);
-    this.name = 'LlmProviderError';
-  }
 }

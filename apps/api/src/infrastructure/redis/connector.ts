@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
-import type { HealthDependency } from '../health/dependency.js';
-import { timedHealthCheck } from '../health/types.js';
+import type { HealthDependency } from '../health/health-dependency.types.js';
+import { timedHealthCheck } from '../health/health-check.service.js';
 
 export class RedisConnector implements HealthDependency {
   readonly name = 'redis' as const;

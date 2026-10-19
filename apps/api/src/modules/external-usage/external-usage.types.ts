@@ -1,5 +1,4 @@
-export const EXTERNAL_PROVIDER_ID_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
-export const EXTERNAL_PROVIDER_ID_MAX_LENGTH = 32;
+
 
 export type ExternalProviderId = string;
 export type ExternalActorType = 'user' | 'anonymous' | 'system';
@@ -69,14 +68,3 @@ export interface ExternalUsageQueryResult {
 export interface ExternalUsageReader {
   readUserUsage(ownerId: string, from: Date, to: Date): Promise<ExternalUsageQueryResult>;
 }
-
-export const systemExternalRequestContext = (trigger: ExternalRequestTrigger): ExternalRequestContext => {
-  return { actorType: 'system', trigger };
-};
-
-export const userExternalRequestContext = (
-  ownerId: string | null,
-  trigger: ExternalRequestTrigger,
-): ExternalRequestContext => {
-  return ownerId ? { actorType: 'user', ownerId, trigger } : { actorType: 'anonymous', trigger };
-};

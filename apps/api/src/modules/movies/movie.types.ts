@@ -1,3 +1,4 @@
+import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
 export interface MovieRecord {
   tmdbId: number;
   title: string;
@@ -135,7 +136,7 @@ export interface TrendingProvider {
   fetchPage(
     page: number,
     locale: Locale,
-    context?: import('../external-usage/external-usage.types.js').ExternalRequestContext,
+    context?: ExternalRequestContext,
   ): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
 }
 
@@ -144,12 +145,12 @@ export interface MovieSearchProvider {
     query: string,
     page: number,
     locale: Locale,
-    context?: import('../external-usage/external-usage.types.js').ExternalRequestContext,
+    context?: ExternalRequestContext,
   ): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
   fetchDetails(
     tmdbId: number,
     locale: Locale,
-    context?: import('../external-usage/external-usage.types.js').ExternalRequestContext,
+    context?: ExternalRequestContext,
   ): Promise<MovieDetailRecord>;
 }
 

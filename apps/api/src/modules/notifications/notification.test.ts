@@ -2,14 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NotificationService } from './notification.service.js';
 import { NotificationWorker } from './notification.worker.js';
-import {
-  CHECK_INTERVAL_MS,
-  type ClaimedDownload,
-  type NotificationChannel,
-  type NotificationPlan,
-  type NotificationPreferenceRecord,
-  type NotificationStore,
-} from './notification.types.js';
+import { CHECK_INTERVAL_MS } from './notification.policy.js';
+import type { ClaimedDownload, NotificationChannel, NotificationPlan, NotificationPreferenceRecord, NotificationStore } from './notification.types.js';
 import type { MovieDownloadProgress } from '../downloads/movie-download.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 

@@ -3,7 +3,7 @@ import test from 'node:test';
 import Fastify from 'fastify';
 import { registerPreferenceRoutes } from './preference.routes.js';
 import type { PreferenceService } from './preference.service.js';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 
 test('preference endpoints resolve owner from the session and reject client identity overrides', async () => {

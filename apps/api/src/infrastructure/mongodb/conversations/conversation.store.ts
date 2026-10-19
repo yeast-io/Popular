@@ -1,11 +1,5 @@
 import type { Model } from 'mongoose';
-import type {
-  AppendMessageInput,
-  ConversationMessage,
-  ConversationStore,
-  ConversationThread,
-  SaveConversationSummaryInput,
-} from '../../../modules/conversations/conversation.types.js';
+import type { AppendMessageInput, ConversationMessage, ConversationStore, ConversationThread, SaveConversationSummaryInput } from '../../../modules/conversations/conversation.types.js';
 import type { ConversationMessageDocument } from './conversation-message.schema.js';
 import type { ConversationThreadDocument } from './conversation-thread.schema.js';
 

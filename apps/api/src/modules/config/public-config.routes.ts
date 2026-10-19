@@ -1,7 +1,7 @@
 import { PublicConfigSchema } from '@movie-hub/contract';
 import type { FastifyInstance } from 'fastify';
 import { notificationTestEnabled, aiAssistantPageEnabled, docsPageEnabled } from '../../config/env.js';
-import type { AppConfig } from '../../config/env.js';
+import type { AppConfig } from '../../config/env.schema.js';
 
 export function registerPublicConfigRoutes(app: FastifyInstance, config: AppConfig): void {
   app.get(
