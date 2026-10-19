@@ -11,12 +11,21 @@ export interface StoredMovieResourceSyncBatch extends MovieResourceSyncBatch {
 export type SyncCounter = 'available' | 'unavailable' | 'unmatchable' | 'failed';
 
 export interface MovieResourceSyncBatchStore {
-  createOrGetActive(ownerId: string, movieIds: number[], force: boolean, now: Date): Promise<StoredMovieResourceSyncBatch>;
+  createOrGetActive(
+    ownerId: string,
+    movieIds: number[],
+    force: boolean,
+    now: Date,
+  ): Promise<StoredMovieResourceSyncBatch>;
   readCurrent(ownerId: string): Promise<StoredMovieResourceSyncBatch | null>;
   read(ownerId: string, id: string): Promise<StoredMovieResourceSyncBatch | null>;
   readRecoverable(): Promise<StoredMovieResourceSyncBatch[]>;
   setRunning(id: string): Promise<void>;
   advance(id: string, counter: SyncCounter): Promise<void>;
   pause(id: string, resumeAt: Date): Promise<void>;
-  finish(id: string, status: Extract<MovieResourceSyncStatus, 'completed' | 'failed'>, needsAction?: 'update_api_key'): Promise<void>;
+  finish(
+    id: string,
+    status: Extract<MovieResourceSyncStatus, 'completed' | 'failed'>,
+    needsAction?: 'update_api_key',
+  ): Promise<void>;
 }

@@ -6,7 +6,12 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import { aiStep } from '../../infrastructure/logging/ai-trace.js';
 
 const MAX_DOCUMENT_BYTES = 1024 * 1024;
-const titleFor = (markdown: string, path: string) => /^# +(.+?)\s*#*\s*$/m.exec(markdown)?.[1]?.trim() || path.split('/').at(-1)!.replace(/\.md$/i, '').replace(/[-_]/g, ' ');
+const titleFor = (markdown: string, path: string) => {
+  return (
+    /^# +(.+?)\s*#*\s*$/m.exec(markdown)?.[1]?.trim() ||
+    path.split('/').at(-1)!.replace(/\.md$/i, '').replace(/[-_]/g, ' ')
+  );
+};
 
 /** Discover Markdown from disk on each request; never expose arbitrary filesystem paths. */
 export class DocsService {
@@ -17,7 +22,8 @@ export class DocsService {
   private async readInside(root: string, path: string): Promise<string> {
     const canonical = await realpath(resolve(root, path));
     const local = relative(root, canonical);
-    if (!local || local.startsWith(`..${sep}`) || local === '..' || resolve(root, local) !== canonical) throw new AppError(404, 'NOT_FOUND', 'Document not found');
+    if (!local || local.startsWith(`..${sep}`) || local === '..' || resolve(root, local) !== canonical)
+      throw new AppError(404, 'NOT_FOUND', 'Document not found');
     const info = await stat(canonical);
     if (!info.isFile()) throw new AppError(404, 'NOT_FOUND', 'Document not found');
     if (info.size > MAX_DOCUMENT_BYTES) throw new AppError(413, 'BAD_REQUEST', 'Document exceeds the 1 MB limit');
@@ -27,8 +33,12 @@ export class DocsService {
   async list(): Promise<DocsEntry[]> {
     return aiStep('docs.directory.scan', async () => {
       let root: string;
-      try { root = await realpath(this.root); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
+      try {
+        root = await realpath(this.root);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw error;
+      }
       const items: DocsEntry[] = [];
       const visit = async (directory: string) => {
         const entries = await readdir(directory, { withFileTypes: true });
@@ -50,11 +60,16 @@ export class DocsService {
 
   async read(path: string): Promise<DocsDocument> {
     const entries = await this.list();
-    const entry = entries.find(item => item.path === path);
+    const entry = entries.find((item) => item.path === path);
     if (!entry) throw new AppError(404, 'NOT_FOUND', 'Document not found');
     return aiStep('docs.document.read', async () => {
-      try { return { ...entry, markdown: await this.readInside(await realpath(this.root), path) }; }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new AppError(404, 'NOT_FOUND', 'Document not found'); throw error; }
+      try {
+        return { ...entry, markdown: await this.readInside(await realpath(this.root), path) };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+          throw new AppError(404, 'NOT_FOUND', 'Document not found');
+        throw error;
+      }
     });
   }
 }

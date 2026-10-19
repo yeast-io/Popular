@@ -4,10 +4,16 @@ import { lookup } from 'node:dns/promises';
 import { request } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
-import type { MTeamRelease, MTeamResourceSearcher, MTeamTorrentDownloader } from '../../modules/integrations/movie-resource-check.types.js';
+import type {
+  MTeamRelease,
+  MTeamResourceSearcher,
+  MTeamTorrentDownloader,
+} from '../../modules/integrations/movie-resource-check.types.js';
 import type { MTeamVerifier } from '../../modules/integrations/integration.types.js';
 import type {
-  ExternalRequestContext, ExternalRequestErrorCode, ExternalRequestRecorder,
+  ExternalRequestContext,
+  ExternalRequestErrorCode,
+  ExternalRequestRecorder,
 } from '../../modules/external-usage/external-usage.types.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -25,8 +31,9 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
       const addresses = await resolvePublicAddresses(url.hostname);
       const address = addresses[0];
       if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
-      return this.observe('connection.test', context, () =>
-        postJson(url, apiKey, address, undefined, signal, MAX_RESPONSE_BYTES));
+      return this.observe('connection.test', context, () => {
+        return postJson(url, apiKey, address, undefined, signal, MAX_RESPONSE_BYTES);
+      });
     });
 
     let payload: unknown;
@@ -54,17 +61,26 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
       const addresses = await resolvePublicAddresses(url.hostname);
       const address = addresses[0];
       if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
-      return this.observe('release.search', context, () => postJson(url, apiKey, address, {
-        pageNumber: 1,
-        pageSize: 100,
-        mode: 'movie',
-        visible: 1,
-        sortField: 'SEEDERS',
-        sortDirection: 'DESC',
-        ...('imdbId' in query
-          ? { imdb: `https://www.imdb.com/title/${normalizeImdbId(query.imdbId)}/` }
-          : { keyword: query.title }),
-      }, signal, MAX_SEARCH_RESPONSE_BYTES));
+      return this.observe('release.search', context, () => {
+        return postJson(
+          url,
+          apiKey,
+          address,
+          {
+            pageNumber: 1,
+            pageSize: 100,
+            mode: 'movie',
+            visible: 1,
+            sortField: 'SEEDERS',
+            sortDirection: 'DESC',
+            ...('imdbId' in query
+              ? { imdb: `https://www.imdb.com/title/${normalizeImdbId(query.imdbId)}/` }
+              : { keyword: query.title }),
+          },
+          signal,
+          MAX_SEARCH_RESPONSE_BYTES,
+        );
+      });
     });
 
     let payload: unknown;
@@ -76,7 +92,9 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     if (!isSuccessPayload(payload)) {
       const failureType = isAuthenticationFailure(payload)
         ? 'authentication'
-        : isPermissionFailure(payload) ? 'permission' : 'remote_error';
+        : isPermissionFailure(payload)
+          ? 'permission'
+          : 'remote_error';
       throw new IntegrationValidationError(failureType, 'M-Team rejected the search request');
     }
     return parseSearchReleases(payload);
@@ -93,23 +111,37 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
       const addresses = await resolvePublicAddresses(url.hostname);
       const address = addresses[0];
       if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
-      return this.observe('torrent.download_token', context, () =>
-        postForm(url, apiKey, address, new URLSearchParams({ id: releaseId }).toString(), signal, MAX_RESPONSE_BYTES));
+      return this.observe('torrent.download_token', context, () => {
+        return postForm(
+          url,
+          apiKey,
+          address,
+          new URLSearchParams({ id: releaseId }).toString(),
+          signal,
+          MAX_RESPONSE_BYTES,
+        );
+      });
     });
     let payload: unknown;
-    try { payload = JSON.parse(tokenBody); } catch (error) {
-      throw new IntegrationValidationError('invalid_response', 'M-Team returned invalid download-token JSON', { cause: error });
+    try {
+      payload = JSON.parse(tokenBody);
+    } catch (error) {
+      throw new IntegrationValidationError('invalid_response', 'M-Team returned invalid download-token JSON', {
+        cause: error,
+      });
     }
-    if (!isSuccessPayload(payload)) throw new IntegrationValidationError('remote_error', 'M-Team rejected the torrent download request');
-    const downloadUrl = typeof (payload as { data?: unknown }).data === 'string'
-      ? new URL((payload as { data: string }).data)
-      : null;
+    if (!isSuccessPayload(payload))
+      throw new IntegrationValidationError('remote_error', 'M-Team rejected the torrent download request');
+    const downloadUrl =
+      typeof (payload as { data?: unknown }).data === 'string' ? new URL((payload as { data: string }).data) : null;
     if (!downloadUrl || downloadUrl.protocol !== 'https:' || downloadUrl.username || downloadUrl.password) {
       throw new IntegrationValidationError('invalid_response', 'M-Team returned an invalid torrent URL');
     }
-    return withAbsoluteTimeout(this.timeoutMs, async (signal) => this.observe(
-      'torrent.download', context, () => downloadPublicBytes(downloadUrl, signal, 10 * 1024 * 1024, 3),
-    ));
+    return withAbsoluteTimeout(this.timeoutMs, async (signal) => {
+      return this.observe('torrent.download', context, () => {
+        return downloadPublicBytes(downloadUrl, signal, 10 * 1024 * 1024, 3);
+      });
+    });
   }
 
   private async observe<T>(
@@ -122,12 +154,18 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     try {
       const result = await requestOperation();
       await this.record(context, {
-        operation, operationId, outcome: 'success', durationMs: Date.now() - startedAt,
+        operation,
+        operationId,
+        outcome: 'success',
+        durationMs: Date.now() - startedAt,
       });
       return result;
     } catch (error) {
       await this.record(context, {
-        operation, operationId, outcome: 'failure', durationMs: Date.now() - startedAt,
+        operation,
+        operationId,
+        outcome: 'failure',
+        durationMs: Date.now() - startedAt,
         errorCode: mteamErrorCode(error),
       });
       throw error;
@@ -147,7 +185,11 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     if (!context || !this.usage) return;
     try {
       await this.usage.record({
-        ...context, ...event, provider: 'mteam', attempt: 1, occurredAt: new Date(),
+        ...context,
+        ...event,
+        provider: 'mteam',
+        attempt: 1,
+        occurredAt: new Date(),
       });
     } catch {
       // Usage telemetry must never change the upstream request result.
@@ -159,7 +201,10 @@ function mteamErrorCode(error: unknown): ExternalRequestErrorCode {
   return error instanceof IntegrationValidationError ? error.failureType : 'internal_error';
 }
 
-export async function withAbsoluteTimeout<T>(timeoutMs: number, operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+export async function withAbsoluteTimeout<T>(
+  timeoutMs: number,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   const timeoutError = new IntegrationValidationError('timeout', 'M-Team validation timed out');
   const timer = setTimeout(() => controller.abort(timeoutError), timeoutMs);
@@ -175,7 +220,8 @@ export async function withAbsoluteTimeout<T>(timeoutMs: number, operation: (sign
 
 export async function resolvePublicAddresses(hostname: string): Promise<LookupAddress[]> {
   if (isIP(hostname)) {
-    if (!isPublicAddress(hostname)) throw new IntegrationValidationError('network', 'Private network addresses are not allowed');
+    if (!isPublicAddress(hostname))
+      throw new IntegrationValidationError('network', 'Private network addresses are not allowed');
     return [{ address: hostname, family: isIP(hostname) }];
   }
   let addresses: LookupAddress[];
@@ -196,7 +242,9 @@ export function isPublicAddress(address: string): boolean {
     const octets = address.split('.').map(Number);
     const [a = 0, b = 0, c = 0] = octets;
     return !(
-      a === 0 || a === 10 || a === 127 ||
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
       (a === 100 && b >= 64 && b <= 127) ||
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
@@ -259,28 +307,36 @@ function postJson(
     const req = request(url, options, (response) => {
       if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
         response.resume();
-        reject(new IntegrationValidationError(
-          classifyMTeamHttpFailure(response.statusCode),
-          `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`,
-        ));
+        reject(
+          new IntegrationValidationError(
+            classifyMTeamHttpFailure(response.statusCode),
+            `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`,
+          ),
+        );
         return;
       }
       const chunks: Buffer[] = [];
       let length = 0;
       response.on('data', (chunk: Buffer) => {
         length += chunk.length;
-        if (length > maxResponseBytes) response.destroy(new IntegrationValidationError('invalid_response', 'M-Team response is too large'));
+        if (length > maxResponseBytes)
+          response.destroy(new IntegrationValidationError('invalid_response', 'M-Team response is too large'));
         else chunks.push(chunk);
       });
       response.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-      response.on('error', (error) => reject(new IntegrationValidationError('invalid_response', 'Could not read M-Team response', { cause: error })));
+      response.on('error', (error) => {
+        return reject(
+          new IntegrationValidationError('invalid_response', 'Could not read M-Team response', { cause: error }),
+        );
+      });
     });
     req.on('error', (error) => {
-      const reason = signal.aborted && signal.reason instanceof IntegrationValidationError
-        ? signal.reason
-        : error instanceof IntegrationValidationError
-          ? error
-          : new IntegrationValidationError('network', 'Could not connect to M-Team', { cause: error });
+      const reason =
+        signal.aborted && signal.reason instanceof IntegrationValidationError
+          ? signal.reason
+          : error instanceof IntegrationValidationError
+            ? error
+            : new IntegrationValidationError('network', 'Could not connect to M-Team', { cause: error });
       reject(reason);
     });
     req.end(body ? JSON.stringify(body) : undefined);
@@ -295,16 +351,23 @@ function postForm(
   signal: AbortSignal,
   maxResponseBytes: number,
 ): Promise<string> {
-  return requestBytes(url, address, signal, maxResponseBytes, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-      'content-length': Buffer.byteLength(body),
-      'user-agent': 'MovieHub/1.0',
-      'x-api-key': apiKey,
+  return requestBytes(
+    url,
+    address,
+    signal,
+    maxResponseBytes,
+    {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded',
+        'content-length': Buffer.byteLength(body),
+        'user-agent': 'MovieHub/1.0',
+        'x-api-key': apiKey,
+      },
     },
-  }, body).then((value) => value.toString('utf8'));
+    body,
+  ).then((value) => value.toString('utf8'));
 }
 
 async function downloadPublicBytes(
@@ -320,46 +383,77 @@ async function downloadPublicBytes(
   const address = addresses[0];
   if (!address) throw new IntegrationValidationError('network', 'M-Team torrent hostname did not resolve');
   return new Promise((resolve, reject) => {
-    const req = request(url, {
-      method: 'GET', signal, family: address.family, lookup: createPinnedLookup(address),
-      headers: { accept: 'application/x-bittorrent', 'user-agent': 'MovieHub/1.0' },
-    }, (response) => {
-      if (response.statusCode && [301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-        response.resume();
-        if (redirectsRemaining <= 0) {
-          reject(new IntegrationValidationError('invalid_response', 'M-Team torrent download redirected too many times'));
+    const req = request(
+      url,
+      {
+        method: 'GET',
+        signal,
+        family: address.family,
+        lookup: createPinnedLookup(address),
+        headers: { accept: 'application/x-bittorrent', 'user-agent': 'MovieHub/1.0' },
+      },
+      (response) => {
+        if (
+          response.statusCode &&
+          [301, 302, 303, 307, 308].includes(response.statusCode) &&
+          response.headers.location
+        ) {
+          response.resume();
+          if (redirectsRemaining <= 0) {
+            reject(
+              new IntegrationValidationError('invalid_response', 'M-Team torrent download redirected too many times'),
+            );
+            return;
+          }
+          let next: URL;
+          try {
+            next = new URL(response.headers.location, url);
+          } catch (error) {
+            reject(
+              new IntegrationValidationError('invalid_response', 'M-Team returned an invalid torrent redirect', {
+                cause: error,
+              }),
+            );
+            return;
+          }
+          downloadPublicBytes(next, signal, maxResponseBytes, redirectsRemaining - 1).then(resolve, reject);
           return;
         }
-        let next: URL;
-        try { next = new URL(response.headers.location, url); } catch (error) {
-          reject(new IntegrationValidationError('invalid_response', 'M-Team returned an invalid torrent redirect', { cause: error }));
+        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+          response.resume();
+          reject(
+            new IntegrationValidationError(
+              classifyMTeamHttpFailure(response.statusCode),
+              `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`,
+            ),
+          );
           return;
         }
-        downloadPublicBytes(next, signal, maxResponseBytes, redirectsRemaining - 1).then(resolve, reject);
-        return;
-      }
-      if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-        response.resume();
-        reject(new IntegrationValidationError(classifyMTeamHttpFailure(response.statusCode), `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`));
-        return;
-      }
-      const chunks: Buffer[] = [];
-      let length = 0;
-      response.on('data', (chunk: Buffer) => {
-        length += chunk.length;
-        if (length > maxResponseBytes) response.destroy(new IntegrationValidationError('invalid_response', 'M-Team torrent is too large'));
-        else chunks.push(chunk);
-      });
-      response.on('end', () => resolve(Buffer.concat(chunks)));
-      response.on('error', (error) => reject(new IntegrationValidationError('invalid_response', 'Could not read M-Team torrent', { cause: error })));
+        const chunks: Buffer[] = [];
+        let length = 0;
+        response.on('data', (chunk: Buffer) => {
+          length += chunk.length;
+          if (length > maxResponseBytes)
+            response.destroy(new IntegrationValidationError('invalid_response', 'M-Team torrent is too large'));
+          else chunks.push(chunk);
+        });
+        response.on('end', () => resolve(Buffer.concat(chunks)));
+        response.on('error', (error) => {
+          return reject(
+            new IntegrationValidationError('invalid_response', 'Could not read M-Team torrent', { cause: error }),
+          );
+        });
+      },
+    );
+    req.on('error', (error) => {
+      return reject(
+        signal.aborted && signal.reason instanceof IntegrationValidationError
+          ? signal.reason
+          : error instanceof IntegrationValidationError
+            ? error
+            : new IntegrationValidationError('network', 'Could not download M-Team torrent', { cause: error }),
+      );
     });
-    req.on('error', (error) => reject(
-      signal.aborted && signal.reason instanceof IntegrationValidationError
-        ? signal.reason
-        : error instanceof IntegrationValidationError
-          ? error
-          : new IntegrationValidationError('network', 'Could not download M-Team torrent', { cause: error }),
-    ));
     req.end();
   });
 }
@@ -373,36 +467,50 @@ function requestBytes(
   body?: string,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const req = request(url, { ...options, signal, family: address.family, lookup: createPinnedLookup(address) }, (response) => {
-      if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-        response.resume();
-        reject(new IntegrationValidationError(classifyMTeamHttpFailure(response.statusCode), `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`));
-        return;
-      }
-      const chunks: Buffer[] = [];
-      let length = 0;
-      response.on('data', (chunk: Buffer) => {
-        length += chunk.length;
-        if (length > maxResponseBytes) response.destroy(new IntegrationValidationError('invalid_response', 'M-Team response is too large'));
-        else chunks.push(chunk);
-      });
-      response.on('end', () => resolve(Buffer.concat(chunks)));
-      response.on('error', (error) => reject(new IntegrationValidationError('invalid_response', 'Could not read M-Team response', { cause: error })));
+    const req = request(
+      url,
+      { ...options, signal, family: address.family, lookup: createPinnedLookup(address) },
+      (response) => {
+        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+          response.resume();
+          reject(
+            new IntegrationValidationError(
+              classifyMTeamHttpFailure(response.statusCode),
+              `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`,
+            ),
+          );
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let length = 0;
+        response.on('data', (chunk: Buffer) => {
+          length += chunk.length;
+          if (length > maxResponseBytes)
+            response.destroy(new IntegrationValidationError('invalid_response', 'M-Team response is too large'));
+          else chunks.push(chunk);
+        });
+        response.on('end', () => resolve(Buffer.concat(chunks)));
+        response.on('error', (error) => {
+          return reject(
+            new IntegrationValidationError('invalid_response', 'Could not read M-Team response', { cause: error }),
+          );
+        });
+      },
+    );
+    req.on('error', (error) => {
+      return reject(
+        signal.aborted && signal.reason instanceof IntegrationValidationError
+          ? signal.reason
+          : error instanceof IntegrationValidationError
+            ? error
+            : new IntegrationValidationError('network', 'Could not connect to M-Team', { cause: error }),
+      );
     });
-    req.on('error', (error) => reject(
-      signal.aborted && signal.reason instanceof IntegrationValidationError
-        ? signal.reason
-        : error instanceof IntegrationValidationError
-          ? error
-          : new IntegrationValidationError('network', 'Could not connect to M-Team', { cause: error }),
-    ));
     req.end(body);
   });
 }
 
-export function classifyMTeamHttpFailure(
-  statusCode: number | undefined,
-): IntegrationValidationError['failureType'] {
+export function classifyMTeamHttpFailure(statusCode: number | undefined): IntegrationValidationError['failureType'] {
   if (statusCode === 401) return 'authentication';
   if (statusCode === 403) return 'permission';
   if (statusCode === 429) return 'rate_limited';
@@ -424,9 +532,10 @@ function isAuthenticationFailure(payload: unknown): boolean {
 
 function isPermissionFailure(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return false;
-  const message = typeof (payload as { message?: unknown }).message === 'string'
-    ? (payload as { message: string }).message.toLowerCase()
-    : '';
+  const message =
+    typeof (payload as { message?: unknown }).message === 'string'
+      ? (payload as { message: string }).message.toLowerCase()
+      : '';
   return /permission|forbidden|權限|权限/.test(message);
 }
 
@@ -467,7 +576,13 @@ function parseRelease(value: unknown): MTeamRelease {
   const audioCodec = describeCode(readString(row.audioCodec), audioCodecNames);
   if (!id || !title) throw invalidSearchResponse();
   const tags = Array.isArray(row.labelsNew)
-    ? row.labelsNew.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0).map((tag) => tag.trim())
+    ? row.labelsNew
+        .filter((tag): tag is string => {
+          return typeof tag === 'string' && tag.trim().length > 0;
+        })
+        .map((tag) => {
+          return tag.trim();
+        })
     : undefined;
   return {
     id,
@@ -489,20 +604,50 @@ function parseRelease(value: unknown): MTeamRelease {
 }
 
 const resolutionNames: Readonly<Record<string, string>> = {
-  '1': '1080p', '2': '1080i', '3': '720p', '5': 'SD', '6': '4K', '7': '8K',
+  '1': '1080p',
+  '2': '1080i',
+  '3': '720p',
+  '5': 'SD',
+  '6': '4K',
+  '7': '8K',
 };
 const mediumNames: Readonly<Record<string, string>> = {
-  '1': 'Blu-ray', '2': 'HD DVD', '3': 'Remux', '4': 'Blu-ray', '5': 'HDTV',
-  '6': 'DVD', '7': 'Encode', '8': 'CD', '10': 'WEB',
+  '1': 'Blu-ray',
+  '2': 'HD DVD',
+  '3': 'Remux',
+  '4': 'Blu-ray',
+  '5': 'HDTV',
+  '6': 'DVD',
+  '7': 'Encode',
+  '8': 'CD',
+  '10': 'WEB',
 };
 const videoCodecNames: Readonly<Record<string, string>> = {
-  '1': 'H.264', '2': 'VC-1', '3': 'Xvid', '4': 'MPEG-2', '16': 'H.265',
-  '19': 'AV1', '21': 'VP8/9', '22': 'AVS',
+  '1': 'H.264',
+  '2': 'VC-1',
+  '3': 'Xvid',
+  '4': 'MPEG-2',
+  '16': 'H.265',
+  '19': 'AV1',
+  '21': 'VP8/9',
+  '22': 'AVS',
 };
 const audioCodecNames: Readonly<Record<string, string>> = {
-  '1': 'FLAC', '2': 'APE', '3': 'DTS', '4': 'MP2/3', '5': 'OGG', '6': 'AAC',
-  '7': 'Other', '8': 'AC3', '9': 'TrueHD', '10': 'TrueHD Atmos', '11': 'DTS-HD MA',
-  '12': 'E-AC3', '13': 'E-AC3 Atmos', '14': 'LPCM/PCM', '15': 'WAV',
+  '1': 'FLAC',
+  '2': 'APE',
+  '3': 'DTS',
+  '4': 'MP2/3',
+  '5': 'OGG',
+  '6': 'AAC',
+  '7': 'Other',
+  '8': 'AC3',
+  '9': 'TrueHD',
+  '10': 'TrueHD Atmos',
+  '11': 'DTS-HD MA',
+  '12': 'E-AC3',
+  '13': 'E-AC3 Atmos',
+  '14': 'LPCM/PCM',
+  '15': 'WAV',
 };
 
 function readString(value: unknown): string | undefined {
@@ -512,11 +657,12 @@ function readString(value: unknown): string | undefined {
 }
 
 function describeCode(value: string | undefined, names: Readonly<Record<string, string>>): string | undefined {
-  return value ? names[value] ?? value : undefined;
+  return value ? (names[value] ?? value) : undefined;
 }
 
 function parseNonNegativeInteger(value: unknown): number | null {
-  const number = typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
+  const number =
+    typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
   return Number.isSafeInteger(number) && number >= 0 ? number : null;
 }
 

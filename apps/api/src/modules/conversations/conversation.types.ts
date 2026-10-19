@@ -93,11 +93,7 @@ export interface ConversationStore {
     clientRequestId: string,
   ): Promise<ConversationMessage | null>;
 
-  listRecentMessages(
-    ownerId: string,
-    threadId: string,
-    limit: number,
-  ): Promise<ConversationMessage[]>;
+  listRecentMessages(ownerId: string, threadId: string, limit: number): Promise<ConversationMessage[]>;
 
   listMessagesAfterSequence(
     ownerId: string,

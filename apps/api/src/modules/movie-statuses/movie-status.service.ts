@@ -1,4 +1,12 @@
-import type { Locale, MovieReleaseListResponse, MovieResourceCheckResponse, MyMoviesFilter, MyMoviesResponse, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
+import type {
+  Locale,
+  MovieReleaseListResponse,
+  MovieResourceCheckResponse,
+  MyMoviesFilter,
+  MyMoviesResponse,
+  TrackedMoviePreference,
+  TrackedMovieStatus,
+} from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieCatalogStore, MovieStatusStore } from '../movies/movie.types.js';
 import { toMovieSummary } from '../movies/movie.service.js';
@@ -20,7 +28,8 @@ export class MovieStatusService {
   ) {}
 
   async set(ownerId: string, tmdbId: number, status: TrackedMovieStatus) {
-    if (!await this.movies.hasMovie(tmdbId)) throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded from search or trending before it can be saved.');
+    if (!(await this.movies.hasMovie(tmdbId)))
+      throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded from search or trending before it can be saved.');
     const previousStatus = await this.statuses.setStatus(ownerId, tmdbId, status);
     if (status === 'interested' && previousStatus !== 'interested') {
       this.resourceChecks?.schedule(ownerId, tmdbId, { force: true });
@@ -34,7 +43,8 @@ export class MovieStatusService {
   }
 
   async setPreference(ownerId: string, tmdbId: number, preference: TrackedMoviePreference) {
-    if (!await this.movies.hasMovie(tmdbId)) throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded from search or trending before it can be saved.');
+    if (!(await this.movies.hasMovie(tmdbId)))
+      throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded from search or trending before it can be saved.');
     await this.statuses.setPreference(ownerId, tmdbId, preference);
     return { tmdbId, preference };
   }
@@ -76,8 +86,16 @@ export class MovieStatusService {
       if (item.status === 'interested') this.resourceChecks?.schedule(ownerId, item.tmdbId);
     }
     const [movies, resourceChecks] = await Promise.all([
-      this.movies.readMovies(result.items.map(({ tmdbId }) => tmdbId), locale),
-      this.resourceCheckStore?.readForMovies(ownerId, result.items.map(({ tmdbId }) => tmdbId)) ?? [],
+      this.movies.readMovies(
+        result.items.map(({ tmdbId }) => tmdbId),
+        locale,
+      ),
+      this.resourceCheckStore?.readForMovies(
+        ownerId,
+        result.items.map(({ tmdbId }) => {
+          return tmdbId;
+        }),
+      ) ?? [],
     ]);
     const stateById = new Map(result.items.map((item) => [item.tmdbId, item]));
     const resourceCheckById = new Map(resourceChecks.map((check) => [check.tmdbId, check]));
@@ -87,11 +105,17 @@ export class MovieStatusService {
         const storedResourceCheck = resourceCheckById.get(movie.tmdbId);
         const resourceCheck = storedResourceCheck
           ? toResourceCheckResponse(storedResourceCheck)
-          : state?.status === 'interested' ? emptyResourceCheck() : undefined;
-        return state ? [{
-          ...toMovieSummary(movie, state.status, state.preference),
-          ...(resourceCheck ? { resourceCheck } : {}),
-        }] : [];
+          : state?.status === 'interested'
+            ? emptyResourceCheck()
+            : undefined;
+        return state
+          ? [
+              {
+                ...toMovieSummary(movie, state.status, state.preference),
+                ...(resourceCheck ? { resourceCheck } : {}),
+              },
+            ]
+          : [];
       }),
       pagination: { page, pageSize, total: result.total, hasMore: page * pageSize < result.total },
       locale,
@@ -121,9 +145,13 @@ function toResourceCheckResponse(
 
 function publicMTeamErrorCode(code: string) {
   const codes = {
-    authentication: 'MTEAM_AUTH_FAILED', permission: 'MTEAM_AUTH_FAILED',
-    network: 'MTEAM_UNREACHABLE', timeout: 'MTEAM_TIMEOUT', rate_limited: 'MTEAM_RATE_LIMITED',
-    invalid_response: 'MTEAM_UNEXPECTED_RESPONSE', remote_error: 'MTEAM_UNEXPECTED_RESPONSE',
+    authentication: 'MTEAM_AUTH_FAILED',
+    permission: 'MTEAM_AUTH_FAILED',
+    network: 'MTEAM_UNREACHABLE',
+    timeout: 'MTEAM_TIMEOUT',
+    rate_limited: 'MTEAM_RATE_LIMITED',
+    invalid_response: 'MTEAM_UNEXPECTED_RESPONSE',
+    remote_error: 'MTEAM_UNEXPECTED_RESPONSE',
     internal_error: 'MTEAM_UNEXPECTED_RESPONSE',
   } as const;
   return codes[code as keyof typeof codes] ?? 'MTEAM_UNEXPECTED_RESPONSE';

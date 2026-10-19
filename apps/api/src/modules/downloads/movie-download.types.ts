@@ -36,7 +36,12 @@ export interface MovieDownloadProgress {
 
 export interface MovieDownloadStore {
   findByRelease(ownerId: string, tmdbId: number, releaseId: string): Promise<MovieDownloadRecord | null>;
-  createSubmitting(ownerId: string, tmdbId: number, releaseId: string, provider: DownloadProvider): Promise<DownloadClaim>;
+  createSubmitting(
+    ownerId: string,
+    tmdbId: number,
+    releaseId: string,
+    provider: DownloadProvider,
+  ): Promise<DownloadClaim>;
   retry(id: string): Promise<DownloadClaim>;
   listForMovie(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]>;
   updateProgress(id: string, progress: MovieDownloadProgress): Promise<MovieDownloadRecord>;

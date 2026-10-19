@@ -9,7 +9,10 @@ import { localizedErrorMessage, localizedResponseError } from '../../i18n/api-er
 const emit = defineEmits<{ bindingChange: [] }>();
 const { apiBaseUrl } = loadWebConfig();
 const state = ref<WhatsAppConfiguration>({ status: 'unbound' });
-watch(() => state.value.status, () => emit('bindingChange'));
+watch(
+  () => state.value.status,
+  () => emit('bindingChange'),
+);
 const loading = ref(true);
 const busy = ref(false);
 const confirmRemove = ref(false);
@@ -20,14 +23,22 @@ let version = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let controller: AbortController | undefined;
 const statusLabels = {
-  unbound: 'whatsapp.unbound', connecting: 'whatsapp.connecting', qr: 'whatsapp.qr', pairing: 'whatsapp.pairing',
-  connected: 'whatsapp.connected', disconnected: 'whatsapp.disconnected', error: 'whatsapp.error',
+  unbound: 'whatsapp.unbound',
+  connecting: 'whatsapp.connecting',
+  qr: 'whatsapp.qr',
+  pairing: 'whatsapp.pairing',
+  connected: 'whatsapp.connected',
+  disconnected: 'whatsapp.disconnected',
+  error: 'whatsapp.error',
 } as const;
 
 async function request(method = 'GET', suffix = '') {
   controller = new AbortController();
   const response = await fetch(`${apiBaseUrl}/me/integrations/whatsapp${suffix}`, {
-    method, credentials: 'include', cache: 'no-store', signal: controller.signal,
+    method,
+    credentials: 'include',
+    cache: 'no-store',
+    signal: controller.signal,
   });
   if (!response.ok) throw await localizedResponseError(response);
   return response.status === 204 ? null : await response.json();
@@ -36,14 +47,19 @@ async function refresh() {
   const current = version;
   try {
     const result = await request();
-    if (!disposed && current === version) { state.value = result; errorMessage.value = ''; }
+    if (!disposed && current === version) {
+      state.value = result;
+      errorMessage.value = '';
+    }
   } catch (error) {
     if (!disposed && current === version) {
       // Never leave a stale login QR visible after a failed status request.
       state.value = { status: 'error' };
       errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
     }
-  } finally { if (!disposed) loading.value = false; }
+  } finally {
+    if (!disposed) loading.value = false;
+  }
 }
 function schedule() {
   if (disposed) return;
@@ -57,7 +73,8 @@ async function act(action: 'bind' | 'test' | 'remove') {
   busy.value = true;
   version++;
   controller?.abort();
-  errorMessage.value = ''; successMessage.value = '';
+  errorMessage.value = '';
+  successMessage.value = '';
   try {
     const result = await request(action === 'remove' ? 'DELETE' : 'POST', action === 'remove' ? '' : `/${action}`);
     if (disposed) return;
@@ -66,9 +83,14 @@ async function act(action: 'bind' | 'test' | 'remove') {
     confirmRemove.value = false;
   } catch (error) {
     if (!disposed) errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
-  } finally { if (!disposed) busy.value = false; }
+  } finally {
+    if (!disposed) busy.value = false;
+  }
 }
-onMounted(async () => { await refresh(); schedule(); });
+onMounted(async () => {
+  await refresh();
+  schedule();
+});
 onUnmounted(() => {
   disposed = true;
   if (timer) clearTimeout(timer);
@@ -78,14 +100,29 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <IntegrationCard id="whatsapp" title="WhatsApp" badge="WA" :description="t('settings.whatsappSummary')"
-    :status-label="t(statusLabels[state.status])" :status-class="state.status === 'connected' ? 'configured_valid' : 'unconfigured'" :configured="state.status === 'connected'" :busy="busy" :force-open="state.status === 'qr' || state.status === 'connecting' || state.status === 'pairing'" :action-label="state.status === 'unbound' ? t('settings.bind') : undefined" @open="state.status === 'unbound' && act('bind')" :loading="loading" :notice="errorMessage">
+  <IntegrationCard
+    id="whatsapp"
+    title="WhatsApp"
+    badge="WA"
+    :description="t('settings.whatsappSummary')"
+    :status-label="t(statusLabels[state.status])"
+    :status-class="state.status === 'connected' ? 'configured_valid' : 'unconfigured'"
+    :configured="state.status === 'connected'"
+    :busy="busy"
+    :force-open="state.status === 'qr' || state.status === 'connecting' || state.status === 'pairing'"
+    :action-label="state.status === 'unbound' ? t('settings.bind') : undefined"
+    @open="state.status === 'unbound' && act('bind')"
+    :loading="loading"
+    :notice="errorMessage"
+  >
     <p v-if="loading" class="loading compact-loading">{{ t('whatsapp.loading') }}</p>
     <div v-else class="integration-form">
       <p class="connection-note">{{ t('whatsapp.limitations') }}</p>
       <p v-if="state.failureReason" class="error settings-message" role="alert">
         {{ t(`whatsapp.failure.${state.failureReason}`) }}
-        <span v-if="state.disconnectCode !== undefined">{{ t('whatsapp.disconnectCode', { code: state.disconnectCode }) }}</span>
+        <span v-if="state.disconnectCode !== undefined">{{
+          t('whatsapp.disconnectCode', { code: state.disconnectCode })
+        }}</span>
       </p>
       <p v-if="state.status === 'pairing'" role="status">{{ t('whatsapp.pairingHint') }}</p>
       <p v-if="state.account">{{ t('whatsapp.account') }}: {{ state.account }}</p>
@@ -105,13 +142,41 @@ onUnmounted(() => {
         <div class="integration-actions">
           <template v-if="confirmRemove">
             <span>{{ t('whatsapp.removeConfirm') }}</span>
-            <button class="secondary" type="button" :disabled="busy" @click="confirmRemove = false">{{ t('qbittorrent.cancel') }}</button>
-            <button class="secondary danger" type="button" :disabled="busy" @click="act('remove')">{{ t('whatsapp.confirmRemove') }}</button>
+            <button class="secondary" type="button" :disabled="busy" @click="confirmRemove = false">
+              {{ t('qbittorrent.cancel') }}
+            </button>
+            <button class="secondary danger" type="button" :disabled="busy" @click="act('remove')">
+              {{ t('whatsapp.confirmRemove') }}
+            </button>
           </template>
           <template v-else>
-            <button v-if="state.status !== 'unbound'" class="secondary danger" type="button" :disabled="busy" @click="confirmRemove = true">{{ t('whatsapp.remove') }}</button>
-            <button v-if="state.status === 'connected'" class="primary" type="button" :disabled="busy" @click="act('test')">{{ t('whatsapp.test') }}</button>
-            <button v-else class="primary" type="button" :disabled="busy || state.status === 'connecting' || state.status === 'qr' || state.status === 'pairing'" @click="act('bind')">{{ t('whatsapp.bind') }}</button>
+            <button
+              v-if="state.status !== 'unbound'"
+              class="secondary danger"
+              type="button"
+              :disabled="busy"
+              @click="confirmRemove = true"
+            >
+              {{ t('whatsapp.remove') }}
+            </button>
+            <button
+              v-if="state.status === 'connected'"
+              class="primary"
+              type="button"
+              :disabled="busy"
+              @click="act('test')"
+            >
+              {{ t('whatsapp.test') }}
+            </button>
+            <button
+              v-else
+              class="primary"
+              type="button"
+              :disabled="busy || state.status === 'connecting' || state.status === 'qr' || state.status === 'pairing'"
+              @click="act('bind')"
+            >
+              {{ t('whatsapp.bind') }}
+            </button>
           </template>
         </div>
       </div>
@@ -120,6 +185,15 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.whatsapp-pairing { display: grid; justify-items: start; gap: 0.75rem; }
-.whatsapp-pairing img { max-width: 100%; height: auto; background: white; border-radius: 0.5rem; }
+.whatsapp-pairing {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+}
+.whatsapp-pairing img {
+  max-width: 100%;
+  height: auto;
+  background: white;
+  border-radius: 0.5rem;
+}
 </style>

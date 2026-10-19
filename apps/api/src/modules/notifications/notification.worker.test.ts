@@ -4,12 +4,28 @@ import { NotificationWorker } from './notification.worker.js';
 
 function fixture(enabled: boolean, fail = false) {
   const events: string[] = [];
-  const service = { store: {
-    claimIntent: async () => { if (fail) throw new Error('database unavailable'); return null; },
-    claimTask: async () => null,
-  } };
-  const worker = new NotificationWorker(service as never, {} as never, {} as never, 'zh-CN', 'http://localhost',
-    event => { events.push(event); }, undefined, undefined, enabled);
+  const service = {
+    store: {
+      claimIntent: async () => {
+        if (fail) throw new Error('database unavailable');
+        return null;
+      },
+      claimTask: async () => null,
+    },
+  };
+  const worker = new NotificationWorker(
+    service as never,
+    {} as never,
+    {} as never,
+    'zh-CN',
+    'http://localhost',
+    (event) => {
+      events.push(event);
+    },
+    undefined,
+    undefined,
+    enabled,
+  );
   return { worker, events };
 }
 

@@ -27,7 +27,8 @@ tester.run('constructor-layout', rule, {
     },
     {
       code: 'class Service {\n  constructor(private readonly store: Store, private readonly limit = 5) {}\n}',
-      output: 'class Service {\n  constructor(\n    private readonly store: Store,\n    private readonly limit = 5\n  ) {}\n}',
+      output:
+        'class Service {\n  constructor(\n    private readonly store: Store,\n    private readonly limit = 5\n  ) {}\n}',
       errors: [{ messageId: 'parameter' }, { messageId: 'parameter' }, { messageId: 'closingParen' }],
     },
     {
@@ -45,8 +46,10 @@ tester.run('constructor-layout', rule, {
 
 test('the project config enforces constructor layout inside Vue TypeScript scripts', async () => {
   const eslint = new ESLint({ fix: true });
-  const [result] = await eslint.lintText('<script setup lang="ts">\nclass Probe {\n  constructor(public readonly value: number) {}\n}\nconst probe = new Probe(1);\n</script>\n<template><span>{{ probe.value }}</span></template>',
-    { filePath: 'apps/web/src/features/settings/LintProbe.vue' });
+  const [result] = await eslint.lintText(
+    '<script setup lang="ts">\nclass Probe {\n  constructor(public readonly value: number) {}\n}\nconst probe = new Probe(1);\n</script>\n<template><span>{{ probe.value }}</span></template>',
+    { filePath: 'apps/web/src/features/settings/LintProbe.vue' },
+  );
   assert.equal(result.errorCount, 0);
   assert.equal(result.warningCount, 0);
   assert.match(result.output, /constructor\(\n {4}public readonly value: number\n {2}\) \{\}/);

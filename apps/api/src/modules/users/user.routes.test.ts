@@ -27,30 +27,53 @@ const config = loadConfig({
 
 class MemoryUsers implements AuthUserStore {
   readonly users = new Map<string, StoredUser>();
-  async countUsers() { return this.users.size; }
+  async countUsers() {
+    return this.users.size;
+  }
   async createPasswordUser(input: Omit<StoredUser, 'id'>) {
     if (this.users.has(input.email)) throw new DuplicateEmailError();
     const user = { ...input, id: String(this.users.size + 1) };
     this.users.set(user.email, user);
     return user;
   }
-  async findByEmailWithPassword(email: string) { return this.users.get(email) ?? null; }
-  async findById(id: string) { return [...this.users.values()].find((user) => user.id === id) ?? null; }
+  async findByEmailWithPassword(email: string) {
+    return this.users.get(email) ?? null;
+  }
+  async findById(id: string) {
+    return (
+      [...this.users.values()].find((user) => {
+        return user.id === id;
+      }) ?? null
+    );
+  }
   async updateDisplayName(id: string, displayName: string) {
-    const user = await this.findById(id); if (!user) return null; user.displayName = displayName; return user;
+    const user = await this.findById(id);
+    if (!user) return null;
+    user.displayName = displayName;
+    return user;
   }
   async updateAvatarObjectKey(id: string, avatarObjectKey: string | undefined) {
-    const user = await this.findById(id); if (!user) return null;
-    if (avatarObjectKey) user.avatarObjectKey = avatarObjectKey; else delete user.avatarObjectKey;
+    const user = await this.findById(id);
+    if (!user) return null;
+    if (avatarObjectKey) user.avatarObjectKey = avatarObjectKey;
+    else delete user.avatarObjectKey;
     return user;
   }
 }
 
 class MemorySessions implements SessionStore {
   readonly sessions = new Map<string, string>();
-  async create(ownerId: string) { const token = `session-${ownerId}`; this.sessions.set(token, ownerId); return token; }
-  async getOwnerId(token: string) { return this.sessions.get(token) ?? null; }
-  async delete(token: string) { this.sessions.delete(token); }
+  async create(ownerId: string) {
+    const token = `session-${ownerId}`;
+    this.sessions.set(token, ownerId);
+    return token;
+  }
+  async getOwnerId(token: string) {
+    return this.sessions.get(token) ?? null;
+  }
+  async delete(token: string) {
+    this.sessions.delete(token);
+  }
 }
 
 class MemoryAvatars implements AvatarStore {
@@ -65,7 +88,9 @@ class MemoryAvatars implements AvatarStore {
     if (!object) throw new Error('missing object');
     return { stream: Readable.from(object.bytes), contentType: object.contentType };
   }
-  async delete(objectKey: string) { this.objects.delete(objectKey); }
+  async delete(objectKey: string) {
+    this.objects.delete(objectKey);
+  }
 }
 
 async function fixture() {
@@ -76,7 +101,8 @@ async function fixture() {
   const userService = new UserService(auth, users, avatars, config.AVATAR_MAX_BYTES, config.AVATAR_MAX_PIXELS);
   const app = await buildApp({ config, healthDependencies: [], authService: auth, userService });
   const registration = await app.inject({
-    method: 'POST', url: '/api/v1/auth/register',
+    method: 'POST',
+    url: '/api/v1/auth/register',
     payload: { email: 'person@example.com', password: 'correct horse battery staple', displayName: 'Person' },
   });
   const rawCookie = registration.headers['set-cookie'];
@@ -87,8 +113,12 @@ async function fixture() {
 test('authenticated user updates only their own display name', async () => {
   const { app, cookie } = await fixture();
   const response = await app.inject({
-    method: 'PATCH', url: '/api/v1/users/me', headers: { cookie }, payload: { displayName: '  New Name  ' },
-  });
+    method: 'PATCH',
+    url: '/api/v1/users/me',
+    headers: { cookie },
+    payload: { displayName: '  New Name  ' },
+  }
+  );
   assert.equal(response.statusCode, 200);
   assert.equal(response.json().user.displayName, 'New Name');
   assert.equal(response.json().user.email, 'person@example.com');
@@ -99,8 +129,12 @@ test('avatar upload validates file bytes and supports authenticated read and del
   const { app, avatars, cookie } = await fixture();
   const png = pngHeader(1, 1);
   const upload = await app.inject({
-    method: 'PUT', url: '/api/v1/users/me/avatar', headers: { cookie, 'content-type': 'image/png' }, payload: png,
-  });
+    method: 'PUT',
+    url: '/api/v1/users/me/avatar',
+    headers: { cookie, 'content-type': 'image/png' },
+    payload: png,
+  }
+  );
   assert.equal(upload.statusCode, 200);
   assert.match(upload.json().user.avatarUrl, /^\/api\/v1\/users\/me\/avatar\?v=/);
   assert.equal(avatars.objects.size, 1);
@@ -121,8 +155,12 @@ test('avatar upload validates file bytes and supports authenticated read and del
 test('avatar upload rejects content that is not a supported image', async () => {
   const { app, cookie } = await fixture();
   const response = await app.inject({
-    method: 'PUT', url: '/api/v1/users/me/avatar', headers: { cookie, 'content-type': 'image/png' }, payload: Buffer.from('not an image'),
-  });
+    method: 'PUT',
+    url: '/api/v1/users/me/avatar',
+    headers: { cookie, 'content-type': 'image/png' },
+    payload: Buffer.from('not an image'),
+  }
+  );
   assert.equal(response.statusCode, 400);
   assert.equal(response.json().error.code, 'VALIDATION_ERROR');
   await app.close();
@@ -131,8 +169,12 @@ test('avatar upload rejects content that is not a supported image', async () => 
 test('avatar upload enforces the configured pixel limit', async () => {
   const { app, cookie } = await fixture();
   const response = await app.inject({
-    method: 'PUT', url: '/api/v1/users/me/avatar', headers: { cookie, 'content-type': 'image/png' }, payload: pngHeader(3, 2),
-  });
+    method: 'PUT',
+    url: '/api/v1/users/me/avatar',
+    headers: { cookie, 'content-type': 'image/png' },
+    payload: pngHeader(3, 2),
+  }
+  );
   assert.equal(response.statusCode, 400);
   assert.equal(response.json().error.code, 'VALIDATION_ERROR');
   await app.close();
@@ -143,8 +185,12 @@ test('avatar upload enforces the configured byte limit', async () => {
   const oversized = Buffer.alloc(1025);
   oversized.set([137, 80, 78, 71, 13, 10, 26, 10]);
   const response = await app.inject({
-    method: 'PUT', url: '/api/v1/users/me/avatar', headers: { cookie, 'content-type': 'image/png' }, payload: oversized,
-  });
+    method: 'PUT',
+    url: '/api/v1/users/me/avatar',
+    headers: { cookie, 'content-type': 'image/png' },
+    payload: oversized,
+  }
+  );
   assert.equal(response.statusCode, 413);
   assert.equal(response.json().error.code, 'BAD_REQUEST');
   await app.close();

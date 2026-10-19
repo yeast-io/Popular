@@ -14,12 +14,16 @@ export function registerExternalUsageRoutes(
   service: ExternalUsageService,
   config: AppConfig,
 ): void {
-  app.get<{ Querystring: ExternalUsageQuery }>('/me/external-usage', {
-    schema: {
-      querystring: ExternalUsageQuerySchema,
-      response: { 200: ExternalUsageResponseSchema, 401: ApiErrorSchema },
+  app.get<{ Querystring: ExternalUsageQuery }>(
+    '/me/external-usage',
+    {
+      schema: {
+        querystring: ExternalUsageQuerySchema,
+        response: { 200: ExternalUsageResponseSchema, 401: ApiErrorSchema },
+      },
     },
-  }, async (request) => service.readMine(token(request, config), request.query.days ?? 30));
+    async (request) => service.readMine(token(request, config), request.query.days ?? 30),
+  );
 }
 
 function token(request: FastifyRequest, config: AppConfig): string | undefined {

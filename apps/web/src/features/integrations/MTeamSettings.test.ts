@@ -12,12 +12,18 @@ describe('M-Team settings', () => {
   });
 
   it('uses the official default and never renders a saved API key', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
-      provider: 'mteam',
-      status: 'configured_valid',
-      baseUrl: 'https://api.m-team.cc',
-      lastValidationAt: '2026-10-12T05:00:00.000Z',
-    })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        return Response.json({
+          provider: 'mteam',
+          status: 'configured_valid',
+          baseUrl: 'https://api.m-team.cc',
+          lastValidationAt: '2026-10-12T05:00:00.000Z',
+        }
+        );
+      }),
+    );
     const wrapper = mount(MTeamSettings);
     await flushPromises();
 
@@ -32,9 +38,12 @@ describe('M-Team settings', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (!init?.method) return Response.json({ provider: 'mteam', status: 'unconfigured' });
       return Response.json({
-        provider: 'mteam', status: 'configured_valid', baseUrl: 'https://api.m-team.cc',
+        provider: 'mteam',
+        status: 'configured_valid',
+        baseUrl: 'https://api.m-team.cc',
         lastValidationAt: '2026-10-12T05:00:00.000Z',
-      });
+      }
+      );
     });
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mount(MTeamSettings);
@@ -46,8 +55,11 @@ describe('M-Team settings', () => {
 
     const saveCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT');
     expect(JSON.parse(String(saveCall?.[1]?.body))).toEqual({
-      baseUrl: 'https://api.m-team.cc', webBaseUrl: 'https://kp.m-team.cc', apiKey: 'new-secret',
-    });
+      baseUrl: 'https://api.m-team.cc',
+      webBaseUrl: 'https://kp.m-team.cc',
+      apiKey: 'new-secret',
+    }
+    );
     expect(wrapper.get<HTMLInputElement>('#mteam-api-key').element.value).toBe('');
     expect(wrapper.text()).toContain('validated and saved');
   });
@@ -72,19 +84,31 @@ describe('M-Team settings', () => {
 
   it('leaves validating state immediately when validation fails even if status refresh never returns', async () => {
     let call = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      call += 1;
-      if (call === 1) return Response.json({
-        provider: 'mteam', status: 'configured_valid', baseUrl: 'https://api.m-team.cc',
-      });
-      if (call === 2) return Response.json({
-        error: {
-          code: 'INTEGRATION_VALIDATION_FAILED', message: 'failed', requestId: 'req-1',
-          details: { failureType: 'network' },
-        },
-      }, { status: 502 });
-      return new Promise<Response>(() => undefined);
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        call += 1;
+        if (call === 1)
+          return Response.json({
+            provider: 'mteam',
+            status: 'configured_valid',
+            baseUrl: 'https://api.m-team.cc',
+          });
+        if (call === 2)
+          return Response.json(
+            {
+              error: {
+                code: 'INTEGRATION_VALIDATION_FAILED',
+                message: 'failed',
+                requestId: 'req-1',
+                details: { failureType: 'network' },
+              },
+            },
+            { status: 502 },
+          );
+        return new Promise<Response>(() => undefined);
+      }),
+    );
     const wrapper = mount(MTeamSettings);
     await flushPromises();
 

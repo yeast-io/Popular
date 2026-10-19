@@ -10,11 +10,29 @@ export function registerWhatsAppRoutes(app: FastifyInstance, service: WhatsAppSe
   app.addHook('onSend', async (request, reply) => {
     if (request.url.startsWith('/api/v1/me/integrations/whatsapp')) reply.header('cache-control', 'no-store');
   });
-  app.get('/me/integrations/whatsapp', { schema: { response } }, request => service.get(readSessionToken(request, config.SESSION_COOKIE_NAME)));
-  app.post('/me/integrations/whatsapp/bind', { schema: { response } }, request => service.start(readSessionToken(request, config.SESSION_COOKIE_NAME)));
-  app.post('/me/integrations/whatsapp/test', { schema: { response: { 200: WhatsAppTestResultSchema, 401: ApiErrorSchema, 409: ApiErrorSchema, 502: ApiErrorSchema } } }, request => service.test(readSessionToken(request, config.SESSION_COOKIE_NAME)));
-  app.delete('/me/integrations/whatsapp', { schema: { response: { 204: { type: 'null' }, 401: ApiErrorSchema, 409: ApiErrorSchema } } }, async (request, reply) => {
-    await service.remove(readSessionToken(request, config.SESSION_COOKIE_NAME));
-    return reply.status(204).send();
+  app.get('/me/integrations/whatsapp', { schema: { response } }, (request) => {
+    return service.get(readSessionToken(request, config.SESSION_COOKIE_NAME));
   });
+  app.post('/me/integrations/whatsapp/bind', { schema: { response } }, (request) => {
+    return service.start(readSessionToken(request, config.SESSION_COOKIE_NAME));
+  });
+  app.post(
+    '/me/integrations/whatsapp/test',
+    {
+      schema: {
+        response: { 200: WhatsAppTestResultSchema, 401: ApiErrorSchema, 409: ApiErrorSchema, 502: ApiErrorSchema },
+      },
+    },
+    (request) => {
+      return service.test(readSessionToken(request, config.SESSION_COOKIE_NAME));
+    },
+  );
+  app.delete(
+    '/me/integrations/whatsapp',
+    { schema: { response: { 204: { type: 'null' }, 401: ApiErrorSchema, 409: ApiErrorSchema } } },
+    async (request, reply) => {
+      await service.remove(readSessionToken(request, config.SESSION_COOKIE_NAME));
+      return reply.status(204).send();
+    },
+  );
 }

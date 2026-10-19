@@ -13,20 +13,38 @@ import { SecretCrypto } from './secret-crypto.js';
 
 class MemoryConfigStore implements IntegrationConfigStore {
   readonly records = new Map<string, IntegrationConfigRecord>();
-  get record() { return this.records.values().next().value ?? null; }
-  private key(ownerId: string, provider: 'mteam') { return `${ownerId}:${provider}`; }
-  async find(ownerId: string, provider: 'mteam') { return this.records.get(this.key(ownerId, provider)) ?? null; }
+  get record() {
+    return this.records.values().next().value ?? null;
+  }
+  private key(ownerId: string, provider: 'mteam') {
+    return `${ownerId}:${provider}`;
+  }
+  async find(ownerId: string, provider: 'mteam') {
+    return this.records.get(this.key(ownerId, provider)) ?? null;
+  }
   async saveVerified(input: IntegrationConfigRecord & { verifiedAt: Date; lastValidationAt: Date }) {
     const record = { ...input };
     delete record.lastFailureType;
     this.records.set(this.key(input.ownerId, input.provider), record);
     return record;
   }
-  async recordFailure(ownerId: string, provider: 'mteam', attemptedAt: Date, failureType: IntegrationConfigRecord['lastFailureType']) {
+  async recordFailure(
+    ownerId: string,
+    provider: 'mteam',
+    attemptedAt: Date,
+    failureType: IntegrationConfigRecord['lastFailureType'],
+  ) {
     const record = this.records.get(this.key(ownerId, provider));
-    if (record && failureType) this.records.set(this.key(ownerId, provider), { ...record, lastValidationAt: attemptedAt, lastFailureType: failureType });
+    if (record && failureType)
+      this.records.set(this.key(ownerId, provider), {
+        ...record,
+        lastValidationAt: attemptedAt,
+        lastFailureType: failureType,
+      });
   }
-  async delete(ownerId: string, provider: 'mteam') { this.records.delete(this.key(ownerId, provider)); }
+  async delete(ownerId: string, provider: 'mteam') {
+    this.records.delete(this.key(ownerId, provider));
+  }
 }
 
 class StubVerifier implements MTeamVerifier {
@@ -62,7 +80,8 @@ test('normalizes only allowed HTTPS M-Team base URLs', () => {
     'https://127.0.0.1',
     'https://evil.example',
     'https://api.m-team.cc/unexpected',
-  ]) assert.throws(() => normalizeMTeamBaseUrl(url, allowedHosts), AppError);
+  ])
+    assert.throws(() => normalizeMTeamBaseUrl(url, allowedHosts), AppError);
 });
 
 test('normalizes only HTTPS M-Team web origins', () => {
@@ -73,7 +92,8 @@ test('normalizes only HTTPS M-Team web origins', () => {
     'https://kp.m-team.cc/detail',
     'https://kp.m-team.cc?apiKey=secret',
     'https://evil.example',
-  ]) assert.throws(() => normalizeMTeamWebBaseUrl(url), AppError);
+  ])
+    assert.throws(() => normalizeMTeamWebBaseUrl(url), AppError);
 });
 
 test('validates before saving and never returns the API key', async () => {
@@ -141,7 +161,9 @@ test('keeps configurations and decrypted credentials isolated by authenticated o
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     },
   } as unknown as AuthService;
-  const service = new IntegrationService(ownerAuth, store, verifier, crypto, allowedHosts, () => now);
+  const service = new IntegrationService(ownerAuth, store, verifier, crypto, allowedHosts, () => {
+    return now;
+  });
 
   await service.saveMTeam('alice-session', { baseUrl: 'https://api.m-team.cc', apiKey: 'alice-secret' });
   await service.saveMTeam('bob-session', { baseUrl: 'https://api.m-team.io', apiKey: 'bob-secret' });
@@ -153,7 +175,8 @@ test('keeps configurations and decrypted credentials isolated by authenticated o
   assert.deepEqual(verifier.calls.slice(-2), [
     { baseUrl: 'https://api.m-team.cc', apiKey: 'alice-secret' },
     { baseUrl: 'https://api.m-team.io', apiKey: 'bob-secret' },
-  ]);
+  ]
+  );
 
   await service.deleteMTeam('alice-session');
   assert.equal((await service.getMTeam('alice-session')).status, 'unconfigured');

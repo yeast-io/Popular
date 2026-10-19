@@ -18,16 +18,30 @@ export class RedisSyncLock implements SyncLock {
     traceEnabled = false,
     logger?: AiLogger
   ) {
-    this.trace = new RedisLockTrace(traceEnabled, logger, key => this.redis.ttl(key));
+    this.trace = new RedisLockTrace(traceEnabled, logger, (key) => this.redis.ttl(key));
   }
 
   async acquire(key: string, ttlSeconds: number): Promise<string | null> {
     const owner = randomUUID();
-    const result = await this.trace.run('acquire', [key], () => this.redis.set(key, owner, 'EX', ttlSeconds, 'NX'), { lockType: 'trending_sync', leaseSeconds: ttlSeconds });
+    const result = await this.trace.run(
+      'acquire',
+      [key],
+      () => {
+        return this.redis.set(key, owner, 'EX', ttlSeconds, 'NX');
+      },
+      { lockType: 'trending_sync', leaseSeconds: ttlSeconds },
+    );
     return result === 'OK' ? owner : null;
   }
 
   async release(key: string, owner: string): Promise<void> {
-    await this.trace.run('release', [key], () => this.redis.eval(RELEASE_SCRIPT, 1, key, owner), { lockType: 'trending_sync' });
+    await this.trace.run(
+      'release',
+      [key],
+      () => {
+        return this.redis.eval(RELEASE_SCRIPT, 1, key, owner);
+      },
+      { lockType: 'trending_sync' },
+    );
   }
 }

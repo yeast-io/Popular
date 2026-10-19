@@ -4,15 +4,21 @@ import { notificationTestEnabled, aiAssistantPageEnabled, docsPageEnabled } from
 import type { AppConfig } from '../../config/env.js';
 
 export function registerPublicConfigRoutes(app: FastifyInstance, config: AppConfig): void {
-  app.get('/config', {
-    schema: { response: { 200: PublicConfigSchema } },
-  }, async () => ({
-    notificationTestEnabled: notificationTestEnabled(config),
-    aiAssistantEnabled: aiAssistantPageEnabled(config),
-    docsEnabled: docsPageEnabled(config),
-    avatar: {
-      maxBytes: config.AVATAR_MAX_BYTES,
-      maxPixels: config.AVATAR_MAX_PIXELS,
+  app.get(
+    '/config',
+    {
+      schema: { response: { 200: PublicConfigSchema } },
     },
-  }));
+    async () => {
+      return {
+        notificationTestEnabled: notificationTestEnabled(config),
+        aiAssistantEnabled: aiAssistantPageEnabled(config),
+        docsEnabled: docsPageEnabled(config),
+        avatar: {
+          maxBytes: config.AVATAR_MAX_BYTES,
+          maxPixels: config.AVATAR_MAX_PIXELS,
+        },
+      };
+    },
+  );
 }

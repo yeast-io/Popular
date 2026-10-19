@@ -1,5 +1,9 @@
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
-import type { TransmissionClientPort, TransmissionCredential, TransmissionTorrent } from '../../modules/integrations/transmission.types.js';
+import type {
+  TransmissionClientPort,
+  TransmissionCredential,
+  TransmissionTorrent,
+} from '../../modules/integrations/transmission.types.js';
 
 export class TransmissionClient implements TransmissionClientPort {
   constructor(
@@ -14,9 +18,16 @@ export class TransmissionClient implements TransmissionClientPort {
     return { version: version.trim() };
   }
 
-  async addTorrent(baseUrl: string, credential: TransmissionCredential, torrent: Uint8Array, tag: string): Promise<string> {
+  async addTorrent(
+    baseUrl: string,
+    credential: TransmissionCredential,
+    torrent: Uint8Array,
+    tag: string,
+  ): Promise<string> {
     const args = await this.rpc(baseUrl, credential, 'torrent-add', {
-      metainfo: Buffer.from(torrent).toString('base64'), labels: [tag], paused: false,
+      metainfo: Buffer.from(torrent).toString('base64'),
+      labels: [tag],
+      paused: false,
     });
     // Duplicate adds are successful too; keep the returned hash so tracking never depends on relabeling an existing torrent.
     const added = args['torrent-added'] ?? args.torrent_added ?? args['torrent-duplicate'] ?? args.torrent_duplicate;
@@ -26,20 +37,48 @@ export class TransmissionClient implements TransmissionClientPort {
     return hash.toLowerCase();
   }
 
-  async listTorrents(baseUrl: string, credential: TransmissionCredential, hashes: string[] = []): Promise<TransmissionTorrent[]> {
+  async listTorrents(
+    baseUrl: string,
+    credential: TransmissionCredential,
+    hashes: string[] = [],
+  ): Promise<TransmissionTorrent[]> {
     const args = await this.rpc(baseUrl, credential, 'torrent-get', {
-      fields: ['hashString', 'name', 'status', 'error', 'percentDone', 'downloadedEver', 'sizeWhenDone', 'rateDownload', 'eta', 'labels'],
+      fields: [
+        'hashString',
+        'name',
+        'status',
+        'error',
+        'percentDone',
+        'downloadedEver',
+        'sizeWhenDone',
+        'rateDownload',
+        'eta',
+        'labels',
+      ],
       ...(hashes.length ? { ids: hashes } : {}),
     });
     if (!Array.isArray(args.torrents)) throw invalidResponse();
     return args.torrents.map(parseTorrent);
   }
 
-  async findByTag(baseUrl: string, credential: TransmissionCredential, tag: string): Promise<TransmissionTorrent | null> {
-    return (await this.listTorrents(baseUrl, credential)).find(torrent => torrent.labels.includes(tag)) ?? null;
+  async findByTag(
+    baseUrl: string,
+    credential: TransmissionCredential,
+    tag: string,
+  ): Promise<TransmissionTorrent | null> {
+    return (
+      (await this.listTorrents(baseUrl, credential)).find((torrent) => {
+        return torrent.labels.includes(tag);
+      }) ?? null
+    );
   }
 
-  private async rpc(baseUrl: string, credential: TransmissionCredential, method: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async rpc(
+    baseUrl: string,
+    credential: TransmissionCredential,
+    method: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     const signal = AbortSignal.timeout(this.timeoutMs);
     const headers = new Headers({
       accept: 'application/json',
@@ -54,7 +93,11 @@ export class TransmissionClient implements TransmissionClientPort {
           ? { jsonrpc: '2.0', method: method.replaceAll('-', '_'), params: modernArguments(args), id: 1 }
           : { method, arguments: args, tag: 1 };
         const response = await this.fetchImpl(`${baseUrl}/transmission/rpc`, {
-          method: 'POST', headers, body: JSON.stringify(body), redirect: 'manual', signal,
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          redirect: 'manual',
+          signal,
         });
         if (response.status === 409) {
           const sessionId = response.headers.get('x-transmission-session-id');
@@ -74,13 +117,19 @@ export class TransmissionClient implements TransmissionClientPort {
           throw new IntegrationValidationError('remote_error', 'Transmission returned an unsuccessful HTTP response');
         }
         let payload: unknown;
-        try { payload = await response.json(); } catch {
+        try {
+          payload = await response.json();
+        } catch {
           if (signal.aborted) throw new IntegrationValidationError('timeout', 'Transmission request timed out');
           throw invalidResponse();
         }
         if (!isObject(payload)) throw invalidResponse();
         const result = modern ? payload.result : payload.arguments;
-        if (modern ? payload.jsonrpc !== '2.0' || payload.id !== 1 || payload.error !== undefined : payload.result !== 'success' || payload.tag !== 1) {
+        if (
+          modern
+            ? payload.jsonrpc !== '2.0' || payload.id !== 1 || payload.error !== undefined
+            : payload.result !== 'success' || payload.tag !== 1
+        ) {
           throw invalidResponse();
         }
         if (!isObject(result)) throw invalidResponse();
@@ -106,29 +155,63 @@ function invalidResponse(): IntegrationValidationError {
 }
 
 const modernFields: Record<string, string> = {
-  hashString: 'hash_string', percentDone: 'percent_done', downloadedEver: 'downloaded_ever',
-  sizeWhenDone: 'size_when_done', rateDownload: 'rate_download',
+  hashString: 'hash_string',
+  percentDone: 'percent_done',
+  downloadedEver: 'downloaded_ever',
+  sizeWhenDone: 'size_when_done',
+  rateDownload: 'rate_download',
 };
 
 function modernArguments(args: Record<string, unknown>): Record<string, unknown> {
-  return { ...args, ...(Array.isArray(args.fields) ? { fields: args.fields.map(field => modernFields[String(field)] ?? field) } : {}) };
+  return {
+    ...args,
+    ...(Array.isArray(args.fields)
+      ? {
+          fields: args.fields.map((field) => {
+            return modernFields[String(field)] ?? field;
+          }),
+        }
+      : {}),
+  };
 }
 
 function parseTorrent(value: unknown): TransmissionTorrent {
   if (!isObject(value)) throw invalidResponse();
   const hash = value.hashString ?? value.hash_string;
   const progress = value.percentDone ?? value.percent_done;
-  if (typeof hash !== 'string' || !hash || typeof value.name !== 'string' || !value.name
-      || typeof value.status !== 'number' || !Number.isInteger(value.status) || value.status < 0 || value.status > 6
-      || typeof progress !== 'number' || !Number.isFinite(progress) || progress < 0 || progress > 1
-      || typeof value.error !== 'number' || !Number.isInteger(value.error) || value.error < 0) throw invalidResponse();
+  if (
+    typeof hash !== 'string' ||
+    !hash ||
+    typeof value.name !== 'string' ||
+    !value.name ||
+    typeof value.status !== 'number' ||
+    !Number.isInteger(value.status) ||
+    value.status < 0 ||
+    value.status > 6 ||
+    typeof progress !== 'number' ||
+    !Number.isFinite(progress) ||
+    progress < 0 ||
+    progress > 1 ||
+    typeof value.error !== 'number' ||
+    !Number.isInteger(value.error) ||
+    value.error < 0
+  )
+    throw invalidResponse();
   return {
-    hash: hash.toLowerCase(), name: value.name, status: value.status, error: value.error, progress,
+    hash: hash.toLowerCase(),
+    name: value.name,
+    status: value.status,
+    error: value.error,
+    progress,
     downloadedBytes: nonNegative(value.downloadedEver ?? value.downloaded_ever),
     totalBytes: nonNegative(value.sizeWhenDone ?? value.size_when_done),
     downloadSpeed: nonNegative(value.rateDownload ?? value.rate_download),
     etaSeconds: nonNegative(value.eta),
-    labels: Array.isArray(value.labels) ? value.labels.filter((label): label is string => typeof label === 'string') : [],
+    labels: Array.isArray(value.labels)
+      ? value.labels.filter((label): label is string => {
+          return typeof label === 'string';
+        })
+      : [],
   };
 }
 

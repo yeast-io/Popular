@@ -22,23 +22,54 @@ export class RedisLockTrace {
     try {
       const result = await execute();
       const success = result === 'OK' || result === 1;
-      const outcome = action === 'acquire' ? (success ? 'acquired' : 'busy')
-        : action === 'renew' ? (success ? 'renewed' : 'lost')
-          : action === 'release' ? (success ? 'released' : 'not_owned')
-            : success ? 'checkpointed' : 'lost';
+      const outcome =
+        action === 'acquire'
+          ? success
+            ? 'acquired'
+            : 'busy'
+          : action === 'renew'
+            ? success
+              ? 'renewed'
+              : 'lost'
+            : action === 'release'
+              ? success
+                ? 'released'
+                : 'not_owned'
+              : success
+                ? 'checkpointed'
+                : 'lost';
       let ttlSeconds: number[] | undefined;
       if (!success && this.ttl) {
-        try { ttlSeconds = await Promise.all(keys.map(key => this.ttl!(key))); }
-        catch (error) {
-          this.logger?.error({ ...bindings, stage: 'redis.lock.ttl.failed', error: serializeDiagnosticError(error) }, 'Redis lock TTL inspection failed');
+        try {
+          ttlSeconds = await Promise.all(keys.map((key) => this.ttl!(key)));
+        } catch (error) {
+          this.logger?.error(
+            { ...bindings, stage: 'redis.lock.ttl.failed', error: serializeDiagnosticError(error) },
+            'Redis lock TTL inspection failed',
+          );
         }
       }
-      this.logger?.info?.({ ...bindings, stage: `redis.lock.${action}.${outcome}`, outcome, ttlSeconds,
-        durationMs: Date.now() - started }, 'Redis lock operation completed');
+      this.logger?.info?.(
+        {
+          ...bindings,
+          stage: `redis.lock.${action}.${outcome}`,
+          outcome,
+          ttlSeconds,
+          durationMs: Date.now() - started,
+        },
+        'Redis lock operation completed',
+      );
       return result;
     } catch (error) {
-      this.logger?.error({ ...bindings, stage: `redis.lock.${action}.failed`, durationMs: Date.now() - started,
-        error: serializeDiagnosticError(error) }, 'Redis lock operation failed');
+      this.logger?.error(
+        {
+          ...bindings,
+          stage: `redis.lock.${action}.failed`,
+          durationMs: Date.now() - started,
+          error: serializeDiagnosticError(error),
+        },
+        'Redis lock operation failed',
+      );
       throw error;
     }
   }

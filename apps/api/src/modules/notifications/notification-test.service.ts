@@ -27,15 +27,35 @@ export class NotificationTestService {
     const owner = await this.auth.requireOwnerId(token);
     const records = await this.store.listCompleted(owner, (page - 1) * 30, 31);
     const visible = records.slice(0, 30);
-    const movies = await this.movies.readMovies([...new Set(visible.map(row => row.tmdbId))], this.locale);
-    const byId = new Map(movies.map(movie => [movie.tmdbId, movie]));
-    return { channels: await this.notifications.listChannels(owner), page, hasMore: records.length > 30, items: visible.map(record => {
-      const movie = byId.get(record.tmdbId);
-      return { id: record.id, tmdbId: record.tmdbId, title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
-        resourceName: record.name ?? `TMDB ${record.tmdbId}`, provider: record.provider, totalBytes: record.totalBytes ?? 0,
-        ...(movie?.posterPath ? { posterUrl: `https://image.tmdb.org/t/p/w185${movie.posterPath}` } : {}),
-        ...(record.lastSyncedAt ? { lastSyncedAt: record.lastSyncedAt.toISOString() } : {}) };
-    }) };
+    const movies = await this.movies.readMovies(
+      [
+        ...new Set(
+          visible.map((row) => {
+            return row.tmdbId;
+          }),
+        ),
+      ],
+      this.locale,
+    );
+    const byId = new Map(movies.map((movie) => [movie.tmdbId, movie]));
+    return {
+      channels: await this.notifications.listChannels(owner),
+      page,
+      hasMore: records.length > 30,
+      items: visible.map((record) => {
+        const movie = byId.get(record.tmdbId);
+        return {
+          id: record.id,
+          tmdbId: record.tmdbId,
+          title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
+          resourceName: record.name ?? `TMDB ${record.tmdbId}`,
+          provider: record.provider,
+          totalBytes: record.totalBytes ?? 0,
+          ...(movie?.posterPath ? { posterUrl: `https://image.tmdb.org/t/p/w185${movie.posterPath}` } : {}),
+          ...(record.lastSyncedAt ? { lastSyncedAt: record.lastSyncedAt.toISOString() } : {}),
+        };
+      }),
+    };
   }
   async send(token: string | undefined, id: string, channelId: string): Promise<NotificationTestResult> {
     const owner = await this.auth.requireOwnerId(token);
@@ -43,16 +63,31 @@ export class NotificationTestService {
     if (!record) throw new AppError(404, 'NOT_FOUND', 'Completed download not found');
     const key = `${owner}:${channelId}`;
     const lastSent = this.lastSent.get(key);
-    if (this.sending.has(key) || lastSent !== undefined && this.now().getTime() - lastSent < 30_000) throw new AppError(409, 'CONFLICT', 'Wait 30 seconds before another notification test');
+    if (this.sending.has(key) || (lastSent !== undefined && this.now().getTime() - lastSent < 30_000))
+      throw new AppError(409, 'CONFLICT', 'Wait 30 seconds before another notification test');
     this.sending.add(key);
     try {
       const channel = this.notifications.channel(channelId);
       if (!channel) throw new AppError(400, 'VALIDATION_ERROR', 'Unsupported notification channel');
-      if (!await channel.isConfigured(owner)) throw new AppError(409, 'CONFLICT', 'Link the selected notification channel first');
-      const payload = await this.payload(record, randomUUID(), record.lastSyncedAt ?? this.now(), this.movies, this.locale, this.webOrigin);
+      if (!(await channel.isConfigured(owner)))
+        throw new AppError(409, 'CONFLICT', 'Link the selected notification channel first');
+      const payload = await this.payload(
+        record,
+        randomUUID(),
+        record.lastSyncedAt ?? this.now(),
+        this.movies,
+        this.locale,
+        this.webOrigin,
+      );
       this.lastSent.set(key, this.now().getTime());
-      try { await channel.send(owner, payload); return { results: [{ channel: channel.id, sent: true }] }; }
-      catch { return { results: [{ channel: channel.id, sent: false }] }; }
-    } finally { this.sending.delete(key); }
+      try {
+        await channel.send(owner, payload);
+        return { results: [{ channel: channel.id, sent: true }] };
+      } catch {
+        return { results: [{ channel: channel.id, sent: false }] };
+      }
+    } finally {
+      this.sending.delete(key);
+    }
   }
 }

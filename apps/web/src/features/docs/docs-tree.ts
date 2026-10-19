@@ -14,8 +14,11 @@ export function buildDocsTree(entries: DocsEntry[]): DocsNode[] {
     const parts = entry.path.split('/');
     for (const [index, part] of parts.entries()) {
       const path = parts.slice(0, index + 1).join('/');
-      let node = siblings.find(item => item.path === path);
-      if (!node) { node = { name: part, path, children: [] }; siblings.push(node); }
+      let node = siblings.find((item) => item.path === path);
+      if (!node) {
+        node = { name: part, path, children: [] };
+        siblings.push(node);
+      }
       if (index === parts.length - 1) node.document = entry;
       siblings = node.children;
     }

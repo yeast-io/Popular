@@ -17,15 +17,34 @@ test('typing uses sendChatAction with the chat and propagates cancellation', asy
 });
 function logFixture() {
   const logs: Array<Record<string, unknown>> = [];
-  const logger = { info: (fields: Record<string, unknown>) => { logs.push(fields); }, error: (fields: Record<string, unknown>) => { logs.push(fields); } };
+  const logger = {
+    info: (fields: Record<string, unknown>) => {
+      logs.push(fields);
+    },
+    error: (fields: Record<string, unknown>) => {
+      logs.push(fields);
+    },
+  };
   return { logs, logger };
 }
 
 test('HTTP diagnostics expose conflict status and API code without token or response body', async () => {
   const { logs, logger } = logFixture();
-  const client = new TelegramClient(token, (async () => new Response(JSON.stringify({ ok: false, error_code: 409, description: 'private upstream description' }), { status: 409 })) as typeof fetch, logger);
+  const client = new TelegramClient(
+    token,
+    (async () => {
+      return new Response(JSON.stringify({ ok: false, error_code: 409, description: 'private upstream description' }), {
+        status: 409,
+      });
+    }) as typeof fetch,
+    logger,
+  );
   await assert.rejects(client.updates(123), { code: 'SERVICE_UNAVAILABLE' });
-  assert.ok(logs.some(line => line.httpStatus === 409 && line.telegramErrorCode === 409 && line.method === 'getUpdates'));
+  assert.ok(
+    logs.some((line) => {
+      return line.httpStatus === 409 && line.telegramErrorCode === 409 && line.method === 'getUpdates';
+    }),
+  );
   assert.ok(!JSON.stringify(logs).includes(token));
   assert.ok(!JSON.stringify(logs).includes('private upstream description'));
 });
@@ -35,7 +54,10 @@ test('HTTP diagnostics preserve network causes while redacting token, URL creden
   const text = 'private outgoing message';
   const fetcher = (async () => {
     throw new Error(`fetch https://api.telegram.org/bot${token}/sendMessage failed: ${text}`, {
-      cause: Object.assign(new Error('proxy http://user:proxy-password@proxy.example refused'), { code: 'ECONNREFUSED' }),
+      cause: Object.assign(new Error('proxy http://user:proxy-password@proxy.example refused'), {
+        code: 'ECONNREFUSED',
+      }
+      ),
     });
   }) as typeof fetch;
   const client = new TelegramClient(token, fetcher, logger);
@@ -49,11 +71,28 @@ test('HTTP diagnostics preserve network causes while redacting token, URL creden
 test('routine getUpdates HTTP logs follow the poll switch, while sends remain visible', async () => {
   for (const enabled of [false, true]) {
     const { logs, logger } = logFixture();
-    const client = new TelegramClient(token, (async () => new Response(JSON.stringify({ ok: true, result: [] }))) as typeof fetch, logger, enabled);
+    const client = new TelegramClient(
+      token,
+      (async () => {
+        return new Response(JSON.stringify({ ok: true, result: [] }));
+      }) as typeof fetch,
+      logger,
+      enabled,
+    );
     await client.updates(0);
-    assert.equal(logs.some(line => line.method === 'getUpdates'), enabled);
-    const sender = new TelegramClient(token, (async () => new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }))) as typeof fetch, logger, enabled);
+    assert.equal(
+      logs.some((line) => line.method === 'getUpdates'),
+      enabled,
+    );
+    const sender = new TelegramClient(
+      token,
+      (async () => {
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }));
+      }) as typeof fetch,
+      logger,
+      enabled,
+    );
     await sender.send('101', 'private reply');
-    assert.ok(logs.some(line => line.method === 'sendMessage'));
+    assert.ok(logs.some((line) => line.method === 'sendMessage'));
   }
 });

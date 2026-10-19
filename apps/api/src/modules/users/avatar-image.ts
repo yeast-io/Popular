@@ -10,7 +10,12 @@ export function inspectAvatarImage(bytes: Buffer): AvatarImage | undefined {
 
 function inspectPng(bytes: Buffer): AvatarImage | undefined {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  if (bytes.length < 24 || !bytes.subarray(0, 8).equals(signature) || bytes.subarray(12, 16).toString('ascii') !== 'IHDR') return undefined;
+  if (
+    bytes.length < 24 ||
+    !bytes.subarray(0, 8).equals(signature) ||
+    bytes.subarray(12, 16).toString('ascii') !== 'IHDR'
+  )
+    return undefined;
   return image('image/png', bytes.readUInt32BE(16), bytes.readUInt32BE(20));
 }
 
@@ -36,7 +41,12 @@ function inspectJpeg(bytes: Buffer): AvatarImage | undefined {
 }
 
 function inspectWebp(bytes: Buffer): AvatarImage | undefined {
-  if (bytes.length < 30 || bytes.subarray(0, 4).toString('ascii') !== 'RIFF' || bytes.subarray(8, 12).toString('ascii') !== 'WEBP') return undefined;
+  if (
+    bytes.length < 30 ||
+    bytes.subarray(0, 4).toString('ascii') !== 'RIFF' ||
+    bytes.subarray(8, 12).toString('ascii') !== 'WEBP'
+  )
+    return undefined;
   const format = bytes.subarray(12, 16).toString('ascii');
   if (format === 'VP8X') {
     return image('image/webp', readUInt24LE(bytes, 24) + 1, readUInt24LE(bytes, 27) + 1);

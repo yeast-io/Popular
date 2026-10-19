@@ -44,7 +44,7 @@ export function createLoggers(level: string): AppLoggers {
 export function createPrettyLoggers() {
   const logger = pino({
     transport: {
-      target: 'pino-pretty'
+      target: 'pino-pretty',
     },
   });
   return logger;

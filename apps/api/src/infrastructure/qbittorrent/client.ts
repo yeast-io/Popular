@@ -53,7 +53,9 @@ export class QBittorrentClient implements QBittorrentClientPort {
 
   private async readTorrents(response: Response): Promise<QBittorrentTorrent[]> {
     let payload: unknown;
-    try { payload = await response.json(); } catch (error) {
+    try {
+      payload = await response.json();
+    } catch (error) {
       throw new IntegrationValidationError('invalid_response', 'qBittorrent returned invalid JSON', { cause: error });
     }
     if (!Array.isArray(payload)) throw invalidResponse('qBittorrent returned an invalid torrent list');
@@ -83,25 +85,34 @@ export class QBittorrentClient implements QBittorrentClientPort {
     credential: Extract<QBittorrentCredential, { authMethod: 'username_password' }>,
   ): Promise<string> {
     const body = new URLSearchParams({ username: credential.username, password: credential.password });
-    const response = await this.fetchChecked(`${baseUrl}/api/v2/auth/login`, {
-      method: 'POST',
-      headers: {
-        accept: 'text/plain',
-        'content-type': 'application/x-www-form-urlencoded',
-        origin: new URL(baseUrl).origin,
+    const response = await this.fetchChecked(
+      `${baseUrl}/api/v2/auth/login`,
+      {
+        method: 'POST',
+        headers: {
+          accept: 'text/plain',
+          'content-type': 'application/x-www-form-urlencoded',
+          origin: new URL(baseUrl).origin,
+        },
+        body,
       },
-      body,
-    }, true);
+      true,
+    );
     const result = (await response.text()).trim();
     const sid = response.headers.get('set-cookie')?.match(/(?:^|;\s*)SID=([^;]+)/)?.[1];
-    if (result !== 'Ok.' || !sid) throw new IntegrationValidationError('authentication', 'qBittorrent rejected the credentials');
+    if (result !== 'Ok.' || !sid)
+      throw new IntegrationValidationError('authentication', 'qBittorrent rejected the credentials');
     return `SID=${sid}`;
   }
 
   private async fetchChecked(url: string, init: RequestInit, login = false): Promise<Response> {
     let response: Response;
     try {
-      response = await this.fetchImpl(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(this.timeoutMs) });
+      response = await this.fetchImpl(url, {
+        ...init,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
     } catch (error) {
       if (error instanceof DOMException && error.name === 'TimeoutError') {
         throw new IntegrationValidationError('timeout', 'qBittorrent request timed out', { cause: error });
@@ -114,7 +125,8 @@ export class QBittorrentClient implements QBittorrentClientPort {
     if (!response.ok) {
       throw new IntegrationValidationError('remote_error', `qBittorrent returned HTTP ${response.status}`);
     }
-    if (login && response.status !== 200) throw new IntegrationValidationError('authentication', 'qBittorrent login failed');
+    if (login && response.status !== 200)
+      throw new IntegrationValidationError('authentication', 'qBittorrent login failed');
     return response;
   }
 }
@@ -136,7 +148,15 @@ function parseTorrent(value: unknown): QBittorrentTorrent {
     totalBytes: readInteger(row.total_size ?? row.size),
     downloadSpeed: readInteger(row.dlspeed),
     etaSeconds: readInteger(row.eta),
-    tags: typeof row.tags === 'string' ? row.tags.split(',').map((tag) => tag.trim()).filter(Boolean) : [],
+    tags:
+      typeof row.tags === 'string'
+        ? row.tags
+            .split(',')
+            .map((tag) => {
+              return tag.trim();
+            })
+            .filter(Boolean)
+        : [],
   };
 }
 
@@ -163,9 +183,9 @@ function isSuccessfulAddResponse(value: string): boolean {
     const payload = JSON.parse(value) as unknown;
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
     const result = payload as Record<string, unknown>;
-    return typeof result.success_count === 'number'
-      && Number.isSafeInteger(result.success_count)
-      && result.success_count > 0;
+    return (
+      typeof result.success_count === 'number' && Number.isSafeInteger(result.success_count) && result.success_count > 0
+    );
   } catch {
     return false;
   }

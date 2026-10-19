@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import type { ApiError, AuthResponse, AuthUser, LoginRequest, PublicConfig, RegisterRequest } from '@movie-hub/contract';
+import type {
+  ApiError,
+  AuthResponse,
+  AuthUser,
+  LoginRequest,
+  PublicConfig,
+  RegisterRequest,
+} from '@movie-hub/contract';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { loadWebConfig } from './config/env';
 import MovieBrowser from './features/movies/MovieBrowser.vue';
@@ -45,7 +52,17 @@ const profileNameError = ref('');
 const notificationTestEnabled = ref(false);
 const aiAssistantEnabled = ref(false);
 const docsEnabled = ref(false);
-type Page = 'docs' | 'notification-tests' | 'home' | 'my-movies' | 'ai' | 'settings' | 'usage' | 'movie-detail' | 'login' | 'register';
+type Page =
+  | 'docs'
+  | 'notification-tests'
+  | 'home'
+  | 'my-movies'
+  | 'ai'
+  | 'settings'
+  | 'usage'
+  | 'movie-detail'
+  | 'login'
+  | 'register';
 const currentPage = ref<Page>(pageFromPath());
 const notificationSettings = ref<InstanceType<typeof NotificationSettings>>();
 type SettingsSection = 'profile' | 'ai' | 'preferences' | 'downloads' | 'notifications';
@@ -71,17 +88,24 @@ let scrollUpdateFrame: number | undefined;
 let contentObserver: MutationObserver | undefined;
 let previousScrollRestoration: ScrollRestoration | undefined;
 
-const avatarSource = computed(() => avatarPreview.value || (!avatarRemoved.value && user.value?.avatarUrl
-  ? resolveApiUrl(user.value.avatarUrl)
-  : ''));
-const avatarHint = computed(() => avatarLimits.value
-  ? t('profile.avatarHint', { maxSize: formatBytes(avatarLimits.value.maxBytes) })
-  : t('profile.avatarHintUnavailable'));
-const profileDirty = computed(() => Boolean(user.value) && (
-  profileName.value.trim() !== user.value?.displayName
-  || Boolean(avatarFile.value)
-  || (avatarRemoved.value && Boolean(user.value?.avatarUrl))
-));
+const avatarSource = computed(() => {
+  return (
+    avatarPreview.value || (!avatarRemoved.value && user.value?.avatarUrl ? resolveApiUrl(user.value.avatarUrl) : '')
+  );
+});
+const avatarHint = computed(() => {
+  return avatarLimits.value
+    ? t('profile.avatarHint', { maxSize: formatBytes(avatarLimits.value.maxBytes) })
+    : t('profile.avatarHintUnavailable');
+});
+const profileDirty = computed(() => {
+  return (
+    Boolean(user.value) &&
+    (profileName.value.trim() !== user.value?.displayName ||
+      Boolean(avatarFile.value) ||
+      (avatarRemoved.value && Boolean(user.value?.avatarUrl)))
+  );
+});
 
 onMounted(async () => {
   previousScrollRestoration = window.history.scrollRestoration;
@@ -97,14 +121,17 @@ onMounted(async () => {
   try {
     const response = await fetch(`${apiBaseUrl}/auth/me`, { credentials: 'include' });
     if (response.ok) {
-      setUser((await response.json() as AuthResponse).user);
+      setUser(((await response.json()) as AuthResponse).user);
       if (currentPage.value === 'login' || currentPage.value === 'register') navigateToPath('/', true);
     }
   } catch {
     errorMessage.value = t('errors.serviceUnavailable');
   } finally {
     loading.value = false;
-    if (!user.value && ['settings', 'usage', 'my-movies', 'ai', 'docs', 'notification-tests'].includes(currentPage.value)) {
+    if (
+      !user.value &&
+      ['settings', 'usage', 'my-movies', 'ai', 'docs', 'notification-tests'].includes(currentPage.value)
+    ) {
       openAuth('login', true);
     }
   }
@@ -114,7 +141,7 @@ async function loadPublicConfig() {
   try {
     const response = await fetch(`${apiBaseUrl}/config`);
     if (response.ok) {
-      const config = await response.json() as PublicConfig;
+      const config = (await response.json()) as PublicConfig;
       avatarLimits.value = config.avatar;
       notificationTestEnabled.value = config.notificationTestEnabled === true;
       aiAssistantEnabled.value = config.aiAssistantEnabled === true;
@@ -123,7 +150,11 @@ async function loadPublicConfig() {
   } catch {
     // Features stay hidden when public configuration is unavailable.
   } finally {
-    if ((!aiAssistantEnabled.value && currentPage.value === 'ai') || (!docsEnabled.value && currentPage.value === 'docs')) navigateToPath('/', true);
+    if (
+      (!aiAssistantEnabled.value && currentPage.value === 'ai') ||
+      (!docsEnabled.value && currentPage.value === 'docs')
+    )
+      navigateToPath('/', true);
     if (!notificationTestEnabled.value && currentPage.value === 'notification-tests') navigateToPath('/', true);
   }
 }
@@ -133,14 +164,18 @@ async function submit() {
   successMessage.value = '';
   if (!validateAuthForm()) return;
   submitting.value = true;
-  const body: LoginRequest | RegisterRequest = mode.value === 'register'
-    ? { email: email.value.trim(), password: password.value, displayName: displayName.value.trim() }
-    : { email: email.value.trim(), password: password.value };
+  const body: LoginRequest | RegisterRequest =
+    mode.value === 'register'
+      ? { email: email.value.trim(), password: password.value, displayName: displayName.value.trim() }
+      : { email: email.value.trim(), password: password.value };
   try {
     const response = await fetch(`${apiBaseUrl}/auth/${mode.value}`, {
-      method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
     });
-    const result = await response.json() as AuthResponse | ApiError;
+    const result = (await response.json()) as AuthResponse | ApiError;
     if (!response.ok) {
       if (mode.value === 'login' && response.status === 401) errorMessage.value = t('auth.invalidCredentials');
       else if (mode.value === 'register' && response.status === 409) errorMessage.value = t('auth.emailRegistered');
@@ -240,14 +275,19 @@ async function saveProfile() {
   submitting.value = true;
   try {
     const profileResponse = await fetch(`${apiBaseUrl}/users/me`, {
-      method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' },
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ displayName: normalizedProfileName }),
     });
     let result = await readAuthResponse(profileResponse);
 
     if (avatarFile.value) {
       const avatarResponse = await fetch(`${apiBaseUrl}/users/me/avatar`, {
-        method: 'PUT', credentials: 'include', headers: { 'content-type': avatarFile.value.type }, body: avatarFile.value,
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'content-type': avatarFile.value.type },
+        body: avatarFile.value,
       });
       result = await readAuthResponse(avatarResponse);
     } else if (avatarRemoved.value && user.value?.avatarUrl) {
@@ -267,7 +307,7 @@ async function saveProfile() {
 }
 
 async function readAuthResponse(response: Response): Promise<AuthUser> {
-  const result = await response.json() as AuthResponse | ApiError;
+  const result = (await response.json()) as AuthResponse | ApiError;
   if (!response.ok) throw localizedApiError(result, 'errors.requestFailed');
   return (result as AuthResponse).user;
 }
@@ -307,8 +347,7 @@ async function logout() {
     if (response.ok) {
       user.value = null;
       navigate('home');
-    }
-    else errorMessage.value = localizedErrorMessage(await localizedResponseError(response), 'errors.requestFailed');
+    } else errorMessage.value = localizedErrorMessage(await localizedResponseError(response), 'errors.requestFailed');
   } catch {
     errorMessage.value = t('errors.serviceUnavailable');
   }
@@ -333,8 +372,14 @@ function movieIdFromPath(): number | null {
 
 function syncPageFromLocation() {
   const nextPage = pageFromPath();
-  if ((nextPage === 'ai' && !aiAssistantEnabled.value) || (nextPage === 'docs' && !docsEnabled.value)) { navigateToPath('/', true); return; }
-  if (nextPage === 'notification-tests' && !notificationTestEnabled.value) { navigateToPath('/', true); return; }
+  if ((nextPage === 'ai' && !aiAssistantEnabled.value) || (nextPage === 'docs' && !docsEnabled.value)) {
+    navigateToPath('/', true);
+    return;
+  }
+  if (nextPage === 'notification-tests' && !notificationTestEnabled.value) {
+    navigateToPath('/', true);
+    return;
+  }
   currentPage.value = nextPage;
   if (nextPage === 'login' || nextPage === 'register') mode.value = nextPage;
   selectedMovieId.value = movieIdFromPath();
@@ -360,10 +405,20 @@ function backFromMovieDetail() {
 
 function navigate(page: Page) {
   if ((page === 'ai' && !aiAssistantEnabled.value) || (page === 'docs' && !docsEnabled.value)) return;
-  const path = page === 'docs' ? '/docs' : page === 'notification-tests' ? '/dev/notification-tests' : page === 'settings' ? '/settings'
-    : page === 'usage' ? '/usage'
-      : page === 'my-movies' ? '/my-movies'
-        : page === 'ai' ? '/ai' : '/';
+  const path =
+    page === 'docs'
+      ? '/docs'
+      : page === 'notification-tests'
+        ? '/dev/notification-tests'
+        : page === 'settings'
+          ? '/settings'
+          : page === 'usage'
+            ? '/usage'
+            : page === 'my-movies'
+              ? '/my-movies'
+              : page === 'ai'
+                ? '/ai'
+                : '/';
   if (window.location.pathname !== path) window.history.pushState({}, '', path);
   currentPage.value = page;
   errorMessage.value = '';
@@ -396,15 +451,16 @@ function navigateToPath(path: string, replace = false) {
 
 function historyState(): Record<string, unknown> {
   return window.history.state && typeof window.history.state === 'object'
-    ? window.history.state as Record<string, unknown>
+    ? (window.history.state as Record<string, unknown>)
     : {};
 }
 
 function restoreListScroll(page: 'home' | 'my-movies') {
   const state = historyState();
-  const savedScrollY = state.listPage === page && typeof state.scrollY === 'number' && Number.isFinite(state.scrollY)
-    ? Math.max(0, state.scrollY)
-    : 0;
+  const savedScrollY =
+    state.listPage === page && typeof state.scrollY === 'number' && Number.isFinite(state.scrollY)
+      ? Math.max(0, state.scrollY)
+      : 0;
   void nextTick(() => {
     window.requestAnimationFrame(() => window.scrollTo({ top: savedScrollY, behavior: 'auto' }));
   });
@@ -461,15 +517,35 @@ function closeAccountMenu() {
         <span class="brand-copy">Popular Movie<small>AI Studio</small></span>
       </button>
       <nav class="site-nav" :aria-label="t('nav.ariaLabel')">
-        <button type="button" :class="{ active: currentPage === 'home' }" @click="navigate('home')">{{ t('nav.discover') }}</button>
-        <button v-if="user" type="button" :class="{ active: currentPage === 'my-movies' }" @click="navigate('my-movies')">{{ t('nav.myMovies') }}</button>
-        <button v-if="user && aiAssistantEnabled" type="button" :class="{ active: currentPage === 'ai' }" @click="navigate('ai')">{{ t('nav.ai') }}</button>
-        <button v-if="user && docsEnabled" type="button" :class="{ active: currentPage === 'docs' }" @click="navigate('docs')">{{ t('nav.docs') }}</button>
+        <button type="button" :class="{ active: currentPage === 'home' }" @click="navigate('home')">
+          {{ t('nav.discover') }}
+        </button>
+        <button
+          v-if="user"
+          type="button"
+          :class="{ active: currentPage === 'my-movies' }"
+          @click="navigate('my-movies')"
+        >
+          {{ t('nav.myMovies') }}
+        </button>
+        <button
+          v-if="user && aiAssistantEnabled"
+          type="button"
+          :class="{ active: currentPage === 'ai' }"
+          @click="navigate('ai')"
+        >
+          {{ t('nav.ai') }}
+        </button>
+        <button
+          v-if="user && docsEnabled"
+          type="button"
+          :class="{ active: currentPage === 'docs' }"
+          @click="navigate('docs')"
+        >
+          {{ t('nav.docs') }}
+        </button>
         <details ref="localeMenu" class="locale-switcher">
-          <summary
-            :aria-label="`${t('language.label')}: ${t(`language.${locale}`)}`"
-            :title="t('language.label')"
-          >
+          <summary :aria-label="`${t('language.label')}: ${t(`language.${locale}`)}`" :title="t('language.label')">
             <svg class="locale-icon" viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="12" r="9" />
               <path d="M3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9S14.4 18.5 12 21M12 3C9.6 5.5 8.4 8.5 8.4 12s1.2 6.5 3.6 9" />
@@ -497,20 +573,38 @@ function closeAccountMenu() {
         <details v-if="user" ref="accountMenu" class="account-menu" @keydown.esc.prevent="closeAccountMenu">
           <summary class="account-trigger" :aria-label="t('a11y.accountMenu')">
             <span class="nav-avatar"
-              ><img v-if="user.avatarUrl" :src="resolveApiUrl(user.avatarUrl)" :alt="t('a11y.currentAvatar', { name: user.displayName })" /><span v-else>{{ user.displayName.slice(0, 1).toUpperCase() }}</span></span
+              ><img
+                v-if="user.avatarUrl"
+                :src="resolveApiUrl(user.avatarUrl)"
+                :alt="t('a11y.currentAvatar', { name: user.displayName })"
+              /><span v-else>{{ user.displayName.slice(0, 1).toUpperCase() }}</span></span
             >
             <span class="account-tooltip" role="tooltip">{{ user.displayName }}</span>
           </summary>
           <div class="account-options">
             <div class="account-identity">
               <span class="nav-avatar menu-avatar"
-                ><img v-if="user.avatarUrl" :src="resolveApiUrl(user.avatarUrl)" alt="" /><span v-else>{{ user.displayName.slice(0, 1).toUpperCase() }}</span></span
+                ><img v-if="user.avatarUrl" :src="resolveApiUrl(user.avatarUrl)" alt="" /><span v-else>{{
+                  user.displayName.slice(0, 1).toUpperCase()
+                }}</span></span
               >
-              <span class="account-identity-copy"><strong>{{ user.displayName }}</strong><small>{{ user.email }}</small></span>
+              <span class="account-identity-copy"
+                ><strong>{{ user.displayName }}</strong
+                ><small>{{ user.email }}</small></span
+              >
             </div>
             <div class="account-action-group">
-              <button type="button" :class="{ active: currentPage === 'settings' }" @click="navigateFromAccount('settings')">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 9 19.37a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15 1.7 1.7 0 0 0 3.07 14H3v-4h.08A1.7 1.7 0 0 0 4.63 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1-1.56V3h4v.08A1.7 1.7 0 0 0 15 4.63a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9 1.7 1.7 0 0 0 20.93 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z" /></svg>
+              <button
+                type="button"
+                :class="{ active: currentPage === 'settings' }"
+                @click="navigateFromAccount('settings')"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                  <path
+                    d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 9 19.37a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15 1.7 1.7 0 0 0 3.07 14H3v-4h.08A1.7 1.7 0 0 0 4.63 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1-1.56V3h4v.08A1.7 1.7 0 0 0 15 4.63a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9 1.7 1.7 0 0 0 20.93 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"
+                  />
+                </svg>
                 <span>{{ t('nav.settings') }}</span>
               </button>
               <button type="button" :class="{ active: currentPage === 'usage' }" @click="navigateFromAccount('usage')">
@@ -519,20 +613,35 @@ function closeAccountMenu() {
               </button>
             </div>
             <div v-if="notificationTestEnabled" class="account-action-group">
-              <button type="button" :class="{ active: currentPage === 'notification-tests' }" @click="navigateFromAccount('notification-tests')">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6m-5 0v6l-6 10v2h16v-2L14 9V3M7 15h10" /></svg>
+              <button
+                type="button"
+                :class="{ active: currentPage === 'notification-tests' }"
+                @click="navigateFromAccount('notification-tests')"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 3h6m-5 0v6l-6 10v2h16v-2L14 9V3M7 15h10" />
+                </svg>
                 <span>{{ t('notificationTest.title') }}</span>
               </button>
             </div>
             <div class="account-action-group account-signout-group">
               <button class="danger" type="button" @click="logout">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m11-9h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 17l5-5-5-5m5 5H3m11-9h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" />
+                </svg>
                 <span>{{ t('nav.logout') }}</span>
               </button>
             </div>
           </div>
         </details>
-        <button v-else class="account-link" type="button" :disabled="loading" :aria-label="t('nav.loginOrRegister')" @click="openAuth('login')">
+        <button
+          v-else
+          class="account-link"
+          type="button"
+          :disabled="loading"
+          :aria-label="t('nav.loginOrRegister')"
+          @click="openAuth('login')"
+        >
           {{ loading ? '…' : t('nav.loginOrRegister') }}
         </button>
       </nav>
@@ -557,7 +666,10 @@ function closeAccountMenu() {
       @back="backFromMovieDetail"
       @require-login="openAuth('login')"
     />
-    <NotificationTestPage v-if="currentPage === 'notification-tests' && user && notificationTestEnabled" :key="user.id" />
+    <NotificationTestPage
+      v-if="currentPage === 'notification-tests' && user && notificationTestEnabled"
+      :key="user.id"
+    />
     <DocsPage v-if="currentPage === 'docs' && user && docsEnabled" />
     <UsageStatistics v-if="currentPage === 'usage' && user" />
     <AiChat v-if="currentPage === 'ai' && user && aiAssistantEnabled" :key="user.id" @open-settings="openAISettings" />
@@ -569,45 +681,84 @@ function closeAccountMenu() {
       <div class="auth-layout">
         <div class="auth-card" :aria-busy="submitting">
           <form novalidate @submit.prevent="submit">
-              <label v-if="mode === 'register'" for="auth-display-name">
-                {{ t('profile.displayNameLabel') }}
-                <input id="auth-display-name" v-model="displayName" name="name" autocomplete="name" maxlength="80" required :placeholder="t('profile.displayNamePlaceholder')" :aria-invalid="Boolean(authFieldErrors.displayName)" :aria-describedby="authFieldErrors.displayName ? 'auth-display-name-error' : undefined" @input="clearAuthFieldError('displayName')" />
-                <small v-if="authFieldErrors.displayName" id="auth-display-name-error" class="field-error">{{ authFieldErrors.displayName }}</small>
-              </label>
-              <label for="auth-email">
-                {{ t('profile.authEmailLabel') }}
-                <input id="auth-email" v-model="email" name="email" type="email" autocomplete="email" maxlength="254" required :placeholder="t('profile.emailPlaceholder')" :aria-invalid="Boolean(authFieldErrors.email)" :aria-describedby="authFieldErrors.email ? 'auth-email-error' : undefined" @input="clearAuthFieldError('email')" />
-                <small v-if="authFieldErrors.email" id="auth-email-error" class="field-error">{{ authFieldErrors.email }}</small>
-              </label>
-              <label for="auth-password">
-                {{ t('profile.passwordLabel') }}
-                <input
-                  id="auth-password"
-                  v-model="password"
-                  name="password"
-                  type="password"
-                  :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
-                  minlength="12"
-                  maxlength="128"
-                  required
-                  :placeholder="mode === 'login' ? t('profile.loginPasswordPlaceholder') : t('profile.passwordPlaceholder')"
-                  :aria-invalid="Boolean(authFieldErrors.password)"
-                  :aria-describedby="authFieldErrors.password ? 'auth-password-error' : undefined"
-                  @input="clearAuthFieldError('password')"
-                />
-                <small v-if="authFieldErrors.password" id="auth-password-error" class="field-error">{{ authFieldErrors.password }}</small>
-              </label>
-              <p v-if="errorMessage" class="error" role="alert">{{ errorMessage }}</p>
-              <button class="primary" type="submit" :disabled="submitting">
-                {{ submitting ? (mode === 'login' ? t('account.loggingIn') : t('account.registering')) : mode === 'login' ? t('account.loginTab') : t('account.createAccount') }}
-              </button>
-            </form>
-            <p class="switch-copy">
-              {{ mode === 'login' ? t('account.noAccount') : t('account.hasAccount') }}
-              <button class="text-button" type="button" @click="openAuth(mode === 'login' ? 'register' : 'login', true)">
-                {{ mode === 'login' ? t('account.registerNow') : t('account.backToLogin') }}
-              </button>
-            </p>
+            <label v-if="mode === 'register'" for="auth-display-name">
+              {{ t('profile.displayNameLabel') }}
+              <input
+                id="auth-display-name"
+                v-model="displayName"
+                name="name"
+                autocomplete="name"
+                maxlength="80"
+                required
+                :placeholder="t('profile.displayNamePlaceholder')"
+                :aria-invalid="Boolean(authFieldErrors.displayName)"
+                :aria-describedby="authFieldErrors.displayName ? 'auth-display-name-error' : undefined"
+                @input="clearAuthFieldError('displayName')"
+              />
+              <small v-if="authFieldErrors.displayName" id="auth-display-name-error" class="field-error">{{
+                authFieldErrors.displayName
+              }}</small>
+            </label>
+            <label for="auth-email">
+              {{ t('profile.authEmailLabel') }}
+              <input
+                id="auth-email"
+                v-model="email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                maxlength="254"
+                required
+                :placeholder="t('profile.emailPlaceholder')"
+                :aria-invalid="Boolean(authFieldErrors.email)"
+                :aria-describedby="authFieldErrors.email ? 'auth-email-error' : undefined"
+                @input="clearAuthFieldError('email')"
+              />
+              <small v-if="authFieldErrors.email" id="auth-email-error" class="field-error">{{
+                authFieldErrors.email
+              }}</small>
+            </label>
+            <label for="auth-password">
+              {{ t('profile.passwordLabel') }}
+              <input
+                id="auth-password"
+                v-model="password"
+                name="password"
+                type="password"
+                :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+                minlength="12"
+                maxlength="128"
+                required
+                :placeholder="
+                  mode === 'login' ? t('profile.loginPasswordPlaceholder') : t('profile.passwordPlaceholder')
+                "
+                :aria-invalid="Boolean(authFieldErrors.password)"
+                :aria-describedby="authFieldErrors.password ? 'auth-password-error' : undefined"
+                @input="clearAuthFieldError('password')"
+              />
+              <small v-if="authFieldErrors.password" id="auth-password-error" class="field-error">{{
+                authFieldErrors.password
+              }}</small>
+            </label>
+            <p v-if="errorMessage" class="error" role="alert">{{ errorMessage }}</p>
+            <button class="primary" type="submit" :disabled="submitting">
+              {{
+                submitting
+                  ? mode === 'login'
+                    ? t('account.loggingIn')
+                    : t('account.registering')
+                  : mode === 'login'
+                    ? t('account.loginTab')
+                    : t('account.createAccount')
+              }}
+            </button>
+          </form>
+          <p class="switch-copy">
+            {{ mode === 'login' ? t('account.noAccount') : t('account.hasAccount') }}
+            <button class="text-button" type="button" @click="openAuth(mode === 'login' ? 'register' : 'login', true)">
+              {{ mode === 'login' ? t('account.registerNow') : t('account.backToLogin') }}
+            </button>
+          </p>
         </div>
       </div>
     </section>
@@ -627,9 +778,15 @@ function closeAccountMenu() {
           <aside class="settings-sidebar">
             <p class="settings-nav-caption">{{ t('settings.workspace') }}</p>
             <nav class="settings-category-nav" :aria-label="t('settings.categories')">
-              <button v-for="section in settingsSections" :key="section" type="button"
-                :class="{ active: settingsSection === section }" :aria-current="settingsSection === section ? 'page' : undefined"
-                :data-settings-section="section" @click="selectSettingsSection(section)">
+              <button
+                v-for="section in settingsSections"
+                :key="section"
+                type="button"
+                :class="{ active: settingsSection === section }"
+                :aria-current="settingsSection === section ? 'page' : undefined"
+                :data-settings-section="section"
+                @click="selectSettingsSection(section)"
+              >
                 <SettingsIcon :name="section" />
                 <span>{{ t(`settings.${section}`) }}</span>
                 <span class="settings-nav-indicator" aria-hidden="true">›</span>
@@ -638,10 +795,14 @@ function closeAccountMenu() {
             <label class="settings-mobile-category" for="settings-category">
               {{ t('settings.categories') }}
               <select id="settings-category" :value="settingsSection" @change="selectMobileSettings">
-                <option v-for="section in settingsSections" :key="section" :value="section">{{ t(`settings.${section}`) }}</option>
+                <option v-for="section in settingsSections" :key="section" :value="section">
+                  {{ t(`settings.${section}`) }}
+                </option>
               </select>
             </label>
-            <div class="settings-sidebar-note"><span class="settings-private-dot" aria-hidden="true"></span>{{ t('settings.private') }}</div>
+            <div class="settings-sidebar-note">
+              <span class="settings-private-dot" aria-hidden="true"></span>{{ t('settings.private') }}
+            </div>
           </aside>
           <div class="settings-content">
             <div class="settings-content-heading">
@@ -656,15 +817,32 @@ function closeAccountMenu() {
                 <div class="settings-card-heading profile-card-heading">
                   <div class="profile-avatar-editor">
                     <div class="avatar large">
-                      <img v-if="avatarSource" :src="avatarSource" :alt="t('a11y.currentAvatar', { name: profileName || user.displayName })" />
+                      <img
+                        v-if="avatarSource"
+                        :src="avatarSource"
+                        :alt="t('a11y.currentAvatar', { name: profileName || user.displayName })"
+                      />
                       <span v-else>{{ profileName.slice(0, 1).toUpperCase() || '?' }}</span>
                     </div>
                     <div class="avatar-actions profile-avatar-actions">
                       <label class="upload-button">
                         {{ t('profile.avatarChoose') }}
-                        <input class="file-input" type="file" accept="image/jpeg,image/png,image/webp" :aria-label="t('a11y.chooseAvatar')" @change="chooseAvatar" />
+                        <input
+                          class="file-input"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          :aria-label="t('a11y.chooseAvatar')"
+                          @change="chooseAvatar"
+                        />
                       </label>
-                      <button v-if="avatarSource || user.avatarUrl" class="text-button danger" type="button" @click="removeAvatar">{{ t('profile.avatarRemove') }}</button>
+                      <button
+                        v-if="avatarSource || user.avatarUrl"
+                        class="text-button danger"
+                        type="button"
+                        @click="removeAvatar"
+                      >
+                        {{ t('profile.avatarRemove') }}
+                      </button>
                       <small>{{ avatarHint }}</small>
                     </div>
                   </div>
@@ -684,7 +862,9 @@ function closeAccountMenu() {
                       :aria-describedby="profileNameError ? 'profile-display-name-error' : undefined"
                       @input="profileNameError = ''"
                     />
-                    <small v-if="profileNameError" id="profile-display-name-error" class="field-error">{{ profileNameError }}</small>
+                    <small v-if="profileNameError" id="profile-display-name-error" class="field-error">{{
+                      profileNameError
+                    }}</small>
                   </label>
                   <div class="readonly-field">
                     <div class="readonly-field-heading">
@@ -697,7 +877,9 @@ function closeAccountMenu() {
                 <div class="settings-card-footer">
                   <div class="settings-feedback">
                     <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
-                    <p v-if="successMessage" class="success settings-message" role="status" aria-live="polite">{{ successMessage }}</p>
+                    <p v-if="successMessage" class="success settings-message" role="status" aria-live="polite">
+                      {{ successMessage }}
+                    </p>
                   </div>
                   <div class="settings-actions">
                     <button class="primary" type="submit" :disabled="submitting || !profileDirty">
@@ -716,10 +898,18 @@ function closeAccountMenu() {
               <QBittorrentSettings :key="user.id" />
               <TransmissionSettings :key="user.id" />
             </div>
-            <div v-if="settingsVisited.has('preferences')" v-show="settingsSection === 'preferences'" class="settings-form">
+            <div
+              v-if="settingsVisited.has('preferences')"
+              v-show="settingsSection === 'preferences'"
+              class="settings-form"
+            >
               <PreferenceSettings :key="user.id" />
             </div>
-            <div v-if="settingsVisited.has('notifications')" v-show="settingsSection === 'notifications'" class="settings-form">
+            <div
+              v-if="settingsVisited.has('notifications')"
+              v-show="settingsSection === 'notifications'"
+              class="settings-form"
+            >
               <NotificationSettings :key="user.id" ref="notificationSettings" />
               <TelegramSettings :key="user.id" @binding-change="notificationSettings?.refresh()" />
               <WhatsAppSettings :key="user.id" @binding-change="notificationSettings?.refresh()" />
@@ -730,7 +920,10 @@ function closeAccountMenu() {
     </section>
 
     <nav
-      v-if="(currentPage === 'home' || currentPage === 'my-movies' || currentPage === 'movie-detail') && (!atTop || !atBottom)"
+      v-if="
+        (currentPage === 'home' || currentPage === 'my-movies' || currentPage === 'movie-detail') &&
+        (!atTop || !atBottom)
+      "
       class="scroll-controls"
       :aria-label="t('a11y.pageNavigation')"
     >

@@ -6,7 +6,11 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import type { DownloadNotification } from '../notifications/notification.types.js';
 import type { IncomingMessage } from '../incoming-message.js';
 
-export interface TelegramRecord { chatId?: string; account?: string; expiresAt?: Date }
+export interface TelegramRecord {
+  chatId?: string;
+  account?: string;
+  expiresAt?: Date;
+}
 export interface TelegramStore {
   find(ownerId: string): Promise<TelegramRecord | null>;
   findOwnerByChatId(chatId: string): Promise<string | null>;
@@ -17,7 +21,19 @@ export interface TelegramStore {
 }
 export interface TelegramUpdate {
   update_id: number;
-  message?: { message_id?: number; text?: string; caption?: string; photo?: unknown[]; video?: unknown; audio?: unknown; voice?: unknown; document?: unknown; sticker?: unknown; from?: { id: number; is_bot?: boolean; username?: string; first_name?: string }; chat: { id: number; type: string } };
+  message?: {
+    message_id?: number;
+    text?: string;
+    caption?: string;
+    photo?: unknown[];
+    video?: unknown;
+    audio?: unknown;
+    voice?: unknown;
+    document?: unknown;
+    sticker?: unknown;
+    from?: { id: number; is_bot?: boolean; username?: string; first_name?: string };
+    chat: { id: number; type: string };
+  };
 }
 export interface TelegramTransport {
   username(): Promise<string>;
@@ -26,14 +42,18 @@ export interface TelegramTransport {
   typing?(chatId: string, signal?: AbortSignal): Promise<void>;
   updates(offset: number, signal?: AbortSignal): Promise<TelegramUpdate[]>;
 }
-export const bindingHash = (value: string): string => createHash('sha256').update(value).digest('hex');
+export const bindingHash = (value: string): string => {
+  return createHash('sha256').update(value).digest('hex');
+};
 export class TelegramService {
   constructor(
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly store: TelegramStore,
     private readonly transport?: TelegramTransport,
     private readonly now: () => Date = () => new Date(),
-    private readonly receive: (ownerId: string, message: IncomingMessage) => void | Promise<void> = () => undefined,
+    private readonly receive: (ownerId: string, message: IncomingMessage) => void | Promise<void> = () => {
+      return undefined;
+    },
     private readonly logger?: AiLogger
   ) {}
   async get(token: string | undefined): Promise<TelegramConfiguration> {
@@ -41,7 +61,8 @@ export class TelegramService {
     if (!this.transport) return { status: 'unavailable' };
     const record = await this.store.find(owner);
     if (record?.chatId) return { status: 'connected', account: record.account ?? record.chatId };
-    if (record?.expiresAt && record.expiresAt > this.now()) return { status: 'pending', expiresAt: record.expiresAt.toISOString() };
+    if (record?.expiresAt && record.expiresAt > this.now())
+      return { status: 'pending', expiresAt: record.expiresAt.toISOString() };
     return { status: 'unbound' };
   }
   async start(token: string | undefined): Promise<TelegramBinding> {
@@ -50,13 +71,28 @@ export class TelegramService {
     const username = await this.transport.username();
     const secret = randomBytes(32).toString('base64url');
     const expiresAt = new Date(this.now().getTime() + 600_000);
-    if (!await this.store.pending(owner, bindingHash(secret), expiresAt)) throw new AppError(409, 'CONFLICT', 'Unlink Telegram before replacing it');
-    return { status: 'pending', expiresAt: expiresAt.toISOString(), bindingUrl: `https://t.me/${username}?start=${secret}` };
+    if (!(await this.store.pending(owner, bindingHash(secret), expiresAt)))
+      throw new AppError(409, 'CONFLICT', 'Unlink Telegram before replacing it');
+    return {
+      status: 'pending',
+      expiresAt: expiresAt.toISOString(),
+      bindingUrl: `https://t.me/${username}?start=${secret}`,
+    };
   }
   async accept(update: TelegramUpdate): Promise<void> {
     const message = update.message;
-    const trace = new AiTrace(this.logger, { event: 'telegram_message', channel: 'telegram', updateId: update.update_id,
-      messageId: message?.message_id, chatId: message?.chat.id }, message?.text ?? message?.caption ?? '', 'telegram.receive');
+    const trace = new AiTrace(
+      this.logger,
+      {
+        event: 'telegram_message',
+        channel: 'telegram',
+        updateId: update.update_id,
+        messageId: message?.message_id,
+        chatId: message?.chat.id,
+      },
+      message?.text ?? message?.caption ?? '',
+      'telegram.receive',
+    );
     trace.sensitive((message?.text ?? message?.caption ?? '').trim());
     await withAiTrace(trace, async () => {
       const skip = (reason: string) => trace.event('telegram.message.filtered', { reason });
@@ -72,26 +108,55 @@ export class TelegramService {
         const chatId = String(message.chat.id);
         const ownerId = await trace.step('telegram.binding.lookup', () => this.store.findOwnerByChatId(chatId));
         if (!ownerId) return skip('chat_not_bound');
-        const messageType = message.text !== undefined ? 'text'
-          : ['photo', 'video', 'audio', 'voice', 'document', 'sticker'].find(key => message[key as keyof typeof message] != null) ?? 'unknown';
+        const messageType =
+          message.text !== undefined
+            ? 'text'
+            : (['photo', 'video', 'audio', 'voice', 'document', 'sticker'].find(
+              (key) => message[key as keyof typeof message] != null,
+            ) ?? 'unknown');
         const text = message.text ?? message.caption;
         trace.event('telegram.message.accepted', { ownerId, messageType });
-        await trace.step('telegram.message.dispatch', () => Promise.resolve(this.receive(ownerId, {
-          channel: 'telegram', senderId: String(message.from!.id), chatId, messageType,
-          ...(message.message_id !== undefined ? { messageId: String(message.message_id) } : {}),
-          ...(text !== undefined ? { text } : {}),
-        })), { ownerId });
+        await trace.step(
+          'telegram.message.dispatch',
+          () => {
+            return Promise.resolve(
+              this.receive(ownerId, {
+                channel: 'telegram',
+                senderId: String(message.from!.id),
+                chatId,
+                messageType,
+                ...(message.message_id !== undefined ? { messageId: String(message.message_id) } : {}),
+                ...(text !== undefined ? { text } : {}),
+              }
+              ),
+            );
+          },
+          { ownerId },
+        );
         return;
       }
       trace.sensitive(match[1]!);
       // Binding tokens and user text are never included in diagnostic fields.
-      const consumed = await trace.step('telegram.binding.consume', () => this.store.consume(bindingHash(match[1]!), String(message.chat.id),
-        message.from!.username ? `@${message.from!.username}` : (message.from!.first_name ?? String(message.chat.id)).slice(0, 100), this.now()));
+      const consumed = await trace.step('telegram.binding.consume', () => {
+        return this.store.consume(
+          bindingHash(match[1]!),
+          String(message.chat.id),
+          message.from!.username
+            ? `@${message.from!.username}`
+            : (message.from!.first_name ?? String(message.chat.id)).slice(0, 100),
+          this.now(),
+        );
+      });
       trace.event('telegram.binding.result', { consumed });
-    }).catch(error => { trace.fail(error); throw error; });
+    }).catch((error) => {
+      trace.fail(error);
+      throw error;
+    });
   }
 
-  async remove(token: string | undefined): Promise<void> { await this.store.remove(await this.auth.requireOwnerId(token)); }
+  async remove(token: string | undefined): Promise<void> {
+    await this.store.remove(await this.auth.requireOwnerId(token));
+  }
   async canReply(ownerId: string, chatId: string): Promise<boolean> {
     return !!this.transport && (await this.store.find(ownerId))?.chatId === chatId;
   }
@@ -99,12 +164,12 @@ export class TelegramService {
     // Telegram clears typing on reply or expiry; Bot API has no explicit stop action.
     if (!active) return;
     signal?.throwIfAborted();
-    if (!await this.canReply(ownerId, chatId)) throw new AppError(409, 'CONFLICT', 'Telegram binding changed');
+    if (!(await this.canReply(ownerId, chatId))) throw new AppError(409, 'CONFLICT', 'Telegram binding changed');
     signal?.throwIfAborted();
     await this.transport?.typing?.(chatId, signal);
   }
   async reply(ownerId: string, chatId: string, text: string, poster?: Buffer): Promise<string> {
-    if (!await this.canReply(ownerId, chatId)) throw new AppError(409, 'CONFLICT', 'Telegram binding changed');
+    if (!(await this.canReply(ownerId, chatId))) throw new AppError(409, 'CONFLICT', 'Telegram binding changed');
     return poster?.length
       ? this.transport!.sendPhoto(chatId, poster, escapeHtml(text))
       : this.transport!.send(chatId, text);
@@ -112,10 +177,13 @@ export class TelegramService {
   async test(token: string | undefined): Promise<{ messageId: string }> {
     const owner = await this.auth.requireOwnerId(token);
     const chatId = await this.recipient(owner);
-    if (!await this.store.reserveTest(owner, chatId, this.now())) throw new AppError(409, 'CONFLICT', 'Wait 30 seconds before testing again');
+    if (!(await this.store.reserveTest(owner, chatId, this.now())))
+      throw new AppError(409, 'CONFLICT', 'Wait 30 seconds before testing again');
     return { messageId: await this.transport!.send(chatId, 'Popular: Telegram notification test / Telegram 通知测试') };
   }
-  async isConfigured(ownerId: string): Promise<boolean> { return !!this.transport && !!(await this.store.find(ownerId))?.chatId; }
+  async isConfigured(ownerId: string): Promise<boolean> {
+    return !!this.transport && !!(await this.store.find(ownerId))?.chatId;
+  }
   private async recipient(ownerId: string): Promise<string> {
     if (!this.transport) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Telegram is not configured');
     const chatId = (await this.store.find(ownerId))?.chatId;
@@ -132,7 +200,16 @@ export class TelegramService {
   }
 }
 
-const escapeHtml = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const escapeHtml = (value: string): string => {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(
+    /'/g, '&#39;'
+  );
+};
 // Bound unescaped UTF-16 length before encoding so captions stay below Telegram's 1024-character limit,
 // including emoji, and never cut HTML tags or entities in half.
 function field(value: string, limit: number): string {
@@ -151,7 +228,10 @@ function downloadCaption(notification: DownloadNotification): string {
   ];
   try {
     const url = new URL(notification.detailUrl);
-    if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) lines.push(`<a href="${escapeHtml(url.href)}">查看详情 / View details</a>`);
-  } catch { /* An invalid detail link must not prevent delivery of the notification. */ }
+    if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password)
+      lines.push(`<a href="${escapeHtml(url.href)}">查看详情 / View details</a>`);
+  } catch {
+    /* An invalid detail link must not prevent delivery of the notification. */
+  }
   return lines.join('\n');
 }

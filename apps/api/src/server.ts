@@ -1,3 +1,4 @@
+import { createAssistantConversationReply } from './modules/assistant/assistant.conversation.js';
 import { ApplicationShutdown, installShutdownHandlers } from './infrastructure/lifecycle/shutdown.js';
 import { TelegramService } from './modules/telegram/telegram.service.js';
 import { AssistantWorkflow } from './modules/assistant/assistant.workflow.js';
@@ -66,23 +67,26 @@ import { createPreferenceModels } from './infrastructure/mongodb/preferences/pre
 import { MongoRecommendationStore } from './infrastructure/mongodb/recommendations/recommendation.store.js';
 import { createRecommendationModel } from './infrastructure/mongodb/recommendations/recommendation.schema.js';
 import { PreferenceService } from './modules/preferences/preference.service.js';
-import { profileText } from './modules/preferences/preference.domain.js';
 import { PreferenceAgent } from './modules/preferences/agents/preference.agent.js';
 import { PreferenceWorkflow } from './modules/preferences/preference.workflow.js';
 import { PreferenceWorker } from './modules/preferences/preference.worker.js';
-import { RecommendationWorkflow } from './modules/recommendations/recommendation.workflow.js';
+import { RecommendationTool } from './modules/recommendations/recommendation.tool.js';
 
 const config = loadConfig();
 const loggers = createLoggers(config.LOG_LEVEL);
 const infrastructure = createInfrastructure(config);
 let finishStartup!: () => void;
-const startupSettled = new Promise<void>(resolve => { finishStartup = resolve; });
+const startupSettled = new Promise<void>((resolve) => {
+  finishStartup = resolve;
+});
 const shutdown = new ApplicationShutdown(loggers.app, startupSettled, config.SHUTDOWN_TIMEOUT_MS);
 shutdown.register('minio', 90, () => infrastructure.minio.close());
 shutdown.register('mongodb', 100, () => infrastructure.mongodb.close());
 shutdown.register('redis', 110, () => infrastructure.redis.close());
 const shutdownHandlers = installShutdownHandlers(shutdown, process, async () => {
-  await Promise.all([loggers.app, loggers.error].map(logger => new Promise<void>(resolve => logger.flush(() => resolve()))));
+  await Promise.all(
+    [loggers.app, loggers.error].map((logger) => new Promise<void>((resolve) => logger.flush(() => resolve()))),
+  );
 });
 
 try {
@@ -90,18 +94,18 @@ try {
   shutdown.assertRunning();
   const models = createModels(infrastructure.mongodb.getConnection());
   await Promise.all([models.externalRequestEvents.init(), models.externalUsageDaily.init()]);
-  const externalUsageStore = new MongoExternalUsageStore(
-    models.externalRequestEvents,
-    models.externalUsageDaily,
-    { error: (bindings, message) => loggers.error.error(bindings, message) },
-  );
+  const externalUsageStore = new MongoExternalUsageStore(models.externalRequestEvents, models.externalUsageDaily, {
+    error: (bindings, message) => loggers.error.error(bindings, message),
+  });
   const externalUsageAggregation = new ExternalUsageAggregationService(
     externalUsageStore,
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
       error: (bindings, message) => loggers.error.error(bindings, message),
     },
-    undefined, undefined, config.SCAN_TRACE_ENABLED,
+    undefined,
+    undefined,
+    config.SCAN_TRACE_ENABLED,
   );
   shutdown.register('external_usage_aggregation', 45, () => externalUsageAggregation.stop());
   const userStore = new MongoAuthUserStore(models.users, models.authIdentities);
@@ -113,9 +117,20 @@ try {
   const authService = new AuthService(userStore, sessionStore, config.REGISTRATION_USER_LIMIT);
   const externalUsageService = new ExternalUsageService(authService, externalUsageStore);
   const avatarStore = new MinioAvatarStore(infrastructure.minio.getClient(), config.MINIO_BUCKET);
-  const userService = new UserService(authService, userStore, avatarStore, config.AVATAR_MAX_BYTES, config.AVATAR_MAX_PIXELS);
+  const userService = new UserService(
+    authService,
+    userStore,
+    avatarStore,
+    config.AVATAR_MAX_BYTES,
+    config.AVATAR_MAX_PIXELS,
+  );
   const trendingStore = new MongoTrendingStore(
-    models.movies, models.movieLocalizations, models.movieResultSets, models.people, models.movieCredits, models.trendingStates,
+    models.movies,
+    models.movieLocalizations,
+    models.movieResultSets,
+    models.people,
+    models.movieCredits,
+    models.trendingStates,
   );
   const tmdb = new TmdbClient(
     config.TMDB_READ_ACCESS_TOKEN,
@@ -125,8 +140,11 @@ try {
     externalUsageStore,
   );
   const trendingSync = new TrendingSyncService(
-    tmdb, trendingStore, new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED, loggers.app),
-    config.TMDB_LANGUAGE, config.TRENDING_SYNC_LOCK_TTL_SECONDS,
+    tmdb,
+    trendingStore,
+    new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED, loggers.app),
+    config.TMDB_LANGUAGE,
+    config.TRENDING_SYNC_LOCK_TTL_SECONDS,
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
       error: (bindings, message) => loggers.error.error(bindings, message),
@@ -161,11 +179,13 @@ try {
       error: (bindings, message) => loggers.error.error(bindings, message),
     },
   );
-  const movieService = new MovieService(
-    trendingStore, trendingSync, tmdb, trendingStore, movieStatusStore,
-  );
+  const movieService = new MovieService(trendingStore, trendingSync, tmdb, trendingStore, movieStatusStore);
   const movieStatusService = new MovieStatusService(
-    movieStatusStore, trendingStore, config.TMDB_LANGUAGE, movieResourceChecks, movieResourceCheckStore,
+    movieStatusStore,
+    trendingStore,
+    config.TMDB_LANGUAGE,
+    movieResourceChecks,
+    movieResourceCheckStore,
   );
   const movieResourceSyncService = new MovieResourceSyncService(
     movieStatusStore,
@@ -189,7 +209,10 @@ try {
   const transmissionConfigStore = new MongoTransmissionConfigStore(models.transmissionConfigs);
   const transmission = new TransmissionClient(config.TRANSMISSION_REQUEST_TIMEOUT_MS);
   const transmissionIntegrationService = new TransmissionIntegrationService(
-    authService, transmissionConfigStore, transmission, secrets,
+    authService,
+    transmissionConfigStore,
+    transmission,
+    secrets,
   );
   const qbittorrentConfigStore = new MongoQBittorrentConfigStore(models.qbittorrentConfigs);
   const qbittorrent = new QBittorrentClient(config.QBITTORRENT_REQUEST_TIMEOUT_MS);
@@ -202,30 +225,93 @@ try {
   await models.telegramBindings.init();
   await models.assistantMessages.init();
   const assistantQueue = new MongoAssistantQueue(models.assistantMessages);
-  const assistantReceiver = new AssistantMessageReceiver(assistantQueue, input => assistantWorker.wake(input), loggers.app);
-  const telegramClient = config.TELEGRAM_BOT_TOKEN ? new TelegramClient(config.TELEGRAM_BOT_TOKEN, undefined, loggers.app, config.TELEGRAM_POLL_TRACE_ENABLED) : undefined;
+  const assistantReceiver = new AssistantMessageReceiver(
+    assistantQueue,
+    (input) => {
+      return assistantWorker.wake(input);
+    },
+    loggers.app,
+  );
+  const telegramClient = config.TELEGRAM_BOT_TOKEN
+    ? new TelegramClient(config.TELEGRAM_BOT_TOKEN, undefined, loggers.app, config.TELEGRAM_POLL_TRACE_ENABLED)
+    : undefined;
   const receiveMessage = async (ownerId: string, message: import('./modules/incoming-message.js').IncomingMessage) => {
     await assistantReceiver.receive(ownerId, message);
-    loggers.app.info({ event: 'incoming_message', ownerId, channel: message.channel, messageId: message.messageId,
-      messageType: message.messageType }, 'User message received');
+    loggers.app.info(
+      {
+        event: 'incoming_message',
+        ownerId,
+        channel: message.channel,
+        messageId: message.messageId,
+        messageType: message.messageType,
+      },
+      'User message received',
+    );
   };
-  const telegramService = new TelegramService(authService, new MongoTelegramStore(models.telegramBindings), telegramClient, undefined, receiveMessage, loggers.app);
-  const telegramWorker = telegramClient && config.TELEGRAM_BOT_TOKEN ? new TelegramWorker(infrastructure.redis.getClient(), config.TELEGRAM_BOT_TOKEN,
-    telegramClient, telegramService, () => loggers.app.warn('Telegram polling failed; check connectivity, token, and that no webhook or external poller uses this bot'), loggers.app, config.REDIS_LOCK_TRACE_ENABLED, config.TELEGRAM_POLL_TRACE_ENABLED) : undefined;
+  const telegramService = new TelegramService(
+    authService,
+    new MongoTelegramStore(models.telegramBindings),
+    telegramClient,
+    undefined,
+    receiveMessage,
+    loggers.app,
+  );
+  const telegramWorker =
+    telegramClient && config.TELEGRAM_BOT_TOKEN
+      ? new TelegramWorker(
+          infrastructure.redis.getClient(),
+          config.TELEGRAM_BOT_TOKEN,
+          telegramClient,
+          telegramService,
+          () => {
+            return loggers.app.warn(
+              'Telegram polling failed; check connectivity, token, and that no webhook or external poller uses this bot',
+            );
+          },
+          loggers.app,
+          config.REDIS_LOCK_TRACE_ENABLED,
+          config.TELEGRAM_POLL_TRACE_ENABLED,
+        )
+      : undefined;
   shutdown.register('telegram_worker', 10, () => telegramWorker?.stop());
-  loggers.app.info({ event: 'telegram_configuration', enabled: Boolean(telegramWorker) }, 'Telegram polling configuration');
+  loggers.app.info(
+    { event: 'telegram_configuration', enabled: Boolean(telegramWorker) },
+    'Telegram polling configuration',
+  );
   await models.whatsappSessions.init();
-  const whatsappService = new WhatsAppService(authService, new MongoWhatsAppStore(models.whatsappSessions, secrets), connectBaileys,
-    (ownerId, event) => loggers.app.info({ ownerId, ...event }, 'WhatsApp connection lifecycle'), receiveMessage);
+  const whatsappService = new WhatsAppService(
+    authService,
+    new MongoWhatsAppStore(models.whatsappSessions, secrets),
+    connectBaileys,
+    (ownerId, event) => {
+      return loggers.app.info({ ownerId, ...event }, 'WhatsApp connection lifecycle');
+    },
+    receiveMessage,
+  );
   shutdown.register('whatsapp_sessions', 40, () => whatsappService.close());
   await Promise.all([models.movieDownloads.init(), models.notificationPreferences.init()]);
-  const notificationService = new NotificationService(authService, new MongoNotificationStore(models.movieDownloads, models.notificationPreferences), [{
-    id: 'telegram', name: 'Telegram', isConfigured: ownerId => telegramService.isConfigured(ownerId),
-    send: (ownerId, notification) => telegramService.sendNotification(ownerId, notification),
-  }, {
-    id: 'whatsapp', name: 'WhatsApp', isConfigured: ownerId => whatsappService.isConfigured(ownerId),
-    send: (ownerId, notification) => whatsappService.sendNotification(ownerId, notification),
-  }]);
+  const notificationService = new NotificationService(
+    authService,
+    new MongoNotificationStore(models.movieDownloads, models.notificationPreferences),
+    [
+      {
+        id: 'telegram',
+        name: 'Telegram',
+        isConfigured: (ownerId) => {
+          return telegramService.isConfigured(ownerId);
+        },
+        send: (ownerId, notification) => telegramService.sendNotification(ownerId, notification),
+      },
+      {
+        id: 'whatsapp',
+        name: 'WhatsApp',
+        isConfigured: (ownerId) => {
+          return whatsappService.isConfigured(ownerId);
+        },
+        send: (ownerId, notification) => whatsappService.sendNotification(ownerId, notification),
+      },
+    ],
+  );
   const movieDownloadService = new MovieDownloadService(
     authService,
     new MongoMovieDownloadStore(models.movieDownloads),
@@ -241,33 +327,63 @@ try {
   );
   const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
   const conversationService = new ConversationService(authService, conversationStore);
-  const openaiSettingsService = new OpenAISettingsService(authService, new MongoOpenAIConfigStore(models.openaiConfigs), secrets, {
-    model: config.OPENAI_MODEL,
-    recommendedModels: config.OPENAI_RECOMMENDED_MODELS,
-    verify: apiKey => probeOpenAI(new OpenAI({ apiKey, timeout: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000), maxRetries: 0 })),
-  });
+  const openaiSettingsService = new OpenAISettingsService(
+    authService,
+    new MongoOpenAIConfigStore(models.openaiConfigs),
+    secrets,
+    {
+      model: config.OPENAI_MODEL,
+      recommendedModels: config.OPENAI_RECOMMENDED_MODELS,
+      verify: (apiKey) => {
+        return probeOpenAI(
+          new OpenAI({ apiKey, timeout: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000), maxRetries: 0 }),
+        );
+      },
+    },
+  );
   const createOwnerLlmClient = async (ownerId: string) => {
     const { apiKey, model } = await openaiSettingsService.requireCredentials(ownerId);
-    return new OpenAILlmClient(new OpenAI({ apiKey, timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0 }),
-      model, { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES });
+    return new OpenAILlmClient(
+      new OpenAI({ apiKey, timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0 }),
+      model,
+      { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES },
+    );
   };
   const preferenceModels = createPreferenceModels(models.users.db);
-  await Promise.all(Object.values(preferenceModels).map(model => model.init()));
+  await Promise.all(Object.values(preferenceModels).map((model) => model.init()));
   const preferenceStore = new MongoPreferenceStore(preferenceModels);
-  const preferenceService = new PreferenceService(preferenceStore, movieStatusStore, trendingStore, tmdb, config.TMDB_LANGUAGE,
-    ownerId => openaiSettingsService.requireCredentials(ownerId));
-  const preferenceWorkflow = new PreferenceWorkflow(preferenceStore, new PreferenceAgent(createOwnerLlmClient, config.OPENAI_MAX_CONTEXT_TOKENS),
-    (job, signal) => preferenceService.enrich(job, signal));
-  const preferenceWorker = new PreferenceWorker(preferenceStore, preferenceWorkflow,
-    loggers.error);
+  const preferenceService = new PreferenceService(
+    preferenceStore,
+    movieStatusStore,
+    trendingStore,
+    tmdb,
+    config.TMDB_LANGUAGE,
+    (ownerId) => openaiSettingsService.requireCredentials(ownerId),
+  );
+  const preferenceWorkflow = new PreferenceWorkflow(
+    preferenceStore,
+    new PreferenceAgent(createOwnerLlmClient, config.OPENAI_MAX_CONTEXT_TOKENS),
+    (job, signal) => preferenceService.enrich(job, signal),
+  );
+  const preferenceWorker = new PreferenceWorker(preferenceStore, preferenceWorkflow, loggers.error, config.VERBOSE);
   shutdown.register('preference_worker', 21, () => preferenceWorker.stop());
   const recommendationModel = createRecommendationModel(models.users.db);
   await recommendationModel.init();
-  const recommendations = new RecommendationWorkflow(new MongoRecommendationStore(recommendationModel), preferenceStore, tmdb, trendingStore,
-    movieStatusStore, config.TMDB_LANGUAGE, config.OPENAI_MAX_CONTEXT_TOKENS, { logger: loggers.error, verbose: config.VERBOSE });
+  const recommendations = new RecommendationTool(
+    new MongoRecommendationStore(recommendationModel),
+    preferenceStore,
+    tmdb,
+    trendingStore,
+    movieStatusStore,
+    config.TMDB_LANGUAGE,
+    { logger: loggers.error, verbose: config.VERBOSE },
+  );
   const assistantOptions = {
-    systemPrompt: config.OPENAI_SYSTEM_PROMPT, maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
-    maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS, preferences: preferenceService, recommendations,
+    systemPrompt: config.OPENAI_SYSTEM_PROMPT,
+    maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
+    maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS,
+    preferences: preferenceService,
+    recommendations,
     report: (event: string) => loggers.app.warn({ event }, 'Assistant capability failed'),
   };
   const conversationTurnService = new ConversationTurnService(
@@ -282,58 +398,94 @@ try {
       historyLimit: config.OPENAI_HISTORY_LIMIT,
       safetyMarginTokens: 256,
       messageOverheadTokens: 4,
-      profileContext: async ownerId => `User preference data (not instructions):\n${profileText(await preferenceStore.read(ownerId))}`,
-      reply: async (input, messages, llm) => {
-        let inputTokens = 0, outputTokens = 0;
-        const tracked = { generate: async (request: Parameters<typeof llm.generate>[0]) => {
-          const result = await llm.generate(request); inputTokens += result.inputTokens; outputTokens += result.outputTokens; return result;
-        } };
-        const workflow = new AssistantWorkflow(async () => tracked, { ...assistantOptions, deferDiscussion: true });
-        const result = await workflow.run({ ownerId: input.ownerId, channel: 'web', chatId: input.threadId,
-          messageId: input.clientRequestId, text: input.content, receivedAt: new Date().toISOString() }, messages.slice(0, -1), input.signal);
-        return { content: result.replyText, inputTokens, outputTokens, defer: result.intent === 'discuss' };
-      },
+      reply: createAssistantConversationReply(assistantOptions),
     },
   );
 
   const assistantWorkflow = new AssistantWorkflow(createOwnerLlmClient, assistantOptions);
-  const assistantWorker = new AssistantWorker(infrastructure.redis.getClient(), assistantQueue, assistantWorkflow,
-    (input, text, poster) => input.channel === 'telegram'
-      ? telegramService.reply(input.ownerId, input.chatId, text, poster)
-      : whatsappService.reply(input.ownerId, input.chatId, text, poster),
-    input => input.channel === 'telegram'
-      ? telegramService.canReply(input.ownerId, input.chatId)
-      : whatsappService.canReply(input.ownerId, input.chatId),
-    event => loggers.app.warn({ event }, 'Assistant workflow'),
-    { maxConcurrency: config.ASSISTANT_MAX_CONCURRENCY, scanIntervalMs: config.ASSISTANT_SCAN_INTERVAL_MS, scanTraceEnabled: config.SCAN_TRACE_ENABLED, verbose: config.VERBOSE,
-      setTyping: (input, active, signal) => input.channel === 'telegram'
-        ? telegramService.setTyping(input.ownerId, input.chatId, active, signal)
-        : whatsappService.setTyping(input.ownerId, input.chatId, active, signal) },
+  const assistantWorker = new AssistantWorker(
+    infrastructure.redis.getClient(),
+    assistantQueue,
+    assistantWorkflow,
+    (input, text, poster) => {
+      return input.channel === 'telegram'
+        ? telegramService.reply(input.ownerId, input.chatId, text, poster)
+        : whatsappService.reply(input.ownerId, input.chatId, text, poster);
+    },
+    (input) => {
+      return input.channel === 'telegram'
+        ? telegramService.canReply(input.ownerId, input.chatId)
+        : whatsappService.canReply(input.ownerId, input.chatId);
+    },
+    (event) => loggers.app.warn({ event }, 'Assistant workflow'),
+    {
+      maxConcurrency: config.ASSISTANT_MAX_CONCURRENCY,
+      scanIntervalMs: config.ASSISTANT_SCAN_INTERVAL_MS,
+      scanTraceEnabled: config.SCAN_TRACE_ENABLED,
+      verbose: config.VERBOSE,
+      setTyping: (input, active, signal) => {
+        return input.channel === 'telegram'
+          ? telegramService.setTyping(input.ownerId, input.chatId, active, signal)
+          : whatsappService.setTyping(input.ownerId, input.chatId, active, signal);
+      },
+    },
     loggers.app,
     config.REDIS_LOCK_TRACE_ENABLED,
   );
 
   shutdown.register('assistant_worker', 20, () => assistantWorker.stop());
-  const notificationWorker = new NotificationWorker(notificationService, movieDownloadService, trendingStore, config.TMDB_LANGUAGE, config.WEB_ORIGIN,
+  const notificationWorker = new NotificationWorker(
+    notificationService,
+    movieDownloadService,
+    trendingStore,
+    config.TMDB_LANGUAGE,
+    config.WEB_ORIGIN,
     (event, fields) => {
-      if (event === 'SCAN_STARTED' || event === 'SCAN_COMPLETED') loggers.app.info({ event, ...fields }, 'Download notification scan');
+      if (event === 'SCAN_STARTED' || event === 'SCAN_COMPLETED')
+        loggers.app.info({ event, ...fields }, 'Download notification scan');
       else loggers.app.warn({ event, ...fields }, 'Download notification worker');
-    }, undefined, undefined, config.SCAN_TRACE_ENABLED);
+    },
+    undefined,
+    undefined,
+    config.SCAN_TRACE_ENABLED,
+  );
   shutdown.register('notification_worker', 30, () => notificationWorker.stop());
-  const notificationTestService = new NotificationTestService(authService, new MongoNotificationTestStore(models.movieDownloads), notificationService, trendingStore, config.TMDB_LANGUAGE, config.WEB_ORIGIN);
+  const notificationTestService = new NotificationTestService(
+    authService,
+    new MongoNotificationTestStore(models.movieDownloads),
+    notificationService,
+    trendingStore,
+    config.TMDB_LANGUAGE,
+    config.WEB_ORIGIN,
+  );
   const app = await buildApp({
     preferenceService,
-    telegramService, notificationTestService,
-    notificationService, whatsappService,
-    config, healthDependencies: infrastructure.healthDependencies, authService, userService, movieService, movieStatusService, integrationService,
-    movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, openaiSettingsService,
+    telegramService,
+    notificationTestService,
+    notificationService,
+    whatsappService,
+    config,
+    healthDependencies: infrastructure.healthDependencies,
+    authService,
+    userService,
+    movieService,
+    movieStatusService,
+    integrationService,
+    movieResourceSyncService,
+    transmissionIntegrationService,
+    qbittorrentIntegrationService,
+    movieDownloadService,
+    externalUsageService,
+    conversationService,
+    openaiSettingsService,
     conversationTurnService,
   });
   shutdown.register('resource_sync', 60, () => movieResourceSyncService.stop());
   shutdown.register('resource_checks', 70, () => movieResourceChecks.stop());
   shutdown.register('http_server', 50, () => app.close());
   app.addHook('onRequest', async (_request, reply) => {
-    if (shutdown.requested) return reply.code(503).send({ code: 'SERVICE_UNAVAILABLE', message: 'Application is shutting down' });
+    if (shutdown.requested)
+      return reply.code(503).send({ code: 'SERVICE_UNAVAILABLE', message: 'Application is shutting down' });
   });
   shutdown.assertRunning();
   await movieResourceSyncService.resumePending();
@@ -341,9 +493,12 @@ try {
   externalUsageAggregation.start();
   notificationWorker.start();
   telegramWorker?.start();
-  const linkedWhatsAppOwners = await models.whatsappSessions.find({ encryptedState: { $exists: true } }).select('ownerId').lean();
+  const linkedWhatsAppOwners = await models.whatsappSessions
+    .find({ encryptedState: { $exists: true } })
+    .select('ownerId')
+    .lean();
   shutdown.assertRunning();
-  await whatsappService.resume(linkedWhatsAppOwners.map(row => String(row.ownerId)));
+  await whatsappService.resume(linkedWhatsAppOwners.map((row) => String(row.ownerId)));
   shutdown.assertRunning();
   assistantWorker.start();
   preferenceWorker.start();

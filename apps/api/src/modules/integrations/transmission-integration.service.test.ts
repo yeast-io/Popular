@@ -3,8 +3,16 @@ import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { SecretCrypto } from './secret-crypto.js';
-import { TransmissionIntegrationService, normalizeTransmissionBaseUrl, decryptCredential } from './transmission-integration.service.js';
-import type { TransmissionConfigRecord, TransmissionConfigStore, TransmissionCredential } from './transmission.types.js';
+import {
+  TransmissionIntegrationService,
+  normalizeTransmissionBaseUrl,
+  decryptCredential,
+} from './transmission-integration.service.js';
+import type {
+  TransmissionConfigRecord,
+  TransmissionConfigStore,
+  TransmissionCredential,
+} from './transmission.types.js';
 import { IntegrationValidationError } from './integration.service.js';
 
 function fixture() {
@@ -12,7 +20,9 @@ function fixture() {
   const calls: { baseUrl: string; credential: TransmissionCredential }[] = [];
   let failure: unknown;
   const store: TransmissionConfigStore = {
-    async find(ownerId) { return records.get(ownerId) ?? null; },
+    async find(ownerId) {
+      return records.get(ownerId) ?? null;
+    },
     async saveVerified(input) {
       const record = { ...input };
       delete record.lastFailureType;
@@ -23,19 +33,38 @@ function fixture() {
       const record = records.get(ownerId);
       if (record) records.set(ownerId, { ...record, lastValidationAt: attemptedAt, lastFailureType: failureType });
     },
-    async delete(ownerId) { records.delete(ownerId); },
+    async delete(ownerId) {
+      records.delete(ownerId);
+    },
   };
-  const auth = { requireOwnerId: async (token?: string) => {
-    if (!token) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    return token;
-  } } as unknown as AuthService;
+  const auth = {
+    requireOwnerId: async (token?: string) => {
+      if (!token) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+      return token;
+    },
+  } as unknown as AuthService;
   const secrets = new SecretCrypto('test-integration-secret-key-that-is-long-enough');
-  const service = new TransmissionIntegrationService(auth, store, { async verify(baseUrl, credential) {
-    calls.push({ baseUrl, credential });
-    if (failure) throw failure;
-    return { version: '4.0.6' };
-  } }, secrets);
-  return { records, calls, secrets, service, failWith(error: unknown) { failure = error; } };
+  const service = new TransmissionIntegrationService(
+    auth,
+    store,
+    {
+      async verify(baseUrl, credential) {
+        calls.push({ baseUrl, credential });
+        if (failure) throw failure;
+        return { version: '4.0.6' };
+      },
+    },
+    secrets,
+  );
+  return {
+    records,
+    calls,
+    secrets,
+    service,
+    failWith(error: unknown) {
+      failure = error;
+    },
+  };
 }
 
 const input = { baseUrl: 'http://nas:9091/', username: 'daniel', password: 'transmission-secret' };
@@ -44,7 +73,15 @@ test('normalizes host addresses and rejects paths, embedded credentials and non-
   assert.equal(normalizeTransmissionBaseUrl(' http://192.168.1.10:9091/ '), 'http://192.168.1.10:9091');
   assert.equal(normalizeTransmissionBaseUrl('https://NAS.example:443'), 'https://nas.example');
   assert.equal(normalizeTransmissionBaseUrl('http://[::1]:9091'), 'http://[::1]:9091');
-  for (const value of ['ftp://nas', 'http://u:p@nas', 'http://nas?x=1', 'http://nas#x', 'http://nas/transmission/rpc', 'http://nas/transmission/web/', 'invalid']) {
+  for (const value of [
+    'ftp://nas',
+    'http://u:p@nas',
+    'http://nas?x=1',
+    'http://nas#x',
+    'http://nas/transmission/rpc',
+    'http://nas/transmission/web/',
+    'invalid',
+  ]) {
     assert.throws(() => normalizeTransmissionBaseUrl(value), AppError);
   }
 });
@@ -75,7 +112,8 @@ test('retains a password only for the same address and username', async () => {
     { baseUrl: 'http://other:9091', username: input.username },
     { baseUrl: input.baseUrl, username: 'other' },
     { baseUrl: input.baseUrl, username: 'invalid:username', password: 'password' },
-  ]) await assert.rejects(service.save('owner', update), { code: 'VALIDATION_ERROR' });
+  ])
+    await assert.rejects(service.save('owner', update), { code: 'VALIDATION_ERROR' });
   assert.equal(calls.length, 2);
 });
 
@@ -84,7 +122,10 @@ test('failed candidate saves preserve current config; retest failures mark it in
   await service.save('owner', input);
   const original = records.get('owner')!;
   failWith(new IntegrationValidationError('authentication', 'private upstream message'));
-  await assert.rejects(service.save('owner', { ...input, baseUrl: 'http://other:9091' }), { code: 'TRANSMISSION_AUTH_FAILED' });
+  await assert.rejects(service.save('owner', { ...input, baseUrl: 'http://other:9091' }), {
+    code: 'TRANSMISSION_AUTH_FAILED',
+  }
+  );
   assert.deepEqual(records.get('owner'), original);
   await assert.rejects(service.retest('owner'), { code: 'TRANSMISSION_AUTH_FAILED' });
   assert.equal((await service.get('owner')).status, 'configured_invalid');
@@ -97,20 +138,31 @@ test('routes enforce sessions, validate payloads and serialize only public confi
   const { buildApp } = await import('../../app.js');
   const { loadConfig } = await import('../../config/env.js');
   const config = loadConfig({
-    NODE_ENV: 'test', WEB_ORIGIN: 'http://localhost:5173', MONGODB_URI: 'mongodb://db.example/movie_hub',
-    REDIS_URL: 'redis://redis.example:6379', MINIO_ENDPOINT: 'minio.example', MINIO_ACCESS_KEY: 'access',
-    MINIO_SECRET_KEY: 'secret', MINIO_BUCKET: 'avatars', SESSION_TOKEN_PEPPER: 'test-session-pepper-at-least-32-characters',
+    NODE_ENV: 'test',
+    WEB_ORIGIN: 'http://localhost:5173',
+    MONGODB_URI: 'mongodb://db.example/movie_hub',
+    REDIS_URL: 'redis://redis.example:6379',
+    MINIO_ENDPOINT: 'minio.example',
+    MINIO_ACCESS_KEY: 'access',
+    MINIO_SECRET_KEY: 'secret',
+    MINIO_BUCKET: 'avatars',
+    SESSION_TOKEN_PEPPER: 'test-session-pepper-at-least-32-characters',
     INTEGRATION_SECRET_KEY: 'test-integration-secret-key-at-least-32-characters',
-    TMDB_READ_ACCESS_TOKEN: 'test-token', ACCESS_LOG_ENABLED: 'false',
-  });
+    TMDB_READ_ACCESS_TOKEN: 'test-token',
+    ACCESS_LOG_ENABLED: 'false',
+  }
+  );
   const { service, failWith } = fixture();
   const app = await buildApp({ config, healthDependencies: [], transmissionIntegrationService: service });
   try {
     const url = '/api/v1/me/integrations/transmission';
     for (const method of ['GET', 'PUT', 'POST', 'DELETE'] as const) {
-      const response = await app.inject({ method, url: method === 'POST' ? `${url}/test` : url,
+      const response = await app.inject({
+        method,
+        url: method === 'POST' ? `${url}/test` : url,
         ...(method === 'PUT' ? { payload: input } : {}),
-      });
+      }
+      );
       assert.equal(response.statusCode, 401);
     }
     const headers = { cookie: `${config.SESSION_COOKIE_NAME}=owner` };
@@ -134,5 +186,7 @@ test('routes enforce sessions, validate payloads and serialize only public confi
     assert.equal(removed.statusCode, 204);
     const empty = await app.inject({ method: 'GET', url, headers });
     assert.equal(empty.json().status, 'unconfigured');
-  } finally { await app.close(); }
+  } finally {
+    await app.close();
+  }
 });

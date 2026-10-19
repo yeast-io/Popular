@@ -9,7 +9,9 @@ export function registerAccessLog(app: FastifyInstance, enabled: boolean): void 
     const length = reply.getHeader('content-length') ?? '-';
     const referer = sanitize(request.headers.referer);
     const userAgent = sanitize(request.headers['user-agent']);
-    const line = `${sanitize(request.ip)} - - [${timestamp}] "${request.method} ${sanitize(request.raw.url)} HTTP/${request.raw.httpVersion}" ${reply.statusCode} ${length} "${referer}" "${userAgent}"`;
+    const line = `${sanitize(request.ip)} - - [${timestamp}] "${request.method} ${sanitize(
+      request.raw.url,
+    )} HTTP/${request.raw.httpVersion}" ${reply.statusCode} ${length} "${referer}" "${userAgent}"`;
     process.stdout.write(`${line}\n`);
     done();
   });

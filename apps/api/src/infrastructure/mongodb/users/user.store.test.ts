@@ -21,7 +21,9 @@ function standaloneHarness(options: HarnessOptions = {}) {
     db: {
       transaction: async () => {
         transactionAttempts += 1;
-        const error = new Error('Transaction numbers are only allowed on a replica set member or mongos') as Error & { code: number };
+        const error = new Error('Transaction numbers are only allowed on a replica set member or mongos') as Error & {
+          code: number;
+        };
         error.code = 20;
         throw error;
       },
@@ -31,7 +33,11 @@ function standaloneHarness(options: HarnessOptions = {}) {
       if (options.userError) throw options.userError;
       return { _id: `user-${userCreates}`, ...input };
     },
-    deleteOne: () => ({ exec: async () => { userDeletes += 1; } }),
+    deleteOne: () => ({
+      exec: async () => {
+        userDeletes += 1;
+      },
+    }),
   } as unknown as Model<UserDocument>;
 
   const identities = {

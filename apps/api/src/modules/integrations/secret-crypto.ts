@@ -14,18 +14,23 @@ export class SecretCrypto {
     const cipher = createCipheriv('aes-256-gcm', this.key, iv);
     cipher.setAAD(Buffer.from(context, 'utf8'));
     const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    return ['v1', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), ciphertext.toString('base64url')].join('.');
+    return [
+      'v1',
+      iv.toString('base64url'),
+      cipher.getAuthTag().toString('base64url'),
+      ciphertext.toString('base64url'),
+    ].join('.');
   }
 
   decrypt(value: string, context: string): string {
     const [version, encodedIv, encodedTag, encodedCiphertext] = value.split('.');
-    if (version !== 'v1' || !encodedIv || !encodedTag || !encodedCiphertext) throw new Error('Unsupported encrypted secret');
+    if (version !== 'v1' || !encodedIv || !encodedTag || !encodedCiphertext)
+      throw new Error('Unsupported encrypted secret');
     const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(encodedIv, 'base64url'));
     decipher.setAAD(Buffer.from(context, 'utf8'));
     decipher.setAuthTag(Buffer.from(encodedTag, 'base64url'));
-    return Buffer.concat([
-      decipher.update(Buffer.from(encodedCiphertext, 'base64url')),
-      decipher.final(),
-    ]).toString('utf8');
+    return Buffer.concat([decipher.update(Buffer.from(encodedCiphertext, 'base64url')), decipher.final()]).toString(
+      'utf8',
+    );
   }
 }

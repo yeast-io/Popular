@@ -4,7 +4,9 @@ import { MongoDbConnector } from '../infrastructure/mongodb/connector.js';
 import { migrateMovieLocales } from '../infrastructure/mongodb/movies/movie-locale-migration.js';
 
 const supportedArguments = new Set(['--', '--dry-run']);
-const unknownArguments = process.argv.slice(2).filter((argument) => !supportedArguments.has(argument));
+const unknownArguments = process.argv.slice(2).filter((argument) => {
+  return !supportedArguments.has(argument);
+});
 if (unknownArguments.length > 0) {
   throw new Error(`Unknown migration argument(s): ${unknownArguments.join(', ')}`);
 }

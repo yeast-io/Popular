@@ -3,8 +3,15 @@ import test from 'node:test';
 import { MongoMovieDownloadStore } from './movie-download.store.js';
 
 const row = {
-  _id: 'download-one', ownerId: 'owner-one', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: '991',
-  provider: 'transmission', lookupTag: 'movie-hub-one', status: 'submitting', progress: 0,
+  _id: 'download-one',
+  ownerId: 'owner-one',
+  tmdbId: 603,
+  sourceProvider: 'mteam',
+  sourceReleaseId: '991',
+  provider: 'transmission',
+  lookupTag: 'movie-hub-one',
+  status: 'submitting',
+  progress: 0,
 };
 const query = (value: unknown) => ({ lean: () => ({ exec: async () => value }) });
 
@@ -41,7 +48,10 @@ test('retry claims require a failed or missing record; a losing retry returns th
       assert.equal('provider' in update.$set, false);
       return query(winner ? row : null);
     },
-    findById(id: string) { assert.equal(id, 'download-one'); return query(row); },
+    findById(id: string) {
+      assert.equal(id, 'download-one');
+      return query(row);
+    },
   } as never);
   assert.equal((await store.retry('download-one')).claimed, true);
   winner = false;

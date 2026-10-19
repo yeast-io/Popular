@@ -30,29 +30,56 @@ test('conversation routes pass the session token and expose only user message cr
       calls.push({ ...(token ? { token } : {}) });
       return { id: threadId, status: 'active' as const, nextSequence: 1, createdAt, updatedAt: createdAt };
     },
-    listThreads: async () => ({
-      items: [{ id: threadId, title: 'First chat', status: 'active' as const, nextSequence: 1, createdAt, updatedAt: createdAt }],
-    }),
+    listThreads: async () => {
+      return {
+        items: [
+          {
+            id: threadId,
+            title: 'First chat',
+            status: 'active' as const,
+            nextSequence: 1,
+            createdAt,
+            updatedAt: createdAt,
+          },
+        ],
+      };
+    },
     listMessages: async () => ({ items: [] }),
-    appendUserMessage: async (token: string | undefined, inputThreadId: string, content: string, clientRequestId?: string) => {
+    appendUserMessage: async (
+      token: string | undefined,
+      inputThreadId: string,
+      content: string,
+      clientRequestId?: string,
+    ) => {
       calls.push({ ...(token ? { token } : {}), content });
       return {
-        id: messageId, threadId: inputThreadId, sequence: 1, role: 'user' as const,
-        content, createdAt, ...(clientRequestId ? { clientRequestId } : {}),
+        id: messageId,
+        threadId: inputThreadId,
+        sequence: 1,
+        role: 'user' as const,
+        content,
+        createdAt,
+        ...(clientRequestId ? { clientRequestId } : {}),
       };
     },
   } as unknown as ConversationService;
   const app = await buildApp({ config, healthDependencies: [], conversationService: service });
 
   const create = await app.inject({
-    method: 'POST', url: '/api/v1/conversations', headers: { cookie: 'movie_hub_session=session-1' },
-  });
+    method: 'POST',
+    url: '/api/v1/conversations',
+    headers: { cookie: 'movie_hub_session=session-1' },
+  }
+  );
   assert.equal(create.statusCode, 201);
   assert.equal(calls[0]?.token, 'session-1');
 
   const list = await app.inject({
-    method: 'GET', url: '/api/v1/conversations', headers: { cookie: 'movie_hub_session=session-1' },
-  });
+    method: 'GET',
+    url: '/api/v1/conversations',
+    headers: { cookie: 'movie_hub_session=session-1' },
+  }
+  );
   assert.equal(list.statusCode, 200);
   assert.equal(list.json().items[0].title, 'First chat');
 
@@ -61,7 +88,8 @@ test('conversation routes pass the session token and expose only user message cr
     url: `/api/v1/conversations/${threadId}/messages`,
     headers: { cookie: 'movie_hub_session=session-1' },
     payload: { content: 'hello', clientRequestId: 'request-1' },
-  });
+  }
+  );
   assert.equal(append.statusCode, 201);
   assert.equal(append.json().role, 'user');
 
@@ -69,7 +97,8 @@ test('conversation routes pass the session token and expose only user message cr
     method: 'POST',
     url: `/api/v1/conversations/${threadId}/messages`,
     payload: { role: 'assistant', content: 'forged' },
-  });
+  }
+  );
   assert.equal(forged.statusCode, 201);
   assert.equal(forged.json().role, 'user');
   await app.close();
@@ -114,8 +143,13 @@ test('turn route requires an idempotency key and returns persisted turn messages
       yield {
         type: 'user_message' as const,
         message: {
-          id: messageId, ownerId: input.ownerId, threadId: input.threadId, sequence: 1,
-          role: 'user' as const, content: input.content, clientRequestId: input.clientRequestId,
+          id: messageId,
+          ownerId: input.ownerId,
+          threadId: input.threadId,
+          sequence: 1,
+          role: 'user' as const,
+          content: input.content,
+          clientRequestId: input.clientRequestId,
           createdAt: new Date(createdAt),
         },
       };
@@ -124,29 +158,44 @@ test('turn route requires an idempotency key and returns persisted turn messages
       yield {
         type: 'completed' as const,
         assistantMessage: {
-          id: '507f1f77bcf86cd799439013', ownerId: input.ownerId, threadId: input.threadId,
-          sequence: 2, role: 'assistant' as const, content: 'A response', createdAt: new Date(createdAt),
+          id: '507f1f77bcf86cd799439013',
+          ownerId: input.ownerId,
+          threadId: input.threadId,
+          sequence: 2,
+          role: 'assistant' as const,
+          content: 'A response',
+          createdAt: new Date(createdAt),
         },
         usage: { inputTokens: 12, outputTokens: 3 },
       };
     },
   } as unknown as ConversationTurnService;
   const conversationService = {
-    createThread: async () => ({ id: threadId, status: 'active', nextSequence: 1, createdAt, updatedAt: createdAt }),
+    createThread: async () => {
+      return { id: threadId, status: 'active', nextSequence: 1, createdAt, updatedAt: createdAt };
+    },
     listThreads: async () => ({ items: [] }),
     listMessages: async () => ({ items: [] }),
-    appendUserMessage: async () => { throw new Error('not used'); },
+    appendUserMessage: async () => {
+      throw new Error('not used');
+    },
   } as unknown as ConversationService;
   const app = await buildApp({
-    config, healthDependencies: [], authService: auth, conversationService, conversationTurnService: turnService,
-  });
+    config,
+    healthDependencies: [],
+    authService: auth,
+    conversationService,
+    conversationTurnService: turnService,
+  }
+  );
 
   const missingKey = await app.inject({
     method: 'POST',
     url: `/api/v1/conversations/${threadId}/turns`,
     headers: { cookie: 'movie_hub_session=session-1' },
     payload: { content: 'hello' },
-  });
+  }
+  );
   assert.equal(missingKey.statusCode, 400);
 
   const response = await app.inject({
@@ -154,20 +203,27 @@ test('turn route requires an idempotency key and returns persisted turn messages
     url: `/api/v1/conversations/${threadId}/turns`,
     headers: { cookie: 'movie_hub_session=session-1' },
     payload: { content: 'hello', clientRequestId: 'turn-1' },
-  });
+  }
+  );
   assert.equal(response.statusCode, 201);
   assert.equal(response.json().assistantMessage.content, 'A response');
   assert.deepEqual(response.json().usage, { inputTokens: 12, outputTokens: 3 });
-  assert.deepEqual(calls, [{
-    ownerId: 'owner-1', threadId, content: 'hello', clientRequestId: 'turn-1',
-  }]);
+  assert.deepEqual(calls, [
+    {
+      ownerId: 'owner-1',
+      threadId,
+      content: 'hello',
+      clientRequestId: 'turn-1',
+    },
+  ]);
 
   const streamed = await app.inject({
     method: 'POST',
     url: `/api/v1/conversations/${threadId}/turns/stream`,
     headers: { cookie: 'movie_hub_session=session-1' },
     payload: { content: 'stream hello', clientRequestId: 'turn-stream-1' },
-  });
+  }
+  );
   assert.equal(streamed.statusCode, 200);
   assert.match(streamed.headers['content-type'] ?? '', /^text\/event-stream/);
   assert.match(streamed.body, /event: user_message/);
@@ -188,16 +244,32 @@ test('logs safe diagnostics after SSE starts while keeping client errors generic
       yield { type: 'delta', delta: 'private chat text' };
       throw new AppError(503, 'SERVICE_UNAVAILABLE', 'AI service is temporarily unavailable', undefined, {
         cause: new LlmProviderError('Upstream failure: sk-private', undefined, {
-          reason: 'terminal_failure', lastEventType: 'response.incomplete', incompleteReason: 'max_output_tokens',
+          reason: 'terminal_failure',
+          lastEventType: 'response.incomplete',
+          incompleteReason: 'max_output_tokens',
         }),
       });
     },
   } as unknown as ConversationTurnService;
-  registerConversationRoutes(app, {} as ConversationService, config, turnService,
+  registerConversationRoutes(
+    app,
+    {} as ConversationService,
+    config,
+    turnService,
     { requireOwnerId: async () => 'owner-1' },
-    { error: ((...args: unknown[]) => { logs.push(args); }) as never });
+    {
+      error: ((...args: unknown[]) => {
+        logs.push(args);
+      }) as never,
+    },
+  );
   try {
-    const response = await app.inject({ method: 'POST', url: `/conversations/${threadId}/turns/stream`, payload: { content: 'private prompt', clientRequestId: 'request-1' } });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/conversations/${threadId}/turns/stream`,
+      payload: { content: 'private prompt', clientRequestId: 'request-1' },
+    }
+    );
     assert.equal(response.statusCode, 200);
     assert.match(response.body, /event: error/);
     assert.ok(!response.body.includes('max_output_tokens'));
@@ -210,5 +282,7 @@ test('logs safe diagnostics after SSE starts while keeping client errors generic
     assert.ok(!JSON.stringify(logs).includes('sk-private'));
     assert.match(JSON.stringify(logs), /Upstream failure/);
     assert.match(JSON.stringify(logs), /stack/);
-  } finally { await app.close(); }
+  } finally {
+    await app.close();
+  }
 });

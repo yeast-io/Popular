@@ -45,13 +45,16 @@ export class ExternalUsageService {
         const value = dateOnly(date);
         return { date: value, providers: dailyByDate.get(value) ?? [] };
       }),
-      operations: result.operations.map((row) => ({
-        provider: row.provider,
-        operation: row.operation,
-        ...toMetrics(row),
-      })),
-      models: (result.models ?? []).map(row => ({ provider: row.provider, model: row.model,
-        operation: row.operation, ...toMetrics(row) })),
+      operations: result.operations.map((row) => {
+        return {
+          provider: row.provider,
+          operation: row.operation,
+          ...toMetrics(row),
+        };
+      }),
+      models: (result.models ?? []).map((row) => {
+        return { provider: row.provider, model: row.model, operation: row.operation, ...toMetrics(row) };
+      }),
     };
   }
 }

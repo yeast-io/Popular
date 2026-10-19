@@ -37,10 +37,12 @@ onMounted(async () => {
   try {
     const response = await fetch(`${apiBaseUrl}/me/integrations/openai`, { credentials: 'include' });
     if (!response.ok) throw await localizedResponseError(response);
-    configured.value = (await response.json() as OpenAIConfiguration).configured;
+    configured.value = ((await response.json()) as OpenAIConfiguration).configured;
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
-  } finally { loadingConfiguration.value = false; }
+  } finally {
+    loadingConfiguration.value = false;
+  }
 });
 onBeforeUnmount(() => activeTurn?.abort());
 
@@ -50,7 +52,7 @@ async function loadThreads() {
   try {
     const response = await fetch(`${apiBaseUrl}/conversations`, { credentials: 'include' });
     if (!response.ok) throw await localizedResponseError(response);
-    threads.value = (await response.json() as ConversationThreadsResponse).items;
+    threads.value = ((await response.json()) as ConversationThreadsResponse).items;
     const first = threads.value[0];
     if (first) await selectThread(first.id);
   } catch (error) {
@@ -70,7 +72,7 @@ async function createThread(): Promise<ConversationThreadResponse | null> {
       credentials: 'include',
     });
     if (!response.ok) throw await localizedResponseError(response);
-    const thread = await response.json() as ConversationThreadResponse;
+    const thread = (await response.json()) as ConversationThreadResponse;
     threads.value = [thread, ...threads.value];
     selectedThreadId.value = thread.id;
     messages.value = [];
@@ -95,7 +97,7 @@ async function selectThread(threadId: string, force = false) {
       credentials: 'include',
     });
     if (!response.ok) throw await localizedResponseError(response);
-    const result = await response.json() as ConversationMessagesResponse;
+    const result = (await response.json()) as ConversationMessagesResponse;
     if (request !== messageRequest || selectedThreadId.value !== threadId) return;
     messages.value = result.items;
     await scrollToLatest();
@@ -153,14 +155,15 @@ async function sendMessage() {
         receiving.value = true;
         const existing = messages.value.find(({ id }) => id === streamingId);
         if (existing) existing.content += event.delta;
-        else messages.value.push({
-          id: streamingId,
-          threadId,
-          sequence: (messages.value.at(-1)?.sequence ?? optimistic.sequence) + 1,
-          role: 'assistant',
-          content: event.delta,
-          createdAt: new Date().toISOString(),
-        });
+        else
+          messages.value.push({
+            id: streamingId,
+            threadId,
+            sequence: (messages.value.at(-1)?.sequence ?? optimistic.sequence) + 1,
+            role: 'assistant',
+            content: event.delta,
+            createdAt: new Date().toISOString(),
+          });
       } else {
         replaceMessage(streamingId, event.assistantMessage);
         updateThreadPreview(threadId, content, event.assistantMessage.createdAt);
@@ -181,8 +184,12 @@ async function sendMessage() {
 }
 
 function replaceMessage(id: string, replacement: ConversationMessageResponse) {
-  const withoutPrevious = messages.value.filter((message) => message.id !== id && message.id !== replacement.id);
-  messages.value = [...withoutPrevious, replacement].sort((left, right) => left.sequence - right.sequence);
+  const withoutPrevious = messages.value.filter((message) => {
+    return message.id !== id && message.id !== replacement.id;
+  });
+  messages.value = [...withoutPrevious, replacement].sort((left, right) => {
+    return left.sequence - right.sequence;
+  });
 }
 
 function updateThreadPreview(threadId: string, content: string, lastMessageAt: string) {
@@ -219,7 +226,12 @@ async function scrollToLatest() {
           <p class="eyebrow">{{ t('ai.eyebrow') }}</p>
           <h1 id="ai-page-title">{{ t('ai.title') }}</h1>
         </div>
-        <button class="ai-new-chat" type="button" :disabled="creating || sending || loadingConfiguration || !configured" @click="createThread">
+        <button
+          class="ai-new-chat"
+          type="button"
+          :disabled="creating || sending || loadingConfiguration || !configured"
+          @click="createThread"
+        >
           <span aria-hidden="true">＋</span>{{ creating ? t('ai.creating') : t('ai.newConversation') }}
         </button>
       </div>
@@ -237,7 +249,11 @@ async function scrollToLatest() {
           @click="selectThread(thread.id)"
         >
           <span>{{ thread.title || t('ai.untitledConversation') }}</span>
-          <small>{{ thread.nextSequence > 1 ? t('ai.messageCount', { count: thread.nextSequence - 1 }) : t('ai.emptyConversation') }}</small>
+          <small>{{
+            thread.nextSequence > 1
+              ? t('ai.messageCount', { count: thread.nextSequence - 1 })
+              : t('ai.emptyConversation')
+          }}</small>
         </button>
       </div>
     </aside>
@@ -267,7 +283,9 @@ async function scrollToLatest() {
           <div class="ai-message-avatar" aria-hidden="true">AI</div>
           <div class="ai-message-content">
             <strong>{{ t('ai.assistant') }}</strong>
-            <span><i /><i /><i /><span class="sr-only">{{ t('ai.thinking') }}</span></span>
+            <span
+              ><i /><i /><i /><span class="sr-only">{{ t('ai.thinking') }}</span></span
+            >
           </div>
         </article>
       </div>
@@ -288,7 +306,11 @@ async function scrollToLatest() {
             :disabled="sending || loadingConfiguration || !configured"
             @keydown="handleComposerKeydown"
           />
-          <button type="submit" :disabled="sending || !draft.trim() || loadingConfiguration || !configured" :aria-label="t('ai.send')">
+          <button
+            type="submit"
+            :disabled="sending || !draft.trim() || loadingConfiguration || !configured"
+            :aria-label="t('ai.send')"
+          >
             <span aria-hidden="true">↑</span>
           </button>
         </form>

@@ -10,11 +10,14 @@ export interface ErrorContext {
 export function logErrorOnce(logger: Logger, error: unknown, context: ErrorContext): Error {
   const normalized = normalizeError(error);
   if (!loggedErrors.has(normalized)) {
-    logger.error({
-      err: normalized,
-      operation: context.operation,
-      ...(context.requestId ? { requestId: context.requestId } : {}),
-    }, 'Operation failed');
+    logger.error(
+      {
+        err: normalized,
+        operation: context.operation,
+        ...(context.requestId ? { requestId: context.requestId } : {}),
+      },
+      'Operation failed',
+    );
     loggedErrors.add(normalized);
   }
   return normalized;

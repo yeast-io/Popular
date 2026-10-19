@@ -8,15 +8,17 @@ const summary: ConversationSummary = {
   throughSequence: 2,
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 };
-const messages: ConversationMessage[] = [{
-  id: 'message-3',
-  ownerId: 'owner-1',
-  threadId: 'thread-1',
-  sequence: 3,
-  role: 'user',
-  content: 'I prefer hard science fiction.',
-  createdAt: new Date('2026-01-01T00:01:00.000Z'),
-}];
+const messages: ConversationMessage[] = [
+  {
+    id: 'message-3',
+    ownerId: 'owner-1',
+    threadId: 'thread-1',
+    sequence: 3,
+    role: 'user',
+    content: 'I prefer hard science fiction.',
+    createdAt: new Date('2026-01-01T00:01:00.000Z'),
+  },
+];
 
 test('summary request merges the previous summary with newly omitted messages', () => {
   const request = buildSummaryRequest(summary, messages, 80);

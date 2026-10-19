@@ -69,36 +69,77 @@ export interface BuildAppOptions {
   preferenceService?: PreferenceService;
 }
 
-export async function buildApp({ docsService, telegramService, notificationTestService, notificationService, whatsappService, config, healthDependencies, authService, userService, movieService, movieStatusService, integrationService, movieResourceSyncService, transmissionIntegrationService, qbittorrentIntegrationService, movieDownloadService, externalUsageService, conversationService, conversationTurnService, openaiSettingsService, preferenceService }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({
+  docsService,
+  telegramService,
+  notificationTestService,
+  notificationService,
+  whatsappService,
+  config,
+  healthDependencies,
+  authService,
+  userService,
+  movieService,
+  movieStatusService,
+  integrationService,
+  movieResourceSyncService,
+  transmissionIntegrationService,
+  qbittorrentIntegrationService,
+  movieDownloadService,
+  externalUsageService,
+  conversationService,
+  conversationTurnService,
+  openaiSettingsService,
+  preferenceService,
+}: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
   const logger = createPrettyLoggers();
   logger.info('start to build application');
-  const app = Fastify({ logger: false, trustProxy: config.trustProxy, genReqId: () => randomUUID() });
+  const app = Fastify({
+    logger: false,
+    trustProxy: config.trustProxy,
+    genReqId: () => {
+      return randomUUID();
+    },
+  });
 
   await app.register(cors, { origin: config.WEB_ORIGIN, credentials: true });
   registerAccessLog(app, config.ACCESS_LOG_ENABLED);
   registerErrorHandler(app, loggers);
 
-  await app.register(async (api) => {
-    if (telegramService) registerTelegramRoutes(api, telegramService, config);
-    if (notificationTestService) registerNotificationTestRoutes(api, notificationTestService, config);
-    if (notificationService) registerNotificationRoutes(api, notificationService, config);
-    if (whatsappService) registerWhatsAppRoutes(api, whatsappService, config);
-    if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config);
-    registerPublicConfigRoutes(api, config);
-    if (docsPageEnabled(config) && authService) registerDocsRoutes(api, docsService ?? new DocsService(), authService, config, loggers.error);
-    registerHealthRoutes(api, healthDependencies);
-    if (authService) registerAuthRoutes(api, authService, config);
-    if (preferenceService && authService) registerPreferenceRoutes(api, preferenceService, authService, config);
-    if (userService) registerUserRoutes(api, userService, config);
-    if (movieService) registerMovieRoutes(api, movieService, authService, config);
-    if (movieStatusService && authService) registerMovieStatusRoutes(api, movieStatusService, authService, config, movieResourceSyncService);
-    if (transmissionIntegrationService) registerTransmissionRoutes(api, transmissionIntegrationService, config);
-    if (integrationService) registerIntegrationRoutes(api, integrationService, config, qbittorrentIntegrationService);
-    if (movieDownloadService) registerMovieDownloadRoutes(api, movieDownloadService, config);
-    if (externalUsageService) registerExternalUsageRoutes(api, externalUsageService, config);
-    if (aiAssistantPageEnabled(config) && conversationService) registerConversationRoutes(api, conversationService, config, conversationTurnService, authService, loggers.error);
-  }, { prefix: '/api/v1' });
+  await app.register(
+    async (api) => {
+      if (telegramService) registerTelegramRoutes(api, telegramService, config);
+      if (notificationTestService) registerNotificationTestRoutes(api, notificationTestService, config);
+      if (notificationService) registerNotificationRoutes(api, notificationService, config);
+      if (whatsappService) registerWhatsAppRoutes(api, whatsappService, config);
+      if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config);
+      registerPublicConfigRoutes(api, config);
+      if (docsPageEnabled(config) && authService)
+        registerDocsRoutes(api, docsService ?? new DocsService(), authService, config, loggers.error);
+      registerHealthRoutes(api, healthDependencies);
+      if (authService) registerAuthRoutes(api, authService, config);
+      if (preferenceService && authService) registerPreferenceRoutes(api, preferenceService, authService, config);
+      if (userService) registerUserRoutes(api, userService, config);
+      if (movieService) registerMovieRoutes(api, movieService, authService, config);
+      if (movieStatusService && authService)
+        registerMovieStatusRoutes(api, movieStatusService, authService, config, movieResourceSyncService);
+      if (transmissionIntegrationService) registerTransmissionRoutes(api, transmissionIntegrationService, config);
+      if (integrationService) registerIntegrationRoutes(api, integrationService, config, qbittorrentIntegrationService);
+      if (movieDownloadService) registerMovieDownloadRoutes(api, movieDownloadService, config);
+      if (externalUsageService) registerExternalUsageRoutes(api, externalUsageService, config);
+      if (aiAssistantPageEnabled(config) && conversationService)
+        registerConversationRoutes(
+          api,
+          conversationService,
+          config,
+          conversationTurnService,
+          authService,
+          loggers.error,
+        );
+    },
+    { prefix: '/api/v1' },
+  );
 
   return app;
 }

@@ -14,7 +14,8 @@ describe('localized API errors', () => {
 
   it('renders the mapped error in the active locale', () => {
     setLocale('en-US');
-    expect(localizedErrorMessage(localizedApiError({ error: { code: 'NOT_FOUND' } }), 'errors.unknown'))
-      .toBe('The requested content could not be found.');
+    expect(localizedErrorMessage(localizedApiError({ error: { code: 'NOT_FOUND' } }), 'errors.unknown')).toBe(
+      'The requested content could not be found.',
+    );
   });
 });

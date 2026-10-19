@@ -19,7 +19,8 @@ describe('qBittorrent settings', () => {
         status: 'configured_valid',
         baseUrl: 'http://localhost:8080',
         authMethod: 'api_key',
-      });
+      }
+      );
     });
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mount(QBittorrentSettings);

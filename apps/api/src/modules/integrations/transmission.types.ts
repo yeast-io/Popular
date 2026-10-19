@@ -18,7 +18,9 @@ export interface TransmissionConfigRecord {
 
 export interface TransmissionConfigStore {
   find(ownerId: string): Promise<TransmissionConfigRecord | null>;
-  saveVerified(input: TransmissionConfigRecord & { verifiedAt: Date; lastValidationAt: Date }): Promise<TransmissionConfigRecord>;
+  saveVerified(
+    input: TransmissionConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
+  ): Promise<TransmissionConfigRecord>;
   recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType): Promise<void>;
   delete(ownerId: string): Promise<void>;
 }

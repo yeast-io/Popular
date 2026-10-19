@@ -22,30 +22,53 @@ const config = loadConfig({
 
 class MemoryUsers implements AuthUserStore {
   readonly users = new Map<string, StoredUser>();
-  async countUsers() { return this.users.size; }
+  async countUsers() {
+    return this.users.size;
+  }
   async createPasswordUser(input: Omit<StoredUser, 'id'>) {
     if (this.users.has(input.email)) throw new DuplicateEmailError();
     const user = { ...input, id: String(this.users.size + 1) };
     this.users.set(user.email, user);
     return user;
   }
-  async findByEmailWithPassword(email: string) { return this.users.get(email) ?? null; }
-  async findById(id: string) { return [...this.users.values()].find((user) => user.id === id) ?? null; }
+  async findByEmailWithPassword(email: string) {
+    return this.users.get(email) ?? null;
+  }
+  async findById(id: string) {
+    return (
+      [...this.users.values()].find((user) => {
+        return user.id === id;
+      }) ?? null
+    );
+  }
   async updateDisplayName(id: string, displayName: string) {
-    const user = await this.findById(id); if (!user) return null; user.displayName = displayName; return user;
+    const user = await this.findById(id);
+    if (!user) return null;
+    user.displayName = displayName;
+    return user;
   }
   async updateAvatarObjectKey(id: string, avatarObjectKey: string | undefined) {
-    const user = await this.findById(id); if (!user) return null;
-    if (avatarObjectKey) user.avatarObjectKey = avatarObjectKey; else delete user.avatarObjectKey;
+    const user = await this.findById(id);
+    if (!user) return null;
+    if (avatarObjectKey) user.avatarObjectKey = avatarObjectKey;
+    else delete user.avatarObjectKey;
     return user;
   }
 }
 
 class MemorySessions implements SessionStore {
   readonly sessions = new Map<string, string>();
-  async create(ownerId: string) { const token = `session-${ownerId}`; this.sessions.set(token, ownerId); return token; }
-  async getOwnerId(token: string) { return this.sessions.get(token) ?? null; }
-  async delete(token: string) { this.sessions.delete(token); }
+  async create(ownerId: string) {
+    const token = `session-${ownerId}`;
+    this.sessions.set(token, ownerId);
+    return token;
+  }
+  async getOwnerId(token: string) {
+    return this.sessions.get(token) ?? null;
+  }
+  async delete(token: string) {
+    this.sessions.delete(token);
+  }
 }
 
 test('registration cookie authenticates /me and logout clears it', async () => {
@@ -53,13 +76,15 @@ test('registration cookie authenticates /me and logout clears it', async () => {
     config,
     healthDependencies: [],
     authService: new AuthService(new MemoryUsers(), new MemorySessions(), config.REGISTRATION_USER_LIMIT),
-  });
+  }
+  );
 
   const registration = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
     payload: { email: 'person@example.com', password: 'correct horse battery staple', displayName: 'Person' },
-  });
+  }
+  );
   assert.equal(registration.statusCode, 201);
   assert.deepEqual(registration.json(), { user: { id: '1', email: 'person@example.com', displayName: 'Person' } });
   const rawSetCookie = registration.headers['set-cookie'];
@@ -88,12 +113,14 @@ test('registration validates password length before calling the service', async 
     config,
     healthDependencies: [],
     authService: new AuthService(new MemoryUsers(), new MemorySessions(), config.REGISTRATION_USER_LIMIT),
-  });
+  }
+  );
   const response = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
     payload: { email: 'person@example.com', password: 'short', displayName: 'Person' },
-  });
+  }
+  );
   assert.equal(response.statusCode, 400);
   assert.equal(response.json().error.code, 'VALIDATION_ERROR');
   await app.close();
@@ -105,14 +132,26 @@ test('registration returns a stable API error when the user limit is reached', a
     config,
     healthDependencies: [],
     authService: new AuthService(users, new MemorySessions(), 1),
-  });
+  }
+  );
   const payload = { password: 'correct horse battery staple', displayName: 'Person' };
-  assert.equal((await app.inject({
-    method: 'POST', url: '/api/v1/auth/register', payload: { ...payload, email: 'first@example.com' },
-  })).statusCode, 201);
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: { ...payload, email: 'first@example.com' },
+      }
+      )
+    ).statusCode,
+    201,
+  );
   const rejected = await app.inject({
-    method: 'POST', url: '/api/v1/auth/register', payload: { ...payload, email: 'second@example.com' },
-  });
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    payload: { ...payload, email: 'second@example.com' },
+  }
+  );
   assert.equal(rejected.statusCode, 403);
   assert.equal(rejected.json().error.code, 'REGISTRATION_LIMIT_REACHED');
   assert.equal(users.users.size, 1);

@@ -27,28 +27,44 @@ let requestController: AbortController | undefined;
 let syncPoll: number | undefined;
 let syncDismissTimer: number | undefined;
 const syncJobStorageKey = 'movie-hub:mteam-sync-job';
-const statusOptions = computed(() => [
-  ['interested', t('movie.status.interested')],
-  ['watched', t('movie.status.watched')],
-  ['liked', t('movie.preference.liked')],
-  ['disliked', t('movie.preference.disliked')],
-] as const);
-const activeStatusLabel = computed(() => statusOptions.value.find(([status]) => status === filter.value)?.[1] ?? '');
-onMounted(() => { void load(); void loadMTeamConfiguration(); void loadSyncBatch(); });
-onBeforeUnmount(() => { requestController?.abort(); stopSyncPolling(); stopSyncDismissTimer(); });
+const statusOptions = computed(() => {
+  return [
+    ['interested', t('movie.status.interested')],
+    ['watched', t('movie.status.watched')],
+    ['liked', t('movie.preference.liked')],
+    ['disliked', t('movie.preference.disliked')],
+  ] as const;
+});
+const activeStatusLabel = computed(() => {
+  return statusOptions.value.find(([status]) => status === filter.value)?.[1] ?? '';
+});
+onMounted(() => {
+  void load();
+  void loadMTeamConfiguration();
+  void loadSyncBatch();
+});
+onBeforeUnmount(() => {
+  requestController?.abort();
+  stopSyncPolling();
+  stopSyncDismissTimer();
+});
 watch([filter, locale], () => void load());
 
 async function load() {
   requestController?.abort();
   const controller = new AbortController();
   requestController = controller;
-  loading.value = true; errorMessage.value = '';
+  loading.value = true;
+  errorMessage.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/movies?status=${filter.value}&page=1&pageSize=50&locale=${locale.value}`, {
-      credentials: 'include',
-      signal: controller.signal,
-    });
-    const body = await response.json() as MyMoviesResponse | ApiError;
+    const response = await fetch(
+      `${apiBaseUrl}/me/movies?status=${filter.value}&page=1&pageSize=50&locale=${locale.value}`,
+      {
+        credentials: 'include',
+        signal: controller.signal,
+      },
+    );
+    const body = (await response.json()) as MyMoviesResponse | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.loadMyMovies');
     result.value = body as MyMoviesResponse;
   } catch (error) {
@@ -91,15 +107,15 @@ function successfulCheckTime(movie: MyMoviesResponse['items'][number]): string {
   const checkedAt = movie.resourceCheck?.checkedAt;
   return checkedAt
     ? t('movie.resource.lastSuccessfulCheck', {
-      date: formatDate(checkedAt, { dateStyle: 'medium', timeStyle: 'short' }),
-    })
+        date: formatDate(checkedAt, { dateStyle: 'medium', timeStyle: 'short' }),
+      })
     : '';
 }
 
 async function loadMTeamConfiguration() {
   try {
     const response = await fetch(`${apiBaseUrl}/me/integrations/mteam`, { credentials: 'include' });
-    const body = await response.json() as MTeamConfiguration | ApiError;
+    const body = (await response.json()) as MTeamConfiguration | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.requestFailed');
     mteamStatus.value = (body as MTeamConfiguration).status === 'unconfigured' ? 'unconfigured' : 'configured';
   } catch {
@@ -113,9 +129,12 @@ async function startSync() {
   syncError.value = '';
   try {
     const response = await fetch(`${apiBaseUrl}/me/movies/resources/mteam/sync`, {
-      method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{}',
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
     });
-    const body = await response.json() as MovieResourceSyncBatch | ApiError;
+    const body = (await response.json()) as MovieResourceSyncBatch | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.syncMovieResources');
     syncBatch.value = body as MovieResourceSyncBatch;
     window.localStorage.setItem(syncJobStorageKey, syncBatch.value.id);
@@ -135,15 +154,14 @@ async function loadSyncBatch() {
     const jobId = syncBatch.value?.id ?? window.localStorage.getItem(syncJobStorageKey);
     if (!jobId) return;
     const response = await fetch(`${apiBaseUrl}/me/movies/resources/mteam/sync/${jobId}`, { credentials: 'include' });
-    const body = await response.json() as MovieResourceSyncBatch | ApiError | null;
+    const body = (await response.json()) as MovieResourceSyncBatch | ApiError | null;
     if (!response.ok) throw localizedApiError(body, 'errors.syncMovieResources');
     const wasActive = isSyncActive(syncBatch.value);
     syncBatch.value = isSyncBatch(body) ? body : null;
     if (isSyncActive(syncBatch.value)) {
       stopSyncDismissTimer();
       scheduleSyncPoll();
-    }
-    else {
+    } else {
       stopSyncPolling();
       window.localStorage.removeItem(syncJobStorageKey);
       if (syncBatch.value) scheduleSyncDismiss();
@@ -193,9 +211,12 @@ function dismissSyncProgress() {
 function syncStatusLabel(batch: MovieResourceSyncBatch): string {
   if (batch.needsAction === 'update_api_key') return t('myMovies.sync.updateApiKey');
   const keys = {
-    queued: 'myMovies.sync.status.queued', running: 'myMovies.sync.status.running',
-    paused: 'myMovies.sync.status.paused', completed: 'myMovies.sync.status.completed',
-    failed: 'myMovies.sync.status.failed', cancelled: 'myMovies.sync.status.cancelled',
+    queued: 'myMovies.sync.status.queued',
+    running: 'myMovies.sync.status.running',
+    paused: 'myMovies.sync.status.paused',
+    completed: 'myMovies.sync.status.completed',
+    failed: 'myMovies.sync.status.failed',
+    cancelled: 'myMovies.sync.status.cancelled',
   } as const;
   return t(keys[batch.status]);
 }
@@ -257,10 +278,22 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
       </div>
       <progress :max="Math.max(syncBatch.total, 1)" :value="syncBatch.completed"></progress>
       <dl>
-        <div><dt>{{ t('myMovies.sync.available') }}</dt><dd>{{ syncBatch.available }}</dd></div>
-        <div><dt>{{ t('myMovies.sync.unavailable') }}</dt><dd>{{ syncBatch.unavailable }}</dd></div>
-        <div><dt>{{ t('myMovies.sync.unmatchable') }}</dt><dd>{{ syncBatch.unmatchable }}</dd></div>
-        <div><dt>{{ t('myMovies.sync.failed') }}</dt><dd>{{ syncBatch.failed }}</dd></div>
+        <div>
+          <dt>{{ t('myMovies.sync.available') }}</dt>
+          <dd>{{ syncBatch.available }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('myMovies.sync.unavailable') }}</dt>
+          <dd>{{ syncBatch.unavailable }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('myMovies.sync.unmatchable') }}</dt>
+          <dd>{{ syncBatch.unmatchable }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('myMovies.sync.failed') }}</dt>
+          <dd>{{ syncBatch.failed }}</dd>
+        </div>
       </dl>
     </section>
     <p v-if="syncError" class="browse-error" role="alert">{{ syncError }}</p>
@@ -293,12 +326,7 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
       <p>{{ t('empty.myMoviesDescription', { status: activeStatusLabel }) }}</p>
     </div>
     <div v-else class="movie-grid" role="list" :aria-label="t('myMovies.resultsLabel', { status: activeStatusLabel })">
-      <article
-        v-for="movie in result.items"
-        :key="movie.tmdbId"
-        class="movie-card clickable"
-        role="listitem"
-      >
+      <article v-for="movie in result.items" :key="movie.tmdbId" class="movie-card clickable" role="listitem">
         <a
           class="movie-card-link"
           :href="`/movies/${movie.tmdbId}`"
@@ -313,7 +341,12 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
               loading="lazy"
               @error="markPosterFailed(movie.tmdbId)"
             />
-            <div v-else class="poster-placeholder" role="img" :aria-label="t('a11y.moviePosterUnavailable', { title: movie.title })">
+            <div
+              v-else
+              class="poster-placeholder"
+              role="img"
+              :aria-label="t('a11y.moviePosterUnavailable', { title: movie.title })"
+            >
               <span aria-hidden="true">{{ t('movie.posterUnavailable') }}</span>
             </div>
             <div class="poster-interface" aria-hidden="true">
@@ -323,13 +356,19 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
           </div>
           <div class="movie-copy">
             <h2>{{ movie.title }}</h2>
-            <p class="original-title" :class="{ placeholder: !movie.originalTitle || movie.originalTitle === movie.title }" :aria-hidden="!movie.originalTitle || movie.originalTitle === movie.title">
+            <p
+              class="original-title"
+              :class="{ placeholder: !movie.originalTitle || movie.originalTitle === movie.title }"
+              :aria-hidden="!movie.originalTitle || movie.originalTitle === movie.title"
+            >
               {{ movie.originalTitle && movie.originalTitle !== movie.title ? movie.originalTitle : '\u00a0' }}
             </p>
             <div class="movie-meta">
               <span>
                 <span class="sr-only">{{ t('a11y.releaseDate') }}: </span>
-                <time v-if="movie.releaseDate" :datetime="movie.releaseDate">{{ releaseDateLabel(movie.releaseDate) }}</time>
+                <time v-if="movie.releaseDate" :datetime="movie.releaseDate">{{
+                  releaseDateLabel(movie.releaseDate)
+                }}</time>
                 <span v-else>{{ releaseDateLabel() }}</span>
               </span>
               <span class="status-badge" :data-status="filter">

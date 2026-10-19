@@ -24,23 +24,27 @@ export interface MovieResourceCheckRecord extends MovieResourceCheckKey {
   identityFingerprint?: string;
 }
 
-type SuccessfulMovieResourceCheck = ({
-  lastAttemptStatus: 'success';
-  checkedAt: Date;
-  expiresAt: Date;
-  availability: 'available' | 'unavailable';
-  matchedBy: MovieResourceMatchMethod;
-} | {
-  lastAttemptStatus: 'success';
-  checkedAt: Date;
-  availability: 'unmatchable';
-  identityFingerprint: string;
-});
+type SuccessfulMovieResourceCheck =
+  | {
+      lastAttemptStatus: 'success';
+      checkedAt: Date;
+      expiresAt: Date;
+      availability: 'available' | 'unavailable';
+      matchedBy: MovieResourceMatchMethod;
+    }
+  | {
+      lastAttemptStatus: 'success';
+      checkedAt: Date;
+      availability: 'unmatchable';
+      identityFingerprint: string;
+    };
 
-export type MovieResourceCheckCompletion = SuccessfulMovieResourceCheck | {
-  lastAttemptStatus: 'error';
-  lastErrorCode: MovieResourceCheckErrorCode;
-};
+export type MovieResourceCheckCompletion =
+  | SuccessfulMovieResourceCheck
+  | {
+      lastAttemptStatus: 'error';
+      lastErrorCode: MovieResourceCheckErrorCode;
+    };
 
 export interface MovieResourceCheckStore {
   readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieResourceCheckRecord[]>;
@@ -54,16 +58,8 @@ export interface MovieResourceCheckStore {
     credentialsVerifiedAt: Date | undefined,
     force: boolean,
   ): Promise<boolean>;
-  complete(
-    key: MovieResourceCheckKey,
-    attemptedAt: Date,
-    result: MovieResourceCheckCompletion,
-  ): Promise<void>;
-  recordAttempt(
-    key: MovieResourceCheckKey,
-    attemptedAt: Date,
-    result: MovieResourceCheckCompletion,
-  ): Promise<void>;
+  complete(key: MovieResourceCheckKey, attemptedAt: Date, result: MovieResourceCheckCompletion): Promise<void>;
+  recordAttempt(key: MovieResourceCheckKey, attemptedAt: Date, result: MovieResourceCheckCompletion): Promise<void>;
 }
 
 export interface MTeamRelease {
@@ -96,5 +92,10 @@ export interface MTeamResourceSearcher {
 }
 
 export interface MTeamTorrentDownloader {
-  downloadTorrent(baseUrl: string, apiKey: string, releaseId: string, context?: ExternalRequestContext): Promise<Uint8Array>;
+  downloadTorrent(
+    baseUrl: string,
+    apiKey: string,
+    releaseId: string,
+    context?: ExternalRequestContext,
+  ): Promise<Uint8Array>;
 }

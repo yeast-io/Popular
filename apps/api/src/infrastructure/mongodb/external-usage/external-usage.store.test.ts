@@ -9,23 +9,43 @@ test('event retention is exactly 90 days and invalid attribution is rejected', a
   const created: Array<Record<string, unknown>> = [];
   const errors: Array<Record<string, unknown>> = [];
   const events = {
-    create: async (value: Record<string, unknown>) => { created.push(value); },
+    create: async (value: Record<string, unknown>) => {
+      created.push(value);
+    },
   } as unknown as Model<ExternalRequestEventDocument>;
   const daily = { collection: { name: 'external_usage_daily' } } as unknown as Model<ExternalUsageDailyDocument>;
   const store = new MongoExternalUsageStore(events, daily, {
-    error: (bindings) => { errors.push(bindings); },
+    error: (bindings) => {
+      errors.push(bindings);
+    },
   });
   const occurredAt = new Date('2026-10-13T12:00:00.000Z');
 
   await store.record({
-    actorType: 'user', ownerId: '507f1f77bcf86cd799439011', provider: 'tmdb',
-    operation: 'movie.details', trigger: 'api_request', outcome: 'success',
-    operationId: 'operation-1', attempt: 1, durationMs: 12, occurredAt,
-  });
+    actorType: 'user',
+    ownerId: '507f1f77bcf86cd799439011',
+    provider: 'tmdb',
+    operation: 'movie.details',
+    trigger: 'api_request',
+    outcome: 'success',
+    operationId: 'operation-1',
+    attempt: 1,
+    durationMs: 12,
+    occurredAt,
+  }
+  );
   await store.record({
-    actorType: 'user', provider: 'tmdb', operation: 'movie.details', trigger: 'api_request',
-    outcome: 'success', operationId: 'operation-2', attempt: 1, durationMs: 12, occurredAt,
-  });
+    actorType: 'user',
+    provider: 'tmdb',
+    operation: 'movie.details',
+    trigger: 'api_request',
+    outcome: 'success',
+    operationId: 'operation-2',
+    attempt: 1,
+    durationMs: 12,
+    occurredAt,
+  }
+  );
 
   assert.equal(created.length, 1);
   assert.equal((created[0]?.expiresAt as Date).toISOString(), '2027-01-11T12:00:00.000Z');

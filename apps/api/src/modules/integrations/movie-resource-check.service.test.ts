@@ -22,10 +22,18 @@ class StubCheckStore implements MovieResourceCheckStore {
   acquireCalls: Array<{ key: MovieResourceCheckKey; force: boolean }> = [];
   completed: MovieResourceCheckCompletion[] = [];
 
-  async readForMovies() { return []; }
+  async readForMovies() {
+    return [];
+  }
   async readOne() {
     return this.checking
-      ? { ownerId: 'owner-a', tmdbId: 603, provider: 'mteam' as const, checking: true, availability: 'unchecked' as const }
+      ? {
+          ownerId: 'owner-a',
+          tmdbId: 603,
+          provider: 'mteam' as const,
+          checking: true,
+          availability: 'unchecked' as const,
+        }
       : null;
   }
 
@@ -72,10 +80,15 @@ function harness(identity: { title: string; imdbId?: string } | null = { title: 
   const encryptedApiKey = secrets.encrypt('api-key', 'movie-hub:integration:mteam:owner:owner-a');
   let lastFailureType: 'authentication' | undefined;
   const configs = {
-    find: async () => ({
-      ownerId: 'owner-a', provider: 'mteam' as const, baseUrl: 'https://api.m-team.cc', encryptedApiKey,
-      ...(lastFailureType ? { lastFailureType } : {}),
-    }),
+    find: async () => {
+      return {
+        ownerId: 'owner-a',
+        provider: 'mteam' as const,
+        baseUrl: 'https://api.m-team.cc',
+        encryptedApiKey,
+        ...(lastFailureType ? { lastFailureType } : {}),
+      };
+    },
     recordFailure: async (_ownerId: string, _provider: 'mteam', _at: Date, failureType: 'authentication') => {
       lastFailureType = failureType;
     },
@@ -84,7 +97,9 @@ function harness(identity: { title: string; imdbId?: string } | null = { title: 
   const movies = {
     hasMovie: async () => true,
     readMovieIdentity: async () => identity,
-    writeMovieDetail: async (detail: MovieDetailRecord) => { writes.push(detail); },
+    writeMovieDetail: async (detail: MovieDetailRecord) => {
+      writes.push(detail);
+    },
   } as unknown as MovieCatalogStore;
   const detail: MovieDetailRecord = {
     tmdbId: 603,
@@ -104,8 +119,12 @@ function harness(identity: { title: string; imdbId?: string } | null = { title: 
     tmdb,
     'en-US',
     {
-      availableTtlMs: 86_400_000, unavailableTtlMs: 21_600_000, retryDelayMs: 900_000,
-      leaseMs: 120_000, minimumIntervalMs: 0, releaseListTtlMs: 120_000,
+      availableTtlMs: 86_400_000,
+      unavailableTtlMs: 21_600_000,
+      retryDelayMs: 900_000,
+      leaseMs: 120_000,
+      minimumIntervalMs: 0,
+      releaseListTtlMs: 120_000,
     },
     { info: () => undefined, error: () => undefined },
     () => now,
@@ -117,10 +136,7 @@ test('consecutive manual requests share one active movie check', async () => {
   const { checks, mteam, service } = harness();
   mteam.releases = [{ imdbId: 'tt0133093', visible: true, banned: false, seeders: 1 }];
 
-  const [first, second] = await Promise.all([
-    service.request('owner-a', 603),
-    service.request('owner-a', 603),
-  ]);
+  const [first, second] = await Promise.all([service.request('owner-a', 603), service.request('owner-a', 603)]);
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.deepEqual([first, second].sort(), [false, true]);
@@ -141,9 +157,18 @@ test('IMDb checks count only exact, visible, unbanned releases with seeders', as
 
   assert.deepEqual(mteam.queries, [{ imdbId: 'tt0133093' }]);
   assert.equal(checks.completed[0]?.lastAttemptStatus, 'success');
-  assert.equal(checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined, 'available');
-  assert.equal(checks.completed[0] && 'matchedBy' in checks.completed[0] ? checks.completed[0].matchedBy : undefined, 'imdb');
-  assert.equal(checks.completed[0] && 'expiresAt' in checks.completed[0] ? checks.completed[0].expiresAt.toISOString() : undefined, '2026-10-14T00:00:00.000Z');
+  assert.equal(
+    checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined,
+    'available',
+  );
+  assert.equal(
+    checks.completed[0] && 'matchedBy' in checks.completed[0] ? checks.completed[0].matchedBy : undefined,
+    'imdb',
+  );
+  assert.equal(
+    checks.completed[0] && 'expiresAt' in checks.completed[0] ? checks.completed[0].expiresAt.toISOString() : undefined,
+    '2026-10-14T00:00:00.000Z',
+  );
 });
 
 test('a successful IMDb query with only dead or hidden releases is unavailable', async () => {
@@ -156,8 +181,14 @@ test('a successful IMDb query with only dead or hidden releases is unavailable',
   await service.checkNow('owner-a', 603);
 
   assert.equal(checks.completed[0]?.lastAttemptStatus, 'success');
-  assert.equal(checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined, 'unavailable');
-  assert.equal(checks.completed[0] && 'expiresAt' in checks.completed[0] ? checks.completed[0].expiresAt.toISOString() : undefined, '2026-10-13T06:00:00.000Z');
+  assert.equal(
+    checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined,
+    'unavailable',
+  );
+  assert.equal(
+    checks.completed[0] && 'expiresAt' in checks.completed[0] ? checks.completed[0].expiresAt.toISOString() : undefined,
+    '2026-10-13T06:00:00.000Z',
+  );
 });
 
 test('missing IMDb ID refreshes TMDB details then uses title only as an uncertain fallback', async () => {
@@ -168,12 +199,18 @@ test('missing IMDb ID refreshes TMDB details then uses title only as an uncertai
   assert.equal(writes.length, 1);
   assert.deepEqual(mteam.queries, [{ title: 'The Matrix' }]);
   assert.equal(checks.completed[0]?.lastAttemptStatus, 'success');
-  assert.equal(checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined, 'unmatchable');
+  assert.equal(
+    checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined,
+    'unmatchable',
+  );
   assert.equal(checks.completed[0] && 'matchedBy' in checks.completed[0], false);
   assert.equal(checks.completed[0] && 'expiresAt' in checks.completed[0], false);
-  assert.equal(checks.completed[0] && 'identityFingerprint' in checks.completed[0]
-    ? checks.completed[0].identityFingerprint
-    : undefined, '["The Matrix",null]');
+  assert.equal(
+    checks.completed[0] && 'identityFingerprint' in checks.completed[0]
+      ? checks.completed[0].identityFingerprint
+      : undefined,
+    '["The Matrix",null]',
+  );
 });
 
 test('temporary request failures persist only the latest attempt outcome and error code', async () => {
@@ -244,8 +281,16 @@ test('live release queries return only active exact matches and reuse the short-
   const { checks, mteam, service } = harness();
   mteam.releases = [
     {
-      id: '1', title: 'The.Matrix.1999.2160p', imdbId: 'tt0133093', visible: true, banned: false,
-      seeders: 8, leechers: 2, sizeBytes: 1024, resolution: '4K', tags: ['中字'],
+      id: '1',
+      title: 'The.Matrix.1999.2160p',
+      imdbId: 'tt0133093',
+      visible: true,
+      banned: false,
+      seeders: 8,
+      leechers: 2,
+      sizeBytes: 1024,
+      resolution: '4K',
+      tags: ['中字'],
     },
     { id: '2', title: 'Dead', imdbId: 'tt0133093', visible: true, banned: false, seeders: 0 },
     { id: '3', title: 'Wrong movie', imdbId: 'tt9999999', visible: true, banned: false, seeders: 20 },
@@ -254,17 +299,27 @@ test('live release queries return only active exact matches and reuse the short-
   const [first, duplicate] = await Promise.all([
     service.listReleases('owner-a', 603),
     service.listReleases('owner-a', 603),
-  ]);
+  ]
+  );
   const cached = await service.listReleases('owner-a', 603);
 
   assert.equal(mteam.queries.length, 1);
   assert.equal(first.cached, false);
   assert.equal(duplicate.cached, false);
   assert.equal(cached.cached, true);
-  assert.deepEqual(first.releases, [{
-    id: '1', title: 'The.Matrix.1999.2160p', detailsUrl: 'https://kp.m-team.cc/detail/1', seeders: 8, leechers: 2,
-    sizeBytes: 1024, resolution: '4K', tags: ['中字'],
-  }]);
+  assert.deepEqual(first.releases, [
+    {
+      id: '1',
+      title: 'The.Matrix.1999.2160p',
+      detailsUrl: 'https://kp.m-team.cc/detail/1',
+      seeders: 8,
+      leechers: 2,
+      sizeBytes: 1024,
+      resolution: '4K',
+      tags: ['中字'],
+    },
+  ]
+  );
   const completion = checks.completed.at(-1);
   assert.equal(completion?.lastAttemptStatus, 'success');
   assert.equal(completion && 'availability' in completion ? completion.availability : undefined, 'available');

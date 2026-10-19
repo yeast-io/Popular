@@ -5,30 +5,89 @@ import type { DownloadProvider, MovieDownload } from '@movie-hub/contract';
 import { setLocale } from '../../i18n';
 import MovieDetail from './MovieDetail.vue';
 
-async function setup(providers: DownloadProvider[], options: { fail?: boolean; providersFail?: boolean; retry?: DownloadProvider; status?: MovieDownload['status']; extraRelease?: boolean; postResponse?: Promise<Response> } = {}) {
+async function setup(
+  providers: DownloadProvider[],
+  options: {
+    fail?: boolean;
+    providersFail?: boolean;
+    retry?: DownloadProvider;
+    status?: MovieDownload['status'];
+    extraRelease?: boolean;
+    postResponse?: Promise<Response>;
+  } = {},
+) {
   setLocale('en-US');
   const posts: { sourceReleaseId: string; provider: DownloadProvider }[] = [];
-  const existing = options.retry || options.status ? [{ id: 'old', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: '991', provider: options.retry ?? 'transmission', status: options.status ?? 'failed', progress: 0 }] : [];
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url.endsWith('/download-providers')) return options.providersFail
-      ? new Response(null, { status: 503 }) : Response.json({ providers });
-    if (url.endsWith('/resources/mteam/releases')) return Response.json({
-      provider: 'mteam', availability: 'available', queriedAt: '2026-10-17T00:00:00Z', cached: false,
-      releases: [...(options.extraRelease ? [{ id: '990', title: 'Earlier.Release', detailsUrl: 'https://mteam.test/990', seeders: 20, tags: [] }] : []), { id: '991', title: 'Movie.Release', detailsUrl: 'https://mteam.test/991', seeders: 20, tags: [] }],
-    });
-    if (url.endsWith('/resources/mteam')) return Response.json({ provider: 'mteam', checking: false, availability: 'available' });
-    if (url.endsWith('/downloads') && init?.method === 'POST') {
-      const body = JSON.parse(String(init.body));
-      posts.push(body);
-      if (options.postResponse) return options.postResponse;
-      return options.fail
-        ? Response.json({ error: { code: 'TRANSMISSION_UNREACHABLE' } }, { status: 503 })
-        : Response.json({ id: 'new', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: '991', provider: body.provider, status: 'downloading', progress: 35 }, { status: 201 });
-    }
-    if (url.endsWith('/downloads')) return Response.json({ items: existing });
-    return Response.json({ tmdbId: 603, title: 'Movie', genres: [], cast: [], directors: [], userStatus: 'interested', detailSyncedAt: '2026-10-17T00:00:00Z', stale: false, locale: 'en-US' });
-  }));
+  const existing =
+    options.retry || options.status
+      ? [
+          {
+            id: 'old',
+            tmdbId: 603,
+            sourceProvider: 'mteam',
+            sourceReleaseId: '991',
+            provider: options.retry ?? 'transmission',
+            status: options.status ?? 'failed',
+            progress: 0,
+          },
+        ]
+      : [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/download-providers'))
+        return options.providersFail ? new Response(null, { status: 503 }) : Response.json({ providers });
+      if (url.endsWith('/resources/mteam/releases'))
+        return Response.json({
+          provider: 'mteam',
+          availability: 'available',
+          queriedAt: '2026-10-17T00:00:00Z',
+          cached: false,
+          releases: [
+            ...(options.extraRelease
+              ? [{ id: '990', title: 'Earlier.Release', detailsUrl: 'https://mteam.test/990', seeders: 20, tags: [] }]
+              : []),
+            { id: '991', title: 'Movie.Release', detailsUrl: 'https://mteam.test/991', seeders: 20, tags: [] },
+          ],
+        }
+        );
+      if (url.endsWith('/resources/mteam'))
+        return Response.json({ provider: 'mteam', checking: false, availability: 'available' });
+      if (url.endsWith('/downloads') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        posts.push(body);
+        if (options.postResponse) return options.postResponse;
+        return options.fail
+          ? Response.json({ error: { code: 'TRANSMISSION_UNREACHABLE' } }, { status: 503 })
+          : Response.json(
+            {
+                id: 'new',
+                tmdbId: 603,
+                sourceProvider: 'mteam',
+                sourceReleaseId: '991',
+                provider: body.provider,
+                status: 'downloading',
+                progress: 35,
+              },
+            { status: 201 },
+          );
+      }
+      if (url.endsWith('/downloads')) return Response.json({ items: existing });
+      return Response.json({
+        tmdbId: 603,
+        title: 'Movie',
+        genres: [],
+        cast: [],
+        directors: [],
+        userStatus: 'interested',
+        detailSyncedAt: '2026-10-17T00:00:00Z',
+        stale: false,
+        locale: 'en-US',
+      }
+      );
+    }),
+  );
   const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
   await flushPromises();
   await wrapper.get('.resource-status-button').trigger('click');
@@ -43,7 +102,9 @@ async function setup(providers: DownloadProvider[], options: { fail?: boolean; p
 describe('download provider selection', () => {
   it('moves the submitted release to the top and scrolls the list before the server responds', async () => {
     let respond!: (response: Response) => void;
-    const postResponse = new Promise<Response>(resolve => { respond = resolve; });
+    const postResponse = new Promise<Response>((resolve) => {
+      respond = resolve;
+    });
     const f = await setup(['transmission'], { extraRelease: true, postResponse });
     const panel = document.body.querySelector<HTMLElement>('.release-panel-content')!;
     panel.scrollTop = 500;
@@ -63,27 +124,41 @@ describe('download provider selection', () => {
   });
 
   it.each([
-    ['submitting', 'is-download-active'], ['downloading', 'is-download-active'],
-    ['completed', 'is-download-complete'], ['seeding', 'is-download-complete'],
-    ['paused', 'is-download-paused'], ['failed', 'is-download-failed'],
-  ] as const)('shows the correct card highlight for %s', async (status, expectedClass) => {
+    ['submitting', 'is-download-active'],
+    ['downloading', 'is-download-active'],
+    ['completed', 'is-download-complete'],
+    ['seeding', 'is-download-complete'],
+    ['paused', 'is-download-paused'],
+    ['failed', 'is-download-failed'],
+  ] as const
+  )('shows the correct card highlight for %s', async (status, expectedClass) => {
     const f = await setup(['transmission'], { status });
     const card = document.body.querySelector<HTMLElement>('.release-card')!;
     expect(card.classList.contains(expectedClass)).toBe(true);
-    if (status === 'completed' || status === 'seeding') expect(card.classList.contains('is-download-active')).toBe(false);
+    if (status === 'completed' || status === 'seeding')
+      expect(card.classList.contains('is-download-active')).toBe(false);
     f.wrapper.unmount();
   });
 
-  afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; document.body.style.overflow = ''; });
-
-  it.each(['qbittorrent', 'transmission'] as const)('submits immediately when only %s is configured', async provider => {
-    const f = await setup([provider]);
-    await f.clickDownload();
-    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
-    expect(f.posts).toEqual([{ sourceReleaseId: '991', provider }]);
-    expect(document.body.querySelector('.release-download-progress')?.textContent).toContain(provider === 'transmission' ? 'Transmission' : 'qBittorrent');
-    f.wrapper.unmount();
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.body.innerHTML = '';
+    document.body.style.overflow = '';
   });
+
+  it.each(['qbittorrent', 'transmission'] as const)(
+    'submits immediately when only %s is configured',
+    async (provider) => {
+      const f = await setup([provider]);
+      await f.clickDownload();
+      expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
+      expect(f.posts).toEqual([{ sourceReleaseId: '991', provider }]);
+      expect(document.body.querySelector('.release-download-progress')?.textContent).toContain(
+        provider === 'transmission' ? 'Transmission' : 'qBittorrent',
+      );
+      f.wrapper.unmount();
+    },
+  );
 
   it('waits for an explicit choice with multiple downloaders, then submits only to the selected one', async () => {
     const f = await setup(['qbittorrent', 'transmission']);
@@ -141,7 +216,9 @@ describe('download provider selection', () => {
     const f = await setup(['transmission'], { fail: true });
     await f.clickDownload();
     expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission' }]);
-    expect(document.body.querySelector('.release-card [role="alert"]')?.textContent).toContain('Transmission could not be reached');
+    expect(document.body.querySelector('.release-card [role="alert"]')?.textContent).toContain(
+      'Transmission could not be reached',
+    );
     f.wrapper.unmount();
   });
 

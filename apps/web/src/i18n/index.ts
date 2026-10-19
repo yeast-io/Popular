@@ -1,13 +1,7 @@
 import { readonly, ref } from 'vue';
 import enUS from './locales/en-US';
 import zhCN from './locales/zh-CN';
-import {
-  defaultLocale,
-  localeStorageKey,
-  selectInitialLocale,
-  supportedLocales,
-  type SupportedLocale,
-} from './locale';
+import { defaultLocale, localeStorageKey, selectInitialLocale, supportedLocales, type SupportedLocale } from './locale';
 
 export { defaultLocale, localeStorageKey, selectInitialLocale, supportedLocales } from './locale';
 export type { SupportedLocale } from './locale';
@@ -32,11 +26,7 @@ export function setLocale(locale: SupportedLocale): void {
   applyLocale(locale, true);
 }
 
-export function translate(
-  locale: SupportedLocale,
-  key: TranslationKey,
-  params: TranslationParams = {},
-): string {
+export function translate(locale: SupportedLocale, key: TranslationKey, params: TranslationParams = {}): string {
   const template = messages[locale][key] ?? messages[defaultLocale][key];
   return template.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (placeholder, name: string) => {
     const value = params[name];
@@ -48,7 +38,10 @@ export function t(key: TranslationKey, params?: TranslationParams): string {
   return translate(activeLocale.value, key, params);
 }
 
-export function formatDate(value: Date | string, options: Intl.DateTimeFormatOptions = { dateStyle: 'medium' }): string {
+export function formatDate(
+  value: Date | string,
+  options: Intl.DateTimeFormatOptions = { dateStyle: 'medium' },
+): string {
   const date = value instanceof Date ? value : new Date(value);
   return new Intl.DateTimeFormat(activeLocale.value, options).format(date);
 }

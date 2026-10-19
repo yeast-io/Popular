@@ -18,10 +18,12 @@ test('claim atomically targets the oldest unfinished message, even when that hea
       assert.equal(scope.nextAttemptAt, undefined);
       assert.equal(scope.messageId, undefined);
       assert.equal(scope.text, undefined);
-      return { sort: (sort: unknown) => {
-        assert.deepEqual(sort, { receivedAt: 1, _id: 1 });
-        return { select: () => ({ lean: async () => ({ _id: id }) }) };
-      } };
+      return {
+        sort: (sort: unknown) => {
+          assert.deepEqual(sort, { receivedAt: 1, _id: 1 });
+          return { select: () => ({ lean: async () => ({ _id: id }) }) };
+        },
+      };
     },
     findOneAndUpdate: (query: Record<string, unknown>, change: Record<string, unknown>) => {
       filter = query;
@@ -50,8 +52,8 @@ test('recovery selects due conversation heads after grouping and includes expire
     },
   } as unknown as AssistantMessageModel;
   assert.deepEqual(await new MongoAssistantQueue(model).readyConversations(100), [conversation]);
-  const grouping = pipeline.findIndex(step => '$group' in step);
-  const due = pipeline.findIndex(step => JSON.stringify(step).includes('head.nextAttemptAt'));
+  const grouping = pipeline.findIndex((step) => '$group' in step);
+  const due = pipeline.findIndex((step) => JSON.stringify(step).includes('head.nextAttemptAt'));
   assert.ok(grouping >= 0 && due > grouping);
   assert.ok(JSON.stringify(pipeline[due]).includes('head.leaseUntil'));
   assert.deepEqual(pipeline.at(-1), { $limit: 100 });
@@ -60,10 +62,12 @@ test('recovery selects due conversation heads after grouping and includes expire
 test('renewals and result transitions are fenced by token, status, and an unexpired message lease', async () => {
   let matched = 0;
   const queries: Array<Record<string, unknown>> = [];
-  const model = { updateOne: async (filter: Record<string, unknown>) => {
-    queries.push(filter);
-    return { matchedCount: matched };
-  } } as unknown as AssistantMessageModel;
+  const model = {
+    updateOne: async (filter: Record<string, unknown>) => {
+      queries.push(filter);
+      return { matchedCount: matched };
+    },
+  } as unknown as AssistantMessageModel;
   const queue = new MongoAssistantQueue(model);
   assert.equal(await queue.renew(String(id), 'old'), false);
   assert.equal(await queue.saveResult(String(id), 'old', { replyText: 'stale' }), false);
@@ -80,18 +84,34 @@ test('renewals and result transitions are fenced by token, status, and an unexpi
 });
 
 test('persisted movie metadata and delivery progress survive reclaiming a message', async () => {
-  const result = { intent: 'recommend' as const, replyText: 'Movie text', movies: [
-    { tmdbId: 1, title: 'Movie', reason: 'Reason', posterPath: '/one.jpg' },
-    { tmdbId: 2, title: 'No poster', reason: 'Reason' },
-  ] };
+  const result = {
+    intent: 'recommend' as const,
+    replyText: 'Movie text',
+    movies: [
+      { tmdbId: 1, title: 'Movie', reason: 'Reason', posterPath: '/one.jpg' },
+      { tmdbId: 2, title: 'No poster', reason: 'Reason' },
+    ],
+  };
   const updates: Array<Record<string, unknown>> = [];
-  const row = { _id: id, ...conversation, ownerId: new Types.ObjectId(conversation.ownerId), messageId: 'message',
-    text: 'Recommend', receivedAt: new Date(), attempts: 2, deliveredMovieCount: 1,
-    ...result, movies: [result.movies[0], { ...result.movies[1], posterPath: null }] };
+  const row = {
+    _id: id,
+    ...conversation,
+    ownerId: new Types.ObjectId(conversation.ownerId),
+    messageId: 'message',
+    text: 'Recommend',
+    receivedAt: new Date(),
+    attempts: 2,
+    deliveredMovieCount: 1,
+    ...result,
+    movies: [result.movies[0], { ...result.movies[1], posterPath: null }],
+  };
   const model = {
     findOne: () => ({ sort: () => ({ select: () => ({ lean: async () => ({ _id: id }) }) }) }),
     findOneAndUpdate: () => ({ lean: async () => row }),
-    updateOne: async (_filter: unknown, update: Record<string, unknown>) => { updates.push(update); return { matchedCount: 1 }; },
+    updateOne: async (_filter: unknown, update: Record<string, unknown>) => {
+      updates.push(update);
+      return { matchedCount: 1 };
+    },
   } as unknown as AssistantMessageModel;
   const queue = new MongoAssistantQueue(model);
   assert.equal(await queue.saveResult(String(id), 'lease', result), true);

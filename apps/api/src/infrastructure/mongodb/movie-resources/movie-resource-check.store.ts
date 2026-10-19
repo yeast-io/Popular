@@ -17,24 +17,32 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
   async readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieResourceCheckRecord[]> {
     if (tmdbIds.length === 0) return [];
     const [rows, tasks] = await Promise.all([
-      this.checks.find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam' }).lean().exec(),
-      this.tasks.find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam', leaseExpiresAt: { $gt: new Date() } }).lean().exec(),
+      this.checks
+        .find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam' })
+        .lean()
+        .exec(),
+      this.tasks
+        .find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam', leaseExpiresAt: { $gt: new Date() } })
+        .lean()
+        .exec(),
     ]);
     const checkingIds = new Set(tasks.map((task) => task.tmdbId));
-    const results: MovieResourceCheckRecord[] = rows.map((row) => ({
-      ownerId: String(row.ownerId),
-      tmdbId: row.tmdbId,
-      provider: 'mteam',
-      checking: checkingIds.has(row.tmdbId),
-      availability: row.availability ?? 'unchecked',
-      ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
-      ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
-      ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-      ...(row.lastAttemptAt ? { lastAttemptAt: row.lastAttemptAt } : {}),
-      ...(row.lastAttemptStatus ? { lastAttemptStatus: row.lastAttemptStatus } : {}),
-      ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
-      ...(row.identityFingerprint ? { identityFingerprint: row.identityFingerprint } : {}),
-    }));
+    const results: MovieResourceCheckRecord[] = rows.map((row) => {
+      return {
+        ownerId: String(row.ownerId),
+        tmdbId: row.tmdbId,
+        provider: 'mteam',
+        checking: checkingIds.has(row.tmdbId),
+        availability: row.availability ?? 'unchecked',
+        ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
+        ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
+        ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+        ...(row.lastAttemptAt ? { lastAttemptAt: row.lastAttemptAt } : {}),
+        ...(row.lastAttemptStatus ? { lastAttemptStatus: row.lastAttemptStatus } : {}),
+        ...(row.lastErrorCode ? { lastErrorCode: row.lastErrorCode } : {}),
+        ...(row.identityFingerprint ? { identityFingerprint: row.identityFingerprint } : {}),
+      };
+    });
     const resultIds = new Set(results.map((result) => result.tmdbId));
     for (const task of tasks) {
       if (!resultIds.has(task.tmdbId)) {
@@ -47,13 +55,19 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
   async readOne(key: MovieResourceCheckKey): Promise<MovieResourceCheckRecord | null> {
     const [row, task] = await Promise.all([
       this.checks.findOne(key).lean().exec(),
-      this.tasks.findOne({ ...key, leaseExpiresAt: { $gt: new Date() } }).lean().exec(),
+      this.tasks
+        .findOne({ ...key, leaseExpiresAt: { $gt: new Date() } })
+        .lean()
+        .exec(),
     ]);
     if (!row) {
       return task ? { ...key, availability: 'unchecked', checking: true } : null;
     }
     return {
-      ownerId: String(row.ownerId), tmdbId: row.tmdbId, provider: 'mteam', checking: Boolean(task),
+      ownerId: String(row.ownerId),
+      tmdbId: row.tmdbId,
+      provider: 'mteam',
+      checking: Boolean(task),
       availability: row.availability ?? 'unchecked',
       ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
       ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
@@ -74,32 +88,29 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     credentialsVerifiedAt: Date | undefined,
     force: boolean,
   ): Promise<boolean> {
-    if (!await this.isDue(
-      key, attemptedAt, failedAttemptBefore, identityFingerprint, credentialsVerifiedAt, force,
-    )) return false;
+    if (!(await this.isDue(key, attemptedAt, failedAttemptBefore, identityFingerprint, credentialsVerifiedAt, force)))
+      return false;
 
     try {
-      const acquired = await this.tasks.findOneAndUpdate(
-        {
-          ...key,
-          $or: [
-            { leaseExpiresAt: { $exists: false } },
-            { leaseExpiresAt: { $lte: attemptedAt } },
-          ],
-        },
-        {
-          $setOnInsert: { ...key },
-          $set: { status: 'checking', attemptedAt, leaseExpiresAt },
-        },
-        { upsert: true, returnDocument: 'after' },
-      ).lean().exec();
+      const acquired = await this.tasks
+        .findOneAndUpdate(
+          {
+            ...key,
+            $or: [{ leaseExpiresAt: { $exists: false } }, { leaseExpiresAt: { $lte: attemptedAt } }],
+          },
+          {
+            $setOnInsert: { ...key },
+            $set: { status: 'checking', attemptedAt, leaseExpiresAt },
+          },
+          { upsert: true, returnDocument: 'after' },
+        )
+        .lean()
+        .exec();
       if (!acquired) return false;
       try {
-        await this.checks.updateOne(
-          key,
-          { $setOnInsert: { ...key, availability: 'unchecked' } },
-          { upsert: true },
-        ).exec();
+        await this.checks
+          .updateOne(key, { $setOnInsert: { ...key, availability: 'unchecked' } }, { upsert: true })
+          .exec();
         return true;
       } catch (error) {
         await this.releaseTask(key, attemptedAt);
@@ -112,21 +123,40 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     }
   }
 
-  async complete(
+  async complete(key: MovieResourceCheckKey, attemptedAt: Date, result: MovieResourceCheckCompletion): Promise<void> {
+    const task = await this.tasks
+      .findOneAndDelete({ ...key, attemptedAt })
+      .lean()
+      .exec();
+    if (!task) return;
+    await this.checks
+      .updateOne(
+        {
+          ...key,
+          $or: [{ lastAttemptAt: { $exists: false } }, { lastAttemptAt: { $lte: attemptedAt } }],
+        },
+        result.lastAttemptStatus === 'success'
+          ? {
+              $set: { ...result, lastAttemptAt: attemptedAt },
+              $unset: {
+                lastErrorCode: 1,
+                ...(!('matchedBy' in result) ? { matchedBy: 1 } : {}),
+                ...(!('expiresAt' in result) ? { expiresAt: 1 } : {}),
+                ...(!('identityFingerprint' in result) ? { identityFingerprint: 1 } : {}),
+              },
+            }
+          : { $set: { ...result, lastAttemptAt: attemptedAt } },
+      )
+      .exec();
+    if (result.lastAttemptStatus === 'error') await this.backfillMissingAvailability(key);
+  }
+
+  async recordAttempt(
     key: MovieResourceCheckKey,
     attemptedAt: Date,
     result: MovieResourceCheckCompletion,
   ): Promise<void> {
-    const task = await this.tasks.findOneAndDelete({ ...key, attemptedAt }).lean().exec();
-    if (!task) return;
-    await this.checks.updateOne(
-      {
-        ...key,
-        $or: [
-          { lastAttemptAt: { $exists: false } },
-          { lastAttemptAt: { $lte: attemptedAt } },
-        ],
-      },
+    const update =
       result.lastAttemptStatus === 'success'
         ? {
             $set: { ...result, lastAttemptAt: attemptedAt },
@@ -136,44 +166,23 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
               ...(!('expiresAt' in result) ? { expiresAt: 1 } : {}),
               ...(!('identityFingerprint' in result) ? { identityFingerprint: 1 } : {}),
             },
+            $setOnInsert: { ...key },
           }
-        : { $set: { ...result, lastAttemptAt: attemptedAt } },
-    ).exec();
-    if (result.lastAttemptStatus === 'error') await this.backfillMissingAvailability(key);
-  }
-
-  async recordAttempt(
-    key: MovieResourceCheckKey,
-    attemptedAt: Date,
-    result: MovieResourceCheckCompletion,
-  ): Promise<void> {
-    const update = result.lastAttemptStatus === 'success'
-      ? {
-          $set: { ...result, lastAttemptAt: attemptedAt },
-          $unset: {
-            lastErrorCode: 1,
-            ...(!('matchedBy' in result) ? { matchedBy: 1 } : {}),
-            ...(!('expiresAt' in result) ? { expiresAt: 1 } : {}),
-            ...(!('identityFingerprint' in result) ? { identityFingerprint: 1 } : {}),
-          },
-          $setOnInsert: { ...key },
-        }
-      : {
-          $set: { ...result, lastAttemptAt: attemptedAt },
-          $setOnInsert: { ...key, availability: 'unchecked' as const },
-        };
+        : {
+            $set: { ...result, lastAttemptAt: attemptedAt },
+            $setOnInsert: { ...key, availability: 'unchecked' as const },
+          };
     try {
-      await this.checks.updateOne(
-        {
-          ...key,
-          $or: [
-            { lastAttemptAt: { $exists: false } },
-            { lastAttemptAt: { $lte: attemptedAt } },
-          ],
-        },
-        update,
-        { upsert: true },
-      ).exec();
+      await this.checks
+        .updateOne(
+          {
+            ...key,
+            $or: [{ lastAttemptAt: { $exists: false } }, { lastAttemptAt: { $lte: attemptedAt } }],
+          },
+          update,
+          { upsert: true },
+        )
+        .exec();
       if (result.lastAttemptStatus === 'error') await this.backfillMissingAvailability(key);
     } catch (error) {
       // A newer result can win the unique-key race between app instances.
@@ -196,8 +205,10 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     }
     if (force) return true;
     if (state.lastAttemptStatus === 'error') {
-      return ['network', 'timeout', 'rate_limited', 'remote_error', 'internal_error'].includes(state.lastErrorCode ?? '')
-        && state.lastAttemptAt <= failedAttemptBefore;
+      return (
+        ['network', 'timeout', 'rate_limited', 'remote_error', 'internal_error'].includes(state.lastErrorCode ?? '') &&
+        state.lastAttemptAt <= failedAttemptBefore
+      );
     }
     if (state.availability === 'unmatchable') {
       return Boolean(identityFingerprint && state.identityFingerprint !== identityFingerprint);
@@ -211,14 +222,12 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
   }
 
   private async backfillMissingAvailability(key: MovieResourceCheckKey): Promise<void> {
-    await this.checks.updateOne(
-      { ...key, availability: { $exists: false } },
-      { $set: { availability: 'unchecked' } },
-    ).exec();
+    await this.checks
+      .updateOne({ ...key, availability: { $exists: false } }, { $set: { availability: 'unchecked' } })
+      .exec();
   }
 }
 
 function isDuplicateKeyError(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error
-    && (error as { code?: unknown }).code === 11000;
+  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 11000;
 }

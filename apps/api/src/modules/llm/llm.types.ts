@@ -10,7 +10,13 @@ export interface LlmGenerateInput {
   /** Optional strict JSON response schema for non-streaming classification. */
   outputSchema?: { name: string; schema: Record<string, unknown> };
   /** Attribution for request statistics; not included in the provider payload. */
-  operation?: 'conversation.reply' | 'conversation.summary' | 'assistant.intent' | 'assistant.discuss' | 'preference.update' | 'assistant.recommend';
+  operation?:
+    | 'conversation.reply'
+    | 'conversation.summary'
+    | 'assistant.intent'
+    | 'assistant.discuss'
+    | 'preference.update'
+    | 'assistant.recommend';
 }
 
 export interface LlmGenerateResult {
@@ -20,8 +26,7 @@ export interface LlmGenerateResult {
 }
 
 export type LlmStreamEvent =
-  | { type: 'delta'; delta: string }
-  | { type: 'completed'; inputTokens: number; outputTokens: number };
+  { type: 'delta'; delta: string } | { type: 'completed'; inputTokens: number; outputTokens: number };
 
 export interface LlmClient {
   generate(input: LlmGenerateInput): Promise<LlmGenerateResult>;

@@ -69,17 +69,24 @@ export async function migrateMovieLocales(
   // Include already-cleaned rows for affected IDs. This closes the retry window where a
   // canonical row was cleaned but the older duplicate row had not yet been deleted.
   const affectedTmdbIds = [...localizationSourceByTmdbId.keys()];
-  const affectedMovies: LegacyMovie[] = affectedTmdbIds.length === 0
-    ? []
-    : await movies.find({ tmdbId: { $in: affectedTmdbIds } }).sort({ updatedAt: -1, _id: 1 }).toArray();
+  const affectedMovies: LegacyMovie[] =
+    affectedTmdbIds.length === 0
+      ? []
+      : await movies
+          .find({ tmdbId: { $in: affectedTmdbIds } })
+          .sort({ updatedAt: -1, _id: 1 })
+          .toArray();
   const canonicalByTmdbId = selectCanonicalMovies(affectedMovies);
   const duplicateIds = affectedMovies
     .filter((movie) => canonicalByTmdbId.get(movie.tmdbId as number)?._id !== movie._id)
     .map(({ _id }) => _id);
-  const existingLocalizationCount = legacyMovies.length === 0 ? 0 : await localizations.countDocuments({
-    locale: migratedLocale,
-    movieTmdbId: { $in: affectedTmdbIds },
-  });
+  const existingLocalizationCount =
+    legacyMovies.length === 0
+      ? 0
+      : await localizations.countDocuments({
+          locale: migratedLocale,
+          movieTmdbId: { $in: affectedTmdbIds },
+        });
   const stateBefore = await stateAssociationSnapshot(states, movies);
   const peopleWithoutLocale = await people.countDocuments({ locale: { $exists: false } });
   const creditsWithoutLocale = await credits.countDocuments({ locale: { $exists: false } });
@@ -101,12 +108,19 @@ export async function migrateMovieLocales(
   await localizations.createIndex({ movieTmdbId: 1, locale: 1 }, { unique: true });
 
   if (localizationSourceByTmdbId.size > 0) {
-    await localizations.bulkWrite([...localizationSourceByTmdbId.values()].map((movie) => ({ updateOne: {
-      filter: { movieTmdbId: movie.tmdbId, locale: migratedLocale },
-      // A retry must not overwrite localization data written by the new application.
-      update: { $setOnInsert: toLocalizationInsert(movie) },
-      upsert: true,
-    } })), { ordered: false });
+    await localizations.bulkWrite(
+      [...localizationSourceByTmdbId.values()].map((movie) => {
+        return {
+          updateOne: {
+            filter: { movieTmdbId: movie.tmdbId, locale: migratedLocale },
+            // A retry must not overwrite localization data written by the new application.
+            update: { $setOnInsert: toLocalizationInsert(movie) },
+            upsert: true,
+          },
+        };
+      }),
+      { ordered: false },
+    );
 
     for (const movie of canonicalByTmdbId.values()) {
       await movies.updateOne(
@@ -129,10 +143,7 @@ export async function migrateMovieLocales(
   await dropIndexByShape(movies, { tmdbId: 1, locale: 1 });
   await movies.createIndex({ tmdbId: 1 }, { unique: true });
   await people.createIndex({ tmdbId: 1, locale: 1 }, { unique: true });
-  await credits.createIndex(
-    { movieTmdbId: 1, locale: 1, syncVersion: 1, tmdbCreditId: 1 },
-    { unique: true },
-  );
+  await credits.createIndex({ movieTmdbId: 1, locale: 1, syncVersion: 1, tmdbCreditId: 1 }, { unique: true });
   await dropIndexByShape(people, { tmdbId: 1 });
 
   const stateAfter = await stateAssociationSnapshot(states, movies);
@@ -183,25 +194,44 @@ export function assertStateAssociationsPreserved(
   before: MovieLocaleMigrationReport['stateAssociations'],
   after: MovieLocaleMigrationReport['stateAssociations'],
 ): void {
-  if (before.total !== after.total
-    || before.resolvedTmdbIds !== after.resolvedTmdbIds
-    || before.danglingTmdbIds !== after.danglingTmdbIds) {
-    throw new Error(`Movie-state associations changed during migration: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
+  if (
+    before.total !== after.total ||
+    before.resolvedTmdbIds !== after.resolvedTmdbIds ||
+    before.danglingTmdbIds !== after.danglingTmdbIds
+  ) {
+    throw new Error(
+      `Movie-state associations changed during migration: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+    );
   }
 }
 
 const localizedMovieFields = {
-  locale: '', title: '', overview: '', tagline: '', genres: '', summarySyncedAt: '', detailSyncedAt: '',
-  activeCreditVersion: '', metadataLevel: '', schemaVersion: '',
+  locale: '',
+  title: '',
+  overview: '',
+  tagline: '',
+  genres: '',
+  summarySyncedAt: '',
+  detailSyncedAt: '',
+  activeCreditVersion: '',
+  metadataLevel: '',
+  schemaVersion: '',
 };
 
 function validateLegacyMovies(movies: readonly LegacyMovie[]): void {
-  const invalid = movies.filter((movie) =>
-    typeof movie.tmdbId !== 'number' || !Number.isInteger(movie.tmdbId) || movie.tmdbId < 1
-    || typeof movie.title !== 'string' || movie.title.trim().length === 0,
-  );
+  const invalid = movies.filter((movie) => {
+    return (
+      typeof movie.tmdbId !== 'number' ||
+      !Number.isInteger(movie.tmdbId) ||
+      movie.tmdbId < 1 ||
+      typeof movie.title !== 'string' ||
+      movie.title.trim().length === 0
+    );
+  });
   if (invalid.length > 0) {
-    throw new Error(`Migration aborted before writes: ${invalid.length} legacy movie row(s) have an invalid tmdbId or title`);
+    throw new Error(
+      `Migration aborted before writes: ${invalid.length} legacy movie row(s) have an invalid tmdbId or title`,
+    );
   }
 }
 
@@ -214,9 +244,8 @@ async function stateAssociationSnapshot(
     states.distinct('tmdbId') as Promise<unknown[]>,
   ]);
   const validIds = stateTmdbIds.filter((value): value is number => typeof value === 'number');
-  const resolvedTmdbIds = validIds.length === 0
-    ? 0
-    : (await movies.distinct('tmdbId', { tmdbId: { $in: validIds } })).length;
+  const resolvedTmdbIds =
+    validIds.length === 0 ? 0 : (await movies.distinct('tmdbId', { tmdbId: { $in: validIds } })).length;
   return { total, resolvedTmdbIds, danglingTmdbIds: validIds.length - resolvedTmdbIds };
 }
 

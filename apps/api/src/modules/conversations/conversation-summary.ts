@@ -8,9 +8,7 @@ export function buildSummaryRequest(
   maxOutputTokens: number,
 ): LlmGenerateInput {
   const previousText = previous?.content ?? '(none)';
-  const transcript = messages
-    .map(({ sequence, role, content }) => `[${sequence}] ${role}: ${content}`)
-    .join('\n');
+  const transcript = messages.map(({ sequence, role, content }) => `[${sequence}] ${role}: ${content}`).join('\n');
 
   return {
     messages: [

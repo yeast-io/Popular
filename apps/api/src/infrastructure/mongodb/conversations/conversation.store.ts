@@ -1,5 +1,11 @@
 import type { Model } from 'mongoose';
-import type { AppendMessageInput, ConversationMessage, ConversationStore, ConversationThread, SaveConversationSummaryInput } from '../../../modules/conversations/conversation.types.js';
+import type {
+  AppendMessageInput,
+  ConversationMessage,
+  ConversationStore,
+  ConversationThread,
+  SaveConversationSummaryInput,
+} from '../../../modules/conversations/conversation.types.js';
 import type { ConversationMessageDocument } from './conversation-message.schema.js';
 import type { ConversationThreadDocument } from './conversation-thread.schema.js';
 
@@ -15,10 +21,7 @@ export class MongoConversationStore implements ConversationStore {
   }
 
   async listThreads(ownerId: string, limit: number): Promise<ConversationThread[]> {
-    const rows = await this.threads.find({ ownerId })
-      .sort({ updatedAt: -1 })
-      .limit(limit)
-      .exec();
+    const rows = await this.threads.find({ ownerId }).sort({ updatedAt: -1 }).limit(limit).exec();
     return rows.map(toThread);
   }
 
@@ -29,21 +32,25 @@ export class MongoConversationStore implements ConversationStore {
 
   async appendMessage(input: AppendMessageInput): Promise<ConversationMessage | null> {
     if (input.clientRequestId) {
-      const existing = await this.messages.findOne({
-        ownerId: input.ownerId,
-        threadId: input.threadId,
-        role: input.role,
-        clientRequestId: input.clientRequestId,
-      }).exec();
+      const existing = await this.messages
+        .findOne({
+          ownerId: input.ownerId,
+          threadId: input.threadId,
+          role: input.role,
+          clientRequestId: input.clientRequestId,
+        })
+        .exec();
       if (existing) return toMessage(existing);
     }
 
     const now = new Date();
-    const thread = await this.threads.findOneAndUpdate(
-      { _id: input.threadId, ownerId: input.ownerId, status: 'active' },
-      { $inc: { nextSequence: 1 }, $set: { lastMessageAt: now } },
-      { new: false },
-    ).exec();
+    const thread = await this.threads
+      .findOneAndUpdate(
+        { _id: input.threadId, ownerId: input.ownerId, status: 'active' },
+        { $inc: { nextSequence: 1 }, $set: { lastMessageAt: now } },
+        { new: false },
+      )
+      .exec();
     if (!thread) return null;
 
     try {
@@ -59,20 +66,24 @@ export class MongoConversationStore implements ConversationStore {
         createdAt: now,
       });
       if (thread.nextSequence === 1 && input.role === 'user') {
-        await this.threads.updateOne(
-          { _id: input.threadId, ownerId: input.ownerId, title: { $exists: false } },
-          { $set: { title: titleFromFirstMessage(input.content) } },
-        ).exec();
+        await this.threads
+          .updateOne(
+            { _id: input.threadId, ownerId: input.ownerId, title: { $exists: false } },
+            { $set: { title: titleFromFirstMessage(input.content) } },
+          )
+          .exec();
       }
       return toMessage(row);
     } catch (error) {
       if (!input.clientRequestId || !isDuplicateKey(error)) throw error;
-      const existing = await this.messages.findOne({
-        ownerId: input.ownerId,
-        threadId: input.threadId,
-        role: input.role,
-        clientRequestId: input.clientRequestId,
-      }).exec();
+      const existing = await this.messages
+        .findOne({
+          ownerId: input.ownerId,
+          threadId: input.threadId,
+          role: input.role,
+          clientRequestId: input.clientRequestId,
+        })
+        .exec();
       if (!existing) throw error;
       return toMessage(existing);
     }
@@ -89,10 +100,7 @@ export class MongoConversationStore implements ConversationStore {
   }
 
   async listRecentMessages(ownerId: string, threadId: string, limit: number): Promise<ConversationMessage[]> {
-    const rows = await this.messages.find({ ownerId, threadId })
-      .sort({ sequence: -1 })
-      .limit(limit)
-      .exec();
+    const rows = await this.messages.find({ ownerId, threadId }).sort({ sequence: -1 }).limit(limit).exec();
     return rows.reverse().map(toMessage);
   }
 
@@ -102,32 +110,43 @@ export class MongoConversationStore implements ConversationStore {
     afterSequence: number,
     limit: number,
   ): Promise<ConversationMessage[]> {
-    const rows = await this.messages.find({
-      ownerId,
-      threadId,
-      sequence: { $gt: afterSequence },
-    }).sort({ sequence: 1 }).limit(limit).exec();
+    const rows = await this.messages
+      .find({
+        ownerId,
+        threadId,
+        sequence: { $gt: afterSequence },
+      })
+      .sort({ sequence: 1 })
+      .limit(limit)
+      .exec();
     return rows.map(toMessage);
   }
 
   async saveSummary(input: SaveConversationSummaryInput): Promise<ConversationThread | null> {
-    const summaryGuard = input.expectedThroughSequence === 0
-      ? { 'summary.throughSequence': { $exists: false } }
-      : { 'summary.throughSequence': input.expectedThroughSequence };
-    const row = await this.threads.findOneAndUpdate({
-      _id: input.threadId,
-      ownerId: input.ownerId,
-      status: 'active',
-      ...summaryGuard,
-    }, {
-      $set: {
-        summary: {
-          content: input.content,
-          throughSequence: input.throughSequence,
-          updatedAt: new Date(),
+    const summaryGuard =
+      input.expectedThroughSequence === 0
+        ? { 'summary.throughSequence': { $exists: false } }
+        : { 'summary.throughSequence': input.expectedThroughSequence };
+    const row = await this.threads
+      .findOneAndUpdate(
+        {
+          _id: input.threadId,
+          ownerId: input.ownerId,
+          status: 'active',
+          ...summaryGuard,
         },
-      },
-    }, { new: true }).exec();
+        {
+          $set: {
+            summary: {
+              content: input.content,
+              throughSequence: input.throughSequence,
+              updatedAt: new Date(),
+            },
+          },
+        },
+        { new: true },
+      )
+      .exec();
     return row ? toThread(row) : null;
   }
 }
@@ -140,16 +159,18 @@ function toThread(doc: ConversationThreadDocument & { _id: unknown }): Conversat
     nextSequence: doc.nextSequence,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
-    ...(doc.lastMessageAt ? { lastMessageAt: doc.lastMessageAt}: {}),
+    ...(doc.lastMessageAt ? { lastMessageAt: doc.lastMessageAt } : {}),
     ...(doc.title ? { title: doc.title } : {}),
-    ...(doc.summary ? {
-      summary: {
-        content: doc.summary.content,
-        throughSequence: doc.summary.throughSequence,
-        updatedAt: doc.summary.updatedAt,
-      },
-    } : {}),
-  }
+    ...(doc.summary
+      ? {
+          summary: {
+            content: doc.summary.content,
+            throughSequence: doc.summary.throughSequence,
+            updatedAt: doc.summary.updatedAt,
+          },
+        }
+      : {}),
+  };
 }
 
 function toMessage(doc: ConversationMessageDocument & { _id: unknown }): ConversationMessage {
@@ -168,13 +189,9 @@ function toMessage(doc: ConversationMessageDocument & { _id: unknown }): Convers
 }
 
 function titleFromFirstMessage(content: string): string {
-  const normalized = content
-    .replace(/\s+/g, ' ')
-    .trim();
+  const normalized = content.replace(/\s+/g, ' ').trim();
 
-  return Array.from(normalized)
-    .slice(0, 60)
-    .join('');
+  return Array.from(normalized).slice(0, 60).join('');
 }
 
 function isDuplicateKey(error: unknown): boolean {

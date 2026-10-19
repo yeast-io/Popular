@@ -33,7 +33,7 @@ export async function connectInfrastructure(infrastructure: Infrastructure): Pro
       infrastructure.redis.connect(),
       infrastructure.minio.connect(),
     ]);
-    const failure = results.find(result => result.status === 'rejected');
+    const failure = results.find((result) => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
   } catch (error) {
     await closeInfrastructure(infrastructure);
@@ -42,5 +42,9 @@ export async function connectInfrastructure(infrastructure: Infrastructure): Pro
 }
 
 export async function closeInfrastructure(infrastructure: Infrastructure): Promise<void> {
-  await Promise.allSettled(infrastructure.healthDependencies.map((dependency) => dependency.close()));
+  await Promise.allSettled(
+    infrastructure.healthDependencies.map((dependency) => {
+      return dependency.close();
+    }),
+  );
 }

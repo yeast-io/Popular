@@ -1,4 +1,19 @@
-import makeWASocket, { BufferJSON, Browsers, DisconnectReason, getContentType, normalizeMessageContent, initAuthCreds, jidNormalizedUser, proto, generateMessageIDV2, type AnyMessageContent, type AuthenticationCreds, type AuthenticationState, type SignalDataSet, type BinaryNode } from '@whiskeysockets/baileys';
+import makeWASocket, {
+  BufferJSON,
+  Browsers,
+  DisconnectReason,
+  getContentType,
+  normalizeMessageContent,
+  initAuthCreds,
+  jidNormalizedUser,
+  proto,
+  generateMessageIDV2,
+  type AnyMessageContent,
+  type AuthenticationCreds,
+  type AuthenticationState,
+  type SignalDataSet,
+  type BinaryNode,
+} from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import type { WhatsAppConfiguration } from '@movie-hub/contract';
@@ -6,7 +21,7 @@ import type { WhatsAppConnector, WhatsAppDiagnostic } from '../../modules/whatsa
 
 // Outbound recipients are always derived from the linked account.
 export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWASocket): WhatsAppConnector {
-  return async options => {
+  return async (options) => {
     const saved = await options.load();
     const data: { creds: AuthenticationCreds; keys: Record<string, Record<string, unknown>> } = saved
       ? JSON.parse(saved, BufferJSON.reviver)
@@ -53,14 +68,15 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
           const result: Record<string, unknown> = {};
           for (const id of ids) {
             let value = data.keys[type]?.[id];
-            if (type === 'app-state-sync-key' && value) value = proto.Message.AppStateSyncKeyData.fromObject(value as Record<string, unknown>);
+            if (type === 'app-state-sync-key' && value)
+              value = proto.Message.AppStateSyncKeyData.fromObject(value as Record<string, unknown>);
             if (value) result[id] = value;
           }
           return result as never;
         },
         set: async (updates: SignalDataSet) => {
           for (const [type, entries] of Object.entries(updates)) {
-            const keys = data.keys[type] ??= {};
+            const keys = (data.keys[type] ??= {});
             for (const [id, value] of Object.entries(entries ?? {})) {
               if (value == null) delete keys[id];
               else keys[id] = value;
@@ -78,9 +94,14 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
       options.report?.({ event: 'connecting' });
       options.update({ status: data.creds.me ? 'pairing' : 'connecting' });
       const current = makeSocket({
-        auth, logger: pino({ level: 'silent' }), browser: Browsers.ubuntu('Chrome'),
-        markOnlineOnConnect: false, syncFullHistory: false, shouldSyncHistoryMessage: () => false,
-        connectTimeoutMs: 30_000, defaultQueryTimeoutMs: 20_000,
+        auth,
+        logger: pino({ level: 'silent' }),
+        browser: Browsers.ubuntu('Chrome'),
+        markOnlineOnConnect: false,
+        syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
+        connectTimeoutMs: 30_000,
+        defaultQueryTimeoutMs: 20_000,
         getMessage: async () => undefined,
       });
       socket = current;
@@ -91,12 +112,24 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
       const refreshEvent = 'CB:notification,type:companion_reg_refresh';
       const observeRefresh = (node: BinaryNode) => {
         if (stopped || closed || socket !== current || data.creds.me) return;
-        if (!Array.isArray(node.content) || !node.content.some(child => child.tag === 'companion_reg_refresh' || child.tag === 'pair-device-rotate-qr')) return;
-        options.report?.({ event: 'registration_refresh_received', elapsedMs: Date.now() - openedAt, qrCount, paired: false });
+        if (
+          !Array.isArray(node.content) ||
+          !node.content.some((child) => child.tag === 'companion_reg_refresh' || child.tag === 'pair-device-rotate-qr')
+        )
+          return;
+        options.report?.({
+          event: 'registration_refresh_received',
+          elapsedMs: Date.now() - openedAt,
+          qrCount,
+          paired: false,
+        }
+        );
       };
       current.ws?.on(refreshEvent, observeRefresh);
-      removeRefreshObserver = () => { current.ws?.off(refreshEvent, observeRefresh); };
-      current.ev.on('creds.update', update => {
+      removeRefreshObserver = () => {
+        current.ws?.off(refreshEvent, observeRefresh);
+      };
+      current.ev.on('creds.update', (update) => {
         if (stopped || socket !== current) return;
         Object.assign(data.creds, update);
         void persist().catch(() => fail('storage_error'));
@@ -110,21 +143,38 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
             if (message.key.id && outboundIds.has(message.key.id)) continue;
             // Ignore groups, status, channels and outgoing messages to other people.
             if (!chatId || !/^[^@]+@(s\.whatsapp\.net|lid)$/.test(chatId)) continue;
-            const selfIds = [current.user?.id, current.user?.lid].filter((id): id is string => !!id).map(jidNormalizedUser);
+            const selfIds = [current.user?.id, current.user?.lid]
+              .filter((id): id is string => !!id)
+              .map(
+              jidNormalizedUser
+            );
             if (message.key.fromMe && !selfIds.includes(jidNormalizedUser(chatId))) continue;
             const content = normalizeMessageContent(message.message);
             const messageType = getContentType(content);
-            if (!content || !messageType || ['protocolMessage', 'senderKeyDistributionMessage'].includes(messageType)) continue;
-            const text = content.conversation ?? content.extendedTextMessage?.text ?? content.imageMessage?.caption
-              ?? content.videoMessage?.caption ?? content.documentMessage?.caption;
-            await options.receive?.({ channel: 'whatsapp', chatId, senderId: message.key.fromMe ? jidNormalizedUser(current.user!.id) : chatId,
+            if (!content || !messageType || ['protocolMessage', 'senderKeyDistributionMessage'].includes(messageType))
+              continue;
+            const text =
+              content.conversation ??
+              content.extendedTextMessage?.text ??
+              content.imageMessage?.caption ??
+              content.videoMessage?.caption ??
+              content.documentMessage?.caption;
+            await options.receive?.({
+              channel: 'whatsapp',
+              chatId,
+              senderId: message.key.fromMe ? jidNormalizedUser(current.user!.id) : chatId,
               isSelfChat: selfIds.includes(jidNormalizedUser(chatId)),
-              ...(message.key.id ? { messageId: message.key.id } : {}), messageType,
-              ...(text != null ? { text } : {}) });
+              ...(message.key.id ? { messageId: message.key.id } : {}),
+              messageType,
+              ...(text != null ? { text } : {}),
+            }
+            );
           }
-        })().catch(() => options.report?.({ event: 'message_receive_error' }));
+        })().catch(
+          () => options.report?.({ event: 'message_receive_error' })
+        );
       });
-      current.ev.on('connection.update', update => {
+      current.ev.on('connection.update', (update) => {
         void (async () => {
           if (stopped || closed || socket !== current) return;
           if (update.qr) {
@@ -147,17 +197,30 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
             attempts = 0;
             await persist();
             options.report?.({ event: 'connected' });
-            if (!stopped && !closed && socket === current) options.update({ status: 'connected', account: maskedAccount(current.user?.id) });
+            if (!stopped && !closed && socket === current)
+              options.update({ status: 'connected', account: maskedAccount(current.user?.id) });
           }
           if (update.connection === 'close') {
             closed = true;
             removeRefreshObserver?.();
             ++qrVersion;
-            const rawCode = (update.lastDisconnect?.error as { output?: { statusCode?: unknown } } | undefined)?.output?.statusCode;
-            const code = typeof rawCode === 'number' && Number.isInteger(rawCode) && rawCode >= 0 && rawCode <= 9999 ? rawCode : undefined;
+            const rawCode = (update.lastDisconnect?.error as { output?: { statusCode?: unknown } } | undefined)?.output
+              ?.statusCode;
+            const code =
+              typeof rawCode === 'number' && Number.isInteger(rawCode) && rawCode >= 0 && rawCode <= 9999
+                ? rawCode
+                : undefined;
             const codeField = code === undefined ? {} : { code };
-            options.report?.({ event: 'disconnected', ...codeField, attempt: attempts,
-              reason: diagnosticReason(update.lastDisconnect?.error), elapsedMs: Date.now() - openedAt, qrCount, paired: Boolean(data.creds.me) });
+            options.report?.({
+              event: 'disconnected',
+              ...codeField,
+              attempt: attempts,
+              reason: diagnosticReason(update.lastDisconnect?.error),
+              elapsedMs: Date.now() - openedAt,
+              qrCount,
+              paired: Boolean(data.creds.me),
+            }
+            );
             // 515 follows successful pairing: finish credential writes, then reconnect.
             attempts++;
             if (code === DisconnectReason.restartRequired && attempts <= 5) {
@@ -165,7 +228,10 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
             } else {
               const failureReason = disconnectReason(code);
               const state = { failureReason, ...(code === undefined ? {} : { disconnectCode: code }) };
-              if (['logged_out', 'bad_session', 'connection_replaced', 'forbidden'].includes(failureReason) || attempts > 5) {
+              if (
+                ['logged_out', 'bad_session', 'connection_replaced', 'forbidden'].includes(failureReason) ||
+                attempts > 5
+              ) {
                 options.update({ status: 'disconnected', ...state });
                 return;
               }
@@ -173,10 +239,17 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
             }
             if (reconnect) clearTimeout(reconnect);
             options.report?.({ event: 'reconnect_scheduled', ...codeField, attempt: attempts });
-            reconnect = setTimeout(() => { void writes.then(open).catch(() => fail('connection_error')); }, code === DisconnectReason.restartRequired ? 0 : Math.min(30_000, 1_000 * 2 ** attempts));
+            reconnect = setTimeout(
+              () => {
+                void writes.then(open).catch(() => fail('connection_error'));
+              },
+              code === DisconnectReason.restartRequired ? 0 : Math.min(30_000, 1_000 * 2 ** attempts),
+            );
             reconnect.unref();
           }
-        })().catch(() => fail('connection_error'));
+        })().catch(
+          () => fail('connection_error')
+        );
       });
     }
     open();
@@ -186,21 +259,31 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
         if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
         await current.sendPresenceUpdate(active ? 'composing' : 'paused', jidNormalizedUser(current.user.id));
       },
-      sendReply: (text, poster) => sendOwnMessage(poster?.length ? { image: poster, caption: text } : { text }),
-      ownsChat: chatId => [socket?.user?.id, socket?.user?.lid].some(id => id && jidNormalizedUser(id) === jidNormalizedUser(chatId)),
+      sendReply: (text, poster) => {
+        return sendOwnMessage(poster?.length ? { image: poster, caption: text } : { text });
+      },
+      ownsChat: (chatId) => {
+        return [socket?.user?.id, socket?.user?.lid].some(
+          (id) => id && jidNormalizedUser(id) === jidNormalizedUser(chatId),
+        );
+      },
       async sendSelf() {
         const current = socket;
         if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
         // The recipient is derived exclusively from this owner's linked identity.
-        return sendOwnMessage({ text: `Popular Movie AI Studio WhatsApp connection test · ${new Date().toISOString()}` });
+        return sendOwnMessage({
+          text: `Popular Movie AI Studio WhatsApp connection test · ${new Date().toISOString()}`,
+        });
       },
       async sendNotification(notification) {
         const current = socket;
         if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
         const caption = [
-          `✅ 下载完成 · ${notification.title}`, notification.resourceName,
+          `✅ 下载完成 · ${notification.title}`,
+          notification.resourceName,
           `下载器: ${notification.provider} · ${(notification.totalBytes / 1024 ** 3).toFixed(2)} GiB`,
-          `检测完成时间: ${notification.completedAt.toISOString()}`, notification.detailUrl,
+          `检测完成时间: ${notification.completedAt.toISOString()}`,
+          notification.detailUrl,
         ].join('\n');
         return sendOwnMessage(notification.poster ? { image: notification.poster, caption } : { text: caption });
       },
@@ -211,8 +294,17 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
         if (logout && socket) {
           let timeout: ReturnType<typeof setTimeout> | undefined;
           try {
-            await Promise.race([socket.logout().catch(() => undefined), new Promise<void>(resolve => { timeout = setTimeout(resolve, 5_000); })]);
-          } finally { if (timeout) clearTimeout(timeout); }
+            await Promise.race([
+              socket.logout().catch(() => {
+                return undefined;
+              }),
+              new Promise<void>((resolve) => {
+                timeout = setTimeout(resolve, 5_000);
+              }),
+            ]);
+          } finally {
+            if (timeout) clearTimeout(timeout);
+          }
         }
         socket?.end(undefined);
         await writes.catch(() => undefined);
@@ -230,25 +322,41 @@ function maskedAccount(jid?: string): string {
 
 function disconnectReason(code?: number): NonNullable<WhatsAppConfiguration['failureReason']> {
   switch (code) {
-    case DisconnectReason.loggedOut: return 'logged_out';
-    case DisconnectReason.badSession: return 'bad_session';
-    case DisconnectReason.connectionReplaced: return 'connection_replaced';
-    case DisconnectReason.forbidden: return 'forbidden';
-    case DisconnectReason.timedOut: return 'timeout';
-    case DisconnectReason.connectionClosed: return 'connection_lost';
-    default: return 'connection_error';
+    case DisconnectReason.loggedOut:
+      return 'logged_out';
+    case DisconnectReason.badSession:
+      return 'bad_session';
+    case DisconnectReason.connectionReplaced:
+      return 'connection_replaced';
+    case DisconnectReason.forbidden:
+      return 'forbidden';
+    case DisconnectReason.timedOut:
+      return 'timeout';
+    case DisconnectReason.connectionClosed:
+      return 'connection_lost';
+    default:
+      return 'connection_error';
   }
 }
 
 // An allowlist keeps arbitrary errors (which may contain identities or secrets) out of logs.
 function diagnosticReason(error: unknown): NonNullable<WhatsAppDiagnostic['reason']> {
-  const message = error instanceof Error ? error.message
-    : typeof error === 'object' && error !== null && 'message' in error ? error.message : undefined;
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+        ? error.message
+        : undefined;
   switch (message) {
-    case 'QR refs attempts ended': return 'qr_refs_exhausted';
-    case 'Connection was lost': return 'connection_lost';
-    case 'Timed Out': return 'operation_timeout';
-    case 'Pre-key upload timeout': return 'prekey_upload_timeout';
-    default: return 'unknown';
+    case 'QR refs attempts ended':
+      return 'qr_refs_exhausted';
+    case 'Connection was lost':
+      return 'connection_lost';
+    case 'Timed Out':
+      return 'operation_timeout';
+    case 'Pre-key upload timeout':
+      return 'prekey_upload_timeout';
+    default:
+      return 'unknown';
   }
 }

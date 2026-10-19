@@ -22,40 +22,72 @@ describe('AI chat', () => {
 
   it('loads conversation history and sends a complete turn', async () => {
     const requests: Array<{ url: string; method: string; body?: unknown }> = [];
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith('/me/integrations/openai')) return Response.json({ configured: true });
-      const method = init?.method ?? 'GET';
-      requests.push({ url, method, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
-      if (url.endsWith('/conversations') && method === 'GET') {
-        return Response.json({
-          items: [{
-            id: threadId, title: 'Science fiction', status: 'active', nextSequence: 3,
-            lastMessageAt: createdAt, createdAt, updatedAt: createdAt,
-          }],
-        });
-      }
-      if (url.endsWith(`/conversations/${threadId}/messages?limit=100`)) {
-        return Response.json({ items: [
-          { id: 'message-1', threadId, sequence: 1, role: 'user', content: 'Suggest a film', createdAt },
-          { id: 'message-2', threadId, sequence: 2, role: 'assistant', content: 'Watch Arrival.', createdAt },
-        ] });
-      }
-      if (url.endsWith(`/conversations/${threadId}/turns/stream`) && method === 'POST') {
-        return sseResponse([
-          { type: 'user_message', message: {
-            id: 'message-3', threadId, sequence: 3, role: 'user', content: 'Something newer',
-            clientRequestId: 'request-1', createdAt,
-          } },
-          { type: 'delta', delta: 'Try Dune' },
-          { type: 'delta', delta: ': Part Two.' },
-          { type: 'completed', assistantMessage: {
-            id: 'message-4', threadId, sequence: 4, role: 'assistant', content: 'Try Dune: Part Two.', createdAt,
-          }, usage: { inputTokens: 30, outputTokens: 8 } },
-        ]);
-      }
-      throw new Error(`Unexpected request: ${method} ${url}`);
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/me/integrations/openai')) return Response.json({ configured: true });
+        const method = init?.method ?? 'GET';
+        requests.push({ url, method, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
+        if (url.endsWith('/conversations') && method === 'GET') {
+          return Response.json({
+            items: [
+              {
+                id: threadId,
+                title: 'Science fiction',
+                status: 'active',
+                nextSequence: 3,
+                lastMessageAt: createdAt,
+                createdAt,
+                updatedAt: createdAt,
+              },
+            ],
+          }
+          );
+        }
+        if (url.endsWith(`/conversations/${threadId}/messages?limit=100`)) {
+          return Response.json({
+            items: [
+              { id: 'message-1', threadId, sequence: 1, role: 'user', content: 'Suggest a film', createdAt },
+              { id: 'message-2', threadId, sequence: 2, role: 'assistant', content: 'Watch Arrival.', createdAt },
+            ],
+          }
+          );
+        }
+        if (url.endsWith(`/conversations/${threadId}/turns/stream`) && method === 'POST') {
+          return sseResponse([
+            {
+              type: 'user_message',
+              message: {
+                id: 'message-3',
+                threadId,
+                sequence: 3,
+                role: 'user',
+                content: 'Something newer',
+                clientRequestId: 'request-1',
+                createdAt,
+              },
+            },
+            { type: 'delta', delta: 'Try Dune' },
+            { type: 'delta', delta: ': Part Two.' },
+            {
+              type: 'completed',
+              assistantMessage: {
+                id: 'message-4',
+                threadId,
+                sequence: 4,
+                role: 'assistant',
+                content: 'Try Dune: Part Two.',
+                createdAt,
+              },
+              usage: { inputTokens: 30, outputTokens: 8 },
+            },
+          ]
+          );
+        }
+        throw new Error(`Unexpected request: ${method} ${url}`);
+      }),
+    );
 
     const wrapper = mount(AiChat);
     await flushPromises();
@@ -71,23 +103,34 @@ describe('AI chat', () => {
       url: `/api/v1/conversations/${threadId}/turns/stream`,
       method: 'POST',
       body: { content: 'Something newer', clientRequestId: 'request-1' },
-    });
+    }
+    );
     wrapper.unmount();
   });
 
   it('creates and selects a new conversation', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith('/me/integrations/openai')) return Response.json({ configured: true });
-      const method = init?.method ?? 'GET';
-      if (url.endsWith('/conversations') && method === 'GET') return Response.json({ items: [] });
-      if (url.endsWith('/conversations') && method === 'POST') {
-        return Response.json({
-          id: newThreadId, status: 'active', nextSequence: 1, createdAt, updatedAt: createdAt,
-        }, { status: 201 });
-      }
-      throw new Error(`Unexpected request: ${method} ${url}`);
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/me/integrations/openai')) return Response.json({ configured: true });
+        const method = init?.method ?? 'GET';
+        if (url.endsWith('/conversations') && method === 'GET') return Response.json({ items: [] });
+        if (url.endsWith('/conversations') && method === 'POST') {
+          return Response.json(
+            {
+              id: newThreadId,
+              status: 'active',
+              nextSequence: 1,
+              createdAt,
+              updatedAt: createdAt,
+            },
+            { status: 201 },
+          );
+        }
+        throw new Error(`Unexpected request: ${method} ${url}`);
+      }),
+    );
 
     const wrapper = mount(AiChat);
     await flushPromises();
@@ -103,15 +146,23 @@ describe('AI chat', () => {
 });
 
 function sseResponse(events: unknown[]): Response {
-  return new Response(events.map((event) => (
-    `event: ${(event as { type: string }).type}\ndata: ${JSON.stringify(event)}\n\n`
-  )).join(''), {
-    headers: { 'content-type': 'text/event-stream; charset=utf-8' },
-  });
+  return new Response(
+    events
+      .map((event) => {
+        return `event: ${(event as { type: string }).type}\ndata: ${JSON.stringify(event)}\n\n`;
+      })
+      .join(''),
+    {
+      headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+    },
+  );
 }
 
 describe('AI account key gate', () => {
-  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
   it.each([false, 'failure'])('disables chat when key configuration is %s', async (configured) => {
     setLocale('en-US');
     const fetchMock = vi.fn(async (input: unknown) => {

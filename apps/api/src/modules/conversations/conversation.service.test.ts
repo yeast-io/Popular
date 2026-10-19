@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
 import { ConversationService } from './conversation.service.js';
-import type { AppendMessageInput, ConversationMessage, ConversationStore, ConversationThread } from './conversation.types.js';
+import type {
+  AppendMessageInput,
+  ConversationMessage,
+  ConversationStore,
+  ConversationThread,
+} from './conversation.types.js';
 
 const ownerId = '507f1f77bcf86cd799439011';
 const threadId = '507f1f77bcf86cd799439012';
@@ -15,15 +20,23 @@ class MemoryConversationStore implements ConversationStore {
 
   async createThread(inputOwnerId: string): Promise<ConversationThread> {
     const thread = {
-      id: threadId, ownerId: inputOwnerId, status: 'active' as const,
-      nextSequence: 1, createdAt: now, updatedAt: now,
+      id: threadId,
+      ownerId: inputOwnerId,
+      status: 'active' as const,
+      nextSequence: 1,
+      createdAt: now,
+      updatedAt: now,
     };
     this.threads.set(thread.id, thread);
     return thread;
   }
 
   async listThreads(inputOwnerId: string, limit: number): Promise<ConversationThread[]> {
-    return [...this.threads.values()].filter(({ ownerId }) => ownerId === inputOwnerId).slice(0, limit);
+    return [...this.threads.values()]
+      .filter(({ ownerId }) => {
+        return ownerId === inputOwnerId;
+      })
+      .slice(0, limit);
   }
 
   async findThread(inputOwnerId: string, inputThreadId: string): Promise<ConversationThread | null> {
@@ -35,8 +48,13 @@ class MemoryConversationStore implements ConversationStore {
     const thread = await this.findThread(input.ownerId, input.threadId);
     if (!thread) return null;
     const existing = input.clientRequestId
-      ? this.messages.find((item) => item.ownerId === input.ownerId
-        && item.threadId === input.threadId && item.clientRequestId === input.clientRequestId)
+      ? this.messages.find((item) => {
+          return (
+            item.ownerId === input.ownerId &&
+            item.threadId === input.threadId &&
+            item.clientRequestId === input.clientRequestId
+          );
+        })
       : undefined;
     if (existing) return existing;
     const row: ConversationMessage = {
@@ -60,12 +78,24 @@ class MemoryConversationStore implements ConversationStore {
     role: AppendMessageInput['role'],
     clientRequestId: string,
   ): Promise<ConversationMessage | null> {
-    return this.messages.find((item) => item.ownerId === inputOwnerId && item.threadId === inputThreadId
-      && item.role === role && item.clientRequestId === clientRequestId) ?? null;
+    return (
+      this.messages.find((item) => {
+        return (
+          item.ownerId === inputOwnerId &&
+          item.threadId === inputThreadId &&
+          item.role === role &&
+          item.clientRequestId === clientRequestId
+        );
+      }) ?? null
+    );
   }
 
   async listRecentMessages(inputOwnerId: string, inputThreadId: string, limit: number): Promise<ConversationMessage[]> {
-    return this.messages.filter((item) => item.ownerId === inputOwnerId && item.threadId === inputThreadId).slice(-limit);
+    return this.messages
+      .filter((item) => {
+        return item.ownerId === inputOwnerId && item.threadId === inputThreadId;
+      })
+      .slice(-limit);
   }
 
   async listMessagesAfterSequence(
@@ -74,8 +104,11 @@ class MemoryConversationStore implements ConversationStore {
     afterSequence: number,
     limit: number,
   ): Promise<ConversationMessage[]> {
-    return this.messages.filter((item) => item.ownerId === inputOwnerId && item.threadId === inputThreadId
-      && item.sequence > afterSequence).slice(0, limit);
+    return this.messages
+      .filter((item) => {
+        return item.ownerId === inputOwnerId && item.threadId === inputThreadId && item.sequence > afterSequence;
+      })
+      .slice(0, limit);
   }
 
   async saveSummary(): Promise<ConversationThread | null> {
@@ -103,12 +136,16 @@ test('lists only the authenticated owner conversations', async () => {
     nextSequence: 1,
     createdAt: now,
     updatedAt: now,
-  });
+  }
+  );
   const service = new ConversationService(auth, store);
 
   const result = await service.listThreads('session');
 
-  assert.deepEqual(result.items.map(({ id }) => id), [threadId]);
+  assert.deepEqual(
+    result.items.map(({ id }) => id),
+    [threadId],
+  );
 });
 
 test('appends only to an owned conversation and treats clientRequestId idempotently', async () => {
@@ -119,18 +156,16 @@ test('appends only to an owned conversation and treats clientRequestId idempoten
   const repeated = await service.appendUserMessage('session', threadId, 'hello', 'request-1');
   assert.equal(first.id, repeated.id);
   assert.equal(store.messages.length, 1);
-  await assert.rejects(
-    service.appendUserMessage('session', otherThreadId, 'hello'),
-    (error: unknown) => typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404,
-  );
+  await assert.rejects(service.appendUserMessage('session', otherThreadId, 'hello'), (error: unknown) => {
+    return typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404;
+  });
 });
 
 test('rejects whitespace-only messages', async () => {
   const store = new MemoryConversationStore();
   await store.createThread(ownerId);
   const service = new ConversationService(auth, store);
-  await assert.rejects(
-    service.appendUserMessage('session', threadId, '   '),
-    (error: unknown) => typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 400,
-  );
+  await assert.rejects(service.appendUserMessage('session', threadId, '   '), (error: unknown) => {
+    return typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 400;
+  });
 });

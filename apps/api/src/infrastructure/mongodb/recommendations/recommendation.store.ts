@@ -1,4 +1,7 @@
-import type { RecommendationState, RecommendationStore } from '../../../modules/recommendations/recommendation.types.js';
+import type {
+  RecommendationState,
+  RecommendationStore,
+} from '../../../modules/recommendations/recommendation.types.js';
 import { emptyRecommendationState } from '../../../modules/recommendations/recommendation.domain.js';
 import type { createRecommendationModel } from './recommendation.schema.js';
 
@@ -22,13 +25,21 @@ export class MongoRecommendationStore implements RecommendationStore {
   }
 
   async acquire(ownerId: string, conversation: string, leaseId: string): Promise<boolean> {
-    const row = await this.model.findOneAndUpdate({ ownerId, conversation, $or: [{ leaseUntil: null }, { leaseUntil: { $lte: new Date() } }] },
-      { $set: { leaseId, leaseUntil: new Date(Date.now() + 240_000) } }, { returnDocument: 'after' }).lean().exec();
+    const row = await this.model
+      .findOneAndUpdate(
+        { ownerId, conversation, $or: [{ leaseUntil: null }, { leaseUntil: { $lte: new Date() } }] },
+        { $set: { leaseId, leaseUntil: new Date(Date.now() + 240_000) } },
+        { returnDocument: 'after' },
+      )
+      .lean()
+      .exec();
     return Boolean(row);
   }
 
   async save(ownerId: string, conversation: string, leaseId: string, state: RecommendationState): Promise<boolean> {
-    const result = await this.model.updateOne({ ownerId, conversation, leaseId, leaseUntil: { $gt: new Date() } }, { $set: { data: state } }).exec();
+    const result = await this.model
+      .updateOne({ ownerId, conversation, leaseId, leaseUntil: { $gt: new Date() } }, { $set: { data: state } })
+      .exec();
     return result.matchedCount === 1;
   }
 

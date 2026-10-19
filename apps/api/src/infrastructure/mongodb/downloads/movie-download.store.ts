@@ -14,11 +14,19 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
   ) {}
 
   async findByRelease(ownerId: string, tmdbId: number, releaseId: string): Promise<MovieDownloadRecord | null> {
-    const row = await this.downloads.findOne({ ownerId, tmdbId, sourceProvider: 'mteam', sourceReleaseId: releaseId }).lean().exec();
+    const row = await this.downloads
+      .findOne({ ownerId, tmdbId, sourceProvider: 'mteam', sourceReleaseId: releaseId })
+      .lean()
+      .exec();
     return row ? toMovieDownloadRecord(row) : null;
   }
 
-  async createSubmitting(ownerId: string, tmdbId: number, releaseId: string, provider: DownloadProvider): Promise<DownloadClaim> {
+  async createSubmitting(
+    ownerId: string,
+    tmdbId: number,
+    releaseId: string,
+    provider: DownloadProvider,
+  ): Promise<DownloadClaim> {
     const id = new Types.ObjectId();
     try {
       const row = await this.downloads.create({
@@ -43,14 +51,25 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
   }
 
   async retry(id: string): Promise<DownloadClaim> {
-    const row = await this.downloads.findOneAndUpdate(
-      { _id: id, status: { $in: ['failed', 'missing'] } },
-      {
-        $set: { status: 'submitting', progress: 0 },
-        $unset: { torrentHash: 1, name: 1, lastErrorCode: 1, addedAt: 1, lastSyncedAt: 1, notificationIntent: 1, notificationTask: 1 },
-      },
-      { new: true },
-    ).lean().exec();
+    const row = await this.downloads
+      .findOneAndUpdate(
+        { _id: id, status: { $in: ['failed', 'missing'] } },
+        {
+          $set: { status: 'submitting', progress: 0 },
+          $unset: {
+            torrentHash: 1,
+            name: 1,
+            lastErrorCode: 1,
+            addedAt: 1,
+            lastSyncedAt: 1,
+            notificationIntent: 1,
+            notificationTask: 1,
+          },
+        },
+        { new: true },
+      )
+      .lean()
+      .exec();
     if (row) return { record: toMovieDownloadRecord(row), claimed: true };
     const existing = await this.downloads.findById(id).lean().exec();
     if (!existing) throw new Error('Movie download disappeared during retry');

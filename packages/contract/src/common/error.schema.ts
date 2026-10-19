@@ -52,12 +52,15 @@ export const ErrorCodeSchema = Type.Union(errorCodes.map((code) => Type.Literal(
 
 export const ApiErrorSchema = Type.Object(
   {
-    error: Type.Object({
-      code: ErrorCodeSchema,
-      message: Type.String(),
-      requestId: Type.String(),
-      details: Type.Optional(Type.Unknown()),
-    }, { additionalProperties: false }),
+    error: Type.Object(
+      {
+        code: ErrorCodeSchema,
+        message: Type.String(),
+        requestId: Type.String(),
+        details: Type.Optional(Type.Unknown()),
+      },
+      { additionalProperties: false },
+    ),
   },
   { $id: 'ApiError', additionalProperties: false },
 );

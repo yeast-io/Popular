@@ -11,37 +11,94 @@ function fixture() {
   let now = new Date('2026-10-18T00:00:00Z');
   const rows = new Map<string, TelegramRecord & { hash?: string; testAt?: number }>();
   const sent: Array<{ chatId: string; text: string; photo?: Buffer; parseMode?: 'HTML' }> = [];
-  const auth = { requireOwnerId: async (token: string | undefined) => {
-    if (token !== 'alice' && token !== 'bob') throw new AppError(401, 'UNAUTHORIZED', 'Login required');
-    return token;
-  } };
+  const auth = {
+    requireOwnerId: async (token: string | undefined) => {
+      if (token !== 'alice' && token !== 'bob') throw new AppError(401, 'UNAUTHORIZED', 'Login required');
+      return token;
+    },
+  };
   const store: TelegramStore = {
-    find: async owner => rows.get(owner) ?? null,
-    findOwnerByChatId: async chatId => [...rows].find(([, row]) => row.chatId === chatId)?.[0] ?? null,
+    find: async (owner) => rows.get(owner) ?? null,
+    findOwnerByChatId: async (chatId) => {
+      return [...rows].find(([, row]) => row.chatId === chatId)?.[0] ?? null;
+    },
     pending: async (owner, hash, expiresAt) => {
       if (rows.get(owner)?.chatId) return false;
-      rows.set(owner, { hash, expiresAt }); return true;
+      rows.set(owner, { hash, expiresAt });
+      return true;
     },
     consume: async (hash, chatId, account, date) => {
-      if ([...rows.values()].some(row => row.chatId === chatId)) return false;
+      if ([...rows.values()].some((row) => row.chatId === chatId)) return false;
       for (const [owner, row] of rows) {
-        if (row.hash === hash && row.expiresAt! > date && !row.chatId) { rows.set(owner, { chatId, account }); return true; }
+        if (row.hash === hash && row.expiresAt! > date && !row.chatId) {
+          rows.set(owner, { chatId, account });
+          return true;
+        }
       }
       return false;
     },
-    remove: async owner => { rows.delete(owner); },
+    remove: async (owner) => {
+      rows.delete(owner);
+    },
     reserveTest: async (owner, chat, date) => {
       const row = rows.get(owner);
-      if (row?.chatId !== chat || row.testAt !== undefined && date.getTime() - row.testAt < 30_000) return false;
-      row.testAt = date.getTime(); return true;
+      if (row?.chatId !== chat || (row.testAt !== undefined && date.getTime() - row.testAt < 30_000)) return false;
+      row.testAt = date.getTime();
+      return true;
     },
   };
-  const transport = { username: async () => 'PopularTestBot', send: async (chatId: string, text: string, parseMode?: 'HTML') => { sent.push({ chatId, text, ...(parseMode ? { parseMode } : {}) }); return String(sent.length); }, sendPhoto: async (chatId: string, photo: Buffer, text: string) => { sent.push({ chatId, photo, text, parseMode: 'HTML' }); return String(sent.length); }, updates: async () => [] };
-  const service = new TelegramService(auth, store, { ...transport, typing: async (chatId: string) => { typing.push(chatId); } }, () => now);
-  const update = (url: string, id = 101, type = 'private'): TelegramUpdate => ({ update_id: 1, message: {
-    text: `/start ${new URL(url).searchParams.get('start')}`, from: { id, username: `person${id}` }, chat: { id, type },
-  } });
-  return { service, auth, store, rows, sent, transport, update, typing, advance: (ms: number) => { now = new Date(now.getTime() + ms); } };
+  const transport = {
+    username: async () => {
+      return 'PopularTestBot';
+    },
+    send: async (chatId: string, text: string, parseMode?: 'HTML') => {
+      sent.push({ chatId, text, ...(parseMode ? { parseMode } : {}) });
+      return String(sent.length);
+    },
+    sendPhoto: async (chatId: string, photo: Buffer, text: string) => {
+      sent.push({ chatId, photo, text, parseMode: 'HTML' });
+      return String(sent.length);
+    },
+    updates: async () => {
+      return [];
+    },
+  };
+  const service = new TelegramService(
+    auth,
+    store,
+    {
+      ...transport,
+      typing: async (chatId: string) => {
+        typing.push(chatId);
+      },
+    },
+    () => {
+      return now;
+    },
+  );
+  const update = (url: string, id = 101, type = 'private'): TelegramUpdate => {
+    return {
+      update_id: 1,
+      message: {
+        text: `/start ${new URL(url).searchParams.get('start')}`,
+        from: { id, username: `person${id}` },
+        chat: { id, type },
+      },
+    };
+  };
+  return {
+    service,
+    auth,
+    store,
+    rows,
+    sent,
+    transport,
+    update,
+    typing,
+    advance: (ms: number) => {
+      now = new Date(now.getTime() + ms);
+    },
+  };
 }
 
 test('typing only reaches the bound owner chat and stops by expiry without another action', async () => {
@@ -59,10 +116,16 @@ test('receiving awaits durable acceptance and replies recheck the owner binding'
   const f = fixture();
   let saved = false;
   const service = new TelegramService(f.auth, f.store, f.transport, undefined, async () => {
-    await new Promise<void>(resolve => setImmediate(resolve)); saved = true;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    saved = true;
   });
-  const link = await service.start('alice'); await service.accept(f.update(link.bindingUrl));
-  await service.accept({ update_id: 2, message: { message_id: 1, text: 'hello', from: { id: 101 }, chat: { id: 101, type: 'private' } } });
+  const link = await service.start('alice');
+  await service.accept(f.update(link.bindingUrl));
+  await service.accept({
+    update_id: 2,
+    message: { message_id: 1, text: 'hello', from: { id: 101 }, chat: { id: 101, type: 'private' } },
+  }
+  );
   assert.equal(saved, true);
   await service.reply('alice', '101', 'hello back');
   await assert.rejects(service.reply('bob', '101', 'must not send'), { code: 'CONFLICT' });
@@ -80,7 +143,8 @@ test('one-use expiring links accept only private self chats and cannot overwrite
   assert.equal(JSON.stringify([...f.rows.values()]).includes(secret), false);
   await f.service.accept(f.update(original.bindingUrl));
   await f.service.accept(f.update(current.bindingUrl, 101, 'group'));
-  const forged = f.update(current.bindingUrl); forged.message!.from!.id = 999;
+  const forged = f.update(current.bindingUrl);
+  forged.message!.from!.id = 999;
   await f.service.accept(forged);
   assert.equal((await f.service.get('alice')).status, 'pending');
   await f.service.accept(f.update(current.bindingUrl));
@@ -107,9 +171,22 @@ test('test and download notifications always use authenticated owner binding; un
   }
   await f.service.test('alice');
   await assert.rejects(() => f.service.test('alice'), { code: 'CONFLICT' });
-  await f.service.sendNotification('bob', { id: 'task', title: 'Movie', resourceName: 'Release', provider: 'qbittorrent', totalBytes: 1, completedAt: new Date(), detailUrl: 'https://popular.example/movies/7' });
-  assert.deepEqual(f.sent.map(row => row.chatId), ['101', '202']);
-  f.advance(30_000); await f.service.test('alice');
+  await f.service.sendNotification('bob', {
+    id: 'task',
+    title: 'Movie',
+    resourceName: 'Release',
+    provider: 'qbittorrent',
+    totalBytes: 1,
+    completedAt: new Date(),
+    detailUrl: 'https://popular.example/movies/7',
+  }
+  );
+  assert.deepEqual(
+    f.sent.map((row) => row.chatId),
+    ['101', '202'],
+  );
+  f.advance(30_000);
+  await f.service.test('alice');
   await f.service.remove('alice');
   await assert.rejects(() => f.service.test('alice'), { code: 'CONFLICT' });
   assert.equal(await f.service.isConfigured('alice'), false);
@@ -119,10 +196,14 @@ test('test and download notifications always use authenticated owner binding; un
 test('incoming messages resolve the linked owner, log text/media only, and exclude binding secrets and unlinked chats', async () => {
   const f = fixture();
   const received: Array<{ ownerId: string; message: import('../incoming-message.js').IncomingMessage }> = [];
-  const service = new TelegramService(f.auth, f.store, f.transport, undefined, (ownerId, message) => { received.push({ ownerId, message }); });
+  const service = new TelegramService(f.auth, f.store, f.transport, undefined, (ownerId, message) => {
+    received.push({ ownerId, message });
+  });
   const binding = await service.start('alice');
   await service.accept(f.update(binding.bindingUrl));
-  const incoming = (text: string, id = 101): TelegramUpdate => ({ update_id: 2, message: { message_id: 7, text, from: { id }, chat: { id, type: 'private' } } });
+  const incoming = (text: string, id = 101): TelegramUpdate => {
+    return { update_id: 2, message: { message_id: 7, text, from: { id }, chat: { id, type: 'private' } } };
+  };
   await service.accept(incoming('hello\n你好'));
   const photo = incoming('');
   delete photo.message!.text;
@@ -132,16 +213,39 @@ test('incoming messages resolve the linked owner, log text/media only, and exclu
   await service.accept(incoming('/start malformed-secret'));
   await service.accept(f.update(binding.bindingUrl));
   await service.accept(incoming('unbound', 202));
-  const group = incoming('group'); group.message!.chat.type = 'group';
+  const group = incoming('group');
+  group.message!.chat.type = 'group';
   await service.accept(group);
-  const bot = incoming('bot'); bot.message!.from!.is_bot = true;
+  const bot = incoming('bot');
+  bot.message!.from!.is_bot = true;
   await service.accept(bot);
   await service.remove('alice');
   await service.accept(incoming('after unlink'));
   assert.deepEqual(received, [
-    { ownerId: 'alice', message: { channel: 'telegram', senderId: '101', chatId: '101', messageId: '7', messageType: 'text', text: 'hello\n你好' } },
-    { ownerId: 'alice', message: { channel: 'telegram', senderId: '101', chatId: '101', messageId: '7', messageType: 'photo', text: 'movie poster' } },
-  ]);
+    {
+      ownerId: 'alice',
+      message: {
+        channel: 'telegram',
+        senderId: '101',
+        chatId: '101',
+        messageId: '7',
+        messageType: 'text',
+        text: 'hello\n你好',
+      },
+    },
+    {
+      ownerId: 'alice',
+      message: {
+        channel: 'telegram',
+        senderId: '101',
+        chatId: '101',
+        messageId: '7',
+        messageType: 'photo',
+        text: 'movie poster',
+      },
+    },
+  ]
+  );
   assert.equal(f.sent.length, 0);
 });
 
@@ -154,46 +258,102 @@ test('unconfigured service still requires authentication and clearly reports una
   assert.equal(await service.isConfigured('alice'), false);
 });
 
-const config = loadConfig({ WEB_ORIGIN: 'http://localhost:5173', MONGODB_URI: 'mongodb://db.example/test', REDIS_URL: 'redis://redis.example',
-  MINIO_ENDPOINT: 'minio.example', MINIO_ACCESS_KEY: 'access', MINIO_SECRET_KEY: 'secret', MINIO_BUCKET: 'avatars',
-  SESSION_TOKEN_PEPPER: 'test-session-pepper-at-least-32-characters', INTEGRATION_SECRET_KEY: 'test-integration-secret-at-least-32-characters', TMDB_READ_ACCESS_TOKEN: 'tmdb', LOG_LEVEL: 'silent' });
+const config = loadConfig({
+  WEB_ORIGIN: 'http://localhost:5173',
+  MONGODB_URI: 'mongodb://db.example/test',
+  REDIS_URL: 'redis://redis.example',
+  MINIO_ENDPOINT: 'minio.example',
+  MINIO_ACCESS_KEY: 'access',
+  MINIO_SECRET_KEY: 'secret',
+  MINIO_BUCKET: 'avatars',
+  SESSION_TOKEN_PEPPER: 'test-session-pepper-at-least-32-characters',
+  INTEGRATION_SECRET_KEY: 'test-integration-secret-at-least-32-characters',
+  TMDB_READ_ACCESS_TOKEN: 'tmdb',
+  LOG_LEVEL: 'silent',
+});
 test('HTTP endpoints reject anonymous access and ignore injected owner and recipient; links never appear in status', async () => {
   const f = fixture();
   const app = await buildApp({ config, healthDependencies: [], telegramService: f.service });
   const url = '/api/v1/me/integrations/telegram';
   try {
-    for (const [method, suffix] of [['GET', ''], ['POST', '/bind'], ['POST', '/test'], ['DELETE', '']] as const) {
+    for (const [method, suffix] of [
+      ['GET', ''],
+      ['POST', '/bind'],
+      ['POST', '/test'],
+      ['DELETE', ''],
+    ] as const) {
       assert.equal((await app.inject({ method, url: url + suffix })).statusCode, 401);
     }
     const headers = { cookie: 'movie_hub_session=alice' };
-    const bound = await app.inject({ method: 'POST', url: url + '/bind', headers, payload: { ownerId: 'bob', chatId: '999' } });
-    assert.equal(bound.statusCode, 200); assert.equal(bound.headers['cache-control'], 'no-store');
+    const bound = await app.inject({
+      method: 'POST',
+      url: url + '/bind',
+      headers,
+      payload: { ownerId: 'bob', chatId: '999' },
+    }
+    );
+    assert.equal(bound.statusCode, 200);
+    assert.equal(bound.headers['cache-control'], 'no-store');
     await f.service.accept(f.update(bound.json().bindingUrl));
     const status = await app.inject({ url, headers });
     assert.deepEqual(status.json(), { status: 'connected', account: '@person101' });
-    const sent = await app.inject({ method: 'POST', url: url + '/test', headers, payload: { ownerId: 'bob', chatId: '999', text: 'injected' } });
-    assert.equal(sent.statusCode, 200); assert.equal(f.sent[0]!.chatId, '101'); assert.ok(!f.sent[0]!.text.includes('injected'));
+    const sent = await app.inject({
+      method: 'POST',
+      url: url + '/test',
+      headers,
+      payload: { ownerId: 'bob', chatId: '999', text: 'injected' },
+    }
+    );
+    assert.equal(sent.statusCode, 200);
+    assert.equal(f.sent[0]!.chatId, '101');
+    assert.ok(!f.sent[0]!.text.includes('injected'));
     assert.equal((await app.inject({ method: 'DELETE', url, headers })).statusCode, 204);
     assert.equal(f.rows.size, 0);
-  } finally { await app.close(); }
+  } finally {
+    await app.close();
+  }
 });
 
 test('transport uses POST and strips token-bearing fetch errors and Telegram responses', async () => {
   const token = '123:private-token';
-  for (const fetcher of [async () => { throw new Error(`request failed https://api.telegram.org/bot${token}`); }, async () => Response.json({ ok: false, description: token }, { status: 401 })]) {
+  for (const fetcher of [
+    async () => {
+      throw new Error(`request failed https://api.telegram.org/bot${token}`);
+    },
+    async () => {
+      return Response.json({ ok: false, description: token }, { status: 401 });
+    },
+  ]) {
     const client = new TelegramClient(token, fetcher as typeof fetch);
-    await assert.rejects(() => client.username(), error => {
-      assert.ok(error instanceof AppError); assert.ok(!String(error).includes(token)); assert.equal(error.cause, undefined); return true;
-    });
+    await assert.rejects(
+      () => client.username(),
+      (error) => {
+        assert.ok(error instanceof AppError);
+        assert.ok(!String(error).includes(token));
+        assert.equal(error.cause, undefined);
+        return true;
+      },
+    );
   }
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const client = new TelegramClient(token, (async (url: string, init: RequestInit) => {
     calls.push({ url, init });
-    return Response.json({ ok: true, result: url.endsWith('/getMe') ? { is_bot: true, username: 'PopularTestBot' } : url.endsWith('/getUpdates') ? [] : { message_id: 9 } });
+    return Response.json({
+      ok: true,
+      result: url.endsWith('/getMe')
+        ? { is_bot: true, username: 'PopularTestBot' }
+        : url.endsWith('/getUpdates')
+          ? []
+          : { message_id: 9 },
+    }
+    );
   }) as typeof fetch);
-  assert.equal(await client.username(), 'PopularTestBot'); await client.username();
-  assert.equal(await client.send('101', '<b>test</b>', 'HTML'), '9'); await client.updates(8);
-  assert.equal(calls.length, 3); assert.ok(calls.every(row => row.init.method === 'POST'));
+  assert.equal(await client.username(), 'PopularTestBot');
+  await client.username();
+  assert.equal(await client.send('101', '<b>test</b>', 'HTML'), '9');
+  await client.updates(8);
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every((row) => row.init.method === 'POST'));
   assert.equal(JSON.parse(calls[1]!.init.body as string).chat_id, '101');
   assert.equal(JSON.parse(calls[1]!.init.body as string).parse_mode, 'HTML');
   assert.equal(JSON.parse(calls[2]!.init.body as string).offset, 8);
@@ -203,11 +363,21 @@ test('download notification uses owner-scoped photo with escaped HTML, bounded c
   const f = fixture();
   const link = await f.service.start('alice');
   await f.service.accept(f.update(link.bindingUrl));
-  const notification = { id: 'task', title: '<Movie> & "title"', resourceName: 'release & <b>not markup</b>', provider: 'qbittorrent', totalBytes: 1024 ** 3,
-    completedAt: new Date('2026-10-18T00:00:00Z'), detailUrl: 'https://popular.example/movies/7?x=1&y=2', poster: Buffer.from('poster-bytes') };
+  const notification = {
+    id: 'task',
+    title: '<Movie> & "title"',
+    resourceName: 'release & <b>not markup</b>',
+    provider: 'qbittorrent',
+    totalBytes: 1024 ** 3,
+    completedAt: new Date('2026-10-18T00:00:00Z'),
+    detailUrl: 'https://popular.example/movies/7?x=1&y=2',
+    poster: Buffer.from('poster-bytes'),
+  };
   assert.deepEqual(await f.service.sendNotification('alice', notification), { messageId: '1' });
   const photo = f.sent[0]!;
-  assert.equal(photo.chatId, '101'); assert.equal(photo.photo?.toString(), 'poster-bytes'); assert.equal(photo.parseMode, 'HTML');
+  assert.equal(photo.chatId, '101');
+  assert.equal(photo.photo?.toString(), 'poster-bytes');
+  assert.equal(photo.parseMode, 'HTML');
   assert.ok(photo.text.includes('<b>&lt;Movie&gt; &amp; &quot;title&quot;</b>'));
   assert.ok(photo.text.includes('<code>release &amp; &lt;b&gt;not markup&lt;/b&gt;</code>'));
   assert.ok(photo.text.includes('href="https://popular.example/movies/7?x=1&amp;y=2"'));
@@ -216,47 +386,94 @@ test('download notification uses owner-scoped photo with escaped HTML, bounded c
   assert.equal(f.sent.length, 1);
   const { poster: _poster, ...withoutPoster } = notification;
   await f.service.sendNotification('alice', withoutPoster);
-  assert.equal(f.sent[1]!.photo, undefined); assert.equal(f.sent[1]!.parseMode, 'HTML');
-  await f.service.sendNotification('alice', { ...notification, title: '😀&'.repeat(2000), resourceName: '<😀'.repeat(2000), provider: 'x'.repeat(2000), detailUrl: 'javascript:alert(1)' });
+  assert.equal(f.sent[1]!.photo, undefined);
+  assert.equal(f.sent[1]!.parseMode, 'HTML');
+  await f.service.sendNotification('alice', {
+    ...notification,
+    title: '😀&'.repeat(2000),
+    resourceName: '<😀'.repeat(2000),
+    provider: 'x'.repeat(2000),
+    detailUrl: 'javascript:alert(1)',
+  }
+  );
   const caption = f.sent[2]!.text;
   const parsed = caption.replace(/<[^>]+>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, '_');
-  assert.ok(parsed.length < 1024); assert.ok(!caption.includes('javascript:'));
-  assert.ok(!caption.includes('\uFFFD')); assert.ok(caption.includes('…</b>')); assert.ok(caption.includes('…</code>'));
+  assert.ok(parsed.length < 1024);
+  assert.ok(!caption.includes('javascript:'));
+  assert.ok(!caption.includes('\uFFFD'));
+  assert.ok(caption.includes('…</b>'));
+  assert.ok(caption.includes('…</code>'));
 });
 
 test('photo upload sends actual poster bytes as multipart with HTML caption, without a fixed content-type header', async () => {
   const calls: RequestInit[] = [];
   const client = new TelegramClient('123:secret', (async (url: string, init: RequestInit) => {
-    assert.ok(url.endsWith('/sendPhoto')); calls.push(init);
+    assert.ok(url.endsWith('/sendPhoto'));
+    calls.push(init);
     return Response.json({ ok: true, result: { message_id: 99 } });
   }) as typeof fetch);
   assert.equal(await client.sendPhoto('101', Buffer.from([1, 2, 3]), '<b>Movie</b>'), '99');
-  const init = calls[0]!; assert.equal(init.method, 'POST'); assert.equal(init.headers, undefined);
-  const form = init.body; assert.ok(form instanceof FormData);
-  assert.equal(form.get('chat_id'), '101'); assert.equal(form.get('parse_mode'), 'HTML'); assert.equal(form.get('caption'), '<b>Movie</b>');
-  const file = form.get('photo'); assert.ok(file instanceof Blob);
+  const init = calls[0]!;
+  assert.equal(init.method, 'POST');
+  assert.equal(init.headers, undefined);
+  const form = init.body;
+  assert.ok(form instanceof FormData);
+  assert.equal(form.get('chat_id'), '101');
+  assert.equal(form.get('parse_mode'), 'HTML');
+  assert.equal(form.get('caption'), '<b>Movie</b>');
+  const file = form.get('photo');
+  assert.ok(file instanceof Blob);
   assert.deepEqual(Buffer.from(await file.arrayBuffer()), Buffer.from([1, 2, 3]));
-  const unavailable = new TelegramClient('123:secret', (async () => { throw new Error('https://api.telegram.org/bot123:secret/sendPhoto'); }) as typeof fetch);
-  await assert.rejects(() => unavailable.sendPhoto('101', Buffer.from('poster'), 'text'), error => {
-    assert.ok(error instanceof AppError); assert.ok(!String(error).includes('123:secret')); assert.equal(error.cause, undefined); return true;
-  });
-  const invalid = new TelegramClient('123:secret', (async () => Response.json({ ok: true, result: {} })) as typeof fetch);
+  const unavailable = new TelegramClient('123:secret', (async () => {
+    throw new Error('https://api.telegram.org/bot123:secret/sendPhoto');
+  }) as typeof fetch);
+  await assert.rejects(
+    () => unavailable.sendPhoto('101', Buffer.from('poster'), 'text'),
+    (error) => {
+      assert.ok(error instanceof AppError);
+      assert.ok(!String(error).includes('123:secret'));
+      assert.equal(error.cause, undefined);
+      return true;
+    },
+  );
+  const invalid = new TelegramClient('123:secret', (async () => {
+    return Response.json({ ok: true, result: {} });
+  }) as typeof fetch);
   await assert.rejects(() => invalid.sendPhoto('101', Buffer.from('poster'), 'text'), { code: 'SERVICE_UNAVAILABLE' });
 });
 
 test('receive diagnostics explain filtering and binding matches without logging message text', async () => {
   const f = fixture();
   const logs: Array<Record<string, unknown>> = [];
-  const logger = { info: (fields: Record<string, unknown>) => { logs.push(fields); }, error: (fields: Record<string, unknown>) => { logs.push(fields); } };
-  const service = new TelegramService(f.auth, f.store, f.transport, undefined, () => undefined, logger);
-  const update: TelegramUpdate = { update_id: 10, message: { message_id: 20, text: 'private message text', from: { id: 101 }, chat: { id: 101, type: 'private' } } };
+  const logger = {
+    info: (fields: Record<string, unknown>) => {
+      logs.push(fields);
+    },
+    error: (fields: Record<string, unknown>) => {
+      logs.push(fields);
+    },
+  };
+  const service = new TelegramService(
+    f.auth,
+    f.store,
+    f.transport,
+    undefined,
+    () => {
+      return undefined;
+    },
+    logger,
+  );
+  const update: TelegramUpdate = {
+    update_id: 10,
+    message: { message_id: 20, text: 'private message text', from: { id: 101 }, chat: { id: 101, type: 'private' } },
+  };
   await service.accept(update);
-  assert.ok(logs.some(line => line.reason === 'chat_not_bound' && line.messageId === 20));
+  assert.ok(logs.some((line) => line.reason === 'chat_not_bound' && line.messageId === 20));
   await service.accept({ ...update, message: { ...update.message!, chat: { id: 101, type: 'group' } } });
-  assert.ok(logs.some(line => line.reason === 'not_private_chat'));
+  assert.ok(logs.some((line) => line.reason === 'not_private_chat'));
   f.rows.set('alice', { chatId: '101' });
   await service.accept(update);
-  assert.ok(logs.some(line => line.stage === 'telegram.message.accepted' && line.ownerId === 'alice'));
+  assert.ok(logs.some((line) => line.stage === 'telegram.message.accepted' && line.ownerId === 'alice'));
   assert.ok(!JSON.stringify(logs).includes('private message text'));
 });
 

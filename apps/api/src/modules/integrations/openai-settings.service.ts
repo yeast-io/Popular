@@ -32,7 +32,11 @@ export class OpenAISettingsService {
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly store: OpenAIConfigStore,
     private readonly secrets: SecretCrypto,
-    private readonly verification?: { model: string; recommendedModels?: readonly string[]; verify(apiKey: string): Promise<string[]> }
+    private readonly verification?: {
+      model: string;
+      recommendedModels?: readonly string[];
+      verify(apiKey: string): Promise<string[]>;
+    }
   ) {}
 
   async get(token: string | undefined): Promise<OpenAIConfiguration> {
@@ -53,15 +57,22 @@ export class OpenAISettingsService {
 
   private response(record: OpenAIConfigRecord): OpenAIConfiguration {
     const model = record.model ?? this.verification?.model;
-    return { configured: true, maskedApiKey: record.maskedApiKey,
+    return {
+      configured: true,
+      maskedApiKey: record.maskedApiKey,
       ...(model ? { model } : {}),
       ...(record.validation && record.validation.method === 'model_list'
-        ? { validation: { ...record.validation, models: this.recommendedModels(record.validation.models) } } : {}),
+        ? { validation: { ...record.validation, models: this.recommendedModels(record.validation.models) } }
+        : {}),
     };
   }
   private recommendedModels(available: readonly string[]): string[] {
     const recommended = this.verification?.recommendedModels;
-    return recommended ? [...new Set(recommended)].filter(model => available.includes(model)) : [...available];
+    return recommended
+      ? [...new Set(recommended)].filter((model) => {
+          return available.includes(model);
+        })
+      : [...available];
   }
 
   async test(token: string | undefined): Promise<OpenAIConfiguration> {
@@ -70,13 +81,18 @@ export class OpenAISettingsService {
     if (existing) return existing;
     const operation = this.verify(ownerId);
     this.pending.set(ownerId, operation);
-    try { return await operation; } finally { if (this.pending.get(ownerId) === operation) this.pending.delete(ownerId); }
+    try {
+      return await operation;
+    } finally {
+      if (this.pending.get(ownerId) === operation) this.pending.delete(ownerId);
+    }
   }
   private async verify(ownerId: string): Promise<OpenAIConfiguration> {
     const record = await this.store.find(ownerId);
     if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Save an API key before testing');
     if (!this.verification) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Connection verification is unavailable');
-    if (Date.now() - (this.lastAttempt.get(ownerId) ?? 0) < 30_000) throw new AppError(409, 'CONFLICT', 'Wait 30 seconds before another connection test');
+    if (Date.now() - (this.lastAttempt.get(ownerId) ?? 0) < 30_000)
+      throw new AppError(409, 'CONFLICT', 'Wait 30 seconds before another connection test');
     const key = this.secrets.decrypt(record.encryptedApiKey, this.context(ownerId));
     this.lastAttempt.set(ownerId, Date.now());
     let validation: OpenAIValidation;
@@ -84,10 +100,15 @@ export class OpenAISettingsService {
       const models = await this.verification.verify(key);
       validation = { method: 'model_list', status: 'valid', checkedAt: new Date().toISOString(), models };
     } catch (error) {
-      validation = { method: 'model_list', status: 'failed', checkedAt: new Date().toISOString(), models: [],
-        failureReason: error instanceof OpenAIProbeError ? error.reason : 'request_failed' };
+      validation = {
+        method: 'model_list',
+        status: 'failed',
+        checkedAt: new Date().toISOString(),
+        models: [],
+        failureReason: error instanceof OpenAIProbeError ? error.reason : 'request_failed',
+      };
     }
-    if (!await this.store.saveValidation(ownerId, record.encryptedApiKey, validation)) {
+    if (!(await this.store.saveValidation(ownerId, record.encryptedApiKey, validation))) {
       throw new AppError(409, 'CONFLICT', 'API key changed during testing; test the current key again');
     }
     return this.response({ ...record, validation });
@@ -97,10 +118,14 @@ export class OpenAISettingsService {
     const ownerId = await this.auth.requireOwnerId(token);
     const record = await this.store.find(ownerId);
     if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Save an API key before choosing a model');
-    if (record.validation?.method !== 'model_list' || record.validation.status !== 'valid' || !this.recommendedModels(record.validation.models).includes(model)) {
+    if (
+      record.validation?.method !== 'model_list' ||
+      record.validation.status !== 'valid' ||
+      !this.recommendedModels(record.validation.models).includes(model)
+    ) {
       throw new AppError(400, 'VALIDATION_ERROR', 'Test the current key and choose a model from its list');
     }
-    if (!await this.store.selectModel(ownerId, record.encryptedApiKey, model)) {
+    if (!(await this.store.selectModel(ownerId, record.encryptedApiKey, model))) {
       throw new AppError(409, 'CONFLICT', 'API key or model list changed; reload settings');
     }
     return this.response({ ...record, model });
@@ -111,7 +136,9 @@ export class OpenAISettingsService {
     if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Configure your OpenAI API key in Settings first');
     const model = record.model ?? this.verification?.model;
     if (!model) throw new AppError(400, 'VALIDATION_ERROR', 'Choose an OpenAI model in Settings first');
-    const apiKey = await aiStep('credentials.decrypt', async () => this.secrets.decrypt(record.encryptedApiKey, this.context(ownerId)));
+    const apiKey = await aiStep('credentials.decrypt', async () => {
+      return this.secrets.decrypt(record.encryptedApiKey, this.context(ownerId));
+    });
     currentAiTrace()?.sensitive(apiKey);
     return { apiKey, model };
   }
@@ -123,7 +150,9 @@ export class OpenAISettingsService {
   async requireApiKey(ownerId: string): Promise<string> {
     const record = await aiStep('credentials.load', () => this.store.find(ownerId));
     if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Configure your OpenAI API key in Settings first');
-    const key = await aiStep('credentials.decrypt', async () => this.secrets.decrypt(record.encryptedApiKey, this.context(ownerId)));
+    const key = await aiStep('credentials.decrypt', async () => {
+      return this.secrets.decrypt(record.encryptedApiKey, this.context(ownerId));
+    });
     currentAiTrace()?.sensitive(key);
     return key;
   }

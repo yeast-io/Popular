@@ -14,9 +14,23 @@ export interface MovieRecord {
   localizationLocale?: Locale;
 }
 
-export interface GenreRecord { tmdbId: number; name: string }
-export interface PersonRecord { tmdbId: number; name: string; originalName?: string; profilePath?: string }
-export interface CreditRecord { person: PersonRecord; creditId: string; type: 'cast' | 'director'; character?: string; order?: number }
+export interface GenreRecord {
+  tmdbId: number;
+  name: string;
+}
+export interface PersonRecord {
+  tmdbId: number;
+  name: string;
+  originalName?: string;
+  profilePath?: string;
+}
+export interface CreditRecord {
+  person: PersonRecord;
+  creditId: string;
+  type: 'cast' | 'director';
+  character?: string;
+  order?: number;
+}
 export interface MovieTrailerRecord {
   tmdbVideoId: string;
   provider: 'youtube';
@@ -63,7 +77,13 @@ export interface TrendingSnapshotRecord {
 
 export interface TrendingStore {
   publishSnapshot(record: TrendingSnapshotRecord, locale: Locale): Promise<void>;
-  appendSnapshotPage(record: TrendingPageRecord, locale: Locale, generation: string, sourcePage: number, pageSize: number): Promise<void>;
+  appendSnapshotPage(
+    record: TrendingPageRecord,
+    locale: Locale,
+    generation: string,
+    sourcePage: number,
+    pageSize: number,
+  ): Promise<void>;
   readPage(page: number, locale: Locale, generation?: string): Promise<TrendingSnapshotPageRecord | null>;
   readSnapshot(locale: Locale, generation: string): Promise<TrendingSnapshotRecord | null>;
 }
@@ -87,21 +107,50 @@ export interface MovieStatusRecord {
 }
 
 export interface MovieStatusStore {
-  setStatus(ownerId: string, tmdbId: number, status: Exclude<MovieStatusRecord['status'], 'unwatched'>): Promise<MovieStatusRecord['status'] | null>;
+  setStatus(
+    ownerId: string,
+    tmdbId: number,
+    status: Exclude<MovieStatusRecord['status'], 'unwatched'>,
+  ): Promise<MovieStatusRecord['status'] | null>;
   clearStatus(ownerId: string, tmdbId: number): Promise<void>;
-  setPreference(ownerId: string, tmdbId: number, preference: Exclude<MovieStatusRecord['preference'], 'neutral'>): Promise<MovieStatusRecord['preference']>;
+  setPreference(
+    ownerId: string,
+    tmdbId: number,
+    preference: Exclude<MovieStatusRecord['preference'], 'neutral'>,
+  ): Promise<MovieStatusRecord['preference']>;
   clearPreference(ownerId: string, tmdbId: number): Promise<void>;
   readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieStatusRecord[]>;
-  list(ownerId: string, filter: Exclude<MovieStatusRecord['status'], 'unwatched'> | Exclude<MovieStatusRecord['preference'], 'neutral'> | undefined, page: number, pageSize: number): Promise<{ items: MovieStatusRecord[]; total: number }>;
+  list(
+    ownerId: string,
+    filter:
+      | Exclude<MovieStatusRecord['status'], 'unwatched'>
+      | Exclude<MovieStatusRecord['preference'], 'neutral'>
+      | undefined,
+    page: number,
+    pageSize: number,
+  ): Promise<{ items: MovieStatusRecord[]; total: number }>;
 }
 
 export interface TrendingProvider {
-  fetchPage(page: number, locale: Locale, context?: import('../external-usage/external-usage.types.js').ExternalRequestContext): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
+  fetchPage(
+    page: number,
+    locale: Locale,
+    context?: import('../external-usage/external-usage.types.js').ExternalRequestContext,
+  ): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
 }
 
 export interface MovieSearchProvider {
-  search(query: string, page: number, locale: Locale, context?: import('../external-usage/external-usage.types.js').ExternalRequestContext): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
-  fetchDetails(tmdbId: number, locale: Locale, context?: import('../external-usage/external-usage.types.js').ExternalRequestContext): Promise<MovieDetailRecord>;
+  search(
+    query: string,
+    page: number,
+    locale: Locale,
+    context?: import('../external-usage/external-usage.types.js').ExternalRequestContext,
+  ): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
+  fetchDetails(
+    tmdbId: number,
+    locale: Locale,
+    context?: import('../external-usage/external-usage.types.js').ExternalRequestContext,
+  ): Promise<MovieDetailRecord>;
 }
 
 export interface SyncLock {

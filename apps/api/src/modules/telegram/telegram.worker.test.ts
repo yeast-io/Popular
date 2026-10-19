@@ -11,12 +11,23 @@ function fixture(lockTraceEnabled = true, pollTraceEnabled = true) {
   let loseLease = false;
   const accepted: number[] = [];
   const logs: Array<Record<string, unknown>> = [];
-  const logger = { info: (fields: Record<string, unknown>) => { logs.push(fields); }, error: (fields: Record<string, unknown>) => { logs.push(fields); } };
+  const logger = {
+    info: (fields: Record<string, unknown>) => {
+      logs.push(fields);
+    },
+    error: (fields: Record<string, unknown>) => {
+      logs.push(fields);
+    },
+  };
   const update: TelegramUpdate = { update_id: 7 };
   const redis = {
-    set: async (key: string, value: string) => { if (values.has(key)) return null; values.set(key, value); return 'OK'; },
+    set: async (key: string, value: string) => {
+      if (values.has(key)) return null;
+      values.set(key, value);
+      return 'OK';
+    },
     get: async (key: string) => values.get(key) ?? null,
-    ttl: async (key: string) => values.has(key) ? 60 : -2,
+    ttl: async (key: string) => (values.has(key) ? 60 : -2),
     eval: async (script: string, count: number, ...args: string[]) => {
       const [lock] = args;
       const lease = args[count]!;
@@ -27,77 +38,159 @@ function fixture(lockTraceEnabled = true, pollTraceEnabled = true) {
       return 1;
     },
   } as unknown as Redis;
-  const transport = { username: async () => 'Bot', send: async () => '1', sendPhoto: async () => '1', updates: async (offset: number) => { polls++; return offset <= 7 ? [update] : []; } };
-  const service = { accept: async (item: TelegramUpdate) => { if (crash) throw new Error('database down'); accepted.push(item.update_id); } } as TelegramService;
-  const worker = new TelegramWorker(redis, '123:secret', transport, service, () => {}, logger, lockTraceEnabled, pollTraceEnabled);
-  return { worker, redis, values, accepted, transport, logs, polls: () => polls, crash: (value: boolean) => { crash = value; }, lose: () => { loseLease = true; } };
+  const transport = {
+    username: async () => {
+      return 'Bot';
+    },
+    send: async () => {
+      return '1';
+    },
+    sendPhoto: async () => {
+      return '1';
+    },
+    updates: async (offset: number) => {
+      polls++;
+      return offset <= 7 ? [update] : [];
+    },
+  };
+  const service = {
+    accept: async (item: TelegramUpdate) => {
+      if (crash) throw new Error('database down');
+      accepted.push(item.update_id);
+    },
+  } as TelegramService;
+  const worker = new TelegramWorker(
+    redis,
+    '123:secret',
+    transport,
+    service,
+    () => {},
+    logger,
+    lockTraceEnabled,
+    pollTraceEnabled,
+  );
+  return {
+    worker,
+    redis,
+    values,
+    accepted,
+    transport,
+    logs,
+    polls: () => {
+      return polls;
+    },
+    crash: (value: boolean) => {
+      crash = value;
+    },
+    lose: () => {
+      loseLease = true;
+    },
+  };
 }
-test('shared lease prevents competing pollers; offset survives worker restart', async context => {
+test('shared lease prevents competing pollers; offset survives worker restart', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
-  const f = fixture(); f.worker.start();
+  const f = fixture();
+  f.worker.start();
   try {
-    await f.worker.tick(); await f.worker.tick();
+    await f.worker.tick();
+    await f.worker.tick();
     assert.deepEqual(f.accepted, [7]);
     assert.equal([...f.values.values()].includes('8'), true);
     const lock = [...f.values.keys()][0]!.replace(':offset', ':lock');
     f.values.set(lock, 'another-process');
-    await f.worker.tick(); assert.equal(f.polls(), 2);
+    await f.worker.tick();
+    assert.equal(f.polls(), 2);
     f.values.delete(lock);
-    const restarted = new TelegramWorker(f.redis, '123:rotated-token', f.transport, { accept: async () => { assert.fail('acknowledged update replayed'); } } as unknown as TelegramService, () => {});
-    restarted.start(); await restarted.tick(); await restarted.stop();
-  } finally { await f.worker.stop(); }
+    const restarted = new TelegramWorker(
+      f.redis,
+      '123:rotated-token',
+      f.transport,
+      {
+        accept: async () => {
+          assert.fail('acknowledged update replayed');
+        },
+      } as unknown as TelegramService,
+      () => {},
+    );
+    restarted.start();
+    await restarted.tick();
+    await restarted.stop();
+  } finally {
+    await f.worker.stop();
+  }
 });
-test('storage failure retains update for retry; lost lease cannot consume or checkpoint', async context => {
+test('storage failure retains update for retry; lost lease cannot consume or checkpoint', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
-  const f = fixture(); f.worker.start();
+  const f = fixture();
+  f.worker.start();
   try {
-    f.crash(true); await assert.rejects(() => f.worker.tick());
+    f.crash(true);
+    await assert.rejects(() => f.worker.tick());
     assert.equal(f.values.size, 0);
-    f.crash(false); f.lose(); await f.worker.tick();
+    f.crash(false);
+    f.lose();
+    await f.worker.tick();
     assert.deepEqual(f.accepted, []);
-    assert.equal([...f.values.keys()].some(key => key.endsWith(':offset')), false);
+    assert.equal(
+      [...f.values.keys()].some((key) => key.endsWith(':offset')),
+      false,
+    );
     assert.equal([...f.values.values()][0], 'other-process');
-  } finally { await f.worker.stop(); }
+  } finally {
+    await f.worker.stop();
+  }
 });
 
-test('diagnostics identify startup, busy lease, poll results and saved checkpoints', async context => {
+test('diagnostics identify startup, busy lease, poll results and saved checkpoints', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture();
   f.worker.start();
   try {
     await f.worker.tick();
-    assert.ok(f.logs.some(line => line.event === 'telegram_worker_started'));
-    assert.ok(f.logs.some(line => line.stage === 'telegram.updates.received' && line.updateCount === 1));
-    assert.ok(f.logs.some(line => line.stage === 'telegram.update.completed' && line.nextOffset === 8));
-    assert.ok(f.logs.filter(line => line.stage).every(line => typeof line.pollId === 'string'));
-    const cursor = [...f.values.keys()].find(key => key.endsWith(':offset'))!;
+    assert.ok(f.logs.some((line) => line.event === 'telegram_worker_started'));
+    assert.ok(f.logs.some((line) => line.stage === 'telegram.updates.received' && line.updateCount === 1));
+    assert.ok(f.logs.some((line) => line.stage === 'telegram.update.completed' && line.nextOffset === 8));
+    assert.ok(f.logs.filter((line) => line.stage).every((line) => typeof line.pollId === 'string'));
+    const cursor = [...f.values.keys()].find((key) => key.endsWith(':offset'))!;
     f.values.set(cursor.replace(':offset', ':lock'), 'another-worker');
     await f.worker.tick();
-    assert.ok(f.logs.some(line => line.stage === 'redis.lock.acquire.busy' && (line.ttlSeconds as number[])?.[0] === 60));
-    assert.ok(f.logs.some(line => line.stage === 'redis.lock.acquire.acquired'));
-    assert.ok(f.logs.some(line => line.stage === 'redis.lock.release.released'));
-  } finally { await f.worker.stop(); }
+    assert.ok(
+      f.logs.some((line) => {
+        return line.stage === 'redis.lock.acquire.busy' && (line.ttlSeconds as number[])?.[0] === 60;
+      }),
+    );
+    assert.ok(f.logs.some((line) => line.stage === 'redis.lock.acquire.acquired'));
+    assert.ok(f.logs.some((line) => line.stage === 'redis.lock.release.released'));
+  } finally {
+    await f.worker.stop();
+  }
 });
 
-test('diagnostics preserve the failing stage, error stack and nested cause', async context => {
+test('diagnostics preserve the failing stage, error stack and nested cause', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture();
-  f.transport.updates = async () => { throw new Error('request failed', { cause: Object.assign(new Error('connect refused'), { code: 'ECONNREFUSED' }) }); };
+  f.transport.updates = async () => {
+    throw new Error('request failed', { cause: Object.assign(new Error('connect refused'), { code: 'ECONNREFUSED' }) });
+  };
   f.worker.start();
   try {
     await assert.rejects(f.worker.tick(), /request failed/);
-    const failure = f.logs.find(line => line.error);
+    const failure = f.logs.find((line) => line.error);
     assert.equal(failure?.stage, 'telegram.get_updates');
     assert.match(JSON.stringify(failure), /ECONNREFUSED/);
     assert.match(JSON.stringify(failure), /stack/);
-  } finally { await f.worker.stop(); }
+  } finally {
+    await f.worker.stop();
+  }
 });
 
-test('stop aborts an in-flight poll, releases its own lock and does not advance the offset', async context => {
+test('stop aborts an in-flight poll, releases its own lock and does not advance the offset', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture();
   let started!: () => void;
-  const polling = new Promise<void>(resolve => { started = resolve; });
+  const polling = new Promise<void>((resolve) => {
+    started = resolve;
+  });
   f.transport.updates = async (_offset: number, signal?: AbortSignal) => {
     started();
     return new Promise((_resolve, reject) => {
@@ -111,44 +204,53 @@ test('stop aborts an in-flight poll, releases its own lock and does not advance 
   await active;
   assert.equal(f.values.size, 0);
   assert.deepEqual(f.accepted, []);
-  for (const event of ['telegram_worker_stopping', 'telegram_worker_stopped']) assert.ok(f.logs.some(line => line.event === event));
-  assert.ok(f.logs.some(line => line.stage === 'redis.lock.release.released'));
-  assert.ok(f.logs.some(line => line.stage === 'telegram.poll.cancelled'));
-  assert.ok(!f.logs.some(line => line.error));
+  for (const event of ['telegram_worker_stopping', 'telegram_worker_stopped'])
+    assert.ok(f.logs.some((line) => line.event === event));
+  assert.ok(f.logs.some((line) => line.stage === 'redis.lock.release.released'));
+  assert.ok(f.logs.some((line) => line.stage === 'telegram.poll.cancelled'));
+  assert.ok(!f.logs.some((line) => line.error));
 });
 
-test('disabling lock tracing suppresses lock logs and TTL queries but retains business failures', async context => {
+test('disabling lock tracing suppresses lock logs and TTL queries but retains business failures', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture(false);
   f.redis.ttl = async () => assert.fail('TTL inspection must be disabled');
   f.worker.start();
   try {
     await f.worker.tick();
-    const cursor = [...f.values.keys()].find(key => key.endsWith(':offset'))!;
+    const cursor = [...f.values.keys()].find((key) => key.endsWith(':offset'))!;
     f.values.set(cursor.replace(':offset', ':lock'), 'another-worker');
     await f.worker.tick();
     f.values.clear();
     f.crash(true);
     await assert.rejects(f.worker.tick(), /database down/);
-    assert.ok(f.logs.some(line => line.error));
-    assert.ok(!f.logs.some(line => String(line.stage).startsWith('redis.lock.') || String(line.stage).startsWith('telegram.lock.')));
-  } finally { await f.worker.stop(); }
+    assert.ok(f.logs.some((line) => line.error));
+    assert.ok(
+      !f.logs.some((line) => {
+        return String(line.stage).startsWith('redis.lock.') || String(line.stage).startsWith('telegram.lock.');
+      }),
+    );
+  } finally {
+    await f.worker.stop();
+  }
 });
 
-test('poll tracing can be disabled independently of lock tracing without hiding failures', async context => {
+test('poll tracing can be disabled independently of lock tracing without hiding failures', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture(true, false);
   f.worker.start();
   try {
     await f.worker.tick();
     assert.deepEqual(f.accepted, [7]);
-    assert.ok(f.logs.some(line => line.event === 'redis_lock'));
-    assert.ok(!f.logs.some(line => line.event === 'telegram_poll'));
+    assert.ok(f.logs.some((line) => line.event === 'redis_lock'));
+    assert.ok(!f.logs.some((line) => line.event === 'telegram_poll'));
     f.values.clear();
     f.crash(true);
     await assert.rejects(f.worker.tick(), /database down/);
-    const failure = f.logs.find(line => line.event === 'telegram_poll' && line.error);
+    const failure = f.logs.find((line) => line.event === 'telegram_poll' && line.error);
     assert.equal(failure?.stage, 'telegram.update.accept');
-    assert.ok(f.logs.some(line => line.event === 'telegram_worker_started'));
-  } finally { await f.worker.stop(); }
+    assert.ok(f.logs.some((line) => line.event === 'telegram_worker_started'));
+  } finally {
+    await f.worker.stop();
+  }
 });

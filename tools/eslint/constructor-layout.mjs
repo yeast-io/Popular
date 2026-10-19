@@ -26,26 +26,44 @@ export default {
       context.report({
         loc: token.loc,
         messageId,
-        fix: /^\s*$/.test(actual) ? fixer => fixer.replaceTextRange(gap, expected) : null,
+        fix: /^\s*$/.test(actual) ? (fixer) => fixer.replaceTextRange(gap, expected) : null,
       });
     }
     return {
       MethodDefinition(node) {
         if (node.kind !== 'constructor' || !node.value.body) return;
         const indent = source.lines[node.loc.start.line - 1].match(/^\s*/)[0];
-        for (const parameter of node.value.params) newlineBefore(source.getFirstToken(parameter), `${indent}  `, 'parameter');
+        for (const parameter of node.value.params)
+          newlineBefore(source.getFirstToken(parameter), `${indent}  `, 'parameter');
         const openingBrace = source.getFirstToken(node.value.body);
         const closingParen = source.getTokenBefore(openingBrace);
         if (node.value.params.length) {
           newlineBefore(closingParen, indent, 'closingParen');
           const last = source.getTokenBefore(closingParen);
-          if (last.value === ',') context.report({ node: last, messageId: 'trailingComma', fix: fixer => fixer.remove(last) });
+          if (last.value === ',')
+            context.report({
+              node: last,
+              messageId: 'trailingComma',
+              fix: (fixer) => {
+                return fixer.remove(last);
+              },
+            });
         }
         const bracePrevious = source.getTokenBefore(openingBrace, { includeComments: true });
         const braceGap = [bracePrevious.range[1], openingBrace.range[0]];
         // Never move a brace into a line comment.
-        if (bracePrevious.type !== 'Line' && /^\s*$/.test(source.text.slice(...braceGap)) && source.text.slice(...braceGap) !== ' ') {
-          context.report({ loc: openingBrace.loc, messageId: 'openingBrace', fix: fixer => fixer.replaceTextRange(braceGap, ' ') });
+        if (
+          bracePrevious.type !== 'Line' &&
+          /^\s*$/.test(source.text.slice(...braceGap)) &&
+          source.text.slice(...braceGap) !== ' '
+        ) {
+          context.report({
+            loc: openingBrace.loc,
+            messageId: 'openingBrace',
+            fix: (fixer) => {
+              return fixer.replaceTextRange(braceGap, ' ');
+            },
+          });
         }
         const firstStatement = node.value.body.body[0];
         const closingBrace = source.getLastToken(node.value.body);
@@ -55,7 +73,14 @@ export default {
         } else {
           const gap = [openingBrace.range[1], closingBrace.range[0]];
           const actual = source.text.slice(...gap);
-          if (/^\s+$/.test(actual)) context.report({ loc: closingBrace.loc, messageId: 'emptyBody', fix: fixer => fixer.replaceTextRange(gap, '') });
+          if (/^\s+$/.test(actual))
+            context.report({
+              loc: closingBrace.loc,
+              messageId: 'emptyBody',
+              fix: (fixer) => {
+                return fixer.replaceTextRange(gap, '');
+              },
+            });
         }
       },
     };

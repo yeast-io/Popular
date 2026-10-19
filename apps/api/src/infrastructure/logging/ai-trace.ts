@@ -24,10 +24,23 @@ export class AiTrace {
     this.correlationId = String(bindings.correlationId ?? bindings.requestId ?? bindings.jobId ?? randomUUID());
     this.sensitive(content);
   }
-  sensitive(value: string): void { if (value) this.secrets.add(value); }
+  sensitive(value: string): void {
+    if (value) this.secrets.add(value);
+  }
   event(stage: string, fields: Record<string, unknown> = {}): void {
     this.lastStage = stage;
-    if (this.eventsEnabled) this.logger?.info?.({ ...this.bindings, correlationId: this.correlationId, operation: this.operation ?? 'conversation.turn', stage, elapsedMs: Date.now() - this.started, ...fields }, stage);
+    if (this.eventsEnabled)
+      this.logger?.info?.(
+        {
+          ...this.bindings,
+          correlationId: this.correlationId,
+          operation: this.operation ?? 'conversation.turn',
+          stage,
+          elapsedMs: Date.now() - this.started,
+          ...fields,
+        },
+        stage,
+      );
   }
   async step<T>(stage: string, action: () => Promise<T>, fields: Record<string, unknown> = {}): Promise<T> {
     const start = Date.now();
@@ -42,13 +55,22 @@ export class AiTrace {
     }
   }
   /** Clear a recorded failure after the caller has handled it and continues execution. */
-  clearFailure(): void { this.failedStage = undefined; }
+  clearFailure(): void {
+    this.failedStage = undefined;
+  }
   fail(error: unknown, fields: Record<string, unknown> = {}): void {
-    this.logger?.error({
-      ...this.bindings, correlationId: this.correlationId, operation: this.operation ?? 'conversation.stream', stage: this.failedStage ?? this.lastStage,
-      elapsedMs: Date.now() - this.started, ...fields,
-      error: serializeDiagnosticError(error, [...this.secrets]),
-    }, this.operation ? `${this.operation} failed` : 'AI conversation request failed');
+    this.logger?.error(
+      {
+        ...this.bindings,
+        correlationId: this.correlationId,
+        operation: this.operation ?? 'conversation.stream',
+        stage: this.failedStage ?? this.lastStage,
+        elapsedMs: Date.now() - this.started,
+        ...fields,
+        error: serializeDiagnosticError(error, [...this.secrets]),
+      },
+      this.operation ? `${this.operation} failed` : 'AI conversation request failed',
+    );
   }
 }
 

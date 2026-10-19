@@ -17,11 +17,25 @@ export interface WhatsAppConnection {
   setTyping?(active: boolean): Promise<void>;
   ownsChat?(chatId: string): boolean;
   sendSelf(): Promise<string>;
-  sendNotification(notification: import('../notifications/notification.types.js').DownloadNotification): Promise<string>;
+  sendNotification(
+    notification: import('../notifications/notification.types.js').DownloadNotification,
+  ): Promise<string>;
   stop(logout: boolean): Promise<void>;
 }
 export interface WhatsAppDiagnostic {
-  event: 'connecting' | 'qr_issued' | 'pairing_accepted' | 'connected' | 'disconnected' | 'reconnect_scheduled' | 'storage_error' | 'connection_error' | 'lease_lost' | 'binding_timeout' | 'registration_refresh_received' | 'message_receive_error';
+  event:
+    | 'connecting'
+    | 'qr_issued'
+    | 'pairing_accepted'
+    | 'connected'
+    | 'disconnected'
+    | 'reconnect_scheduled'
+    | 'storage_error'
+    | 'connection_error'
+    | 'lease_lost'
+    | 'binding_timeout'
+    | 'registration_refresh_received'
+    | 'message_receive_error';
   reason?: 'qr_refs_exhausted' | 'connection_lost' | 'operation_timeout' | 'prekey_upload_timeout' | 'unknown';
   elapsedMs?: number;
   qrCount?: number;

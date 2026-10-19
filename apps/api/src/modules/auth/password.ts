@@ -6,7 +6,7 @@ const KEY_LENGTH = 64;
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const hash = await scrypt(password, salt, KEY_LENGTH) as Buffer;
+  const hash = (await scrypt(password, salt, KEY_LENGTH)) as Buffer;
   return `scrypt$${salt.toString('base64url')}$${hash.toString('base64url')}`;
 }
 
@@ -17,7 +17,7 @@ export async function verifyPassword(password: string, encoded: string): Promise
   try {
     const expected = Buffer.from(expectedText, 'base64url');
     if (expected.length !== KEY_LENGTH) return false;
-    const actual = await scrypt(password, Buffer.from(saltText, 'base64url'), expected.length) as Buffer;
+    const actual = (await scrypt(password, Buffer.from(saltText, 'base64url'), expected.length)) as Buffer;
     return timingSafeEqual(actual, expected);
   } catch {
     return false;

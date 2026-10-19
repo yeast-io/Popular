@@ -14,13 +14,22 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
   const now = new Date('2026-10-13T06:00:00Z');
   const secrets = new SecretCrypto('test-integration-secret-key-that-is-long-enough');
   const failed: MovieDownloadRecord = {
-    id: '507f1f77bcf86cd799439012', ownerId, tmdbId: 123, sourceProvider: 'mteam',
-    sourceReleaseId: 'release-1', provider: 'qbittorrent', lookupTag: 'movie-hub-existing',
-    status: 'failed', progress: 0, lastErrorCode: 'MOVIE_DOWNLOAD_FAILED',
+    id: '507f1f77bcf86cd799439012',
+    ownerId,
+    tmdbId: 123,
+    sourceProvider: 'mteam',
+    sourceReleaseId: 'release-1',
+    provider: 'qbittorrent',
+    lookupTag: 'movie-hub-existing',
+    status: 'failed',
+    progress: 0,
+    lastErrorCode: 'MOVIE_DOWNLOAD_FAILED',
   };
   const updates: MovieDownloadRecord[] = [];
   const downloads = {
-    async findByRelease() { return failed; },
+    async findByRelease() {
+      return failed;
+    },
     async updateProgress(_id: string, progress: MovieDownloadProgress) {
       const updated = { ...failed, ...progress };
       updates.push(updated);
@@ -30,7 +39,9 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
   const qbittorrentConfigs = {
     async find() {
       return {
-        ownerId, baseUrl: 'http://qbittorrent:8080', authMethod: 'api_key' as const,
+        ownerId,
+        baseUrl: 'http://qbittorrent:8080',
+        authMethod: 'api_key' as const,
         encryptedCredential: secrets.encrypt(
           JSON.stringify({ authMethod: 'api_key', apiKey: 'secret' }),
           `movie-hub:integration:qbittorrent:owner:${ownerId}`,
@@ -41,7 +52,9 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
   const mteamConfigs = {
     async find() {
       return {
-        ownerId, provider: 'mteam' as const, baseUrl: 'https://m-team.test',
+        ownerId,
+        provider: 'mteam' as const,
+        baseUrl: 'https://m-team.test',
         encryptedApiKey: secrets.encrypt('mteam-key', integrationSecretContext(ownerId, 'mteam')),
       };
     },
@@ -50,16 +63,26 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
   const qbittorrent = {
     async findByTag() {
       return {
-        hash: 'ABC123', name: 'Movie', state: 'downloading', progress: 0.4,
-        downloadedBytes: 400, totalBytes: 1_000, downloadSpeed: 20, etaSeconds: 30,
+        hash: 'ABC123',
+        name: 'Movie',
+        state: 'downloading',
+        progress: 0.4,
+        downloadedBytes: 400,
+        totalBytes: 1_000,
+        downloadSpeed: 20,
+        etaSeconds: 30,
         tags: ['movie-hub-existing'],
       };
     },
-    async addTorrent() { addCalls += 1; },
+    async addTorrent() {
+      addCalls += 1;
+    },
   } as unknown as QBittorrentClientPort;
   const auth = { requireOwnerId: async () => ownerId } as unknown as AuthService;
   const resources = {
-    async listReleases() { throw new Error('recovery should not reload releases'); },
+    async listReleases() {
+      throw new Error('recovery should not reload releases');
+    },
   } as unknown as Pick<MovieResourceCheckService, 'listReleases'>;
   const service = new MovieDownloadService(
     auth,
@@ -68,7 +91,11 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
     mteamConfigs,
     secrets,
     qbittorrent,
-    { downloadTorrent: async () => { throw new Error('recovery should not download the torrent again'); } },
+    {
+      downloadTorrent: async () => {
+        throw new Error('recovery should not download the torrent again');
+      },
+    },
     resources,
     () => now,
   );
@@ -86,13 +113,22 @@ test('recovers a failed download while syncing an open release dialog', async ()
   const now = new Date('2026-10-13T06:00:00Z');
   const secrets = new SecretCrypto('test-integration-secret-key-that-is-long-enough');
   const failed: MovieDownloadRecord = {
-    id: '507f1f77bcf86cd799439012', ownerId, tmdbId: 123, sourceProvider: 'mteam',
-    sourceReleaseId: 'release-1', provider: 'qbittorrent', lookupTag: 'movie-hub-existing',
-    status: 'failed', progress: 0, lastErrorCode: 'MOVIE_DOWNLOAD_FAILED',
+    id: '507f1f77bcf86cd799439012',
+    ownerId,
+    tmdbId: 123,
+    sourceProvider: 'mteam',
+    sourceReleaseId: 'release-1',
+    provider: 'qbittorrent',
+    lookupTag: 'movie-hub-existing',
+    status: 'failed',
+    progress: 0,
+    lastErrorCode: 'MOVIE_DOWNLOAD_FAILED',
   };
   let current = failed;
   const downloads = {
-    async listForMovie() { return [current]; },
+    async listForMovie() {
+      return [current];
+    },
     async updateProgress(_id: string, progress: MovieDownloadProgress) {
       const { lastErrorCode: _lastErrorCode, ...withoutError } = current;
       current = { ...withoutError, ...progress };
@@ -102,7 +138,9 @@ test('recovers a failed download while syncing an open release dialog', async ()
   const qbittorrentConfigs = {
     async find() {
       return {
-        ownerId, baseUrl: 'http://qbittorrent:8080', authMethod: 'api_key' as const,
+        ownerId,
+        baseUrl: 'http://qbittorrent:8080',
+        authMethod: 'api_key' as const,
         encryptedCredential: secrets.encrypt(
           JSON.stringify({ authMethod: 'api_key', apiKey: 'secret' }),
           `movie-hub:integration:qbittorrent:owner:${ownerId}`,
@@ -113,8 +151,14 @@ test('recovers a failed download while syncing an open release dialog', async ()
   const qbittorrent = {
     async findByTag() {
       return {
-        hash: 'ABC123', name: 'Movie', state: 'uploading', progress: 1,
-        downloadedBytes: 1_000, totalBytes: 1_000, downloadSpeed: 0, etaSeconds: 0,
+        hash: 'ABC123',
+        name: 'Movie',
+        state: 'uploading',
+        progress: 1,
+        downloadedBytes: 1_000,
+        totalBytes: 1_000,
+        downloadSpeed: 0,
+        etaSeconds: 0,
         tags: ['movie-hub-existing'],
       };
     },
@@ -127,7 +171,11 @@ test('recovers a failed download while syncing an open release dialog', async ()
     secrets,
     qbittorrent,
     { downloadTorrent: async () => new Uint8Array() },
-    { listReleases: async () => { throw new Error('not used'); } } as unknown as Pick<MovieResourceCheckService, 'listReleases'>,
+    {
+      listReleases: async () => {
+        throw new Error('not used');
+      },
+    } as unknown as Pick<MovieResourceCheckService, 'listReleases'>,
     () => now,
   );
 

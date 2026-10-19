@@ -18,7 +18,7 @@ export class AuthService {
     const email = normalizeEmail(input.email);
     const passwordHash = await hashPassword(input.password);
     return this.withRegistrationLock(async () => {
-      if (await this.users.countUsers() >= this.registrationUserLimit) {
+      if ((await this.users.countUsers()) >= this.registrationUserLimit) {
         throw new AppError(403, 'REGISTRATION_LIMIT_REACHED', 'Registration user limit has been reached');
       }
       return this.createRegisteredUser(input, email, passwordHash);
@@ -48,7 +48,9 @@ export class AuthService {
   private async withRegistrationLock<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.registrationQueue;
     let release!: () => void;
-    this.registrationQueue = new Promise<void>((resolve) => { release = resolve; });
+    this.registrationQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await previous;
     try {
       return await operation();
@@ -99,7 +101,9 @@ export function toAuthUser(user: StoredUser): AuthUser {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
-    ...(user.avatarObjectKey ? { avatarUrl: `/api/v1/users/me/avatar?v=${encodeURIComponent(user.avatarObjectKey)}` } : {}),
+    ...(user.avatarObjectKey
+      ? { avatarUrl: `/api/v1/users/me/avatar?v=${encodeURIComponent(user.avatarObjectKey)}` }
+      : {}),
   };
 }
 

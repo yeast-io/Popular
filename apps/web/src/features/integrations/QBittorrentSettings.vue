@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import IntegrationCard from '../settings/IntegrationCard.vue';
-import type {
-  ApiError,
-  IntegrationStatus,
-  QBittorrentAuthMethod,
-  QBittorrentConfiguration,
-} from '@movie-hub/contract';
+import type { ApiError, IntegrationStatus, QBittorrentAuthMethod, QBittorrentConfiguration } from '@movie-hub/contract';
 import { computed, onMounted, ref } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { formatDate, t } from '../../i18n';
@@ -25,7 +20,9 @@ const confirmDelete = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 const configured = computed(() => config.value.status !== 'unconfigured');
-const statusLabel = computed(() => t(`qbittorrent.status.${config.value.status}` as `qbittorrent.status.${IntegrationStatus}`));
+const statusLabel = computed(() => {
+  return t(`qbittorrent.status.${config.value.status}` as `qbittorrent.status.${IntegrationStatus}`);
+});
 
 onMounted(loadConfiguration);
 
@@ -33,59 +30,86 @@ async function loadConfiguration() {
   loading.value = true;
   try {
     const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, { credentials: 'include' });
-    if (!response.ok) throw localizedApiError(await response.json() as ApiError, 'errors.requestFailed');
-    applyConfiguration(await response.json() as QBittorrentConfiguration);
+    if (!response.ok) throw localizedApiError((await response.json()) as ApiError, 'errors.requestFailed');
+    applyConfiguration((await response.json()) as QBittorrentConfiguration);
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.serviceUnavailable');
-  } finally { loading.value = false; }
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function testAndSave() {
-  errorMessage.value = ''; successMessage.value = ''; submitting.value = true;
-  const body = authMethod.value === 'api_key'
-    ? { baseUrl: baseUrl.value.trim(), authMethod: 'api_key', ...(apiKey.value ? { apiKey: apiKey.value } : {}) }
-    : {
-        baseUrl: baseUrl.value.trim(), authMethod: 'username_password', username: username.value.trim(),
-        ...(password.value ? { password: password.value } : {}),
-      };
+  errorMessage.value = '';
+  successMessage.value = '';
+  submitting.value = true;
+  const body =
+    authMethod.value === 'api_key'
+      ? { baseUrl: baseUrl.value.trim(), authMethod: 'api_key', ...(apiKey.value ? { apiKey: apiKey.value } : {}) }
+      : {
+          baseUrl: baseUrl.value.trim(),
+          authMethod: 'username_password',
+          username: username.value.trim(),
+          ...(password.value ? { password: password.value } : {}),
+        };
   try {
     const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, {
-      method: 'PUT', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
     });
-    const result = await response.json() as QBittorrentConfiguration | ApiError;
+    const result = (await response.json()) as QBittorrentConfiguration | ApiError;
     if (!response.ok) throw localizedApiError(result, 'errors.qbittorrentValidation');
     applyConfiguration(result as QBittorrentConfiguration);
-    apiKey.value = ''; password.value = '';
+    apiKey.value = '';
+    password.value = '';
     successMessage.value = t('qbittorrent.saved');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.qbittorrentValidation');
-  } finally { submitting.value = false; }
+  } finally {
+    submitting.value = false;
+  }
 }
 
 async function retest() {
-  errorMessage.value = ''; successMessage.value = ''; submitting.value = true;
+  errorMessage.value = '';
+  successMessage.value = '';
+  submitting.value = true;
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent/test`, { method: 'POST', credentials: 'include' });
-    const result = await response.json() as QBittorrentConfiguration | ApiError;
+    const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent/test`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const result = (await response.json()) as QBittorrentConfiguration | ApiError;
     if (!response.ok) throw localizedApiError(result, 'errors.qbittorrentValidation');
     applyConfiguration(result as QBittorrentConfiguration);
     successMessage.value = t('qbittorrent.retested');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.qbittorrentValidation');
-  } finally { submitting.value = false; }
+  } finally {
+    submitting.value = false;
+  }
 }
 
 async function deleteConfiguration() {
-  deleting.value = true; errorMessage.value = ''; successMessage.value = '';
+  deleting.value = true;
+  errorMessage.value = '';
+  successMessage.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, { method: 'DELETE', credentials: 'include' });
-    if (!response.ok) throw localizedApiError(await response.json() as ApiError, 'errors.requestFailed');
+    const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!response.ok) throw localizedApiError((await response.json()) as ApiError, 'errors.requestFailed');
     applyConfiguration({ provider: 'qbittorrent', status: 'unconfigured' });
     confirmDelete.value = false;
     successMessage.value = t('qbittorrent.deleted');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
-  } finally { deleting.value = false; }
+  } finally {
+    deleting.value = false;
+  }
 }
 
 function applyConfiguration(next: QBittorrentConfiguration) {
@@ -100,26 +124,61 @@ function canSubmit(): boolean {
   if (authMethod.value === 'api_key') {
     return Boolean(apiKey.value) || (configured.value && config.value.authMethod === 'api_key');
   }
-  const canRetainPassword = configured.value && config.value.authMethod === 'username_password' && config.value.username === username.value.trim();
+  const canRetainPassword =
+    configured.value &&
+    config.value.authMethod === 'username_password' &&
+    config.value.username === username.value.trim();
   return Boolean(username.value.trim()) && (Boolean(password.value) || canRetainPassword);
 }
 </script>
 
 <template>
-  <IntegrationCard id="qbittorrent" :title="t('qbittorrent.title')" badge="qB" :description="t('settings.qbittorrentSummary')"
-    :status-label="statusLabel" :status-class="config.status" :configured="configured" :busy="submitting || deleting" :loading="loading" :notice="errorMessage">
+  <IntegrationCard
+    id="qbittorrent"
+    :title="t('qbittorrent.title')"
+    badge="qB"
+    :description="t('settings.qbittorrentSummary')"
+    :status-label="statusLabel"
+    :status-class="config.status"
+    :configured="configured"
+    :busy="submitting || deleting"
+    :loading="loading"
+    :notice="errorMessage"
+  >
     <div v-if="loading" class="loading compact-loading">{{ t('qbittorrent.loading') }}</div>
     <template v-else>
       <dl v-if="configured" class="integration-summary">
-        <div><dt>{{ t('qbittorrent.currentBaseUrl') }}</dt><dd>{{ config.baseUrl }}</dd></div>
-        <div><dt>{{ t('qbittorrent.version') }}</dt><dd>{{ config.version || '—' }}</dd></div>
-        <div><dt>{{ t('qbittorrent.lastValidation') }}</dt><dd>{{ config.lastValidationAt ? formatDate(config.lastValidationAt, { dateStyle: 'medium', timeStyle: 'short' }) : '—' }}</dd></div>
+        <div>
+          <dt>{{ t('qbittorrent.currentBaseUrl') }}</dt>
+          <dd>{{ config.baseUrl }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('qbittorrent.version') }}</dt>
+          <dd>{{ config.version || '—' }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('qbittorrent.lastValidation') }}</dt>
+          <dd>
+            {{
+              config.lastValidationAt
+                ? formatDate(config.lastValidationAt, { dateStyle: 'medium', timeStyle: 'short' })
+                : '—'
+            }}
+          </dd>
+        </div>
       </dl>
       <form class="integration-form" novalidate @submit.prevent="testAndSave">
         <div class="settings-fields integration-fields">
           <label for="qbittorrent-base-url">
             {{ t('qbittorrent.baseUrl') }}
-            <input id="qbittorrent-base-url" v-model="baseUrl" type="url" required maxlength="2048" autocomplete="url" />
+            <input
+              id="qbittorrent-base-url"
+              v-model="baseUrl"
+              type="url"
+              required
+              maxlength="2048"
+              autocomplete="url"
+            />
             <small>{{ t('qbittorrent.baseUrlHint') }}</small>
           </label>
           <fieldset class="auth-method-fieldset">
@@ -147,7 +206,14 @@ function canSubmit(): boolean {
           </fieldset>
           <label v-if="authMethod === 'api_key'" for="qbittorrent-api-key">
             {{ t('qbittorrent.apiKey') }}
-            <input id="qbittorrent-api-key" v-model="apiKey" type="password" maxlength="4096" autocomplete="new-password" :placeholder="configured ? t('qbittorrent.keepSecret') : ''" />
+            <input
+              id="qbittorrent-api-key"
+              v-model="apiKey"
+              type="password"
+              maxlength="4096"
+              autocomplete="new-password"
+              :placeholder="configured ? t('qbittorrent.keepSecret') : ''"
+            />
           </label>
           <template v-else>
             <label for="qbittorrent-username">
@@ -156,7 +222,14 @@ function canSubmit(): boolean {
             </label>
             <label for="qbittorrent-password">
               {{ t('qbittorrent.password') }}
-              <input id="qbittorrent-password" v-model="password" type="password" maxlength="4096" autocomplete="new-password" :placeholder="configured ? t('qbittorrent.keepSecret') : ''" />
+              <input
+                id="qbittorrent-password"
+                v-model="password"
+                type="password"
+                maxlength="4096"
+                autocomplete="new-password"
+                :placeholder="configured ? t('qbittorrent.keepSecret') : ''"
+              />
             </label>
           </template>
         </div>
@@ -168,12 +241,34 @@ function canSubmit(): boolean {
           <div class="integration-actions">
             <div v-if="configured && confirmDelete" class="integration-delete">
               <span>{{ t('qbittorrent.deleteConfirm') }}</span>
-              <button class="secondary" type="button" :disabled="deleting" @click="confirmDelete = false">{{ t('qbittorrent.cancel') }}</button>
-              <button class="secondary danger" type="button" :disabled="deleting" @click="deleteConfiguration">{{ t('qbittorrent.confirmDelete') }}</button>
+              <button class="secondary" type="button" :disabled="deleting" @click="confirmDelete = false">
+                {{ t('qbittorrent.cancel') }}
+              </button>
+              <button class="secondary danger" type="button" :disabled="deleting" @click="deleteConfiguration">
+                {{ t('qbittorrent.confirmDelete') }}
+              </button>
             </div>
-            <button v-else-if="configured" class="secondary danger integration-delete-trigger" type="button" :disabled="submitting || deleting" @click="confirmDelete = true">{{ t('qbittorrent.delete') }}</button>
-            <button v-if="configured" class="secondary" type="button" :disabled="submitting || deleting" @click="retest">{{ t('qbittorrent.retest') }}</button>
-            <button class="primary" type="submit" :disabled="submitting || deleting || !canSubmit()">{{ submitting ? t('qbittorrent.testing') : t('qbittorrent.testAndSave') }}</button>
+            <button
+              v-else-if="configured"
+              class="secondary danger integration-delete-trigger"
+              type="button"
+              :disabled="submitting || deleting"
+              @click="confirmDelete = true"
+            >
+              {{ t('qbittorrent.delete') }}
+            </button>
+            <button
+              v-if="configured"
+              class="secondary"
+              type="button"
+              :disabled="submitting || deleting"
+              @click="retest"
+            >
+              {{ t('qbittorrent.retest') }}
+            </button>
+            <button class="primary" type="submit" :disabled="submitting || deleting || !canSubmit()">
+              {{ submitting ? t('qbittorrent.testing') : t('qbittorrent.testAndSave') }}
+            </button>
           </div>
         </div>
       </form>

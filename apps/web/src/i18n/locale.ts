@@ -15,7 +15,11 @@ export function resolveSupportedLocale(value: string | null | undefined): Suppor
 }
 
 export function selectInitialLocale(savedLocale: string | null, browserLocales: readonly string[]): SupportedLocale {
-  return resolveSupportedLocale(savedLocale)
-    ?? browserLocales.map(resolveSupportedLocale).find((locale): locale is SupportedLocale => locale !== null)
-    ?? defaultLocale;
+  return (
+    resolveSupportedLocale(savedLocale) ??
+    browserLocales.map(resolveSupportedLocale).find((locale): locale is SupportedLocale => {
+      return locale !== null;
+    }) ??
+    defaultLocale
+  );
 }

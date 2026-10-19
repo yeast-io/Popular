@@ -61,7 +61,14 @@ export class QBittorrentIntegrationService {
     const attemptedAt = this.now();
     try {
       const { version } = await this.client.verify(existing.baseUrl, decryptCredential(existing, this.secrets));
-      return toResponse(await this.configs.saveVerified({ ...existing, version, verifiedAt: attemptedAt, lastValidationAt: attemptedAt }));
+      return toResponse(
+        await this.configs.saveVerified({
+          ...existing,
+          version,
+          verifiedAt: attemptedAt,
+          lastValidationAt: attemptedAt,
+        }),
+      );
     } catch (error) {
       await this.configs.recordFailure(ownerId, attemptedAt, failureTypeOf(error));
       throw qbittorrentAppError(error, 'qBittorrent validation failed');
@@ -75,7 +82,11 @@ export class QBittorrentIntegrationService {
 
 export function normalizeQBittorrentBaseUrl(raw: string): string {
   let url: URL;
-  try { url = new URL(raw.trim()); } catch { throw new AppError(400, 'QBITTORRENT_INVALID_URL', 'qBittorrent URL is invalid'); }
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    throw new AppError(400, 'QBITTORRENT_INVALID_URL', 'qBittorrent URL is invalid');
+  }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new AppError(400, 'QBITTORRENT_INVALID_URL', 'qBittorrent URL is invalid');
   }
@@ -89,10 +100,14 @@ export function credentialContext(ownerId: string): string {
 
 export function decryptCredential(record: QBittorrentConfigRecord, secrets: SecretCrypto): QBittorrentCredential {
   try {
-    const value = JSON.parse(secrets.decrypt(record.encryptedCredential, credentialContext(record.ownerId))) as QBittorrentCredential;
+    const value = JSON.parse(
+      secrets.decrypt(record.encryptedCredential, credentialContext(record.ownerId)),
+    ) as QBittorrentCredential;
     if (value.authMethod === 'api_key' && value.apiKey) return value;
     if (value.authMethod === 'username_password' && value.username && value.password) return value;
-  } catch { /* Return the same sanitized error for invalid ciphertext and invalid JSON. */ }
+  } catch {
+    /* Return the same sanitized error for invalid ciphertext and invalid JSON. */
+  }
   throw new AppError(500, 'INTERNAL_ERROR', 'Stored qBittorrent credentials are invalid');
 }
 
@@ -109,7 +124,8 @@ function credentialFromInput(
     return { authMethod: 'api_key', apiKey };
   }
   const username = input.username.trim();
-  const password = input.password || (prior?.authMethod === 'username_password' && prior.username === username ? prior.password : '');
+  const password =
+    input.password || (prior?.authMethod === 'username_password' && prior.username === username ? prior.password : '');
   if (!password) throw new AppError(400, 'VALIDATION_ERROR', 'Password is required');
   return { authMethod: 'username_password', username, password };
 }
@@ -122,7 +138,8 @@ function failureTypeOf(error: unknown): IntegrationFailureType {
 
 export function qbittorrentAppError(error: unknown, message: string): AppError {
   const failure = error instanceof IntegrationValidationError ? error.failureType : 'network';
-  if (failure === 'authentication' || failure === 'permission') return new AppError(502, 'QBITTORRENT_AUTH_FAILED', message);
+  if (failure === 'authentication' || failure === 'permission')
+    return new AppError(502, 'QBITTORRENT_AUTH_FAILED', message);
   if (failure === 'timeout') return new AppError(504, 'QBITTORRENT_TIMEOUT', message);
   if (failure === 'network') return new AppError(503, 'QBITTORRENT_UNREACHABLE', message);
   return new AppError(502, 'QBITTORRENT_UNEXPECTED_RESPONSE', message);
@@ -132,7 +149,11 @@ function toResponse(record: QBittorrentConfigRecord | null): QBittorrentConfigur
   if (!record) return { provider: 'qbittorrent', status: 'unconfigured' };
   return {
     provider: 'qbittorrent',
-    status: record.lastFailureType ? 'configured_invalid' : record.verifiedAt ? 'configured_valid' : 'configured_unverified',
+    status: record.lastFailureType
+      ? 'configured_invalid'
+      : record.verifiedAt
+        ? 'configured_valid'
+        : 'configured_unverified',
     baseUrl: record.baseUrl,
     authMethod: record.authMethod,
     ...(record.username ? { username: record.username } : {}),

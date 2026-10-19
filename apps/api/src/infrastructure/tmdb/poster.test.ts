@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadTmdbPoster } from './poster.js';
 
-test('poster loader permits only TMDB image paths and returns bounded image bytes', async t => {
+test('poster loader permits only TMDB image paths and returns bounded image bytes', async (t) => {
   const requests: string[] = [];
   t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
     requests.push(url);
@@ -18,7 +18,7 @@ test('poster loader permits only TMDB image paths and returns bounded image byte
   assert.deepEqual(requests, ['https://image.tmdb.org/t/p/w500/poster.jpg']);
 });
 
-test('poster loader rejects unsuccessful, non-image and oversized responses', async t => {
+test('poster loader rejects unsuccessful, non-image and oversized responses', async (t) => {
   let response = new Response('unavailable', { status: 503 });
   t.mock.method(globalThis, 'fetch', async () => response);
   assert.equal(await loadTmdbPoster('/poster.jpg'), undefined);

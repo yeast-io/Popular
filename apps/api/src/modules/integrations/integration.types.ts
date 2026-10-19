@@ -14,8 +14,15 @@ export interface IntegrationConfigRecord {
 
 export interface IntegrationConfigStore {
   find(ownerId: string, provider: 'mteam'): Promise<IntegrationConfigRecord | null>;
-  saveVerified(input: IntegrationConfigRecord & { verifiedAt: Date; lastValidationAt: Date }): Promise<IntegrationConfigRecord>;
-  recordFailure(ownerId: string, provider: 'mteam', attemptedAt: Date, failureType: IntegrationFailureType): Promise<void>;
+  saveVerified(
+    input: IntegrationConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
+  ): Promise<IntegrationConfigRecord>;
+  recordFailure(
+    ownerId: string,
+    provider: 'mteam',
+    attemptedAt: Date,
+    failureType: IntegrationFailureType,
+  ): Promise<void>;
   delete(ownerId: string, provider: 'mteam'): Promise<void>;
 }
 

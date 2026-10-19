@@ -3,10 +3,14 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieStatusStore } from '../movies/movie.types.js';
 import type { MovieResourceCheckService } from './movie-resource-check.service.js';
 import type {
-  MovieResourceCheckCompletion, MovieResourceCheckRecord, MovieResourceCheckStore,
+  MovieResourceCheckCompletion,
+  MovieResourceCheckRecord,
+  MovieResourceCheckStore,
 } from './movie-resource-check.types.js';
 import type {
-  MovieResourceSyncBatchStore, StoredMovieResourceSyncBatch, SyncCounter,
+  MovieResourceSyncBatchStore,
+  StoredMovieResourceSyncBatch,
+  SyncCounter,
 } from './movie-resource-sync.types.js';
 
 interface SyncLogger {
@@ -30,8 +34,9 @@ export class MovieResourceSyncService {
     private readonly busyWaitMs: number,
     private readonly logger: SyncLogger,
     private readonly now: () => Date = () => new Date(),
-    private readonly wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
-      new Promise((resolve) => setTimeout(resolve, milliseconds))
+    private readonly wait: (milliseconds: number) => Promise<void> = (milliseconds) => {
+      return new Promise((resolve) => setTimeout(resolve, milliseconds));
+    }
   ) {}
 
   async start(ownerId: string): Promise<MovieResourceSyncBatch> {
@@ -75,15 +80,24 @@ export class MovieResourceSyncService {
 
   private run(batch: StoredMovieResourceSyncBatch): void {
     if (this.stopped || !['queued', 'running', 'paused'].includes(batch.status) || this.running.has(batch.id)) return;
-    const delay = batch.status === 'paused' && batch.resumeAt
-      ? Math.max(0, new Date(batch.resumeAt).getTime() - this.now().getTime())
-      : 0;
+    const delay =
+      batch.status === 'paused' && batch.resumeAt
+        ? Math.max(0, new Date(batch.resumeAt).getTime() - this.now().getTime())
+        : 0;
     this.running.add(batch.id);
     this.schedule(() => {
-      const task = this.process(batch).catch((error) => {
-        this.logger.error({ err: error, batchId: batch.id, ownerId: batch.ownerId }, 'Movie resource sync batch crashed');
-        return this.batches.finish(batch.id, 'failed');
-      }).finally(() => { this.running.delete(batch.id); this.tasks.delete(task); });
+      const task = this.process(batch)
+        .catch((error) => {
+          this.logger.error(
+            { err: error, batchId: batch.id, ownerId: batch.ownerId },
+            'Movie resource sync batch crashed',
+          );
+          return this.batches.finish(batch.id, 'failed');
+        })
+        .finally(() => {
+          this.running.delete(batch.id);
+          this.tasks.delete(task);
+        });
       this.tasks.add(task);
     }, delay);
   }
@@ -107,7 +121,10 @@ export class MovieResourceSyncService {
 
   private async process(batch: StoredMovieResourceSyncBatch): Promise<void> {
     await this.batches.setRunning(batch.id);
-    this.logger.info({ batchId: batch.id, ownerId: batch.ownerId, total: batch.total }, 'Movie resource sync batch started');
+    this.logger.info(
+      { batchId: batch.id, ownerId: batch.ownerId, total: batch.total },
+      'Movie resource sync batch started',
+    );
     for (let index = batch.cursor; index < batch.movieIds.length; index += 1) {
       if (this.stopped) return;
       const tmdbId = batch.movieIds[index];
@@ -128,17 +145,26 @@ export class MovieResourceSyncService {
         const resumeAt = new Date(this.now().getTime() + this.retryDelayMs);
         const nextRateLimitRetries = batch.rateLimitRetries + 1;
         await this.batches.pause(batch.id, resumeAt);
-        this.schedule(() => this.run({
-          ...batch, cursor: index, status: 'paused', resumeAt: resumeAt.toISOString(),
-          rateLimitRetries: nextRateLimitRetries,
-        }), this.retryDelayMs);
+        this.schedule(() => {
+          return this.run({
+            ...batch,
+            cursor: index,
+            status: 'paused',
+            resumeAt: resumeAt.toISOString(),
+            rateLimitRetries: nextRateLimitRetries,
+          }
+          );
+        }, this.retryDelayMs);
         return;
       }
       await this.batches.advance(batch.id, counterFor(result));
     }
     if (this.stopped) return;
     await this.batches.finish(batch.id, 'completed');
-    this.logger.info({ batchId: batch.id, ownerId: batch.ownerId, total: batch.total }, 'Movie resource sync batch completed');
+    this.logger.info(
+      { batchId: batch.id, ownerId: batch.ownerId, total: batch.total },
+      'Movie resource sync batch completed',
+    );
   }
 
   private async waitForExistingCheck(ownerId: string, tmdbId: number): Promise<MovieResourceCheckCompletion> {
@@ -166,10 +192,7 @@ export class MovieResourceSyncService {
   }
 }
 
-function priority(
-  check: MovieResourceCheckRecord | undefined,
-  staleBefore: Date,
-): number | null {
+function priority(check: MovieResourceCheckRecord | undefined, staleBefore: Date): number | null {
   if (!check?.checkedAt) return 0;
   return check.checkedAt < staleBefore ? 1 : null;
 }
@@ -183,11 +206,19 @@ function completionFromRecord(record: MovieResourceCheckRecord): MovieResourceCh
   }
   return record.availability === 'unmatchable'
     ? record.identityFingerprint
-      ? { lastAttemptStatus: 'success', availability: 'unmatchable', checkedAt: record.checkedAt, identityFingerprint: record.identityFingerprint }
+      ? {
+          lastAttemptStatus: 'success',
+          availability: 'unmatchable',
+          checkedAt: record.checkedAt,
+          identityFingerprint: record.identityFingerprint,
+        }
       : { lastAttemptStatus: 'error', lastErrorCode: 'internal_error' }
     : {
-        lastAttemptStatus: 'success', availability: record.availability, matchedBy: 'imdb',
-        checkedAt: record.checkedAt, expiresAt: record.expiresAt!,
+        lastAttemptStatus: 'success',
+        availability: record.availability,
+        matchedBy: 'imdb',
+        checkedAt: record.checkedAt,
+        expiresAt: record.expiresAt!,
       };
 }
 
@@ -197,9 +228,16 @@ function counterFor(result: MovieResourceCheckCompletion): SyncCounter {
 
 function publicBatch(batch: StoredMovieResourceSyncBatch): MovieResourceSyncBatch {
   return {
-    id: batch.id, status: batch.status, total: batch.total, completed: batch.completed,
-    available: batch.available, unavailable: batch.unavailable, unmatchable: batch.unmatchable,
-    failed: batch.failed, createdAt: batch.createdAt, updatedAt: batch.updatedAt,
+    id: batch.id,
+    status: batch.status,
+    total: batch.total,
+    completed: batch.completed,
+    available: batch.available,
+    unavailable: batch.unavailable,
+    unmatchable: batch.unmatchable,
+    failed: batch.failed,
+    createdAt: batch.createdAt,
+    updatedAt: batch.updatedAt,
     ...(batch.resumeAt ? { resumeAt: batch.resumeAt } : {}),
     ...(batch.needsAction ? { needsAction: batch.needsAction } : {}),
   };

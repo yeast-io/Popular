@@ -40,20 +40,22 @@ export class IntegrationService {
     const ownerId = await this.auth.requireOwnerId(token);
     const baseUrl = normalizeMTeamBaseUrl(input.baseUrl, this.allowedMTeamHosts);
     const existing = await this.configs.find(ownerId, 'mteam');
-    const webBaseUrl = normalizeMTeamWebBaseUrl(
-      input.webBaseUrl ?? existing?.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,
-    );
+    const webBaseUrl = normalizeMTeamWebBaseUrl(input.webBaseUrl ?? existing?.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL);
     const secretContext = integrationSecretContext(ownerId, 'mteam');
-    const apiKey = input.apiKey?.trim() || (existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : '');
+    const apiKey =
+      input.apiKey?.trim() || (existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : '');
     if (!apiKey) throw new AppError(400, 'VALIDATION_ERROR', 'M-Team API key is required for the first configuration');
     const attemptedAt = this.now();
 
     try {
       await this.mteam.verify(baseUrl, apiKey, userExternalRequestContext(ownerId, 'manual_refresh'));
     } catch (error) {
-      const failureType = error instanceof IntegrationValidationError
-        ? error.failureType === 'permission' || error.failureType === 'rate_limited' ? 'remote_error' : error.failureType
-        : 'network';
+      const failureType =
+        error instanceof IntegrationValidationError
+          ? error.failureType === 'permission' || error.failureType === 'rate_limited'
+            ? 'remote_error'
+            : error.failureType
+          : 'network';
       await this.configs.recordFailure(ownerId, 'mteam', attemptedAt, failureType);
       throw mteamValidationAppError(error);
     }
@@ -83,14 +85,21 @@ export class IntegrationService {
         userExternalRequestContext(ownerId, 'manual_refresh'),
       );
     } catch (error) {
-      const failureType = error instanceof IntegrationValidationError
-        ? error.failureType === 'permission' || error.failureType === 'rate_limited' ? 'remote_error' : error.failureType
-        : 'network';
+      const failureType =
+        error instanceof IntegrationValidationError
+          ? error.failureType === 'permission' || error.failureType === 'rate_limited'
+            ? 'remote_error'
+            : error.failureType
+          : 'network';
       await this.configs.recordFailure(ownerId, 'mteam', attemptedAt, failureType);
       throw mteamValidationAppError(error);
     }
 
-    const saved = await this.configs.saveVerified({ ...existing, verifiedAt: attemptedAt, lastValidationAt: attemptedAt });
+    const saved = await this.configs.saveVerified({
+      ...existing,
+      verifiedAt: attemptedAt,
+      lastValidationAt: attemptedAt,
+    });
     return toResponse(saved);
   }
 
@@ -113,12 +122,16 @@ export function normalizeMTeamBaseUrl(raw: string, allowedHosts: ReadonlySet<str
   }
   const hostname = url.hostname.toLowerCase();
   if (url.protocol !== 'https:') throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL must use HTTPS');
-  if (url.username || url.password) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL cannot contain credentials');
-  if (url.search || url.hash) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL cannot contain a query or fragment');
-  if (url.port && url.port !== '443') throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL must use the default HTTPS port');
+  if (url.username || url.password)
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL cannot contain credentials');
+  if (url.search || url.hash)
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL cannot contain a query or fragment');
+  if (url.port && url.port !== '443')
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL must use the default HTTPS port');
   if (!allowedHosts.has(hostname)) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL host is not allowed');
   const pathname = url.pathname.replace(/\/+$/, '');
-  if (pathname && pathname !== '/api') throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL path must be empty or /api');
+  if (pathname && pathname !== '/api')
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Base URL path must be empty or /api');
   return `${url.protocol}//${hostname}${pathname}`;
 }
 
@@ -130,23 +143,33 @@ export function normalizeMTeamWebBaseUrl(raw: string): string {
     throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL is invalid');
   }
   const hostname = url.hostname.toLowerCase();
-  const trustedHost = hostname === 'm-team.cc' || hostname.endsWith('.m-team.cc')
-    || hostname === 'm-team.io' || hostname.endsWith('.m-team.io');
+  const trustedHost =
+    hostname === 'm-team.cc' ||
+    hostname.endsWith('.m-team.cc') ||
+    hostname === 'm-team.io' ||
+    hostname.endsWith('.m-team.io');
   if (url.protocol !== 'https:') throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL must use HTTPS');
-  if (url.username || url.password) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL cannot contain credentials');
-  if (url.search || url.hash) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL cannot contain a query or fragment');
-  if (url.port && url.port !== '443') throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL must use the default HTTPS port');
+  if (url.username || url.password)
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL cannot contain credentials');
+  if (url.search || url.hash)
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL cannot contain a query or fragment');
+  if (url.port && url.port !== '443')
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL must use the default HTTPS port');
   if (!trustedHost) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL host is not allowed');
-  if (url.pathname.replace(/\/+$/, '')) throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL path must be empty');
+  if (url.pathname.replace(/\/+$/, ''))
+    throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL path must be empty');
   return `${url.protocol}//${hostname}`;
 }
 
 function mteamValidationAppError(error: unknown): AppError {
   const failure = error instanceof IntegrationValidationError ? error.failureType : 'network';
   const mapping = {
-    authentication: [502, 'MTEAM_AUTH_FAILED'], permission: [502, 'MTEAM_AUTH_FAILED'],
-    network: [503, 'MTEAM_UNREACHABLE'], timeout: [504, 'MTEAM_TIMEOUT'],
-    rate_limited: [429, 'MTEAM_RATE_LIMITED'], invalid_response: [502, 'MTEAM_UNEXPECTED_RESPONSE'],
+    authentication: [502, 'MTEAM_AUTH_FAILED'],
+    permission: [502, 'MTEAM_AUTH_FAILED'],
+    network: [503, 'MTEAM_UNREACHABLE'],
+    timeout: [504, 'MTEAM_TIMEOUT'],
+    rate_limited: [429, 'MTEAM_RATE_LIMITED'],
+    invalid_response: [502, 'MTEAM_UNEXPECTED_RESPONSE'],
     remote_error: [502, 'MTEAM_UNEXPECTED_RESPONSE'],
   } as const;
   const [status, code] = mapping[failure];
@@ -157,7 +180,9 @@ function toResponse(record: IntegrationConfigRecord | null): MTeamConfiguration 
   if (!record) return { provider: 'mteam', status: 'unconfigured' };
   const status = record.lastFailureType
     ? 'configured_invalid'
-    : record.verifiedAt ? 'configured_valid' : 'configured_unverified';
+    : record.verifiedAt
+      ? 'configured_valid'
+      : 'configured_unverified';
   return {
     provider: 'mteam',
     status,

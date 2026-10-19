@@ -3,11 +3,18 @@ import test from 'node:test';
 import type { MovieRecord, MovieStatusRecord } from '../movies/movie.types.js';
 import { MovieStatusService } from './movie-status.service.js';
 
-const movies = new Map<number, MovieRecord>([[7, { tmdbId: 7, title: '七号电影', posterPath: '/seven.jpg', genreIds: [] }]]);
+const movies = new Map<number, MovieRecord>([
+  [7, { tmdbId: 7, title: '七号电影', posterPath: '/seven.jpg', genreIds: [] }],
+]);
 const rows: MovieStatusRecord[] = [];
 const catalog = {
   upsertMovies: async () => undefined,
-  readMovies: async (ids: number[]) => ids.flatMap((id) => { const movie = movies.get(id); return movie ? [movie] : []; }),
+  readMovies: async (ids: number[]) => {
+    return ids.flatMap((id) => {
+      const movie = movies.get(id);
+      return movie ? [movie] : [];
+    });
+  },
   hasMovie: async (id: number) => movies.has(id),
   writeMovieDetail: async () => undefined,
   readMovieDetail: async () => null,
@@ -18,24 +25,32 @@ const store = {
   setStatus: async (_ownerId: string, tmdbId: number, status: Exclude<MovieStatusRecord['status'], 'unwatched'>) => {
     const existing = rows.find((row) => row.tmdbId === tmdbId);
     const previous = existing?.status ?? null;
-    if (existing) existing.status = status; else rows.push({ tmdbId, status, preference: 'neutral', updatedAt: new Date() });
+    if (existing) existing.status = status;
+    else rows.push({ tmdbId, status, preference: 'neutral', updatedAt: new Date() });
     return previous;
   },
   clearStatus: async (_ownerId: string, tmdbId: number) => {
     const existing = rows.find((row) => row.tmdbId === tmdbId);
     if (!existing) return;
-    if (existing.preference === 'neutral') rows.splice(rows.indexOf(existing), 1); else existing.status = 'unwatched';
+    if (existing.preference === 'neutral') rows.splice(rows.indexOf(existing), 1);
+    else existing.status = 'unwatched';
   },
-  setPreference: async (_ownerId: string, tmdbId: number, preference: Exclude<MovieStatusRecord['preference'], 'neutral'>) => {
+  setPreference: async (
+    _ownerId: string,
+    tmdbId: number,
+    preference: Exclude<MovieStatusRecord['preference'], 'neutral'>,
+  ) => {
     const existing = rows.find((row) => row.tmdbId === tmdbId);
     const previous = existing?.preference ?? 'neutral';
-    if (existing) existing.preference = preference; else rows.push({ tmdbId, status: 'unwatched', preference, updatedAt: new Date() });
+    if (existing) existing.preference = preference;
+    else rows.push({ tmdbId, status: 'unwatched', preference, updatedAt: new Date() });
     return previous;
   },
   clearPreference: async (_ownerId: string, tmdbId: number) => {
     const existing = rows.find((row) => row.tmdbId === tmdbId);
     if (!existing) return;
-    if (existing.status === 'unwatched') rows.splice(rows.indexOf(existing), 1); else existing.preference = 'neutral';
+    if (existing.status === 'unwatched') rows.splice(rows.indexOf(existing), 1);
+    else existing.preference = 'neutral';
   },
   readForMovies: async () => rows,
   list: async () => ({ items: rows, total: rows.length }),
@@ -82,8 +97,13 @@ test('My Movies requests localized movie records without changing saved states',
   rows.length = 0;
   rows.push({ tmdbId: 7, status: 'interested', preference: 'neutral', updatedAt: new Date() });
 
-  const result = await new MovieStatusService(store, localizedCatalog, 'zh-CN')
-    .list('owner-a', 'interested', 1, 20, 'en-US');
+  const result = await new MovieStatusService(store, localizedCatalog, 'zh-CN').list(
+    'owner-a',
+    'interested',
+    1,
+    20,
+    'en-US',
+  );
 
   assert.equal(requestedLocale, 'en-US');
   assert.equal(result.locale, 'en-US');
@@ -95,7 +115,9 @@ test('transitioning to interested schedules a forced background check after savi
   rows.length = 0;
   const calls: Array<{ ownerId: string; tmdbId: number; force: boolean }> = [];
   const service = new MovieStatusService(store, catalog, 'zh-CN', {
-    schedule: (ownerId, tmdbId, options) => calls.push({ ownerId, tmdbId, force: options?.force === true }),
+    schedule: (ownerId, tmdbId, options) => {
+      return calls.push({ ownerId, tmdbId, force: options?.force === true });
+    },
   });
 
   await service.set('owner-a', 7, 'interested');
@@ -109,7 +131,9 @@ test('listing interested movies schedules checks without awaiting remote work', 
   rows.push({ tmdbId: 7, status: 'interested', preference: 'neutral', updatedAt: new Date() });
   const calls: number[] = [];
   const service = new MovieStatusService(store, catalog, 'zh-CN', {
-    schedule: (_ownerId, tmdbId) => { calls.push(tmdbId); },
+    schedule: (_ownerId, tmdbId) => {
+      calls.push(tmdbId);
+    },
   });
 
   const result = await service.list('owner-a', 'interested', 1, 20);
@@ -128,16 +152,34 @@ test('liked movies expose an existing resource result without scheduling a new c
   rows.push({ tmdbId: 7, status: 'unwatched', preference: 'liked', updatedAt: new Date() });
   const scheduled: number[] = [];
   const checkedAt = new Date('2026-10-14T07:38:00.000Z');
-  const service = new MovieStatusService(store, catalog, 'zh-CN', {
-    schedule: (_ownerId, tmdbId) => { scheduled.push(tmdbId); },
-  }, {
-    readOne: async () => null,
-    readForMovies: async (_ownerId, tmdbIds) => [{
-      ownerId: 'owner-a', tmdbId: tmdbIds[0]!, provider: 'mteam', checking: false,
-      availability: 'available', checkedAt, expiresAt: new Date('2026-10-15T07:38:00.000Z'),
-      lastAttemptAt: checkedAt, lastAttemptStatus: 'success',
-    }],
-  });
+  const service = new MovieStatusService(
+    store,
+    catalog,
+    'zh-CN',
+    {
+      schedule: (_ownerId, tmdbId) => {
+        scheduled.push(tmdbId);
+      },
+    },
+    {
+      readOne: async () => null,
+      readForMovies: async (_ownerId, tmdbIds) => {
+        return [
+          {
+            ownerId: 'owner-a',
+            tmdbId: tmdbIds[0]!,
+            provider: 'mteam',
+            checking: false,
+            availability: 'available',
+            checkedAt,
+            expiresAt: new Date('2026-10-15T07:38:00.000Z'),
+            lastAttemptAt: checkedAt,
+            lastAttemptStatus: 'success',
+          },
+        ];
+      },
+    },
+  );
 
   const result = await service.list('owner-a', 'liked', 1, 20);
 
@@ -155,18 +197,22 @@ test('My Movies exposes a failed refresh while preserving the last successful av
   const attemptedAt = new Date('2026-10-13T00:00:00.000Z');
   const service = new MovieStatusService(store, catalog, 'zh-CN', undefined, {
     readOne: async () => null,
-    readForMovies: async () => [{
-      ownerId: 'owner-a',
-      tmdbId: 7,
-      provider: 'mteam',
-      checking: false,
-      availability: 'available',
-      checkedAt,
-      expiresAt: new Date('2026-10-12T12:00:00.000Z'),
-      lastAttemptAt: attemptedAt,
-      lastAttemptStatus: 'error',
-      lastErrorCode: 'timeout',
-    }],
+    readForMovies: async () => {
+      return [
+        {
+          ownerId: 'owner-a',
+          tmdbId: 7,
+          provider: 'mteam',
+          checking: false,
+          availability: 'available',
+          checkedAt,
+          expiresAt: new Date('2026-10-12T12:00:00.000Z'),
+          lastAttemptAt: attemptedAt,
+          lastAttemptStatus: 'error',
+          lastErrorCode: 'timeout',
+        },
+      ];
+    },
   });
 
   const result = await service.list('owner-a', 'interested', 1, 20);
@@ -180,5 +226,6 @@ test('My Movies exposes a failed refresh while preserving the last successful av
     lastAttemptAt: attemptedAt.toISOString(),
     lastAttemptStatus: 'error',
     lastErrorCode: 'MTEAM_TIMEOUT',
-  });
+  }
+  );
 });

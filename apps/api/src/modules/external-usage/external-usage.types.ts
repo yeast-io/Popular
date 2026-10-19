@@ -3,12 +3,7 @@ export const EXTERNAL_PROVIDER_ID_MAX_LENGTH = 32;
 
 export type ExternalProviderId = string;
 export type ExternalActorType = 'user' | 'anonymous' | 'system';
-export type ExternalRequestTrigger =
-  | 'api_request'
-  | 'scheduled_sync'
-  | 'background_check'
-  | 'manual_refresh'
-  | 'retry';
+export type ExternalRequestTrigger = 'api_request' | 'scheduled_sync' | 'background_check' | 'manual_refresh' | 'retry';
 
 export type ExternalRequestErrorCode =
   | 'authentication'
@@ -75,13 +70,13 @@ export interface ExternalUsageReader {
   readUserUsage(ownerId: string, from: Date, to: Date): Promise<ExternalUsageQueryResult>;
 }
 
-export const systemExternalRequestContext = (
-  trigger: ExternalRequestTrigger,
-): ExternalRequestContext => ({ actorType: 'system', trigger });
+export const systemExternalRequestContext = (trigger: ExternalRequestTrigger): ExternalRequestContext => {
+  return { actorType: 'system', trigger };
+};
 
 export const userExternalRequestContext = (
   ownerId: string | null,
   trigger: ExternalRequestTrigger,
-): ExternalRequestContext => ownerId
-  ? { actorType: 'user', ownerId, trigger }
-  : { actorType: 'anonymous', trigger };
+): ExternalRequestContext => {
+  return ownerId ? { actorType: 'user', ownerId, trigger } : { actorType: 'anonymous', trigger };
+};

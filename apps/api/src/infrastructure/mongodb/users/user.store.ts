@@ -37,7 +37,11 @@ export class MongoAuthUserStore implements AuthUserStore {
     }
   }
 
-  private async createPasswordUserInTransaction(input: { email: string; displayName: string; passwordHash: string }): Promise<StoredUser> {
+  private async createPasswordUserInTransaction(input: {
+    email: string;
+    displayName: string;
+    passwordHash: string;
+  }): Promise<StoredUser> {
     let result: StoredUser | undefined;
     await this.users.db.transaction(async (session) => {
       const [user] = await this.users.create([input], { session });
@@ -49,7 +53,11 @@ export class MongoAuthUserStore implements AuthUserStore {
     return result;
   }
 
-  private async createPasswordUserWithCompensation(input: { email: string; displayName: string; passwordHash: string }): Promise<StoredUser> {
+  private async createPasswordUserWithCompensation(input: {
+    email: string;
+    displayName: string;
+    passwordHash: string;
+  }): Promise<StoredUser> {
     const user = await this.users.create(input);
     try {
       await this.identities.create(passwordIdentity(user._id, input.email));
@@ -58,7 +66,9 @@ export class MongoAuthUserStore implements AuthUserStore {
       try {
         await this.users.deleteOne({ _id: user._id }).exec();
       } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], 'Auth identity creation and user cleanup both failed', { cause: cleanupError });
+        throw new AggregateError([error, cleanupError], 'Auth identity creation and user cleanup both failed', {
+          cause: cleanupError,
+        });
       }
       throw error;
     }
@@ -74,16 +84,16 @@ export class MongoAuthUserStore implements AuthUserStore {
     return user?.passwordHash ? toStoredUser(user) : null;
   }
 
-
   async updateDisplayName(id: string, displayName: string): Promise<StoredUser | null> {
-    const user = await this.users.findByIdAndUpdate(id, { $set: { displayName } }, { new: true }).select('+passwordHash').exec();
+    const user = await this.users
+      .findByIdAndUpdate(id, { $set: { displayName } }, { new: true })
+      .select('+passwordHash')
+      .exec();
     return user ? toStoredUser(user) : null;
   }
 
   async updateAvatarObjectKey(id: string, avatarObjectKey: string | undefined): Promise<StoredUser | null> {
-    const update = avatarObjectKey
-      ? { $set: { avatarObjectKey } }
-      : { $unset: { avatarObjectKey: 1 } };
+    const update = avatarObjectKey ? { $set: { avatarObjectKey } } : { $unset: { avatarObjectKey: 1 } };
     const user = await this.users.findByIdAndUpdate(id, update, { new: true }).select('+passwordHash').exec();
     return user ? toStoredUser(user) : null;
   }
@@ -104,9 +114,13 @@ function isDuplicateKey(error: unknown): boolean {
 }
 
 function isTransactionUnsupported(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && (
-    ('code' in error && error.code === 20)
-    || ('message' in error && typeof error.message === 'string' && error.message.includes('Transaction numbers are only allowed'))
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (('code' in error && error.code === 20) ||
+      ('message' in error &&
+        typeof error.message === 'string' &&
+        error.message.includes('Transaction numbers are only allowed')))
   );
 }
 

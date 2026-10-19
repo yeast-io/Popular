@@ -37,12 +37,23 @@ export class ExternalUsageAggregationService {
   private rebuild(since: Date): Promise<void> {
     if (this.running) return this.running;
     const started = Date.now();
-    if (this.scanTraceEnabled) this.logger.info?.({ event: 'external_usage_scan_started', since }, 'External usage aggregation started');
-    this.running = this.store.rebuildDaily(since).then(() => {
-      if (this.scanTraceEnabled) this.logger.info?.({ event: 'external_usage_scan_completed', since, durationMs: Date.now() - started }, 'External usage aggregation completed');
-    }).catch(error => {
-      this.logger.error({ err: error, since }, 'Could not rebuild external usage aggregates');
-    }).finally(() => { this.running = undefined; });
+    if (this.scanTraceEnabled)
+      this.logger.info?.({ event: 'external_usage_scan_started', since }, 'External usage aggregation started');
+    this.running = this.store
+      .rebuildDaily(since)
+      .then(() => {
+        if (this.scanTraceEnabled)
+          this.logger.info?.(
+            { event: 'external_usage_scan_completed', since, durationMs: Date.now() - started },
+            'External usage aggregation completed',
+          );
+      })
+      .catch((error) => {
+        this.logger.error({ err: error, since }, 'Could not rebuild external usage aggregates');
+      })
+      .finally(() => {
+        this.running = undefined;
+      });
     return this.running;
   }
 }

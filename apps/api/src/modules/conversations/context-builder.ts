@@ -1,4 +1,9 @@
-import type { ContextBuilderInput, ContextBuilderResult, ConversationMessage, TokenCounter } from './conversation.types.js';
+import type {
+  ContextBuilderInput,
+  ContextBuilderResult,
+  ConversationMessage,
+  TokenCounter,
+} from './conversation.types.js';
 
 export class ContextBudgetExceededError extends Error {
   constructor(
@@ -9,10 +14,7 @@ export class ContextBudgetExceededError extends Error {
   }
 }
 
-export function buildConversationContext(
-  input: ContextBuilderInput,
-  tokenCounter: TokenCounter,
-): ContextBuilderResult {
+export function buildConversationContext(input: ContextBuilderInput, tokenCounter: TokenCounter): ContextBuilderResult {
   const safetyMargin = input.safetyMarginTokens ?? 0;
   const messageOverhead = input.messageOverheadTokens ?? 4;
   if (input.maxContextTokens <= 0 || input.responseReserveTokens < 0 || safetyMargin < 0 || messageOverhead < 0) {
@@ -22,7 +24,8 @@ export function buildConversationContext(
   const systemTokens = input.systemPrompt ? tokenCounter.count(input.systemPrompt) + messageOverhead : 0;
   const contextTokens = input.userContext ? tokenCounter.count(input.userContext) + messageOverhead : 0;
   const available = input.maxContextTokens - input.responseReserveTokens - safetyMargin - systemTokens - contextTokens;
-  if (available < 0) throw new ContextBudgetExceededError('System prompt and reserved tokens exceed the context budget');
+  if (available < 0)
+    throw new ContextBudgetExceededError('System prompt and reserved tokens exceed the context budget');
 
   const selected: ConversationMessage[] = [];
   let selectedTokens = 0;
@@ -31,7 +34,8 @@ export function buildConversationContext(
     if (!message) continue;
     const tokens = tokenCounter.count(message.content) + messageOverhead;
     if (selectedTokens + tokens > available) {
-      if (selected.length === 0) throw new ContextBudgetExceededError('The newest message exceeds the available context budget');
+      if (selected.length === 0)
+        throw new ContextBudgetExceededError('The newest message exceeds the available context budget');
       break;
     }
     selected.push(message);

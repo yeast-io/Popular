@@ -1,6 +1,9 @@
 import type { Model } from 'mongoose';
 import type { IntegrationFailureType, QBittorrentAuthMethod } from '@movie-hub/contract';
-import type { QBittorrentConfigRecord, QBittorrentConfigStore } from '../../../modules/integrations/qbittorrent.types.js';
+import type {
+  QBittorrentConfigRecord,
+  QBittorrentConfigStore,
+} from '../../../modules/integrations/qbittorrent.types.js';
 import type { QBittorrentConfigDocument } from './qbittorrent-config.schema.js';
 
 export class MongoQBittorrentConfigStore implements QBittorrentConfigStore {
@@ -13,35 +16,40 @@ export class MongoQBittorrentConfigStore implements QBittorrentConfigStore {
     return row ? toRecord(row) : null;
   }
 
-  async saveVerified(input: QBittorrentConfigRecord & { verifiedAt: Date; lastValidationAt: Date }): Promise<QBittorrentConfigRecord> {
-    const row = await this.configs.findOneAndUpdate(
-      { ownerId: input.ownerId },
-      {
-        $set: {
-          baseUrl: input.baseUrl,
-          authMethod: input.authMethod,
-          encryptedCredential: input.encryptedCredential,
-          version: input.version,
-          verifiedAt: input.verifiedAt,
-          lastValidationAt: input.lastValidationAt,
-          ...(input.username ? { username: input.username } : {}),
+  async saveVerified(
+    input: QBittorrentConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
+  ): Promise<QBittorrentConfigRecord> {
+    const row = await this.configs
+      .findOneAndUpdate(
+        { ownerId: input.ownerId },
+        {
+          $set: {
+            baseUrl: input.baseUrl,
+            authMethod: input.authMethod,
+            encryptedCredential: input.encryptedCredential,
+            version: input.version,
+            verifiedAt: input.verifiedAt,
+            lastValidationAt: input.lastValidationAt,
+            ...(input.username ? { username: input.username } : {}),
+          },
+          $unset: {
+            lastFailureType: 1,
+            ...(!input.username ? { username: 1 } : {}),
+          },
         },
-        $unset: {
-          lastFailureType: 1,
-          ...(!input.username ? { username: 1 } : {}),
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    ).select('+encryptedCredential').lean().exec();
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      )
+      .select('+encryptedCredential')
+      .lean()
+      .exec();
     if (!row) throw new Error('qBittorrent config upsert did not return a document');
     return toRecord(row);
   }
 
   async recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType): Promise<void> {
-    await this.configs.updateOne(
-      { ownerId },
-      { $set: { lastValidationAt: attemptedAt, lastFailureType: failureType } },
-    ).exec();
+    await this.configs
+      .updateOne({ ownerId }, { $set: { lastValidationAt: attemptedAt, lastFailureType: failureType } })
+      .exec();
   }
 
   async delete(ownerId: string): Promise<void> {

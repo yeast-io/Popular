@@ -35,15 +35,23 @@ export function registerConversationRoutes(
   auth?: Pick<AuthService, 'requireOwnerId'>,
   logger?: AiLogger,
 ): void {
-  app.get('/conversations', {
-    schema: { response: { 200: ConversationThreadsResponseSchema, 401: ApiErrorSchema } },
-  }, async (request) => service.listThreads(token(request, config)));
+  app.get(
+    '/conversations',
+    {
+      schema: { response: { 200: ConversationThreadsResponseSchema, 401: ApiErrorSchema } },
+    },
+    async (request) => service.listThreads(token(request, config)),
+  );
 
-  app.post('/conversations', {
-    schema: { response: { 201: ConversationThreadSchema, 401: ApiErrorSchema } },
-  }, async (request, reply) => reply.status(201).send(
-    await service.createThread(token(request, config)),
-  ));
+  app.post(
+    '/conversations',
+    {
+      schema: { response: { 201: ConversationThreadSchema, 401: ApiErrorSchema } },
+    },
+    async (request, reply) => {
+      return reply.status(201).send(await service.createThread(token(request, config)));
+    },
+  );
 
   app.get<{ Params: ConversationParams; Querystring: ConversationMessagesQuery }>(
     '/conversations/:threadId/messages',
@@ -54,9 +62,9 @@ export function registerConversationRoutes(
         response: { 200: ConversationMessagesResponseSchema, 401: ApiErrorSchema, 404: ApiErrorSchema },
       },
     },
-    async (request) => service.listMessages(
-      token(request, config), request.params.threadId, request.query.limit ?? 50,
-    ),
+    async (request) => {
+      return service.listMessages(token(request, config), request.params.threadId, request.query.limit ?? 50);
+    },
   );
 
   app.post<{ Params: ConversationParams; Body: AppendConversationMessageRequest }>(
@@ -68,12 +76,18 @@ export function registerConversationRoutes(
         response: { 201: ConversationMessageSchema, 400: ApiErrorSchema, 401: ApiErrorSchema, 404: ApiErrorSchema },
       },
     },
-    async (request, reply) => reply.status(201).send(await service.appendUserMessage(
-      token(request, config),
-      request.params.threadId,
-      request.body.content,
-      request.body.clientRequestId,
-    )),
+    async (request, reply) => {
+      return reply
+        .status(201)
+        .send(
+        await service.appendUserMessage(
+          token(request, config),
+          request.params.threadId,
+          request.body.content,
+          request.body.clientRequestId,
+        ),
+      );
+    },
   );
 
   if (turnService && auth) {
@@ -95,26 +109,42 @@ export function registerConversationRoutes(
           },
         },
       },
-      async (request, reply) => withAiTrace(new AiTrace(logger, {
-        requestId: request.id, threadId: request.params.threadId,
-        clientRequestId: request.body.clientRequestId,
-      }, request.body.content), async () => {
-        const trace = currentAiTrace()!;
-        trace.event('request.started', { method: request.method, route: request.routeOptions.url });
-        const ownerId = await trace.step('authentication', () => auth.requireOwnerId(token(request, config)));
-        trace.event('authentication.owner', { ownerId });
-        let result;
-        try {
-          result = await turnService.run({
-            ownerId,
-            threadId: request.params.threadId,
-            content: request.body.content,
-            clientRequestId: request.body.clientRequestId,
-          });
-        } catch (error) { trace.fail(error, { ...providerDiagnostics(error) }); throw error; }
-        trace.event('request.completed', { ...result.usage });
-        return reply.header('x-request-id', request.id).status(201).send(toTurnResponse(result));
-      }),
+      async (request, reply) => {
+        return withAiTrace(
+          new AiTrace(
+            logger,
+            {
+              requestId: request.id,
+              threadId: request.params.threadId,
+              clientRequestId: request.body.clientRequestId,
+            },
+            request.body.content,
+            'conversation.turn',
+            config.VERBOSE,
+          ),
+          async () => {
+            const trace = currentAiTrace()!;
+            trace.event('request.started', { method: request.method, route: request.routeOptions.url });
+            const ownerId = await trace.step('authentication', () => auth.requireOwnerId(token(request, config)));
+            trace.event('authentication.owner', { ownerId });
+            let result;
+            try {
+              result = await turnService.run({
+                ownerId,
+                threadId: request.params.threadId,
+                content: request.body.content,
+                clientRequestId: request.body.clientRequestId,
+              }
+              );
+            } catch (error) {
+              trace.fail(error, { ...providerDiagnostics(error) });
+              throw error;
+            }
+            trace.event('request.completed', { ...result.usage });
+            return reply.header('x-request-id', request.id).status(201).send(toTurnResponse(result));
+          },
+        );
+      },
     );
 
     app.post<{ Params: ConversationParams; Body: RunConversationTurnRequest }>(
@@ -135,106 +165,134 @@ export function registerConversationRoutes(
           },
         },
       },
-      async (request, reply) => withAiTrace(new AiTrace(logger, {
-        requestId: request.id, threadId: request.params.threadId,
-        clientRequestId: request.body.clientRequestId,
-      }, request.body.content), async () => {
-        const trace = currentAiTrace()!;
-        trace.event('request.started', { method: request.method, route: request.routeOptions.url });
-        const ownerId = await trace.step('authentication', () => auth.requireOwnerId(token(request, config)));
-        trace.event('authentication.owner', { ownerId });
-        const abortController = new AbortController();
-        const onRequestAborted = () => abortController.abort();
-        request.raw.once('aborted', onRequestAborted);
-        const iterator = turnService.stream({
-          ownerId,
-          threadId: request.params.threadId,
-          content: request.body.content,
-          clientRequestId: request.body.clientRequestId,
-          signal: abortController.signal,
-        })[Symbol.asyncIterator]();
+      async (request, reply) => {
+        return withAiTrace(
+          new AiTrace(
+            logger,
+            {
+              requestId: request.id,
+              threadId: request.params.threadId,
+              clientRequestId: request.body.clientRequestId,
+            },
+            request.body.content,
+            'conversation.stream',
+            config.VERBOSE,
+          ),
+          async () => {
+            const trace = currentAiTrace()!;
+            trace.event('request.started', { method: request.method, route: request.routeOptions.url });
+            const ownerId = await trace.step('authentication', () => auth.requireOwnerId(token(request, config)));
+            trace.event('authentication.owner', { ownerId });
+            const abortController = new AbortController();
+            const onRequestAborted = () => abortController.abort();
+            request.raw.once('aborted', onRequestAborted);
+            const iterator = turnService
+              .stream({
+                ownerId,
+                threadId: request.params.threadId,
+                content: request.body.content,
+                clientRequestId: request.body.clientRequestId,
+                signal: abortController.signal,
+              }
+            )[Symbol.asyncIterator]();
 
-        // Pull once before committing SSE headers so validation/auth/not-found errors
-        // still use the normal JSON error contract and HTTP status.
-        let first: Awaited<ReturnType<typeof iterator.next>>;
-        try {
-          first = await iterator.next();
-        } catch (error) {
-          trace.fail(error, { ...providerDiagnostics(error) });
-          request.raw.off('aborted', onRequestAborted);
-          throw error;
-        }
-        if (first.done) {
-          request.raw.off('aborted', onRequestAborted);
-          throw new AppError(503, 'SERVICE_UNAVAILABLE', 'AI stream ended before it started');
-        }
-
-        trace.event('sse.started');
-        let deltaCount = 0;
-        let outputCharacters = 0;
-        let streamedText = '';
-        let completed = false;
-        let failed = false;
-        reply.hijack();
-        reply.raw.writeHead(200, {
-          'content-type': 'text/event-stream; charset=utf-8',
-          'cache-control': 'no-cache, no-transform',
-          connection: 'keep-alive',
-          'x-accel-buffering': 'no',
-          'x-request-id': request.id,
-        });
-        const onClose = () => {
-          if (!reply.raw.writableEnded) abortController.abort();
-        };
-        reply.raw.on('close', onClose);
-
-        try {
-          await writeSse(reply.raw, first.value.type, toStreamPayload(first.value));
-          for (;;) {
-            const next = await iterator.next();
-            if (next.done) break;
-            if (next.value.type === 'delta') {
-              deltaCount++;
-              outputCharacters += next.value.delta.length;
-              streamedText += next.value.delta;
-              if (deltaCount === 1) trace.event('sse.first_delta');
+            // Pull once before committing SSE headers so validation/auth/not-found errors
+            // still use the normal JSON error contract and HTTP status.
+            let first: Awaited<ReturnType<typeof iterator.next>>;
+            try {
+              first = await iterator.next();
+            } catch (error) {
+              trace.fail(error, { ...providerDiagnostics(error) });
+              request.raw.off('aborted', onRequestAborted);
+              throw error;
             }
-            if (next.value.type === 'completed') completed = true;
-            await writeSse(reply.raw, next.value.type, toStreamPayload(next.value));
-          }
-        } catch (error) {
-          failed = true;
-          if (!abortController.signal.aborted) {
-            trace.sensitive(streamedText);
-            trace.fail(error, {
-              code: error instanceof AppError ? error.code : 'INTERNAL_ERROR',
-              deltaCount, outputCharacters, ...providerDiagnostics(error), ...streamErrorDiagnostics(error),
-            });
-          }
-          if (!abortController.signal.aborted && !reply.raw.writableEnded) {
-            const appError = error instanceof AppError
-              ? error
-              : new AppError(503, 'SERVICE_UNAVAILABLE', 'AI service is temporarily unavailable');
-            await writeSse(reply.raw, 'error', {
-              type: 'error',
-              error: { code: appError.code, message: appError.message },
-            });
-          }
-        } finally {
-          trace.event(abortController.signal.aborted ? 'request.cancelled' : completed && !failed ? 'request.completed' : 'request.failed', { deltaCount, outputCharacters });
-          reply.raw.off('close', onClose);
-          request.raw.off('aborted', onRequestAborted);
-          if (!reply.raw.writableEnded) reply.raw.end();
-          try {
-            await iterator.return?.();
-          } catch (error) {
-            trace.fail(error, { stage: 'iterator.cleanup' });
-            // eslint-disable-next-line no-unsafe-finally -- Preserve observable cleanup failures after the primary stream failure was traced.
-            throw error;
-          }
-        }
-        return reply;
-      }),
+            if (first.done) {
+              request.raw.off('aborted', onRequestAborted);
+              throw new AppError(503, 'SERVICE_UNAVAILABLE', 'AI stream ended before it started');
+            }
+
+            trace.event('sse.started');
+            let deltaCount = 0;
+            let outputCharacters = 0;
+            let streamedText = '';
+            let completed = false;
+            let failed = false;
+            reply.hijack();
+            reply.raw.writeHead(200, {
+              'content-type': 'text/event-stream; charset=utf-8',
+              'cache-control': 'no-cache, no-transform',
+              connection: 'keep-alive',
+              'x-accel-buffering': 'no',
+              'x-request-id': request.id,
+            }
+            );
+            const onClose = () => {
+              if (!reply.raw.writableEnded) abortController.abort();
+            };
+            reply.raw.on('close', onClose);
+
+            try {
+              await writeSse(reply.raw, first.value.type, toStreamPayload(first.value));
+              for (;;) {
+                const next = await iterator.next();
+                if (next.done) break;
+                if (next.value.type === 'delta') {
+                  deltaCount++;
+                  outputCharacters += next.value.delta.length;
+                  streamedText += next.value.delta;
+                  if (deltaCount === 1) trace.event('sse.first_delta');
+                }
+                if (next.value.type === 'completed') completed = true;
+                await writeSse(reply.raw, next.value.type, toStreamPayload(next.value));
+              }
+            } catch (error) {
+              failed = true;
+              if (!abortController.signal.aborted) {
+                trace.sensitive(streamedText);
+                trace.fail(error, {
+                  code: error instanceof AppError ? error.code : 'INTERNAL_ERROR',
+                  deltaCount,
+                  outputCharacters,
+                  ...providerDiagnostics(error),
+                  ...streamErrorDiagnostics(error),
+                }
+                );
+              }
+              if (!abortController.signal.aborted && !reply.raw.writableEnded) {
+                const appError =
+                  error instanceof AppError
+                    ? error
+                    : new AppError(503, 'SERVICE_UNAVAILABLE', 'AI service is temporarily unavailable');
+                await writeSse(reply.raw, 'error', {
+                  type: 'error',
+                  error: { code: appError.code, message: appError.message },
+                }
+                );
+              }
+            } finally {
+              trace.event(
+                abortController.signal.aborted
+                  ? 'request.cancelled'
+                  : completed && !failed
+                    ? 'request.completed'
+                    : 'request.failed',
+                { deltaCount, outputCharacters },
+              );
+              reply.raw.off('close', onClose);
+              request.raw.off('aborted', onRequestAborted);
+              if (!reply.raw.writableEnded) reply.raw.end();
+              try {
+                await iterator.return?.();
+              } catch (error) {
+                trace.fail(error, { stage: 'iterator.cleanup' });
+                // eslint-disable-next-line no-unsafe-finally -- Preserve observable cleanup failures after the primary stream failure was traced.
+                throw error;
+              }
+            }
+            return reply;
+          },
+        );
+      },
     );
   }
 }
@@ -277,11 +335,7 @@ function toStreamPayload(event: import('./conversation-turn.service.js').Convers
   return event;
 }
 
-async function writeSse(
-  response: import('node:http').ServerResponse,
-  event: string,
-  payload: unknown,
-): Promise<void> {
+async function writeSse(response: import('node:http').ServerResponse, event: string, payload: unknown): Promise<void> {
   if (response.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)) return;
   await new Promise<void>((resolve, reject) => {
     const onDrain = () => {

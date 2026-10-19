@@ -26,5 +26,7 @@ test('rejects ciphertext moved to another owner, tampered ciphertext, or the wro
 
   assert.throws(() => crypto.decrypt(encrypted, `${ownerContext}-other`));
   assert.throws(() => crypto.decrypt(tampered, ownerContext));
-  assert.throws(() => new SecretCrypto('another-integration-secret-key-that-is-long-enough').decrypt(encrypted, ownerContext));
+  assert.throws(() => {
+    return new SecretCrypto('another-integration-secret-key-that-is-long-enough').decrypt(encrypted, ownerContext);
+  });
 });

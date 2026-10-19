@@ -25,11 +25,7 @@ export class ConversationService {
     return { items: items.map(toThreadResponse) };
   }
 
-  async listMessages(
-    token: string | undefined,
-    threadId: string,
-    limit = 50,
-  ): Promise<ConversationMessagesResponse> {
+  async listMessages(token: string | undefined, threadId: string, limit = 50): Promise<ConversationMessagesResponse> {
     const ownerId = await this.auth.requireOwnerId(token);
     await this.requireThread(ownerId, threadId);
     const items = await this.conversations.listRecentMessages(ownerId, threadId, limit);

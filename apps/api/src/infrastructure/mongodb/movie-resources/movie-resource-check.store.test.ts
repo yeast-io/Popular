@@ -18,7 +18,7 @@ function harness(
     findOne: () => ({ lean: () => ({ exec: async () => state }) }),
     find(filter: unknown) {
       calls.push({ operation: 'read', filter });
-      return { lean: () => ({ exec: async () => state ? [state] : [] }) };
+      return { lean: () => ({ exec: async () => (state ? [state] : []) }) };
     },
     updateOne(filter: unknown, update: unknown) {
       calls.push({ operation: 'state', filter, update });
@@ -55,21 +55,26 @@ test('reads only display-safe resource check state for the requested owner and m
     lastAttemptAt: attemptedAt,
     lastAttemptStatus: 'error',
     lastErrorCode: 'rate_limited',
-  });
+  }
+  );
 
-  assert.deepEqual(await store.readForMovies(key.ownerId, [key.tmdbId]), [{
-    ...key,
-    checking: false,
-    availability: 'available',
-    checkedAt,
-    lastAttemptAt: attemptedAt,
-    lastAttemptStatus: 'error',
-    lastErrorCode: 'rate_limited',
-  }]);
+  assert.deepEqual(await store.readForMovies(key.ownerId, [key.tmdbId]), [
+    {
+      ...key,
+      checking: false,
+      availability: 'available',
+      checkedAt,
+      lastAttemptAt: attemptedAt,
+      lastAttemptStatus: 'error',
+      lastErrorCode: 'rate_limited',
+    },
+  ]
+  );
   assert.deepEqual(calls[0], {
     operation: 'read',
     filter: { ownerId: key.ownerId, tmdbId: { $in: [key.tmdbId] }, provider: 'mteam' },
-  });
+  }
+  );
 });
 
 test('reads legacy resource checks without availability as unchecked', async () => {
@@ -80,25 +85,32 @@ test('reads legacy resource checks without availability as unchecked', async () 
     lastAttemptAt: attemptedAt,
     lastAttemptStatus: 'error',
     lastErrorCode: 'invalid_response',
-  });
+  }
+  );
 
   assert.equal((await store.readForMovies(key.ownerId, [key.tmdbId]))[0]?.availability, 'unchecked');
   assert.equal((await store.readOne(key))?.availability, 'unchecked');
 });
 
 test('returns checking for an active task even before a result row exists', async () => {
-  const { store } = harness(null, [{
-    ...key,
-    ownerId: new Types.ObjectId(key.ownerId),
-    attemptedAt,
-    leaseExpiresAt: new Date('2026-10-13T00:02:00.000Z'),
-  }]);
+  const { store } = harness(null, [
+    {
+      ...key,
+      ownerId: new Types.ObjectId(key.ownerId),
+      attemptedAt,
+      leaseExpiresAt: new Date('2026-10-13T00:02:00.000Z'),
+    },
+  ]
+  );
 
-  assert.deepEqual(await store.readForMovies(key.ownerId, [key.tmdbId]), [{
-    ...key,
-    checking: true,
-    availability: 'unchecked',
-  }]);
+  assert.deepEqual(await store.readForMovies(key.ownerId, [key.tmdbId]), [
+    {
+      ...key,
+      checking: true,
+      availability: 'unchecked',
+    },
+  ]
+  );
 });
 
 test('acquiring a check puts checking in task state and preserves the previous resource result', async () => {
@@ -110,7 +122,8 @@ test('acquiring a check puts checking in task state and preserves the previous r
     expiresAt: new Date('2026-10-12T12:00:00.000Z'),
     lastAttemptAt: previousCheck,
     lastAttemptStatus: 'success',
-  });
+  }
+  );
   const leaseExpiresAt = new Date('2026-10-13T00:02:00.000Z');
 
   await store.tryAcquire(
@@ -126,7 +139,8 @@ test('acquiring a check puts checking in task state and preserves the previous r
   assert.deepEqual(calls[0]?.update, {
     $setOnInsert: { ...key },
     $set: { status: 'checking', attemptedAt, leaseExpiresAt },
-  });
+  }
+  );
   assert.deepEqual(calls[1]?.update, {
     $setOnInsert: { ...key, availability: 'unchecked' },
   });
@@ -148,12 +162,14 @@ test('a failed refresh updates attempt metadata without replacing the previous s
       lastErrorCode: 'timeout',
       lastAttemptAt: attemptedAt,
     },
-  });
+  }
+  );
   assert.deepEqual(calls[2], {
     operation: 'state',
     filter: { ...key, availability: { $exists: false } },
     update: { $set: { availability: 'unchecked' } },
-  });
+  }
+  );
   assert.equal(calls[0]?.operation, 'release');
 });
 
@@ -168,20 +184,20 @@ test('a failed live query preserves the last successful checkedAt and availabili
   const call = calls[0];
   assert.deepEqual(call?.filter, {
     ...key,
-    $or: [
-      { lastAttemptAt: { $exists: false } },
-      { lastAttemptAt: { $lte: attemptedAt } },
-    ],
-  });
+    $or: [{ lastAttemptAt: { $exists: false } }, { lastAttemptAt: { $lte: attemptedAt } }],
+  }
+  );
   assert.deepEqual(call?.update, {
     $set: { lastAttemptStatus: 'error', lastErrorCode: 'network', lastAttemptAt: attemptedAt },
     $setOnInsert: { ...key, availability: 'unchecked' },
-  });
+  }
+  );
   assert.deepEqual(calls[1], {
     operation: 'state',
     filter: { ...key, availability: { $exists: false } },
     update: { $set: { availability: 'unchecked' } },
-  });
+  }
+  );
   assert.equal(JSON.stringify(call?.update).includes('checkedAt'), false);
 });
 
@@ -196,7 +212,8 @@ test('a successful check stores only the movie-level availability result and cle
     matchedBy: 'imdb',
     checkedAt,
     expiresAt,
-  });
+  }
+  );
 
   assert.deepEqual(calls[1]?.update, {
     $set: {
@@ -208,7 +225,8 @@ test('a successful check stores only the movie-level availability result and cle
       lastAttemptAt: attemptedAt,
     },
     $unset: { lastErrorCode: 1, identityFingerprint: 1 },
-  });
+  }
+  );
 });
 
 test('an unmatchable result clears an older IMDb match without using checking as availability', async () => {
@@ -220,7 +238,8 @@ test('an unmatchable result clears an older IMDb match without using checking as
     availability: 'unmatchable',
     checkedAt,
     identityFingerprint: '["The Matrix",null]',
-  });
+  }
+  );
 
   const update = calls[1]?.update as { $set: Record<string, unknown>; $unset: Record<string, unknown> };
   assert.equal(update.$set.availability, 'unmatchable');
@@ -238,14 +257,30 @@ test('an unmatchable result is due only after matching metadata changes', async 
   const unchanged = harness(state);
   const changed = harness(state);
 
-  assert.equal(await unchanged.store.tryAcquire(
-    key, attemptedAt, new Date('2026-10-13T00:02:00.000Z'),
-    new Date('2026-10-12T23:45:00.000Z'), '["Old title",null]', undefined, false,
-  ), false);
-  assert.equal(await changed.store.tryAcquire(
-    key, attemptedAt, new Date('2026-10-13T00:02:00.000Z'),
-    new Date('2026-10-12T23:45:00.000Z'), '["New title","tt1234567"]', undefined, false,
-  ), true);
+  assert.equal(
+    await unchanged.store.tryAcquire(
+      key,
+      attemptedAt,
+      new Date('2026-10-13T00:02:00.000Z'),
+      new Date('2026-10-12T23:45:00.000Z'),
+      '["Old title",null]',
+      undefined,
+      false,
+    ),
+    false,
+  );
+  assert.equal(
+    await changed.store.tryAcquire(
+      key,
+      attemptedAt,
+      new Date('2026-10-13T00:02:00.000Z'),
+      new Date('2026-10-12T23:45:00.000Z'),
+      '["New title","tt1234567"]',
+      undefined,
+      false,
+    ),
+    true,
+  );
 });
 
 test('a transient failure observes its retry delay even when the previous cache expired', async () => {
@@ -256,12 +291,21 @@ test('a transient failure observes its retry delay even when the previous cache 
     lastAttemptAt: new Date('2026-10-12T23:50:00.000Z'),
     lastAttemptStatus: 'error',
     lastErrorCode: 'timeout',
-  });
+  }
+  );
 
-  assert.equal(await recentFailure.store.tryAcquire(
-    key, attemptedAt, new Date('2026-10-13T00:02:00.000Z'),
-    new Date('2026-10-12T23:45:00.000Z'), '["The Matrix","tt0133093"]', undefined, false,
-  ), false);
+  assert.equal(
+    await recentFailure.store.tryAcquire(
+      key,
+      attemptedAt,
+      new Date('2026-10-13T00:02:00.000Z'),
+      new Date('2026-10-12T23:45:00.000Z'),
+      '["The Matrix","tt0133093"]',
+      undefined,
+      false,
+    ),
+    false,
+  );
 });
 
 test('authentication failure remains blocked until newer credentials are verified', async () => {
@@ -274,14 +318,28 @@ test('authentication failure remains blocked until newer credentials are verifie
   const unchanged = harness(state);
   const updated = harness(state);
 
-  assert.equal(await unchanged.store.tryAcquire(
-    key, attemptedAt, new Date('2026-10-13T00:02:00.000Z'),
-    new Date('2026-10-12T23:45:00.000Z'), undefined,
-    new Date('2026-10-12T23:40:00.000Z'), true,
-  ), false);
-  assert.equal(await updated.store.tryAcquire(
-    key, attemptedAt, new Date('2026-10-13T00:02:00.000Z'),
-    new Date('2026-10-12T23:45:00.000Z'), undefined,
-    new Date('2026-10-12T23:55:00.000Z'), false,
-  ), true);
+  assert.equal(
+    await unchanged.store.tryAcquire(
+      key,
+      attemptedAt,
+      new Date('2026-10-13T00:02:00.000Z'),
+      new Date('2026-10-12T23:45:00.000Z'),
+      undefined,
+      new Date('2026-10-12T23:40:00.000Z'),
+      true,
+    ),
+    false,
+  );
+  assert.equal(
+    await updated.store.tryAcquire(
+      key,
+      attemptedAt,
+      new Date('2026-10-13T00:02:00.000Z'),
+      new Date('2026-10-12T23:45:00.000Z'),
+      undefined,
+      new Date('2026-10-12T23:55:00.000Z'),
+      false,
+    ),
+    true,
+  );
 });

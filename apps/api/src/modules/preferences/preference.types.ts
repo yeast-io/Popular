@@ -19,6 +19,7 @@ export interface PreferenceProposal {
 }
 
 export interface PreferenceJob {
+  correlationId?: string;
   id: string;
   ownerId: string;
   kind: 'manual' | 'chat';
@@ -33,7 +34,13 @@ export interface PreferenceStore {
   read(ownerId: string): Promise<TasteProfile>;
   save(ownerId: string, expectedVersion: number, profile: TasteProfile, jobId?: string): Promise<boolean>;
   applied(ownerId: string, jobId: string): Promise<boolean>;
-  enqueue(ownerId: string, key: string, kind: PreferenceJob['kind'], evidence: PreferenceEvidence[], fingerprint?: string | null): Promise<void>;
+  enqueue(
+    ownerId: string,
+    key: string,
+    kind: PreferenceJob['kind'],
+    evidence: PreferenceEvidence[],
+    fingerprint?: string | null,
+  ): Promise<void>;
   latest(ownerId: string): Promise<TasteProfileResponse['task']>;
   claim(leaseId: string): Promise<PreferenceJob | null>;
   finish(job: PreferenceJob, error?: string): Promise<void>;

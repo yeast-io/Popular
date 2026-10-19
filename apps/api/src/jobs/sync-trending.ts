@@ -21,7 +21,12 @@ try {
   await Promise.all([mongodb.connect(), redis.connect()]);
   const models = createModels(mongodb.getConnection());
   const store = new MongoTrendingStore(
-    models.movies, models.movieLocalizations, models.movieResultSets, models.people, models.movieCredits, models.trendingStates,
+    models.movies,
+    models.movieLocalizations,
+    models.movieResultSets,
+    models.people,
+    models.movieCredits,
+    models.trendingStates,
   );
   const service = new TrendingSyncService(
     new TmdbClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS),
@@ -37,7 +42,8 @@ try {
   syncInvoked = true;
   await service.syncConfiguredPages(config.TRENDING_SYNC_PAGES, config.TRENDING_SYNC_CONCURRENCY, 'manual');
 } catch (error) {
-  if (!syncInvoked) loggers.error.error({ err: error, operation: 'sync.trending.bootstrap' }, 'Trending sync could not start');
+  if (!syncInvoked)
+    loggers.error.error({ err: error, operation: 'sync.trending.bootstrap' }, 'Trending sync could not start');
   process.exitCode = 1;
 } finally {
   await Promise.allSettled([mongodb.close(), redis.close()]);

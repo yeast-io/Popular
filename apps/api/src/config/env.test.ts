@@ -40,7 +40,10 @@ test('validates the registration user limit', () => {
 test('requires a dedicated integration encryption key', () => {
   const { INTEGRATION_SECRET_KEY: _omitted, ...withoutIntegrationKey } = valid;
   assert.throws(() => loadConfig(withoutIntegrationKey), /INTEGRATION_SECRET_KEY/);
-  assert.throws(() => loadConfig({ ...withoutIntegrationKey, INTEGRATION_SECRET_KEY: 'too-short' }), /INTEGRATION_SECRET_KEY/);
+  assert.throws(
+    () => loadConfig({ ...withoutIntegrationKey, INTEGRATION_SECRET_KEY: 'too-short' }),
+    /INTEGRATION_SECRET_KEY/,
+  );
 });
 
 test('fails fast without infrastructure credentials', () => {
@@ -59,28 +62,36 @@ test('trending job config does not require unrelated web, session, or MinIO sett
     MONGODB_URI: valid.MONGODB_URI,
     REDIS_URL: valid.REDIS_URL,
     TMDB_READ_ACCESS_TOKEN: valid.TMDB_READ_ACCESS_TOKEN,
-  });
+  }
+  );
   assert.equal(config.TMDB_LANGUAGE, 'zh-CN');
   assert.equal(config.MONGODB_DB_NAME, 'movie_hub');
 });
 
 test('movie locale migration requires only MongoDB settings', () => {
-  assert.deepEqual(loadMigrationConfig({
-    MONGODB_URI: 'mongodb://localhost:27017',
-    MONGODB_DB_NAME: 'movie_hub',
-  }), {
-    MONGODB_URI: 'mongodb://localhost:27017',
-    MONGODB_DB_NAME: 'movie_hub',
-  });
+  assert.deepEqual(
+    loadMigrationConfig({
+      MONGODB_URI: 'mongodb://localhost:27017',
+      MONGODB_DB_NAME: 'movie_hub',
+    }),
+    {
+      MONGODB_URI: 'mongodb://localhost:27017',
+      MONGODB_DB_NAME: 'movie_hub',
+    },
+  );
 });
 
 test('rejects an unsupported configured TMDB locale', () => {
-  assert.throws(() => loadTrendingConfig({
-    MONGODB_URI: valid.MONGODB_URI,
-    REDIS_URL: valid.REDIS_URL,
-    TMDB_READ_ACCESS_TOKEN: valid.TMDB_READ_ACCESS_TOKEN,
-    TMDB_LANGUAGE: 'fr-FR',
-  }), /TMDB_LANGUAGE/);
+  assert.throws(() => {
+    return loadTrendingConfig({
+      MONGODB_URI: valid.MONGODB_URI,
+      REDIS_URL: valid.REDIS_URL,
+      TMDB_READ_ACCESS_TOKEN: valid.TMDB_READ_ACCESS_TOKEN,
+      TMDB_LANGUAGE: 'fr-FR',
+    }
+    );
+  }, /TMDB_LANGUAGE/
+  );
 });
 
 test('accepts a 50 MB avatar limit and rejects larger values', () => {
@@ -97,34 +108,49 @@ test('enables OpenAI only with a complete bounded configuration', () => {
     OPENAI_MODEL: 'test-model',
     OPENAI_MAX_CONTEXT_TOKENS: '8192',
     OPENAI_MAX_OUTPUT_TOKENS: '1024',
-  });
+  }
+  );
   assert.equal(enabled.OPENAI_MODEL, 'test-model');
   assert.equal(enabled.OPENAI_MAX_CONTEXT_TOKENS, 8192);
   assert.equal(enabled.OPENAI_SUMMARY_MAX_OUTPUT_TOKENS, 500);
-  assert.throws(() => loadConfig({
-    ...valid,
-    OPENAI_MODEL: 'test-model',
-    OPENAI_MAX_CONTEXT_TOKENS: '1024',
-    OPENAI_MAX_OUTPUT_TOKENS: '1024',
-  }), /OPENAI_MAX_OUTPUT_TOKENS/);
-  assert.throws(() => loadConfig({
-    ...valid,
-    OPENAI_MODEL: 'test-model',
-    OPENAI_MAX_CONTEXT_TOKENS: '1024',
-    OPENAI_SUMMARY_MAX_OUTPUT_TOKENS: '1024',
-  }), /OPENAI_SUMMARY_MAX_OUTPUT_TOKENS/);
+  assert.throws(() => {
+    return loadConfig({
+      ...valid,
+      OPENAI_MODEL: 'test-model',
+      OPENAI_MAX_CONTEXT_TOKENS: '1024',
+      OPENAI_MAX_OUTPUT_TOKENS: '1024',
+    }
+    );
+  }, /OPENAI_MAX_OUTPUT_TOKENS/
+  );
+  assert.throws(() => {
+    return loadConfig({
+      ...valid,
+      OPENAI_MODEL: 'test-model',
+      OPENAI_MAX_CONTEXT_TOKENS: '1024',
+      OPENAI_SUMMARY_MAX_OUTPUT_TOKENS: '1024',
+    }
+    );
+  }, /OPENAI_SUMMARY_MAX_OUTPUT_TOKENS/
+  );
 });
 
 test('Telegram bot is optional; malformed tokens fail without exposing their value', () => {
   assert.equal(loadConfig(valid).TELEGRAM_BOT_TOKEN, undefined);
-  assert.equal(loadConfig({ ...valid, TELEGRAM_BOT_TOKEN: '123456:valid_token-1' }).TELEGRAM_BOT_TOKEN, '123456:valid_token-1');
+  assert.equal(
+    loadConfig({ ...valid, TELEGRAM_BOT_TOKEN: '123456:valid_token-1' }).TELEGRAM_BOT_TOKEN,
+    '123456:valid_token-1',
+  );
   const secret = 'invalid-sensitive-token';
-  assert.throws(() => loadConfig({ ...valid, TELEGRAM_BOT_TOKEN: secret }), error => {
-    assert.ok(error instanceof InvalidEnvironmentError);
-    assert.ok(error.message.includes('TELEGRAM_BOT_TOKEN'));
-    assert.ok(!error.message.includes(secret));
-    return true;
-  });
+  assert.throws(
+    () => loadConfig({ ...valid, TELEGRAM_BOT_TOKEN: secret }),
+    (error) => {
+      assert.ok(error instanceof InvalidEnvironmentError);
+      assert.ok(error.message.includes('TELEGRAM_BOT_TOKEN'));
+      assert.ok(!error.message.includes(secret));
+      return true;
+    },
+  );
 });
 
 test('validates assistant worker concurrency and recovery scan interval', () => {
@@ -165,10 +191,16 @@ test('scheduled scan tracing defaults off and validates its independent switch',
 
 test('parses curated model IDs in display order and validates environment overrides', () => {
   assert.deepEqual(loadConfig(valid).OPENAI_RECOMMENDED_MODELS, []);
-  assert.deepEqual(loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: ' gpt-6.1-sol, gpt-5.4-mini,gpt-6.1-sol,, ' }).OPENAI_RECOMMENDED_MODELS,
-    ['gpt-6.1-sol', 'gpt-5.4-mini']);
+  assert.deepEqual(
+    loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: ' gpt-6.1-sol, gpt-5.4-mini,gpt-6.1-sol,, ' })
+      .OPENAI_RECOMMENDED_MODELS,
+    ['gpt-6.1-sol', 'gpt-5.4-mini'],
+  );
   assert.deepEqual(loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: '' }).OPENAI_RECOMMENDED_MODELS, []);
-  assert.throws(() => loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: 'gpt-6-luna,invalid model' }), /OPENAI_RECOMMENDED_MODELS/);
+  assert.throws(
+    () => loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: 'gpt-6-luna,invalid model' }),
+    /OPENAI_RECOMMENDED_MODELS/,
+  );
 });
 
 test('validates experimental page switches as explicit booleans', () => {
@@ -176,7 +208,10 @@ test('validates experimental page switches as explicit booleans', () => {
   assert.equal(config.PAGE_AI_ASSISTANT_ENABLED, true);
   assert.equal(config.PAGE_DOCS_ENABLED, false);
   assert.equal(config.VERBOSE, false);
-  assert.equal(loadConfig({ ...valid, PAGE_AI_ASSISTANT_ENABLED: 'false', PAGE_DOCS_ENABLED: 'true' }).PAGE_DOCS_ENABLED, true);
+  assert.equal(
+    loadConfig({ ...valid, PAGE_AI_ASSISTANT_ENABLED: 'false', PAGE_DOCS_ENABLED: 'true' }).PAGE_DOCS_ENABLED,
+    true,
+  );
   for (const field of ['PAGE_AI_ASSISTANT_ENABLED', 'PAGE_DOCS_ENABLED', 'VERBOSE']) {
     assert.throws(() => loadConfig({ ...valid, [field]: 'yes' }), new RegExp(field));
   }

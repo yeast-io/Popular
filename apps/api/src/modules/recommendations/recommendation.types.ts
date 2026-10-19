@@ -1,6 +1,6 @@
 import type { Locale, TasteProfile } from '@movie-hub/contract';
 import type { LlmMessage } from '../llm/llm.types.js';
-import type { MovieRecord, MovieSearchProvider } from '../movies/movie.types.js';
+import type { MovieDetailRecord, MovieRecord, MovieSearchProvider } from '../movies/movie.types.js';
 
 export interface RecommendationFilters {
   genres: number[];
@@ -62,4 +62,36 @@ export interface RecommendationProfileReader {
 export interface DiscoveryProvider extends MovieSearchProvider {
   discover(filters: RecommendationFilters, page: number, locale: Locale, ownerId: string): Promise<MovieRecord[]>;
   related(tmdbId: number, locale: Locale, ownerId: string): Promise<MovieRecord[]>;
+}
+
+/** Model decisions are supplied by the calling AssistantAgent; the tool owns no model client. */
+export interface RecommendationDecisions {
+  plan(
+    profile: TasteProfile,
+    questions: number,
+    conversation: LlmMessage[],
+    signal: AbortSignal,
+    locale: Locale,
+  ): Promise<RecommendationPlan>;
+  rank(
+    profile: TasteProfile,
+    conversation: LlmMessage[],
+    candidates: MovieDetailRecord[],
+    signal: AbortSignal,
+    locale: Locale,
+    selection: Pick<RecommendationPlan, 'requestedCount' | 'softPreferences'>,
+  ): Promise<{ movies: RankedMovie[] }>;
+}
+
+export interface RecommendationCapability {
+  active(ownerId: string, conversation: string): Promise<boolean>;
+  runResult(
+    ownerId: string,
+    conversation: string,
+    eventId: string,
+    text: string,
+    history: LlmMessage[],
+    decisions: RecommendationDecisions,
+    signal?: AbortSignal,
+  ): Promise<RecommendationResult>;
 }

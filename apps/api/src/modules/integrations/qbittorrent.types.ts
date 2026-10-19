@@ -1,8 +1,7 @@
 import type { IntegrationFailureType, QBittorrentAuthMethod } from '@movie-hub/contract';
 
 export type QBittorrentCredential =
-  | { authMethod: 'api_key'; apiKey: string }
-  | { authMethod: 'username_password'; username: string; password: string };
+  { authMethod: 'api_key'; apiKey: string } | { authMethod: 'username_password'; username: string; password: string };
 
 export interface QBittorrentConfigRecord {
   ownerId: string;
@@ -18,7 +17,9 @@ export interface QBittorrentConfigRecord {
 
 export interface QBittorrentConfigStore {
   find(ownerId: string): Promise<QBittorrentConfigRecord | null>;
-  saveVerified(input: QBittorrentConfigRecord & { verifiedAt: Date; lastValidationAt: Date }): Promise<QBittorrentConfigRecord>;
+  saveVerified(
+    input: QBittorrentConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
+  ): Promise<QBittorrentConfigRecord>;
   recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType): Promise<void>;
   delete(ownerId: string): Promise<void>;
 }

@@ -35,7 +35,9 @@ export function startTyping(
     stopping = pending.then(() => update(false, AbortSignal.timeout(2_000)));
     return stopping;
   };
-  const onAbort = () => { void stop(); };
+  const onAbort = () => {
+    void stop();
+  };
   if (signal.aborted) return async () => undefined;
   signal.addEventListener('abort', onAbort, { once: true });
   refresh();

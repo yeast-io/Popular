@@ -1,6 +1,7 @@
 import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
 import type { PreferenceService } from '../preferences/preference.service.js';
-import type { RecommendationWorkflow } from '../recommendations/recommendation.workflow.js';
+import type { RecommendationCapability, RecommendationProfileReader } from '../recommendations/recommendation.types.js';
+import type { LlmStreamEvent } from '../llm/llm.types.js';
 
 /** Supported messaging channels, both using the same workflow entry point. */
 export type AssistantChannel = 'telegram' | 'whatsapp' | 'web';
@@ -48,6 +49,8 @@ export interface AssistantWorkflowResult {
   replyText: string;
   /** Structured movies for Telegram/WhatsApp delivery; text remains the history/fallback representation. */
   movies?: RecommendationMovie[];
+  /** In-process web stream, never persisted to the inbox or returned in an HTTP JSON response. */
+  stream?: AsyncIterable<LlmStreamEvent>;
 }
 
 /**
@@ -74,10 +77,7 @@ export interface AssistantWorkflowNodes {
   detectIntent(input: AssistantInputWorkflowMessage): Promise<AssistantIntent>;
 
   /** Route using the detected intent; download handling must still enforce confirmation rules. */
-  handleIntent(
-    input: AssistantInputWorkflowMessage,
-    intent: AssistantIntent,
-  ): Promise<AssistantWorkflowResult>;
+  handleIntent(input: AssistantInputWorkflowMessage, intent: AssistantIntent): Promise<AssistantWorkflowResult>;
 }
 
 /** Shared entry point for channel services, hiding internal nodes and graph structure. */
@@ -101,9 +101,13 @@ export interface AssistantDetection {
   preferenceSignal: 'none' | 'explicit' | 'uncertain';
 }
 
+export interface AssistantTools {
+  recommendations?: RecommendationCapability;
+  profile?: RecommendationProfileReader;
+}
+
 export interface AssistantWorkflowOptions extends AssistantAgentOptions {
   preferences?: PreferenceService;
-  recommendations?: RecommendationWorkflow;
+  recommendations?: RecommendationCapability;
   report?: (event: string) => void;
-  deferDiscussion?: boolean;
 }
