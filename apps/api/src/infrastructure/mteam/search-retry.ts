@@ -44,6 +44,7 @@ export async function retryMTeamSearch<T>(
   const budgetMs = options.budgetMs ?? 40_000;
   const operationId = randomUUID();
   const controller = new AbortController();
+  const executionSignal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
   let lastError: unknown;
   const timer = setTimeout(() => {
     return controller.abort(new IntegrationValidationError(
@@ -53,6 +54,7 @@ export async function retryMTeamSearch<T>(
   }, budgetMs);
   const trace = currentAiTrace();
   try {
+    executionSignal.throwIfAborted();
     for (let attempt = 1; attempt <= 3; attempt++) {
       const remainingMs = budgetMs - (now() - started);
       if (remainingMs <= 0) throw lastError ?? new IntegrationValidationError('timeout', 'M-Team resource query exceeded its total time budget');
@@ -60,15 +62,15 @@ export async function retryMTeamSearch<T>(
       trace?.event('external.mteam.search.attempt.started', { provider: 'mteam', operationId, attempt, remainingMs });
       try {
         const result = await abortable(() => {
-          return operation(attempt, operationId, controller.signal, remainingMs);
-        }, controller.signal);
+          return operation(attempt, operationId, executionSignal, remainingMs);
+        }, executionSignal);
         trace?.event('external.mteam.search.attempt.completed', { provider: 'mteam', operationId, attempt, durationMs: now() - attemptStarted, outcome: 'success' });
         return result;
       } catch (error) {
         lastError = error;
         const retryable = isRetryableSearchError(error);
         trace?.fail(error, { stage: 'external.mteam.search.attempt', provider: 'mteam', operationId, attempt, durationMs: now() - attemptStarted, retryable, outcome: 'failure' });
-        if (controller.signal.aborted || !retryable || attempt === 3) throw error;
+        if (executionSignal.aborted || !retryable || attempt === 3) throw error;
         const backoff = Math.max(1000, options.minimumIntervalMs ?? 0) * 2 ** (attempt - 1);
         const jitter = Math.floor((options.random ?? Math.random)() * 250);
         const retryAfter = error instanceof MTeamHttpError ? error.retryAfterMs ?? 0 : 0;
@@ -78,9 +80,9 @@ export async function retryMTeamSearch<T>(
         trace?.clearFailure();
         trace?.event('external.mteam.search.retry.scheduled', { provider: 'mteam', operationId, attempt, nextAttempt: attempt + 1, waitMs });
         try {
-          await abortable(() => wait(waitMs, controller.signal), controller.signal);
+          await abortable(() => wait(waitMs, executionSignal), executionSignal);
         } catch (waitError) {
-          throw controller.signal.aborted ? controller.signal.reason : waitError;
+          throw executionSignal.aborted ? executionSignal.reason : waitError;
         }
       }
     }

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <title>M-Team</title>
+  <defs>
+    <linearGradient id="gold" x1="3" y1="1" x2="21" y2="24" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FADB7C"/>
+      <stop offset="0.52" stop-color="#F4C85E"/>
+      <stop offset="1" stop-color="#EBB247"/>
+    </linearGradient>
+    <clipPath id="frame">
+      <rect x="0.5" y="0.5" width="23" height="23" rx="1.2"/>
+    </clipPath>
+  </defs>
+  <rect x="0.5" y="0.5" width="23" height="23" rx="1.2" fill="url(#gold)"/>
+  <g clip-path="url(#frame)" fill="#090806">
+    <path d="M7.25 12h1.5v12h-1.5zM16.25 12h1.5v12h-1.5z"/>
+    <circle cx="8" cy="11.8" r="2.65"/>
+    <circle cx="17" cy="11.8" r="2.65"/>
+  </g>
+  <rect x="0.5" y="0.5" width="23" height="23" rx="1.2" stroke="#211B0D" stroke-width="1"/>
+</svg>

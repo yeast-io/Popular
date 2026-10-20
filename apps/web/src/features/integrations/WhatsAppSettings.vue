@@ -115,6 +115,9 @@ onUnmounted(() => {
     :loading="loading"
     :notice="errorMessage"
   >
+    <template #actions>
+      <slot v-if="state.status === 'connected'" name="notifications" :disabled="loading || busy" />
+    </template>
     <p v-if="loading" class="loading compact-loading">{{ t('whatsapp.loading') }}</p>
     <div v-else class="integration-form">
       <p class="connection-note">{{ t('whatsapp.limitations') }}</p>

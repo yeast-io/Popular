@@ -4,6 +4,7 @@ import type { MovieResourceSyncBatch, MovieResourceSyncStatus } from '@movie-hub
 
 export interface StoredMovieResourceSyncBatch extends MovieResourceSyncBatch {
   ownerId: string;
+  sites?: string[];
   movieIds: number[];
   cursor: number;
   force: boolean;
@@ -18,6 +19,7 @@ export interface MovieResourceSyncBatchStore {
     movieIds: number[],
     force: boolean,
     now: Date,
+    sites?: string[],
   ): Promise<StoredMovieResourceSyncBatch>;
   readCurrent(ownerId: string): Promise<StoredMovieResourceSyncBatch | null>;
   read(ownerId: string, id: string): Promise<StoredMovieResourceSyncBatch | null>;

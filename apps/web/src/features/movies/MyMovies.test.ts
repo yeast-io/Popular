@@ -69,7 +69,7 @@ describe('My Movies resource check failures', () => {
     await flushPromises();
 
     const labels = wrapper.findAll('.resource-status').map((node) => node.text());
-    expect(labels).toEqual(['检查失败', '有可下载资源 · 刷新失败', '暂无可下载资源 · 刷新失败']);
+    expect(labels).toEqual(['检查失败', '有资源 · 刷新失败', '暂无可下载资源 · 刷新失败']);
     wrapper.unmount();
   });
 
@@ -81,8 +81,11 @@ describe('My Movies resource check failures', () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         urls.push(url);
-        if (url.endsWith('/me/integrations/mteam'))
-          return Response.json({ provider: 'mteam', status: 'configured_valid' });
+        if (url.endsWith(
+          '/me/integration-preferences'
+        )) return Response.json(
+          { defaults: { resource: 'mteam' }, selectedSites: [], effectiveSites: ['mteam'], choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }] }
+        );
         return Response.json({
           items: [],
           pagination: { page: 1, pageSize: 50, total: 0, hasMore: false },
@@ -117,7 +120,7 @@ describe('My Movies resource check failures', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith('/me/integrations/mteam')) {
+        if (url.endsWith('/me/integration-preferences')) {
           return Response.json({ provider: 'mteam', status: 'configured_valid' });
         }
         return Response.json({
@@ -160,7 +163,7 @@ describe('My Movies resource check failures', () => {
     await flushPromises();
 
     expect(wrapper.findAll('.resource-status').map((node) => node.text())).toEqual([
-      '有可下载资源',
+      '有资源',
       '暂无可下载资源',
       '尚未检查',
       '检查中',
@@ -179,8 +182,8 @@ describe('My Movies resource check failures', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith('/me/integrations/mteam')) {
-          return Response.json({ provider: 'mteam', status: 'unconfigured' });
+        if (url.endsWith('/me/integration-preferences')) {
+          return Response.json({ defaults: {}, selectedSites: [], effectiveSites: [], choices: [] });
         }
         return Response.json({
           items: [
@@ -201,7 +204,7 @@ describe('My Movies resource check failures', () => {
     const wrapper = mount(MyMovies);
     await flushPromises();
 
-    expect(wrapper.get('.resource-status').text()).toBe('未配置 M-Team');
+    expect(wrapper.get('.resource-status').text()).toBe('请先配置资源站点');
     expect(wrapper.text()).not.toContain('暂无可下载资源');
     expect(wrapper.get<HTMLAnchorElement>('.integration-guidance a').attributes('href')).toBe('/settings');
     expect(wrapper.text()).not.toContain('一键同步想看电影');
@@ -214,7 +217,7 @@ describe('My Movies resource check failures', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith('/me/integrations/mteam')) {
+        if (url.endsWith('/me/integration-preferences')) {
           return Response.json({ provider: 'mteam', status: 'configured_valid' });
         }
         return Response.json({
@@ -245,10 +248,10 @@ describe('My Movies resource check failures', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/me/integrations/mteam')) {
+        if (url.endsWith('/me/integration-preferences')) {
           return Response.json({ provider: 'mteam', status: 'configured_valid' });
         }
-        if (url.endsWith('/me/movies/resources/mteam/sync') && init?.method === 'POST') {
+        if (url.endsWith('/me/movies/resources/sync') && init?.method === 'POST') {
           return Response.json(
             {
               id: 'batch-1',

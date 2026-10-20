@@ -86,7 +86,12 @@ describe('M-Team settings', () => {
     let call = 0;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => {
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith(
+          '/integration-preferences'
+        )) return Response.json(
+          { defaults: { resource: 'mteam' }, selectedSites: [], effectiveSites: ['mteam'], choices: [] }
+        );
         call += 1;
         if (call === 1)
           return Response.json({

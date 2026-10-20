@@ -479,6 +479,7 @@ function toDisplayRelease(release: MTeamRelease, webBaseUrl: string): MovieRelea
       ...(release.medium ? { medium: release.medium } : {}),
       ...(release.videoCodec ? { videoCodec: release.videoCodec } : {}),
       ...(release.audioCodec ? { audioCodec: release.audioCodec } : {}),
+      ...(release.releaseGroup ? { releaseGroup: release.releaseGroup } : {}),
       tags: release.tags ?? [],
     },
   ];

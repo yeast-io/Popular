@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { ApiError, DownloadProvider, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MovieReleaseListResponse, MoviePreference, MovieResourceCheckResponse, MovieStatus, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
+import type { IntegrationPreferences, ApiError, DownloadProvider, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MoviePreference, MovieResourceCheckResponse, MovieStatus, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
+import { getIntegrationLogo } from '../settings/integration-logos';
+import ResourceSiteSelector from './ResourceSiteSelector.vue';
+import type { MovieSiteReleaseGroup } from './movie-site-releases.types';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
@@ -16,6 +19,12 @@ const errorMessage = ref('');
 const resourceCheck = ref<MovieResourceCheckResponse | null>(null);
 const resourceError = ref('');
 const releases = ref<MovieRelease[]>([]);
+const integrationPreferences = ref<IntegrationPreferences | null>(null);
+const releaseGroups = ref<MovieSiteReleaseGroup[]>([]);
+const expandedSites = ref<string[]>([]);
+let releaseGeneration = 0;
+let resourceGeneration = 0;
+let releaseController: AbortController | undefined;
 const releasesOpen = ref(false);
 const releasesLoading = ref(false);
 const releasesError = ref('');
@@ -33,6 +42,7 @@ const selectedProvider = ref<DownloadProvider | ''>('');
 const downloadChoiceDialog = ref<HTMLElement | null>(null);
 let downloadTrigger: HTMLElement | null = null;
 const confirmingRelease = ref<MovieRelease | null>(null);
+const confirmingSite = ref<DownloadSource>('mteam');
 const submittingReleaseId = ref('');
 const downloadErrors = ref<Record<string, string>>({});
 let requestController: AbortController | undefined;
@@ -52,17 +62,18 @@ const statusOptions = computed(() => {
     ['interested', t('movie.status.interested')],
   ] as const;
 });
-const orderedReleases = computed(() => {
-  const downloadedReleaseIds = new Set(downloads.value.map((download) => download.sourceReleaseId));
-  const downloaded: MovieRelease[] = [];
-  const notDownloaded: MovieRelease[] = [];
-  for (const release of releases.value) {
-    (downloadedReleaseIds.has(release.id) ? downloaded : notDownloaded).push(release);
-  }
-  const ordered = [...downloaded, ...notDownloaded];
-  const active = ordered.find((release) => release.id === activeDownloadReleaseId.value);
-  return active ? [active, ...ordered.filter((release) => release.id !== active.id)] : ordered;
-});
+function downloadKey(releaseId: string, site = 'mteam'): string { return `${site}:${releaseId}`; }
+function orderedGroupReleases(group: MovieSiteReleaseGroup): MovieRelease[] {
+  const source = group.site === 'mteam' ? releases.value : group.result?.releases ?? [];
+  const tracked = new Set(downloads.value.filter((item) => {
+    return item.sourceProvider === group.site;
+  }).map((item) => {
+    return item.sourceReleaseId;
+  }));
+  const ordered = [...source.filter((item) => tracked.has(item.id)), ...source.filter((item) => !tracked.has(item.id))];
+  const active = ordered.find((item) => downloadKey(item.id, group.site) === activeDownloadReleaseId.value);
+  return active ? [active, ...ordered.filter((item) => item.id !== active.id)] : ordered;
+}
 const posterDownloadState = computed<'downloaded' | 'downloading' | null>(() => {
   if (downloads.value.some((download) => ['completed', 'seeding'].includes(download.status))) return 'downloaded';
   if (downloads.value.some((download) => ['submitting', 'downloading', 'paused'].includes(download.status)))
@@ -79,6 +90,9 @@ onMounted(() => {
   document.addEventListener('visibilitychange', handleVisibilityChange);
 });
 onBeforeUnmount(() => {
+  ++resourceGeneration;
+  ++releaseGeneration;
+  releaseController?.abort();
   requestController?.abort();
   stopResourcePolling();
   stopDownloadPolling();
@@ -106,6 +120,8 @@ watch(
       void loadResourceCheck();
       void loadDownloadSnapshot();
     } else {
+      ++resourceGeneration;
+      closeReleases(false);
       resourceCheck.value = null;
       downloads.value = [];
       stopResourcePolling();
@@ -137,15 +153,19 @@ async function load() {
 }
 
 async function loadResourceCheck() {
+  const generation = ++resourceGeneration;
+  const requestedTmdbId = props.tmdbId;
   try {
-    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/resources/mteam`, { credentials: 'include' });
+    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/resources`, { credentials: 'include' });
     const body = (await response.json()) as MovieResourceCheckResponse | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.checkMovieResource');
+    if (generation !== resourceGeneration || requestedTmdbId !== props.tmdbId || !props.authenticated) return;
     resourceCheck.value = body as MovieResourceCheckResponse;
     resourceError.value = '';
     if (resourceCheck.value.checking) scheduleResourcePoll();
     else stopResourcePolling();
   } catch (error) {
+    if (generation !== resourceGeneration || requestedTmdbId !== props.tmdbId) return;
     resourceError.value = localizedErrorMessage(error, 'errors.checkMovieResource');
     stopResourcePolling();
   }
@@ -157,17 +177,25 @@ async function recheckResource() {
     return;
   }
   if (resourceCheck.value?.checking) return;
+  const generation = ++resourceGeneration;
+  const requestedTmdbId = props.tmdbId;
+  const previous = resourceCheck.value;
+  resourceCheck.value = { ...(previous ?? { provider: 'all', availability: 'unchecked' }), checking: true };
+  stopResourcePolling();
   resourceError.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/resources/mteam/refresh`, {
+    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/resources/refresh`, {
       method: 'POST',
       credentials: 'include',
     });
     const body = (await response.json()) as MovieResourceCheckResponse | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.checkMovieResource');
+    if (generation !== resourceGeneration || requestedTmdbId !== props.tmdbId || !props.authenticated) return;
     resourceCheck.value = body as MovieResourceCheckResponse;
     scheduleResourcePoll();
   } catch (error) {
+    if (generation !== resourceGeneration || requestedTmdbId !== props.tmdbId) return;
+    resourceCheck.value = previous;
     resourceError.value = localizedErrorMessage(error, 'errors.checkMovieResource');
   }
 }
@@ -185,7 +213,9 @@ function stopResourcePolling() {
 function resourceStatusLabel(): string {
   const check = resourceCheck.value;
   if (!check) return t('movie.resource.pending');
+  if (check.incomplete && check.availability === 'available') return t('resourceSelection.availablePartial');
   if (check.checking) return t('movie.resource.checking');
+  if (check.incomplete) return t('resourceSelection.incomplete');
   if (check.lastAttemptStatus === 'error') {
     if (!check.checkedAt) return t('movie.resource.checkFailed');
     if (check.availability === 'available') return t('movie.resource.availableRefreshFailed');
@@ -213,46 +243,104 @@ function posterResourceLabel(): string {
   return t(`movie.resource.badge.${posterResourceState()}`);
 }
 
+function preferencesLoaded(preferences: IntegrationPreferences) {
+  integrationPreferences.value = preferences;
+}
+function preferencesChanged(preferences: IntegrationPreferences) {
+  integrationPreferences.value = preferences;
+  closeReleases(false);
+  void loadResourceCheck();
+}
+function groupToggled(site: string, event: Event) {
+  const open = (event.target as HTMLDetailsElement).open;
+  expandedSites.value = open ? [...new Set([...expandedSites.value, site])] : expandedSites.value.filter((id) => {
+    return id !== site;
+  });
+}
+async function loadReleaseGroup(group: MovieSiteReleaseGroup, more = false, refresh = false) {
+  const generation = releaseGeneration;
+  const requestedTmdbId = props.tmdbId;
+  group.loading = true;
+  group.error = '';
+  try {
+    const page = more ? group.result?.nextPage : undefined;
+    const response = await fetch(`${apiBaseUrl}/me/movies/${requestedTmdbId}/resources/${group.site}/releases${refresh ? '/refresh' : page ? `?page=${page}` : ''}`, {
+      method: refresh ? 'POST' : 'GET',
+      credentials: 'include', signal: releaseController?.signal ?? null, headers: { 'accept-language': locale.value },
+    });
+    if (!response.ok) throw localizedApiError(await response.json(), 'errors.loadMovieReleases');
+    const result = await response.json();
+    if (generation !== releaseGeneration || requestedTmdbId !== props.tmdbId) return;
+    if (more && group.result) {
+      const known = new Set(group.result.releases.map((release) => release.id));
+      result.releases = [...group.result.releases, ...result.releases.filter((release: MovieRelease) => {
+        return !known.has(release.id);
+      })];
+    }
+    group.result = result;
+    group.supportsDownload = result.supportsDownload ?? group.supportsDownload;
+    if (group.site === 'mteam') releases.value = result.releases;
+  } catch (error) {
+    if (generation === releaseGeneration && !(error instanceof DOMException && error.name === 'AbortError'))
+      group.error = localizedErrorMessage(error, 'errors.loadMovieReleases');
+  } finally { if (generation === releaseGeneration) group.loading = false; }
+}
+async function refreshReleaseGroup(group: MovieSiteReleaseGroup) {
+  if (group.loading) return;
+  const generation = releaseGeneration;
+  await loadReleaseGroup(group, false, true);
+  if (generation === releaseGeneration && releasesOpen.value) await loadResourceCheck();
+}
+function resourceAction() {
+  if (resourceCheck.value?.availability === 'available') void showReleases();
+  else void recheckResource();
+}
 async function showReleases() {
-  if (!props.authenticated) {
-    emit('requireLogin');
-    return;
-  }
+  if (!props.authenticated) { emit('requireLogin'); return; }
   if (releasesLoading.value) return;
   releaseTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   releasesOpen.value = true;
+  releasesLoading.value = true;
+  releasesError.value = '';
+  releaseGroups.value = [];
+  releaseController?.abort();
+  releaseController = new AbortController();
+  const generation = ++releaseGeneration;
   lockPageScroll();
   await nextTick();
   releaseCloseButton.value?.focus();
-  releasesLoading.value = true;
-  releasesError.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/resources/mteam/releases`, {
-      credentials: 'include',
+    if (!integrationPreferences.value) {
+      const response = await fetch(`${apiBaseUrl}/me/integration-preferences`, { credentials: 'include', signal: releaseController.signal });
+      if (!response.ok) throw await localizedResponseError(response);
+      integrationPreferences.value = await response.json();
+    }
+    if (generation !== releaseGeneration) return;
+    const preferences = integrationPreferences.value!;
+    const sites = [...preferences.effectiveSites].sort((a, b) => {
+      return Number(b === preferences.defaults.resource) - Number(a === preferences.defaults.resource);
     });
-    const body = (await response.json()) as MovieReleaseListResponse | ApiError;
-    if (!response.ok) throw localizedApiError(body, 'errors.loadMovieReleases');
-    const result = body as MovieReleaseListResponse;
-    releases.value = result.releases;
-    resourceCheck.value = {
-      provider: 'mteam',
-      checking: false,
-      availability: result.availability,
-      lastAttemptStatus: 'success',
-      checkedAt: result.queriedAt,
-    };
-    await Promise.all([loadDownloadProviders(), loadDownloads()]);
+    expandedSites.value = sites[0] ? [sites[0]] : [];
+    releaseGroups.value = sites.map((site) => {
+      return ({ site, name: preferences.choices.find(
+        (choice) => choice.category === 'resource' && choice.id === site
+      )?.name ?? site, supportsDownload: site === 'mteam', loading: true, error: '' });
+    });
+    await Promise.all([loadDownloadProviders(), loadDownloads(), ...releaseGroups.value.map((group) => {
+      return loadReleaseGroup(group);
+    })]);
+    if (generation === releaseGeneration) await loadResourceCheck();
   } catch (error) {
-    releases.value = [];
-    releasesError.value = localizedErrorMessage(error, 'errors.loadMovieReleases');
-  } finally {
-    releasesLoading.value = false;
-  }
+    if (generation === releaseGeneration) releasesError.value = localizedErrorMessage(error, 'errors.loadMovieReleases');
+  } finally { if (generation === releaseGeneration) releasesLoading.value = false; }
 }
 
 function closeReleases(restoreFocus = true) {
   if (!releasesOpen.value) return;
   releasesOpen.value = false;
+  releaseController?.abort();
+  ++releaseGeneration;
+  releasesLoading.value = false;
   activeDownloadReleaseId.value = '';
   confirmingRelease.value = null;
   stopDownloadPolling();
@@ -291,6 +379,8 @@ async function loadDownloadProviders() {
     const result = (await response.json()) as DownloadProviderListResponse;
     if (!Array.isArray(result.providers)) throw new Error('Invalid downloader list');
     downloadProviders.value = result.providers;
+    const preferred = integrationPreferences.value?.defaults.downloader;
+    selectedProvider.value = result.providers.includes(preferred as DownloadProvider) ? preferred as DownloadProvider : result.providers.length === 1 ? result.providers[0]! : '';
   } catch (error) {
     downloadProvidersError.value = localizedErrorMessage(error, 'movie.download.providersFailed');
   }
@@ -320,18 +410,18 @@ async function fetchDownloads() {
   }
 }
 
-function downloadFor(releaseId: string): MovieDownload | undefined {
-  return downloads.value.find((download) => download.sourceReleaseId === releaseId);
+function downloadFor(releaseId: string, site = 'mteam'): MovieDownload | undefined {
+  return downloads.value.find((download) => download.sourceProvider === site && download.sourceReleaseId === releaseId);
 }
 
-function downloadCardClass(releaseId: string): string | undefined {
-  if (submittingReleaseId.value === releaseId) return 'is-download-active';
-  if (downloadErrors.value[releaseId]) return 'is-download-failed';
-  const status = downloadFor(releaseId)?.status;
+function downloadCardClass(releaseId: string, site = 'mteam'): string | undefined {
+  if (submittingReleaseId.value === downloadKey(releaseId, site)) return 'is-download-active';
+  if (downloadErrors.value[downloadKey(releaseId, site)]) return 'is-download-failed';
+  const status = downloadFor(releaseId, site)?.status;
   if (status === 'submitting' || status === 'downloading') return 'is-download-active';
   if (status === 'completed' || status === 'seeding') return 'is-download-complete';
   if (status === 'paused') return 'is-download-paused';
-  if (status === 'failed' || status === 'missing') return 'is-download-failed';
+  if (status === 'failed') return 'is-download-failed';
   return undefined;
 }
 
@@ -339,28 +429,32 @@ function providerName(provider: DownloadProvider): string {
   return provider === 'transmission' ? 'Transmission' : 'qBittorrent';
 }
 
-function canDownload(releaseId: string): boolean {
-  const existing = downloadFor(releaseId);
+function canDownload(releaseId: string, site = 'mteam'): boolean {
+  if (site !== 'mteam' && site !== 'hdarea') return false;
+  const existing = downloadFor(releaseId, site);
   return existing ? downloadProviders.value.includes(existing.provider) : downloadProviders.value.length > 0;
 }
 
-function downloadUnavailable(releaseId: string): string {
+function downloadUnavailable(releaseId: string, site = 'mteam'): string {
+  if (site !== 'mteam' && site !== 'hdarea') return t('resourceSelection.downloadUnsupported');
   return (
     downloadProvidersError.value ||
-    (downloadFor(releaseId) ? t('movie.download.originalUnconfigured') : t('movie.download.unconfigured'))
+    (downloadFor(releaseId, site) ? t('movie.download.originalUnconfigured') : t('movie.download.unconfigured'))
   );
 }
 
-function requestDownload(release: MovieRelease) {
-  if (!canDownload(release.id) || submittingReleaseId.value) return;
+function requestDownload(release: MovieRelease, site = 'mteam') {
+  if (site !== 'mteam' && site !== 'hdarea') return;
+  if (!canDownload(release.id, site) || submittingReleaseId.value) return;
   downloadTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const original = downloadFor(release.id)?.provider;
-  if (downloadProviders.value.length === 1) {
-    void submitDownload(release, original ?? downloadProviders.value[0]!);
+  const original = downloadFor(release.id, site)?.provider;
+  if (original || selectedProvider.value || downloadProviders.value.length === 1) {
+    void submitDownload(release, original ?? (selectedProvider.value || downloadProviders.value[0]!), site);
     return;
   }
   selectedProvider.value = original ?? '';
   confirmingRelease.value = release;
+  confirmingSite.value = site;
   void nextTick(() => {
     return downloadChoiceDialog.value?.querySelector<HTMLElement>('input:checked, input:not([disabled])')?.focus();
   });
@@ -375,26 +469,28 @@ function cancelDownload() {
 async function confirmDownload() {
   const release = confirmingRelease.value;
   const provider = selectedProvider.value;
+  const site = confirmingSite.value;
   if (!release || !provider || submittingReleaseId.value) return;
   cancelDownload();
-  await submitDownload(release, provider);
+  await submitDownload(release, provider, site);
 }
 
-async function submitDownload(release: MovieRelease, provider: DownloadProvider) {
+async function submitDownload(release: MovieRelease, provider: DownloadProvider, site: DownloadSource = 'mteam') {
   if (submittingReleaseId.value) return;
   const requestedTmdbId = props.tmdbId;
-  submittingReleaseId.value = release.id;
-  activeDownloadReleaseId.value = release.id;
+  const key = downloadKey(release.id, site);
+  submittingReleaseId.value = key;
+  activeDownloadReleaseId.value = key;
   void nextTick(() => {
     if (requestedTmdbId === props.tmdbId && releasePanelContent.value) releasePanelContent.value.scrollTop = 0;
   });
-  downloadErrors.value = { ...downloadErrors.value, [release.id]: '' };
+  downloadErrors.value = { ...downloadErrors.value, [key]: '' };
   try {
     const response = await fetch(`${apiBaseUrl}/me/movies/${requestedTmdbId}/downloads`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sourceReleaseId: release.id, provider }),
+      body: JSON.stringify({ sourceReleaseId: release.id, provider, ...(site !== 'mteam' ? { sourceProvider: site } : {}) }),
     });
     const body = (await response.json()) as MovieDownload | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.movieDownloadFailed');
@@ -402,7 +498,7 @@ async function submitDownload(release: MovieRelease, provider: DownloadProvider)
     const created = body as MovieDownload;
     downloads.value = [
       ...downloads.value.filter((item) => {
-        return item.sourceReleaseId !== release.id;
+        return item.sourceReleaseId !== release.id || item.sourceProvider !== site;
       }),
       created,
     ];
@@ -411,7 +507,7 @@ async function submitDownload(release: MovieRelease, provider: DownloadProvider)
     if (requestedTmdbId === props.tmdbId && props.authenticated) {
       downloadErrors.value = {
         ...downloadErrors.value,
-        [release.id]: localizedErrorMessage(error, 'errors.movieDownloadFailed'),
+        [key]: localizedErrorMessage(error, 'errors.movieDownloadFailed'),
       };
     }
   } finally {
@@ -484,9 +580,12 @@ function trapDialogFocus(event: KeyboardEvent, dialog: HTMLElement | null) {
   if (event.key !== 'Tab' || !dialog) return;
   const focusable = [
     ...dialog.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      'summary, button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
     ),
-  ];
+  ].filter((element) => {
+    const closed = element.closest('details:not([open])');
+    return !closed || element === closed.querySelector('summary');
+  });
   if (!focusable.length) {
     event.preventDefault();
     dialog.focus();
@@ -730,40 +829,32 @@ function syncedAtLabel(syncedAt: string): string {
             </button>
           </div>
           <div class="resource-check-panel">
-            <strong>{{ t('movie.resource.sectionTitle') }}</strong>
-            <div class="resource-check-row">
-              <button
-                v-if="resourceCheck?.availability === 'available' && !resourceCheck.checking"
-                class="resource-status resource-status-button"
-                :class="{ error: resourceCheck.lastAttemptStatus === 'error' }"
-                type="button"
-                :disabled="releasesLoading"
-                @click="showReleases"
-              >
-                {{ resourceStatusLabel() }}
-              </button>
-              <p
-                v-else
-                class="resource-status"
-                :class="{ error: resourceCheck?.lastAttemptStatus === 'error' }"
-                role="status"
-              >
-                {{ resourceStatusLabel() }}
-              </p>
-              <button
-                class="resource-check-button"
-                type="button"
-                :disabled="resourceCheck?.checking"
-                :aria-busy="resourceCheck?.checking"
-                @click="recheckResource"
-              >
-                {{
-                  resourceCheck?.checking
-                    ? t('movie.resource.checking')
-                    : t(resourceCheck?.checkedAt ? 'movie.resource.recheck' : 'movie.resource.check')
-                }}
-              </button>
-            </div>
+            <span
+              class="poster-resource-badge resource-toolbar-badge"
+              :class="`is-${posterDownloadState ?? posterResourceState()}`"
+              :title="posterDownloadState ? t(`movie.download.badge.${posterDownloadState}`) : resourceStatusLabel()"
+              role="status"
+            >
+              <span class="poster-resource-dot" aria-hidden="true"></span>
+              <span>{{ posterDownloadState ? t(`movie.download.badge.${posterDownloadState}`) : posterResourceLabel() }}</span>
+            </span>
+            <ResourceSiteSelector
+              v-if="authenticated" :disabled="Boolean(resourceCheck?.checking)" :check="resourceCheck"
+              @loaded="preferencesLoaded" @changed="preferencesChanged"
+            >
+              <template #actions>
+                <div class="resource-toolbar-actions">
+                  <button
+                    class="resource-status resource-status-button" type="button"
+                    :disabled="releasesLoading || resourceCheck?.checking"
+                    :title="resourceStatusLabel()" @click="resourceAction"
+                  >
+                    {{ t(resourceCheck?.checking ? 'movie.resource.checking' : resourceCheck?.availability === 'available' ? 'resourceSelection.viewResources' : 'resourceSelection.query') }}
+                  </button>
+                </div>
+              </template>
+            </ResourceSiteSelector>
+            <button v-else class="resource-check-button" type="button" @click="recheckResource">{{ t('movie.resource.check') }}</button>
           </div>
           <p v-if="resourceError" class="browse-error" role="alert">{{ resourceError }}</p>
           <p v-if="errorMessage" class="browse-error" role="alert">{{ errorMessage }}</p>
@@ -851,29 +942,62 @@ function syncedAtLabel(syncedAt: string): string {
           role="dialog"
           aria-modal="true"
           aria-labelledby="release-dialog-title"
-          :aria-busy="releasesLoading"
+          :aria-busy="releasesLoading && !releaseGroups.length"
           tabindex="-1"
           @keydown="handleReleaseDialogKeydown"
         >
           <div class="release-panel-heading">
             <div>
-              <p class="eyebrow">M-Team</p>
+              <p class="eyebrow">{{ t('resourceSelection.sources') }}</p>
               <h2 id="release-dialog-title">{{ t('movie.releases.title') }}</h2>
             </div>
             <button ref="releaseCloseButton" class="text-button" type="button" @click="closeReleases()">
               {{ t('movie.releases.close') }}
             </button>
           </div>
+          <div v-if="downloadProviders.length" class="release-downloader-select" role="group" :aria-label="t('resourceSelection.downloadTo')">
+            <span>{{ t('resourceSelection.downloadTo') }}</span>
+            <div class="release-downloader-options">
+              <button
+                v-for="provider in downloadProviders" :key="provider" type="button"
+                class="release-downloader-option" :class="{ 'is-selected': selectedProvider === provider }"
+                :aria-pressed="selectedProvider === provider" :disabled="Boolean(submittingReleaseId)"
+                :aria-label="providerName(provider)" @click="selectedProvider = provider"
+              >
+                <img :src="getIntegrationLogo(provider)" alt="" aria-hidden="true" />
+                <span>{{ providerName(provider) }}</span>
+                <small v-if="integrationPreferences?.defaults.downloader === provider">{{ t('integrationDefaults.default') }}</small>
+              </button>
+            </div>
+          </div>
           <div ref="releasePanelContent" class="release-panel-content">
-            <p v-if="releasesLoading" class="muted-copy" role="status">{{ t('movie.releases.loading') }}</p>
-            <p v-else-if="releasesError" class="browse-error" role="alert">{{ releasesError }}</p>
-            <p v-else-if="!releases.length" class="muted-copy" role="status">{{ t('movie.releases.empty') }}</p>
-            <ol v-else class="release-list">
+            <p v-if="releasesError" class="browse-error" role="alert">{{ releasesError }}</p>
+            <p v-if="releasesLoading && !releaseGroups.length" class="muted-copy" role="status">{{ t('movie.releases.loading') }}</p>
+            <p v-if="!releasesLoading && !releaseGroups.length" class="muted-copy">{{ t('resourceSelection.none') }}</p>
+            <details v-for="group in releaseGroups" :key="group.site" class="release-site-group" :open="expandedSites.includes(group.site)" @toggle="groupToggled(group.site, $event)">
+              <summary>
+                <strong>{{ group.name }}</strong>
+                <span v-if="integrationPreferences?.defaults.resource === group.site" class="integration-default-badge">{{ t('integrationDefaults.default') }}</span>
+                <span v-if="group.loading" class="release-site-status">{{ t('movie.releases.loading') }}</span>
+                <span v-else-if="group.error" class="release-site-status">{{ t('movie.resource.checkFailed') }}</span>
+                <span v-else class="release-site-status">{{ t('resourceSelection.releaseCount', { count: group.result?.releases.length ?? 0 }) }}</span>
+                <button
+                  type="button" class="release-site-refresh" :disabled="group.loading"
+                  :aria-label="t('resourceSelection.refreshSite', { name: group.name })"
+                  @click.stop.prevent="refreshReleaseGroup(group)"
+                >{{ t(group.loading ? 'movie.releases.loading' : 'resourceSelection.refresh') }}</button>
+              </summary>
+              <div class="release-site-content" :aria-busy="group.loading">
+                <p v-if="group.loading && !group.result" role="status">{{ t('movie.releases.loading') }}</p>
+                <p v-if="group.error" class="browse-error" role="alert">{{ group.error }} <button type="button" class="text-button" :disabled="group.loading" @click="refreshReleaseGroup(group)">{{ t('actions.retry') }}</button></p>
+                <p v-if="group.result" class="release-query-time">{{ t(group.error ? 'resourceSelection.staleResults' : group.result.cached ? 'resourceSelection.cachedAt' : 'resourceSelection.queriedAt', { date: formatDate(group.result.queriedAt, { dateStyle: 'short', timeStyle: 'short' }) }) }}</p>
+                <p v-if="group.result && !group.result.releases.length && !group.loading" class="muted-copy">{{ t(group.result.availability === 'unmatchable' ? 'movie.resource.unmatchable' : 'movie.releases.empty') }}</p>
+            <ol v-if="group.result?.releases.length" class="release-list">
               <li
-                v-for="release in orderedReleases"
-                :key="release.id"
+                v-for="release in orderedGroupReleases(group)"
+                :key="`${group.site}:${release.id}`"
                 class="release-card"
-                :class="downloadCardClass(release.id)"
+                :class="downloadCardClass(release.id, group.site)"
               >
                 <div class="release-title-row">
                   <h3>{{ release.title }}</h3>
@@ -896,6 +1020,7 @@ function syncedAtLabel(syncedAt: string): string {
                     <dd>{{ formatBytes(release.sizeBytes) }}</dd>
                   </div>
                   <div
+                    v-if="release.seedersKnown !== false"
                     class="release-fact-highlight"
                     :class="{ healthy: release.seeders > 50, 'low-seeders': release.seeders < 20 }"
                   >
@@ -926,38 +1051,44 @@ function syncedAtLabel(syncedAt: string): string {
                     <dt>{{ t('movie.releases.videoCodec') }}</dt>
                     <dd>{{ release.videoCodec }}</dd>
                   </div>
+                  <div v-if="release.releaseGroup">
+                    <dt>{{ t('movie.releases.releaseGroup') }}</dt>
+                    <dd>{{ release.releaseGroup }}</dd>
+                  </div>
                   <div v-if="release.audioCodec">
                     <dt>{{ t('movie.releases.audioCodec') }}</dt>
                     <dd>{{ release.audioCodec }}</dd>
                   </div>
                 </dl>
                 <div v-if="release.tags.length" class="release-tags">
-                  <span v-for="tag in release.tags" :key="tag">{{ tag }}</span>
+                  <span v-for="tag in release.tags" :key="tag">{{ tag === 'chinese-subtitles' ? t('movie.releases.tags.chineseSubtitles') : tag }}</span>
                 </div>
                 <div class="release-download-actions">
-                  <span v-if="!canDownload(release.id)" class="muted-copy">{{ downloadUnavailable(release.id) }}</span>
+                  <span v-if="!canDownload(release.id, group.site)" class="muted-copy">{{ downloadUnavailable(release.id, group.site) }}</span>
                   <button
-                    v-if="!downloadFor(release.id) || ['failed', 'missing'].includes(downloadFor(release.id)!.status)"
+                    v-if="group.supportsDownload && (!downloadFor(release.id, group.site) || ['failed', 'missing'].includes(downloadFor(release.id, group.site)!.status))"
                     class="release-download-button"
                     type="button"
-                    :disabled="!canDownload(release.id) || Boolean(submittingReleaseId)"
-                    :title="canDownload(release.id) ? undefined : downloadUnavailable(release.id)"
-                    @click="requestDownload(release)"
+                    :disabled="!canDownload(release.id, group.site) || Boolean(submittingReleaseId)"
+                    :title="canDownload(release.id, group.site) ? undefined : downloadUnavailable(release.id, group.site)"
+                    @click="requestDownload(release, group.site)"
                   >
                     <svg aria-hidden="true" viewBox="0 0 24 24">
                       <path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" />
                     </svg>
                     {{
-                      submittingReleaseId === release.id
+                      submittingReleaseId === downloadKey(release.id, group.site)
                         ? t('movie.download.submitting')
-                        : downloadFor(release.id)
-                          ? t('movie.download.retry')
+                        : downloadFor(release.id, group.site)
+                          ? downloadFor(release.id, group.site)!.status === 'missing'
+                            ? t('movie.download.redownload')
+                            : t('movie.download.retry')
                           : t('movie.download.action')
                     }}
                   </button>
                 </div>
                 <div
-                  v-if="submittingReleaseId === release.id"
+                  v-if="submittingReleaseId === downloadKey(release.id, group.site)"
                   class="release-download-progress downloading"
                   role="status"
                 >
@@ -967,34 +1098,39 @@ function syncedAtLabel(syncedAt: string): string {
                   <progress :aria-label="t('movie.download.submitting')"></progress>
                 </div>
                 <div
-                  v-else-if="downloadFor(release.id)"
+                  v-else-if="downloadFor(release.id, group.site)"
                   class="release-download-progress"
                   :class="{
-                    downloading: downloadFor(release.id)!.status === 'downloading',
-                    seeding: ['completed', 'seeding'].includes(downloadFor(release.id)!.status),
+                    missing: downloadFor(release.id, group.site)!.status === 'missing',
+                    downloading: downloadFor(release.id, group.site)!.status === 'downloading',
+                    seeding: ['completed', 'seeding'].includes(downloadFor(release.id, group.site)!.status),
                   }"
                   role="status"
                 >
                   <div>
                     <span
-                      >{{ providerName(downloadFor(release.id)!.provider) }} ·
-                      {{ downloadStatus(downloadFor(release.id)!) }}</span
+                      >{{ providerName(downloadFor(release.id, group.site)!.provider) }} ·
+                      {{ downloadStatus(downloadFor(release.id, group.site)!) }}</span
                     >
-                    <strong>{{ Math.round(downloadFor(release.id)!.progress) }}%</strong>
+                    <strong v-if="downloadFor(release.id, group.site)!.status !== 'missing'">{{ Math.round(downloadFor(release.id, group.site)!.progress) }}%</strong>
                   </div>
                   <progress
-                    :value="downloadFor(release.id)!.progress"
+                    v-if="downloadFor(release.id, group.site)!.status !== 'missing'"
+                    :value="downloadFor(release.id, group.site)!.progress"
                     max="100"
                     :aria-label="
-                      t('movie.download.progress', { progress: Math.round(downloadFor(release.id)!.progress) })
+                      t('movie.download.progress', { progress: Math.round(downloadFor(release.id, group.site)!.progress) })
                     "
                   ></progress>
                 </div>
-                <p v-if="downloadErrors[release.id]" class="browse-error" role="alert">
-                  {{ downloadErrors[release.id] }}
+                <p v-if="downloadErrors[downloadKey(release.id, group.site)]" class="browse-error" role="alert">
+                  {{ downloadErrors[downloadKey(release.id, group.site)] }}
                 </p>
               </li>
             </ol>
+                <button v-if="group.result?.nextPage" type="button" class="text-button" :disabled="group.loading" @click="loadReleaseGroup(group, true)">{{ t('resourceSelection.loadMore') }}</button>
+              </div>
+            </details>
           </div>
           <div
             v-if="confirmingRelease"
@@ -1015,14 +1151,15 @@ function syncedAtLabel(syncedAt: string): string {
                     :value="provider"
                     :disabled="
                       Boolean(
-                        downloadFor(confirmingRelease.id) && downloadFor(confirmingRelease.id)!.provider !== provider,
+                        downloadFor(confirmingRelease.id, confirmingSite) && downloadFor(confirmingRelease.id, confirmingSite)!.provider !== provider,
                       )
                     "
                   />
+                  <img :src="getIntegrationLogo(provider)" alt="" class="download-provider-logo" aria-hidden="true" />
                   <span>{{ providerName(provider) }}</span>
                 </label>
               </fieldset>
-              <p v-if="downloadFor(confirmingRelease.id)" class="download-retry-note">
+              <p v-if="downloadFor(confirmingRelease.id, confirmingSite)" class="download-retry-note">
                 {{ t('movie.download.retryProvider') }}
               </p>
               <div class="download-confirm-actions">
@@ -1151,6 +1288,7 @@ function syncedAtLabel(syncedAt: string): string {
   opacity: 0.5;
   cursor: default;
 }
+.download-provider-logo { width: 20px; height: 20px; object-fit: contain; }
 .download-provider-option input {
   position: absolute;
   inset: 0;

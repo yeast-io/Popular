@@ -1,3 +1,5 @@
+import { releaseTitleMetadata } from '../../modules/resource-sites/release-metadata.domain.js';
+import type { MTeamSearchPage, MTeamSearchOptions } from '../../modules/integrations/movie-resource-check.types.js';
 import { AiTrace, currentAiTrace, withAiTrace } from '../logging/ai-trace.js';
 import type { AiLogger } from '../logging/ai-trace.types.js';
 import { MTeamHttpError, parseRetryAfter, retryMTeamSearch } from './search-retry.js';
@@ -47,11 +49,17 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
   }
 
   async searchMovies(
-    baseUrl: string,
-    apiKey: string,
-    query: { imdbId: string } | { title: string },
-    context?: ExternalRequestContext,
+    baseUrl: string, apiKey: string, query: { imdbId: string } | { title: string }, context?: ExternalRequestContext,
   ): Promise<MTeamRelease[]> {
+    return (await this.searchMoviePage(baseUrl, apiKey, query, context)).releases;
+  }
+
+  async searchMoviePage(
+    baseUrl: string, apiKey: string, query: { imdbId: string } | { title: string },
+    context?: ExternalRequestContext, options: MTeamSearchOptions = {},
+  ): Promise<MTeamSearchPage> {
+    const page = options.page ?? 1;
+    if (!Number.isInteger(page) || page < 1 || page > 100) throw invalidSearchResponse();
     const execute = async () => {
       currentAiTrace()?.sensitive(apiKey);
       return retryMTeamSearch(async (attempt, operationId, parentSignal, remainingMs) => {
@@ -62,7 +70,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
             const address = addresses[0];
             if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
             return postJson(url, apiKey, address, {
-              pageNumber: 1, pageSize: 100, mode: 'movie', visible: 1,
+              pageNumber: page, pageSize: 100, mode: 'movie', visible: 1,
               sortField: 'SEEDERS', sortDirection: 'DESC',
               ...('imdbId' in query
                 ? { imdb: `https://www.imdb.com/title/${normalizeImdbId(query.imdbId)}/` }
@@ -82,10 +90,10 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
               : isPermissionFailure(payload) ? 'permission' : 'remote_error';
             throw new IntegrationValidationError(failureType, 'M-Team rejected the search request');
           }
-          return parseSearchReleases(payload);
+          return parseSearchPage(payload, page);
         }, { attempt, operationId }
         );
-      }, this.searchOptions
+      }, { ...this.searchOptions, ...(options.signal ? { signal: options.signal } : {}) }
       );
     };
     if (currentAiTrace()) return execute();
@@ -549,6 +557,15 @@ function isPermissionFailure(payload: unknown): boolean {
   return /permission|forbidden|權限|权限/.test(message);
 }
 
+export function parseSearchPage(payload: unknown, page: number): MTeamSearchPage {
+  const releases = parseSearchReleases(payload);
+  const data = (payload as { data?: unknown }).data;
+  const rawTotal = data && !Array.isArray(data) && typeof data === 'object' ? (data as { total?: unknown }).total : undefined;
+  const total = typeof rawTotal === 'number' || (typeof rawTotal === 'string' && /^\d+$/.test(rawTotal)) ? Number(rawTotal) : undefined;
+  const hasNext = total !== undefined && Number.isSafeInteger(total) && total >= 0 ? page * 100 < total : releases.length === 100;
+  return { releases, ...(hasNext && page < 100 ? { nextPage: page + 1 } : {}) };
+}
+
 export function parseSearchReleases(payload: unknown): MTeamRelease[] {
   if (!payload || typeof payload !== 'object') throw invalidSearchResponse();
   const data = (payload as { data?: unknown }).data;
@@ -585,6 +602,7 @@ function parseRelease(value: unknown): MTeamRelease {
   const videoCodec = describeCode(readString(row.videoCodec), videoCodecNames);
   const audioCodec = describeCode(readString(row.audioCodec), audioCodecNames);
   if (!id || !title) throw invalidSearchResponse();
+  const releaseGroup = releaseTitleMetadata(title).releaseGroup;
   const tags = Array.isArray(row.labelsNew)
     ? row.labelsNew
         .filter((tag): tag is string => {
@@ -609,6 +627,7 @@ function parseRelease(value: unknown): MTeamRelease {
     ...(medium ? { medium } : {}),
     ...(videoCodec ? { videoCodec } : {}),
     ...(audioCodec ? { audioCodec } : {}),
+    ...(releaseGroup ? { releaseGroup } : {}),
     ...(tags ? { tags } : {}),
   };
 }

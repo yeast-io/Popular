@@ -14,4 +14,4 @@ export type Page =
   | 'login'
   | 'register';
 
-export type SettingsSection = 'profile' | 'ai' | 'preferences' | 'downloads' | 'notifications';
+export type SettingsSection = 'profile' | 'ai' | 'preferences' | 'resources' | 'downloads' | 'notifications';

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import IntegrationDefaultAction from '../integrations/IntegrationDefaultAction.vue';
 import { t } from '../../i18n';
 import { getIntegrationLogo } from './integration-logos';
 
@@ -7,7 +8,7 @@ const props = defineProps<{
   id: string;
   title: string;
   badge: string;
-  description: string;
+  description?: string;
   statusLabel: string;
   statusClass: string;
   loading?: boolean;
@@ -18,6 +19,13 @@ const props = defineProps<{
   forceOpen?: boolean;
 }>();
 const emit = defineEmits<{ open: [] }>();
+const defaultCategory = computed(() => {
+  return ['mteam', 'hdarea'].includes(
+    props.id
+  ) ? 'resource' as const : ['qbittorrent', 'transmission'].includes(
+    props.id
+  ) ? 'downloader' as const : props.id === 'openai' ? 'ai' as const : undefined;
+});
 const expanded = ref(false);
 const logoFailed = ref(false);
 const logoSrc = computed(() => getIntegrationLogo(props.id));
@@ -61,8 +69,10 @@ function toggle() {
           <h3 :id="`${id}-title`">{{ title }}</h3>
           <span class="integration-status" :class="statusClass">{{ statusLabel }}</span>
         </div>
-        <p>{{ description }}</p>
+        <p v-if="description">{{ description }}</p>
       </div>
+      <IntegrationDefaultAction v-if="configured && defaultCategory" :id="id" :category="defaultCategory" :status="statusClass" :disabled="loading || busy" />
+      <slot name="actions" />
       <button
         class="integration-disclosure"
         type="button"

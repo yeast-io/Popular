@@ -88,3 +88,10 @@ test('concurrent requests keep trace context and sensitive values isolated', asy
   );
   assert.ok(logs.every((line) => String(line.stage).startsWith(String(line.requestId))));
 });
+
+test('torrent Passkeys are redacted from URL query strings and error messages', () => {
+  const error = new Error('Failed https://hdarea.club/download.php?id=123&passkey=private-passkey&x=1');
+  const text = JSON.stringify(serializeDiagnosticError(error));
+  assert.equal(text.includes('private-passkey'), false);
+  assert.equal(text.includes('[REDACTED]'), true);
+});

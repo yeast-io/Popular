@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { replacementSecret } from './integration-secret.domain';
 import IntegrationCard from '../settings/IntegrationCard.vue';
 import type { ApiError, IntegrationStatus, QBittorrentAuthMethod, QBittorrentConfiguration } from '@movie-hub/contract';
 import { computed, onMounted, ref } from 'vue';
@@ -45,12 +46,12 @@ async function testAndSave() {
   submitting.value = true;
   const body =
     authMethod.value === 'api_key'
-      ? { baseUrl: baseUrl.value.trim(), authMethod: 'api_key', ...(apiKey.value ? { apiKey: apiKey.value } : {}) }
+      ? { baseUrl: baseUrl.value.trim(), authMethod: 'api_key', ...(replacementSecret(apiKey.value, config.value.apiKeyMasked) ? { apiKey: replacementSecret(apiKey.value, config.value.apiKeyMasked) } : {}) }
       : {
           baseUrl: baseUrl.value.trim(),
           authMethod: 'username_password',
           username: username.value.trim(),
-          ...(password.value ? { password: password.value } : {}),
+          ...(replacementSecret(password.value, config.value.passwordMasked) ? { password: replacementSecret(password.value, config.value.passwordMasked) } : {}),
         };
   try {
     const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, {
@@ -62,8 +63,6 @@ async function testAndSave() {
     const result = (await response.json()) as QBittorrentConfiguration | ApiError;
     if (!response.ok) throw localizedApiError(result, 'errors.qbittorrentValidation');
     applyConfiguration(result as QBittorrentConfiguration);
-    apiKey.value = '';
-    password.value = '';
     successMessage.value = t('qbittorrent.saved');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.qbittorrentValidation');
@@ -114,6 +113,8 @@ async function deleteConfiguration() {
 
 function applyConfiguration(next: QBittorrentConfiguration) {
   config.value = next;
+  apiKey.value = next.apiKeyMasked ?? '';
+  password.value = next.passwordMasked ?? '';
   baseUrl.value = next.baseUrl ?? 'http://localhost:8080';
   authMethod.value = next.authMethod ?? 'api_key';
   username.value = next.username ?? '';
@@ -122,13 +123,13 @@ function applyConfiguration(next: QBittorrentConfiguration) {
 function canSubmit(): boolean {
   if (!baseUrl.value.trim()) return false;
   if (authMethod.value === 'api_key') {
-    return Boolean(apiKey.value) || (configured.value && config.value.authMethod === 'api_key');
+    return Boolean(replacementSecret(apiKey.value, config.value.apiKeyMasked)) || (configured.value && config.value.authMethod === 'api_key');
   }
   const canRetainPassword =
     configured.value &&
     config.value.authMethod === 'username_password' &&
     config.value.username === username.value.trim();
-  return Boolean(username.value.trim()) && (Boolean(password.value) || canRetainPassword);
+  return Boolean(username.value.trim()) && (Boolean(replacementSecret(password.value, config.value.passwordMasked)) || canRetainPassword);
 }
 </script>
 
@@ -137,7 +138,6 @@ function canSubmit(): boolean {
     id="qbittorrent"
     :title="t('qbittorrent.title')"
     badge="qB"
-    :description="t('settings.qbittorrentSummary')"
     :status-label="statusLabel"
     :status-class="config.status"
     :configured="configured"
@@ -209,11 +209,12 @@ function canSubmit(): boolean {
             <input
               id="qbittorrent-api-key"
               v-model="apiKey"
-              type="password"
+              :type="config.apiKeyMasked && apiKey === config.apiKeyMasked ? 'text' : 'password'"
               maxlength="4096"
               autocomplete="new-password"
               :placeholder="configured ? t('qbittorrent.keepSecret') : ''"
             />
+            <small v-if="config.apiKeyMasked">{{ t('settings.credentialLength', { length: Array.from(config.apiKeyMasked).length }) }}</small>
           </label>
           <template v-else>
             <label for="qbittorrent-username">
@@ -225,11 +226,12 @@ function canSubmit(): boolean {
               <input
                 id="qbittorrent-password"
                 v-model="password"
-                type="password"
+                :type="config.passwordMasked && password === config.passwordMasked ? 'text' : 'password'"
                 maxlength="4096"
                 autocomplete="new-password"
                 :placeholder="configured ? t('qbittorrent.keepSecret') : ''"
               />
+            <small v-if="config.passwordMasked">{{ t('settings.credentialLength', { length: Array.from(config.passwordMasked).length }) }}</small>
             </label>
           </template>
         </div>

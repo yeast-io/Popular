@@ -13,21 +13,21 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     if (tmdbIds.length === 0) return [];
     const [rows, tasks] = await Promise.all([
       this.checks
-        .find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam' })
+        .find({ ownerId, tmdbId: { $in: tmdbIds } })
         .lean()
         .exec(),
       this.tasks
-        .find({ ownerId, tmdbId: { $in: tmdbIds }, provider: 'mteam', leaseExpiresAt: { $gt: new Date() } })
+        .find({ ownerId, tmdbId: { $in: tmdbIds }, leaseExpiresAt: { $gt: new Date() } })
         .lean()
         .exec(),
     ]);
-    const checkingIds = new Set(tasks.map((task) => task.tmdbId));
+    const checkingIds = new Set(tasks.map((task) => `${task.tmdbId}:${task.provider}`));
     const results: MovieResourceCheckRecord[] = rows.map((row) => {
       return {
         ownerId: String(row.ownerId),
         tmdbId: row.tmdbId,
-        provider: 'mteam',
-        checking: checkingIds.has(row.tmdbId),
+        provider: row.provider,
+        checking: checkingIds.has(`${row.tmdbId}:${row.provider}`),
         availability: row.availability ?? 'unchecked',
         ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),
         ...(row.checkedAt ? { checkedAt: row.checkedAt } : {}),
@@ -38,10 +38,10 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
         ...(row.identityFingerprint ? { identityFingerprint: row.identityFingerprint } : {}),
       };
     });
-    const resultIds = new Set(results.map((result) => result.tmdbId));
+    const resultIds = new Set(results.map((result) => `${result.tmdbId}:${result.provider}`));
     for (const task of tasks) {
-      if (!resultIds.has(task.tmdbId)) {
-        results.push({ ownerId, tmdbId: task.tmdbId, provider: 'mteam', checking: true, availability: 'unchecked' });
+      if (!resultIds.has(`${task.tmdbId}:${task.provider}`)) {
+        results.push({ ownerId, tmdbId: task.tmdbId, provider: task.provider, checking: true, availability: 'unchecked' });
       }
     }
     return results;
@@ -61,7 +61,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     return {
       ownerId: String(row.ownerId),
       tmdbId: row.tmdbId,
-      provider: 'mteam',
+      provider: row.provider,
       checking: Boolean(task),
       availability: row.availability ?? 'unchecked',
       ...(row.matchedBy ? { matchedBy: row.matchedBy } : {}),

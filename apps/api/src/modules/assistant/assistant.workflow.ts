@@ -393,8 +393,12 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
       return this.options.downloads!.providersFor(input.ownerId);
     });
     session.stage = 'await_provider';
-    if (session.providers.length !== 1) return this.downloadReply(downloadProvidersText(turn.locale, session.selection?.title ?? '', session.providers ?? []));
-    session.provider = session.providers[0]!;
+    const preferred = action.provider ?? await aiStep('assistant.download.default', async () => {
+      return this.options.downloads!.defaultProviderFor?.(input.ownerId);
+    });
+    if (preferred && session.providers.includes(preferred)) session.provider = preferred;
+    else if (session.providers.length === 1) session.provider = session.providers[0]!;
+    else return this.downloadReply(downloadProvidersText(turn.locale, session.selection?.title ?? '', session.providers ?? []));
     session.stage = 'submitting';
     session.submissionEventId = turn.eventId;
     return undefined;

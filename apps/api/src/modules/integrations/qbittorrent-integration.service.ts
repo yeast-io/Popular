@@ -1,3 +1,6 @@
+import type { IntegrationPreferencesService } from './integration-preferences.service.js';
+import { maskIntegrationSecret } from '@movie-hub/contract';
+import { replacementSecret } from './integration-secret.domain.js';
 import type { IntegrationFailureType, QBittorrentConfiguration, SaveQBittorrentConfigurationRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
@@ -6,6 +9,7 @@ import { SecretCrypto } from './secret-crypto.js';
 import type { QBittorrentClientPort, QBittorrentConfigRecord, QBittorrentConfigStore, QBittorrentCredential } from './qbittorrent.types.js';
 
 export class QBittorrentIntegrationService {
+  preferences?: IntegrationPreferencesService;
   constructor(
     private readonly auth: AuthService,
     private readonly configs: QBittorrentConfigStore,
@@ -15,7 +19,7 @@ export class QBittorrentIntegrationService {
   ) {}
 
   async get(token: string | undefined): Promise<QBittorrentConfiguration> {
-    return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)));
+    return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)), this.secrets);
   }
 
   async save(token: string | undefined, input: SaveQBittorrentConfigurationRequest): Promise<QBittorrentConfiguration> {
@@ -42,7 +46,8 @@ export class QBittorrentIntegrationService {
       verifiedAt: attemptedAt,
       lastValidationAt: attemptedAt,
     });
-    return toResponse(saved);
+    await this.preferences?.configured(ownerId, 'downloader', 'qbittorrent');
+    return toResponse(saved, this.secrets);
   }
 
   async retest(token: string | undefined): Promise<QBittorrentConfiguration> {
@@ -58,7 +63,7 @@ export class QBittorrentIntegrationService {
           version,
           verifiedAt: attemptedAt,
           lastValidationAt: attemptedAt,
-        }),
+        }), this.secrets,
       );
     } catch (error) {
       await this.configs.recordFailure(ownerId, attemptedAt, failureTypeOf(error));
@@ -67,7 +72,10 @@ export class QBittorrentIntegrationService {
   }
 
   async delete(token: string | undefined): Promise<void> {
-    await this.configs.delete(await this.auth.requireOwnerId(token));
+    const ownerId = await this.auth.requireOwnerId(token);
+    await this.preferences?.beforeDelete(ownerId, 'downloader', 'qbittorrent');
+    await this.configs.delete(ownerId);
+    await this.preferences?.deleted(ownerId, 'downloader', 'qbittorrent');
   }
 }
 
@@ -110,13 +118,13 @@ function credentialFromInput(
 ): QBittorrentCredential {
   const prior = existing?.authMethod === input.authMethod ? decryptCredential(existing, secrets) : null;
   if (input.authMethod === 'api_key') {
-    const apiKey = input.apiKey?.trim() || (prior?.authMethod === 'api_key' ? prior.apiKey : '');
+    const apiKey = replacementSecret(input.apiKey, prior?.authMethod === 'api_key' ? prior.apiKey : undefined)?.trim() || (prior?.authMethod === 'api_key' ? prior.apiKey : '');
     if (!apiKey) throw new AppError(400, 'VALIDATION_ERROR', 'API key is required');
     return { authMethod: 'api_key', apiKey };
   }
   const username = input.username.trim();
   const password =
-    input.password || (prior?.authMethod === 'username_password' && prior.username === username ? prior.password : '');
+    replacementSecret(input.password, prior?.authMethod === 'username_password' ? prior.password : undefined) || (prior?.authMethod === 'username_password' && prior.username === username ? prior.password : '');
   if (!password) throw new AppError(400, 'VALIDATION_ERROR', 'Password is required');
   return { authMethod: 'username_password', username, password };
 }
@@ -136,10 +144,12 @@ export function qbittorrentAppError(error: unknown, message: string): AppError {
   return new AppError(502, 'QBITTORRENT_UNEXPECTED_RESPONSE', message);
 }
 
-function toResponse(record: QBittorrentConfigRecord | null): QBittorrentConfiguration {
+function toResponse(record: QBittorrentConfigRecord | null, secrets: SecretCrypto): QBittorrentConfiguration {
   if (!record) return { provider: 'qbittorrent', status: 'unconfigured' };
+  const credential = decryptCredential(record, secrets);
   return {
     provider: 'qbittorrent',
+    ...(credential.authMethod === 'api_key' ? { apiKeyMasked: maskIntegrationSecret(credential.apiKey) } : { passwordMasked: maskIntegrationSecret(credential.password) }),
     status: record.lastFailureType
       ? 'configured_invalid'
       : record.verifiedAt

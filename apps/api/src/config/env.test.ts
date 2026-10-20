@@ -216,3 +216,15 @@ test('validates experimental page switches as explicit booleans', () => {
     assert.throws(() => loadConfig({ ...valid, [field]: 'yes' }), new RegExp(field));
   }
 });
+
+test('resource site domains are configurable HTTPS origins with no embedded secrets or paths', () => {
+  const config = loadConfig(
+    { ...valid, HDAREA_BASE_URL: 'https://new-hdarea.example/', MTEAM_BASE_URL: 'https://api.new-mteam.example', MTEAM_WEB_BASE_URL: 'https://new-mteam.example/' }
+  );
+  assert.equal(config.HDAREA_BASE_URL, 'https://new-hdarea.example');
+  assert.equal(config.MTEAM_BASE_URL, 'https://api.new-mteam.example');
+  assert.equal(config.MTEAM_WEB_BASE_URL, 'https://new-mteam.example');
+  for (const value of ['http://site.example', 'https://user:secret@site.example', 'https://site.example?passkey=secret', 'https://site.example/download.php', 'https://site.example:8443']) {
+    assert.throws(() => loadConfig({ ...valid, HDAREA_BASE_URL: value }), InvalidEnvironmentError);
+  }
+});

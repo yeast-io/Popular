@@ -1291,6 +1291,8 @@ label small {
   backdrop-filter: blur(5px);
 }
 .release-panel {
+  border-radius: 16px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   width: min(880px, 100%);
@@ -1571,6 +1573,13 @@ label small {
   width: 100%;
   height: 7px;
   accent-color: var(--amber);
+}
+.release-download-progress.missing {
+  border-left-color: #777;
+  background: rgba(160, 160, 160, 0.06);
+}
+.release-download-progress.missing > div {
+  margin-bottom: 0;
 }
 .release-download-progress.downloading {
   border-left-color: #62c98c;
@@ -4045,4 +4054,60 @@ body:has(.settings-page)::after {
 
 .connection-card-notice {
   margin: 16px 0 0;
+}
+
+/* Resource source selection and per-site release groups. */
+.resource-check-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; border: 1px solid #ffffff14; border-radius: 8px; padding: 6px 10px; background: #ffffff03; min-height: 44px; }
+.resource-check-panel > .resource-toolbar-badge { position: static; flex: 0 0 auto; max-width: 100%; box-shadow: none; font-size: .65rem; }
+.resource-site-selector { flex: 1; min-width: 0; font-size: .75rem; }
+.resource-site-options { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.resource-site-icons { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.resource-site-tile { position: relative; line-height: 0; }
+.resource-site-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #969d95; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+.resource-site-toggle.is-selected { border-color: #e7a05b80; color: #efa457; background: #efa4570a; }
+.resource-site-toggle:hover:enabled { color: #e4e8e1; background: #ffffff08; }
+.resource-site-toggle:disabled { opacity: .4; cursor: default; }
+.resource-site-toggle:focus-visible { outline: 2px solid #efa457; outline-offset: 2px; }
+.resource-site-outline { display: block; width: 18px; height: 18px; mask: var(--resource-outline) center / contain no-repeat; background: currentColor; }
+.resource-site-tooltip { position: absolute; z-index: 15; top: calc(100% + 8px); left: 0; width: max-content; max-width: min(260px, 65vw); padding: 8px 10px; border: 1px solid #ffffff1c; border-radius: 6px; background: #1b1e1c; color: #d1d6ce; box-shadow: 0 8px 24px #0006; font-size: .72rem; line-height: 1.6; pointer-events: none; visibility: hidden; opacity: 0; transition: opacity .15s; }
+.resource-site-tile:hover .resource-site-tooltip, .resource-site-tile:focus-within .resource-site-tooltip { visibility: visible; opacity: 1; }
+.resource-toolbar-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.resource-check-panel .resource-status-button { display: inline-flex; align-items: center; gap: 4px; margin: 0; padding: 4px 0; font-size: .72rem; white-space: nowrap; text-decoration: none; color: #a8bdb0; }
+.resource-check-panel .resource-status-button:hover:enabled { color: #d8e6dc; }
+.resource-site-selector > .error { margin: 6px 0 0; font-size: .72rem; }
+@media (prefers-reduced-motion: reduce) {
+  .resource-site-toggle, .resource-site-tooltip { transition: none; }
+}
+@media (max-width: 420px) {
+  .resource-check-panel > .resource-site-selector { flex-basis: 100%; }
+}
+.release-site-group { border-top: 1px solid #303334; }
+.release-site-group > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; cursor: pointer; padding: 16px 4px; }
+.release-site-group > summary::before { content: '▸'; color: #f5ba2b; }
+.release-site-group[open] > summary::before { content: '▾'; }
+.release-site-group > summary > .release-site-status { margin-left: auto; color: #a7aaa4; font-size: .8rem; }
+.release-site-group > summary::-webkit-details-marker { display: none; }
+.release-site-content { padding: 0 4px 16px; }
+.release-query-time { color: #989c96; font-size: .75rem; }
+.release-downloader-select { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 0; border-bottom: 1px solid #ffffff14; color: #a7aaa4; font-size: .78rem; }
+.release-downloader-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.release-downloader-option { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 11px; border: 1px solid #ffffff20; border-radius: 6px; background: #ffffff03; color: #b7bcb3; font-size: .78rem; cursor: pointer; }
+.release-downloader-option img { width: 18px; height: 18px; object-fit: contain; }
+.release-downloader-option small { color: #8e958a; font-size: .65rem; }
+.release-downloader-option.is-selected { border-color: #efa45780; background: #efa4570a; color: #efa457; }
+.release-downloader-option:hover:enabled { border-color: #efa45780; color: #f3c08d; }
+.release-downloader-option:focus-visible, .release-site-refresh:focus-visible { outline: 2px solid #efa457; outline-offset: 3px; }
+.release-site-refresh { border: 1px solid #ffffff20; border-radius: 5px; padding: 5px 9px; background: transparent; color: #aab2a5; font-size: .7rem; cursor: pointer; }
+.release-site-refresh:hover:enabled { border-color: #efa45780; color: #efa457; }
+.integration-default-badge { display: inline-flex; align-items: center; padding: 3px 8px; border: 1px solid #685724; border-radius: 999px; color: #edc569; background: transparent; font-size: .72rem; font-weight: 400; line-height: 1.4; white-space: nowrap; }
+.integration-default-action { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.integration-default-button { border-color: #ffffff29; color: #a5ada1; }
+.integration-default-button:hover:enabled { border-color: #efa45780; color: #efa457; background: #efa45708; }
+.integration-default-button:focus-visible { outline: 2px solid #efa457; outline-offset: 3px; }
+.integration-default-button:disabled { opacity: .45; cursor: not-allowed; }
+.integration-default-action .error { max-width: 180px; font-size: .72rem; }
+.resource-batch-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+@media (max-width: 600px) {
+  .release-panel { border-radius: 12px; }
+  .connection-card-heading { flex-wrap: wrap; }
 }

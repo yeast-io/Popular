@@ -8,6 +8,8 @@ const { apiBaseUrl } = loadWebConfig();
 const { t } = useI18n();
 const profile = ref<TasteProfileResponse | null>(null);
 const drafts = ref<Record<string, string>>({});
+const expandedEntries = ref<string[]>([]);
+let entryExpansionInitialized = false;
 const busy = ref(false);
 const error = ref('');
 const confirmClear = ref(false);
@@ -15,6 +17,17 @@ const removeId = ref<string | null>(null);
 const versionDialog = ref<HTMLDialogElement | null>(null);
 const selectedRevision = ref<TasteRevision | null>(null);
 let versionTrigger: HTMLElement | null = null;
+function entryNumber(section: 'explicit' | 'inferred', index: number) {
+  const offset = section === 'inferred' ? profile.value?.entries.filter((entry) => {
+    return entry.section === 'explicit';
+  }).length ?? 0 : 0;
+  return offset + index + 1;
+}
+function toggleEntry(id: string) {
+  expandedEntries.value = expandedEntries.value.includes(id)
+    ? expandedEntries.value.filter((entryId) => entryId !== id)
+    : [...expandedEntries.value, id];
+}
 async function openVersion(revision: TasteRevision, event: MouseEvent) {
   versionTrigger = event.currentTarget as HTMLElement;
   selectedRevision.value = revision;
@@ -59,6 +72,13 @@ async function request(method = 'GET', action?: Record<string, unknown>, generat
     const result = (await response.json()) as TasteProfileResponse;
     if (stopped || id !== sequence) return;
     profile.value = result;
+    if (!entryExpansionInitialized && result.entries.length) {
+      const first = result.entries.find((entry) => entry.section === 'explicit') ?? result.entries[0]!;
+      expandedEntries.value = [first.id];
+      entryExpansionInitialized = true;
+    } else expandedEntries.value = expandedEntries.value.filter((id) => {
+      return result.entries.some((entry) => entry.id === id);
+    });
     for (const entry of result.entries)
       if (drafts.value[entry.id] === undefined || method !== 'GET') drafts.value[entry.id] = entry.content;
     confirmClear.value = false;
@@ -179,52 +199,74 @@ onBeforeUnmount(() => {
           <h3>
             {{ t(`preferences.${section}`) }}
             <span class="preference-count">{{
-              profile.entries.filter((item) => item.section === section).length
+              t('preferences.entryCount', { count: profile.entries.filter((item) => item.section === section).length })
             }}</span>
           </h3>
           <p v-if="section === 'inferred'" class="preference-inference-hint">{{ t('preferences.inferenceHint') }}</p>
           <article
-            v-for="entry in profile.entries.filter((item) => item.section === section)"
+            v-for="(entry, index) in profile.entries.filter((item) => item.section === section)"
             :key="entry.id"
             class="preference-entry"
+            :class="{ 'is-expanded': expandedEntries.includes(entry.id) }"
           >
-            <label :for="`preference-${entry.id}`">{{ t('preferences.content') }}</label>
-            <textarea :id="`preference-${entry.id}`" v-model="drafts[entry.id]" maxlength="500" rows="3" />
-            <div class="preference-entry-meta">
-              <small>{{ t('preferences.sources') }}：{{ entry.evidenceRefs.join(' · ') }}</small>
-              <small
-                >{{ formatDate(entry.updatedAt) }} · {{ t('preferences.version', { version: profile.version }) }}</small
-              >
-            </div>
-            <div class="preference-actions">
-              <button
-                class="secondary"
-                type="button"
-                :disabled="busy || !drafts[entry.id]?.trim() || drafts[entry.id] === entry.content"
-                @click="request('PATCH', { entryId: entry.id, content: drafts[entry.id] })"
-              >
-                {{ t('preferences.save') }}
-              </button>
-              <button
-                v-if="removeId !== entry.id"
-                class="secondary danger"
-                type="button"
-                :disabled="busy"
-                @click="removeId = entry.id"
-              >
-                {{ t('preferences.remove') }}
-              </button>
-              <template v-else>
-                <button
-                  class="secondary danger"
-                  type="button"
-                  :disabled="busy"
-                  @click="request('PATCH', { entryId: entry.id })"
-                >
-                  {{ t('preferences.confirmRemove') }}
-                </button>
-                <button class="secondary" type="button" @click="removeId = null">{{ t('preferences.cancel') }}</button>
-              </template>
+            <button
+              type="button" class="preference-entry-summary"
+              :aria-expanded="expandedEntries.includes(entry.id)"
+              :aria-controls="`preference-entry-panel-${entry.id}`"
+              @click="toggleEntry(entry.id)"
+            >
+              <span class="sr-only">{{ t('preferences.entryLabel', { number: entryNumber(section, index) }) }}</span>
+              <span class="preference-entry-number" aria-hidden="true">{{ entryNumber(section, index) }}</span>
+              <span class="preference-entry-preview" :aria-hidden="expandedEntries.includes(entry.id)">{{ drafts[entry.id]?.trim() || entry.content }}</span>
+            </button>
+            <div
+              :id="`preference-entry-panel-${entry.id}`" class="preference-entry-reveal"
+              :aria-hidden="!expandedEntries.includes(entry.id)" :inert="!expandedEntries.includes(entry.id)"
+            >
+              <div class="preference-entry-clip">
+                <div class="preference-entry-content">
+                  <label :for="`preference-${entry.id}`" class="preference-entry-label">
+                    <span class="sr-only">{{ t('preferences.entryLabel', { number: entryNumber(section, index) }) }}</span>
+                  </label>
+                  <textarea :id="`preference-${entry.id}`" v-model="drafts[entry.id]" maxlength="500" rows="3" />
+                  <div class="preference-entry-meta">
+                    <small>{{ t('preferences.sources') }}：{{ entry.evidenceRefs.join(' · ') }}</small>
+                    <small
+                      >{{ formatDate(entry.updatedAt) }} · {{ t('preferences.version', { version: profile.version }) }}</small
+                    >
+                  </div>
+                  <div class="preference-actions">
+                    <button
+                      class="secondary"
+                      type="button"
+                      :disabled="busy || !drafts[entry.id]?.trim() || drafts[entry.id] === entry.content"
+                      @click="request('PATCH', { entryId: entry.id, content: drafts[entry.id] })"
+                    >
+                      {{ t('preferences.save') }}
+                    </button>
+                    <button
+                      v-if="removeId !== entry.id"
+                      class="secondary danger"
+                      type="button"
+                      :disabled="busy"
+                      @click="removeId = entry.id"
+                    >
+                      {{ t('preferences.remove') }}
+                    </button>
+                    <template v-else>
+                      <button
+                        class="secondary danger"
+                        type="button"
+                        :disabled="busy"
+                        @click="request('PATCH', { entryId: entry.id })"
+                      >
+                        {{ t('preferences.confirmRemove') }}
+                      </button>
+                      <button class="secondary" type="button" @click="removeId = null">{{ t('preferences.cancel') }}</button>
+                    </template>
+                  </div>
+                </div>
+              </div>
             </div>
           </article>
         </section>
@@ -514,8 +556,7 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 .preference-entry {
-  display: grid;
-  gap: 10px;
+  display: block;
   margin-top: 12px;
   padding: 16px;
   border: 1px solid #ffffff12;
@@ -526,6 +567,19 @@ onBeforeUnmount(() => {
   color: #b8bab3;
   font-size: 0.73rem;
 }
+.preference-entry-summary { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.preference-entry-summary::after { content: ''; flex: 0 0 6px; width: 6px; height: 6px; margin-left: auto; border-right: 1px solid #969d92; border-bottom: 1px solid #969d92; transform: rotate(45deg); transition: transform 260ms ease; }
+.preference-entry.is-expanded > .preference-entry-summary::after { transform: rotate(225deg); }
+.preference-entry-summary:focus-visible { outline: 2px solid #ef795f; outline-offset: 5px; border-radius: 3px; }
+.preference-entry-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c6cbc0; font-size: .8rem; line-height: 1.6; opacity: 1; visibility: visible; transform: translateY(0); transition: opacity 160ms ease, transform 240ms ease, visibility 160ms; transition-delay: 100ms; }
+.preference-entry.is-expanded .preference-entry-preview { opacity: 0; visibility: hidden; transform: translateY(-3px); transition-delay: 0ms; }
+.preference-entry-reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 280ms cubic-bezier(.22, .68, 0, 1), opacity 160ms ease; }
+.preference-entry.is-expanded .preference-entry-reveal { grid-template-rows: 1fr; opacity: 1; transition-delay: 0ms, 80ms; }
+.preference-entry-clip { min-height: 0; overflow: hidden; }
+.preference-entry-content { display: grid; gap: 10px; padding-top: 12px; }
+.preference-entry-label { position: absolute; }
+.preference-entry-number { flex-shrink: 0; }
+.preference-entry-number { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; box-sizing: border-box; border: 1px solid #efa45740; border-radius: 50%; background: #efa45718; color: #efa457; font-size: .7rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .preference-entry textarea {
   box-sizing: border-box;
   width: 100%;
@@ -727,9 +781,12 @@ onBeforeUnmount(() => {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .preference-entry-preview,
+  .preference-entry-reveal,
+  .preference-entry-summary::after,
   .preference-switch-track,
   .preference-switch-track::after {
-    transition: none;
+    transition: none !important;
   }
 }
 </style>

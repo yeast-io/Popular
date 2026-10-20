@@ -2,7 +2,16 @@ import type { ApiError, ErrorCode } from '@movie-hub/contract';
 import { t } from './index';
 import type { TranslationKey } from './translation.types';
 
+const resourceSiteErrorKeys = {
+  passkeyRequired: 'resourceSite.error.passkeyRequired',
+  authentication: 'resourceSite.error.authentication', blocked: 'resourceSite.error.blocked',
+  rateLimited: 'resourceSite.error.rateLimited', invalidResponse: 'resourceSite.error.invalidResponse',
+  network: 'resourceSite.error.network', timeout: 'resourceSite.error.timeout', invalidCredential: 'resourceSite.error.invalidCredential',
+} as const;
+
 const errorKeys = {
+  INTEGRATION_DEFAULT_REPLACEMENT_REQUIRED: 'integrationDefaults.replacementRequired',
+  INTEGRATION_DEFAULT_INVALID: 'integrationDefaults.invalid',
   INSUFFICIENT_MOVIE_RATINGS: 'preferences.insufficient',
   PREFERENCE_VERSION_CONFLICT: 'preferences.conflict',
   OPENAI_NOT_CONFIGURED: 'openai.required',
@@ -21,6 +30,8 @@ const errorKeys = {
   TRENDING_NOT_SYNCED: 'errors.trendingNotSynced',
   TRENDING_SYNC_IN_PROGRESS: 'errors.trendingSyncInProgress',
   INTEGRATION_VALIDATION_FAILED: 'errors.mteamValidation',
+  RESOURCE_SITE_NOT_CONFIGURED: 'resourceSite.error.notConfigured',
+  RESOURCE_SITE_FAILED: 'resourceSite.error.invalidResponse',
   MTEAM_NOT_CONFIGURED: 'errors.mteamNotConfigured',
   MTEAM_INVALID_URL: 'errors.mteamInvalidUrl',
   MTEAM_AUTH_FAILED: 'errors.mteamAuthFailed',
@@ -60,7 +71,11 @@ export class LocalizedApiError extends Error {
 }
 
 export function apiErrorKey(value: unknown, fallback: TranslationKey = 'errors.unknown'): TranslationKey {
-  const code = (value as Partial<ApiError> | null)?.error?.code;
+  const error = (value as Partial<ApiError> | null)?.error;
+  const code = error?.code;
+  const reason = (error?.details as { reason?: unknown } | undefined)?.reason;
+  if (code === 'RESOURCE_SITE_FAILED' && typeof reason === 'string' && Object.hasOwn(resourceSiteErrorKeys, reason))
+    return resourceSiteErrorKeys[reason as keyof typeof resourceSiteErrorKeys];
   return code && code in errorKeys ? errorKeys[code as ErrorCode] : fallback;
 }
 

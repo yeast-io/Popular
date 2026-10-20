@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { MovieStatusStore } from '../movies/movie.types.js';
-import type { MovieResourceCheckService } from './movie-resource-check.service.js';
+import type { MovieResourceBatchChecker } from './movie-site-resources.types.js';
 import type { MovieResourceCheckExecution } from './movie-resource-check.types.js';
 import type { MovieResourceCheckRecord, MovieResourceCheckStore } from './movie-resource-check.types.js';
 import { MovieResourceSyncService } from './movie-resource-sync.service.js';
@@ -14,13 +14,14 @@ class MemoryBatchStore implements MovieResourceSyncBatchStore {
   creates = 0;
   pauses = 0;
 
-  async createOrGetActive(ownerId: string, movieIds: number[], force: boolean) {
+  async createOrGetActive(ownerId: string, movieIds: number[], force: boolean, _now?: Date, sites?: string[]) {
     if (this.batch && ['queued', 'running', 'paused'].includes(this.batch.status)) return this.batch;
     this.creates += 1;
     this.batch = {
       id: `batch-${this.creates}`,
       ownerId,
       movieIds,
+      ...(sites ? { sites: [...sites] } : {}),
       cursor: 0,
       force,
       rateLimitRetries: 0,
@@ -95,7 +96,7 @@ function harness(
       callCounts.set(tmdbId, count);
       return execute(tmdbId, count);
     },
-  } as unknown as MovieResourceCheckService;
+  } as unknown as MovieResourceBatchChecker;
   const batches = new MemoryBatchStore();
   const waits: number[] = [];
   const service = new MovieResourceSyncService(
@@ -112,7 +113,7 @@ function harness(
       await new Promise((resolve) => setTimeout(resolve, milliseconds));
     },
   );
-  return { batches, calls, service, waits };
+  return { batches, calls, service, waits, checker };
 }
 
 test('sync includes only never checked movies and movies last checked more than 30 days ago', async () => {
@@ -301,4 +302,29 @@ test('shutdown cancels queued batch timers and preserves batches for startup rec
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(h.calls.length, 0);
   assert.equal(h.batches.batch?.status, 'queued');
+});
+
+
+test('multi-site batches persist the launch selection and include a film whose other source has not been checked', async () => {
+  const f = harness(
+    [successful(1, 'available', now)],
+    () => ({ started: true, result: { lastAttemptStatus: 'error', lastErrorCode: 'remote_error' } }),
+    undefined,
+    [1]
+  );
+  let selected = ['mteam', 'hdarea'];
+  const observed: string[][] = [];
+  f.checker.selectedSites = async () => selected;
+  f.checker.checkNowDetailed = async (_owner, _movie, _force, sites) => {
+    observed.push([...(sites ?? [])]);
+    return { started: true, result: { lastAttemptStatus: 'error', lastErrorCode: 'authentication' } };
+  };
+  await f.service.start('owner-a');
+  selected = ['hdarea'];
+  await eventually(() => f.batches.batch?.status === 'completed');
+  assert.deepEqual(f.batches.batch?.movieIds, [1]);
+  assert.deepEqual(f.batches.batch?.sites, ['mteam', 'hdarea']);
+  assert.deepEqual(observed, [['mteam', 'hdarea']]);
+  assert.equal(f.batches.batch?.failed, 1);
+  await f.service.stop();
 });

@@ -8,7 +8,10 @@ import MovieDetail from './MovieDetail.vue';
 async function setup(
   providers: DownloadProvider[],
   options: {
+    locale?: 'en-US' | 'zh-CN';
+    progress?: number;
     fail?: boolean;
+    defaultProvider?: DownloadProvider;
     providersFail?: boolean;
     retry?: DownloadProvider;
     status?: MovieDownload['status'];
@@ -16,7 +19,7 @@ async function setup(
     postResponse?: Promise<Response>;
   } = {},
 ) {
-  setLocale('en-US');
+  setLocale(options.locale ?? 'en-US');
   const posts: { sourceReleaseId: string; provider: DownloadProvider }[] = [];
   const existing =
     options.retry || options.status
@@ -28,7 +31,7 @@ async function setup(
             sourceReleaseId: '991',
             provider: options.retry ?? 'transmission',
             status: options.status ?? 'failed',
-            progress: 0,
+            progress: options.progress ?? 0,
           },
         ]
       : [];
@@ -36,6 +39,12 @@ async function setup(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+        if (url.endsWith('/me/integration-preferences')) return Response.json({
+          defaults: { resource: 'mteam', ...(options.defaultProvider ? { downloader: options.defaultProvider } : {}) }, selectedSites: [], effectiveSites: ['mteam'],
+          choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
+        }
+        );
+
       if (url.endsWith('/download-providers'))
         return options.providersFail ? new Response(null, { status: 503 }) : Response.json({ providers });
       if (url.endsWith('/resources/mteam/releases'))
@@ -52,7 +61,7 @@ async function setup(
           ],
         }
         );
-      if (url.endsWith('/resources/mteam'))
+      if (url.endsWith('/resources'))
         return Response.json({ provider: 'mteam', checking: false, availability: 'available' });
       if (url.endsWith('/downloads') && init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
@@ -225,12 +234,29 @@ describe('download provider selection', () => {
   it('keeps retries on their original downloader', async () => {
     const f = await setup(['qbittorrent', 'transmission'], { retry: 'transmission' });
     await f.clickDownload();
-    const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
-    expect(dialog.querySelector<HTMLInputElement>('input[value="qbittorrent"]')?.disabled).toBe(true);
-    expect(dialog.querySelector<HTMLInputElement>('input[value="transmission"]')?.checked).toBe(true);
-    dialog.querySelector<HTMLButtonElement>('.primary')!.click();
-    await flushPromises();
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
     expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission' }]);
     f.wrapper.unmount();
   });
+});
+
+afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; document.body.style.overflow = ''; });
+
+it.each(['en-US', 'zh-CN'] as const)('shows a neutral missing task without stale progress and permits explicit redownload in %s', async (locale) => {
+  const f = await setup(['qbittorrent'], { locale, retry: 'qbittorrent', status: 'missing', progress: 2 });
+  const card = document.body.querySelector<HTMLElement>('.release-card')!;
+  const status = card.querySelector<HTMLElement>('[role="status"]')!;
+  expect(card.classList.contains('is-download-failed')).toBe(false);
+  expect(card.classList.contains('is-download-active')).toBe(false);
+  expect(status.classList.contains('missing')).toBe(true);
+  expect(status.textContent).toContain(locale === 'zh-CN' ? '下载器中不存在该任务' : 'Task is missing from the downloader');
+  expect(status.textContent).not.toContain('2%');
+  expect(status.querySelector('progress')).toBeNull();
+  expect(card.querySelector('.release-download-button')?.textContent).toContain(
+    locale === 'zh-CN' ? '重新下载' : 'Download again'
+  );
+  expect(f.posts).toEqual([]);
+  await f.clickDownload();
+  expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'qbittorrent' }]);
+  f.wrapper.unmount();
 });

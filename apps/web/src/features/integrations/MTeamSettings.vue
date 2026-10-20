@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { replacementSecret } from './integration-secret.domain';
+import SourceConfigurationActions from './SourceConfigurationActions.vue';
 import IntegrationCard from '../settings/IntegrationCard.vue';
 import { MTEAM_DEFAULT_BASE_URL, MTEAM_DEFAULT_WEB_BASE_URL, type ApiError, type IntegrationFailureType, type IntegrationStatus, type MTeamConfiguration } from '@movie-hub/contract';
 import { computed, onMounted, ref } from 'vue';
@@ -6,6 +8,7 @@ import { loadWebConfig } from '../../config/env';
 import { formatDate, t } from '../../i18n';
 import { localizedApiError, localizedErrorMessage } from '../../i18n/api-error';
 
+const emit = defineEmits<{ 'configuration-changed': [] }>();
 const { apiBaseUrl } = loadWebConfig();
 const config = ref<MTeamConfiguration>({ provider: 'mteam', status: 'unconfigured' });
 const baseUrl = ref(MTEAM_DEFAULT_BASE_URL);
@@ -62,7 +65,7 @@ async function testAndSave() {
         body: JSON.stringify({
           baseUrl: baseUrl.value.trim(),
           webBaseUrl: webBaseUrl.value.trim(),
-          ...(apiKey.value ? { apiKey: apiKey.value } : {}),
+          ...(replacementSecret(apiKey.value, config.value.apiKeyMasked) ? { apiKey: replacementSecret(apiKey.value, config.value.apiKeyMasked) } : {}),
         }),
       },
       ACTION_TIMEOUT_MS,
@@ -73,8 +76,8 @@ async function testAndSave() {
       throw localizedApiError(result, 'errors.mteamValidation');
     }
     applyConfiguration(result as MTeamConfiguration);
-    apiKey.value = '';
     successMessage.value = t('mteam.saved');
+    emit('configuration-changed');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.mteamValidation');
     void refreshAfterFailure();
@@ -102,6 +105,7 @@ async function retest() {
     }
     applyConfiguration(result as MTeamConfiguration);
     successMessage.value = t('mteam.retested');
+    emit('configuration-changed');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.mteamValidation');
     void refreshAfterFailure();
@@ -127,6 +131,7 @@ async function deleteConfiguration() {
     apiKey.value = '';
     confirmDelete.value = false;
     successMessage.value = t('mteam.deleted');
+    emit('configuration-changed');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
   } finally {
@@ -156,6 +161,7 @@ function applyFailureState(result: MTeamConfiguration | ApiError) {
 
 function applyConfiguration(next: MTeamConfiguration) {
   config.value = next;
+  apiKey.value = next.apiKeyMasked ?? '';
   baseUrl.value = next.baseUrl ?? MTEAM_DEFAULT_BASE_URL;
   webBaseUrl.value = next.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL;
 }
@@ -224,6 +230,7 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
               v-model="baseUrl"
               type="url"
               inputmode="url"
+              readonly
               maxlength="2048"
               required
               autocomplete="url"
@@ -237,6 +244,7 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
               v-model="webBaseUrl"
               type="url"
               inputmode="url"
+              readonly
               maxlength="2048"
               required
               autocomplete="url"
@@ -248,12 +256,13 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
             <input
               id="mteam-api-key"
               v-model="apiKey"
-              type="password"
+              :type="config.apiKeyMasked && apiKey === config.apiKeyMasked ? 'text' : 'password'"
               maxlength="4096"
               :required="!configured"
               autocomplete="new-password"
               :placeholder="configured ? t('mteam.replaceKeyPlaceholder') : t('mteam.keyPlaceholder')"
             />
+            <small v-if="config.apiKeyMasked">{{ t('settings.credentialLength', { length: Array.from(config.apiKeyMasked).length }) }}</small>
             <small>{{ t('mteam.apiKeyHint') }}</small>
           </label>
         </div>
@@ -264,42 +273,16 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
               {{ successMessage }}
             </p>
           </div>
-          <div class="integration-actions">
-            <div v-if="configured && confirmDelete" class="integration-delete">
-              <span>{{ t('mteam.deleteConfirm') }}</span>
-              <button class="secondary" type="button" :disabled="deleting" @click="confirmDelete = false">
-                {{ t('mteam.cancel') }}
-              </button>
-              <button class="secondary danger" type="button" :disabled="deleting" @click="deleteConfiguration">
-                {{ deleting ? t('mteam.deleting') : t('mteam.confirmDelete') }}
-              </button>
-            </div>
-            <button
-              v-else-if="configured"
-              class="secondary danger integration-delete-trigger"
-              type="button"
-              :disabled="submitting || deleting"
-              @click="confirmDelete = true"
-            >
-              {{ t('mteam.delete') }}
-            </button>
-            <button
-              v-if="configured"
-              class="secondary"
-              type="button"
-              :disabled="submitting || deleting"
-              @click="retest"
-            >
-              {{ submitting ? t('mteam.testing') : t('mteam.retest') }}
-            </button>
-            <button
-              class="primary"
-              type="submit"
-              :disabled="submitting || deleting || !baseUrl.trim() || !webBaseUrl.trim() || (!configured && !apiKey)"
-            >
-              {{ submitting ? t('mteam.testing') : t('mteam.testAndSave') }}
-            </button>
-          </div>
+          <SourceConfigurationActions
+            v-model:confirm-delete="confirmDelete"
+            :configured="configured"
+            :busy="submitting || deleting"
+            :deleting="deleting"
+            :delete-prompt="t('mteam.deleteConfirm')"
+            :can-save="Boolean(baseUrl.trim() && webBaseUrl.trim() && (configured || apiKey))"
+            @delete="deleteConfiguration"
+            @retest="retest"
+          />
         </div>
       </form>
     </template>

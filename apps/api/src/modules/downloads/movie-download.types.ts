@@ -1,10 +1,10 @@
-import type { DownloadProvider, MovieDownloadStatus } from '@movie-hub/contract';
+import type { DownloadProvider, DownloadSource, MovieDownloadStatus } from '@movie-hub/contract';
 
 export interface MovieDownloadRecord {
   id: string;
   ownerId: string;
   tmdbId: number;
-  sourceProvider: 'mteam';
+  sourceProvider: DownloadSource;
   sourceReleaseId: string;
   provider: DownloadProvider;
   lookupTag: string;
@@ -35,12 +35,13 @@ export interface MovieDownloadProgress {
 }
 
 export interface MovieDownloadStore {
-  findByRelease(ownerId: string, tmdbId: number, releaseId: string): Promise<MovieDownloadRecord | null>;
+  findByRelease(ownerId: string, tmdbId: number, releaseId: string, sourceProvider?: DownloadSource): Promise<MovieDownloadRecord | null>;
   createSubmitting(
     ownerId: string,
     tmdbId: number,
     releaseId: string,
     provider: DownloadProvider,
+    sourceProvider?: DownloadSource,
   ): Promise<DownloadClaim>;
   retry(id: string): Promise<DownloadClaim>;
   listForMovie(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]>;

@@ -1,3 +1,6 @@
+import { registerIntegrationPreferencesRoutes } from './modules/integrations/integration-preferences.routes.js';
+import { registerResourceSearchRoutes } from './modules/resource-search/resource-search.routes.js';
+import { registerResourceSiteRoutes } from './modules/resource-sites/resource-site.routes.js';
 import type { BuildAppOptions } from './app.types.js';
 import { DocsService } from './modules/docs/docs.service.js';
 import { registerDocsRoutes } from './modules/docs/docs.routes.js';
@@ -41,6 +44,7 @@ import { registerPublicConfigRoutes } from './modules/config/public-config.route
 import { registerConversationRoutes } from './modules/conversations/conversation.routes.js';
 
 export async function buildApp({
+  resourceSiteService, resourceSearchService, integrationPreferencesService, movieSiteResourcesService,
   docsService,
   telegramService,
   notificationTestService,
@@ -80,6 +84,16 @@ export async function buildApp({
 
   await app.register(
     async (api) => {
+      if (integrationPreferencesService && authService) registerIntegrationPreferencesRoutes(
+        api, integrationPreferencesService, authService, config, loggers.error, movieSiteResourcesService,
+        movieResourceSyncService
+      );
+      if (resourceSearchService && authService) registerResourceSearchRoutes(
+        api, resourceSearchService, authService, config, loggers.error
+      );
+      if (resourceSiteService && authService) registerResourceSiteRoutes(
+        api, resourceSiteService, authService, config, loggers.error
+      );
       if (telegramService) registerTelegramRoutes(api, telegramService, config);
       if (notificationTestService) registerNotificationTestRoutes(api, notificationTestService, config);
       if (notificationService) registerNotificationRoutes(api, notificationService, config);
@@ -94,7 +108,10 @@ export async function buildApp({
       if (userService) registerUserRoutes(api, userService, config);
       if (movieService) registerMovieRoutes(api, movieService, authService, config);
       if (movieStatusService && authService)
-        registerMovieStatusRoutes(api, movieStatusService, authService, config, movieResourceSyncService);
+        registerMovieStatusRoutes(
+          api, movieStatusService, authService, config, movieResourceSyncService,
+          Boolean(movieSiteResourcesService)
+        );
       if (transmissionIntegrationService) registerTransmissionRoutes(api, transmissionIntegrationService, config);
       if (integrationService) registerIntegrationRoutes(api, integrationService, config, qbittorrentIntegrationService);
       if (movieDownloadService) registerMovieDownloadRoutes(api, movieDownloadService, config);

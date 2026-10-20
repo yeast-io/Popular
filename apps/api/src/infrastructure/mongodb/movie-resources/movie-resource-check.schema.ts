@@ -4,7 +4,7 @@ const movieResourceCheckSchema = new Schema(
   {
     ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     tmdbId: { type: Number, required: true, min: 1 },
-    provider: { type: String, required: true, enum: ['mteam'] },
+    provider: { type: String, required: true, match: /^[a-z][a-z0-9-]{0,31}$/ },
     availability: {
       type: String,
       required: true,

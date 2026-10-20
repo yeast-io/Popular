@@ -29,3 +29,5 @@ export interface IntegrationConfigStore {
 export interface MTeamVerifier {
   verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void>;
 }
+
+export interface MTeamEndpoints { baseUrl: string; webBaseUrl: string }

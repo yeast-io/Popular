@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MTeamClient, classifyMTeamHttpFailure, createPinnedLookup, isPublicAddress, parseSearchReleases, resolvePublicAddresses, verificationUrl, withAbsoluteTimeout } from './client.js';
+import { MTeamClient, classifyMTeamHttpFailure, createPinnedLookup, isPublicAddress, parseSearchReleases, parseSearchPage, resolvePublicAddresses, verificationUrl, withAbsoluteTimeout } from './client.js';
 
 test('uses the authenticated M-Team endpoint that requires no request parameters', () => {
   assert.equal(verificationUrl('https://api.m-team.cc').href, 'https://api.m-team.cc/api/member/sysRoleList');
@@ -173,4 +173,20 @@ test('absolute request timeout respects parent cancellation and keeps its origin
     signal: AbortSignal.abort(reason),
   }), (error) => error === reason
   );
+});
+
+test('M-Team pagination uses total metadata and caps native pages at 100', () => {
+  assert.deepEqual(parseSearchPage({ data: { data: [], total: '250' } }, 2), { releases: [], nextPage: 3 });
+  assert.deepEqual(parseSearchPage({ data: { data: [], total: '250' } }, 3), { releases: [] });
+  assert.deepEqual(parseSearchPage({ data: { data: [], total: 20000 } }, 100), { releases: [] });
+});
+
+test('extracts M-Team release groups from titles while retaining structured codecs', () => {
+  const releases = parseSearchReleases({ data: [{
+    id: '99', name: 'Movie.2026.1080p.WEB-DL.H264-TURG',
+    videoCodec: '16', status: { visible: true, banned: false, seeders: 1 },
+  }] }
+  );
+  assert.equal(releases[0]?.releaseGroup, 'TURG');
+  assert.equal(releases[0]?.videoCodec, 'H.265');
 });

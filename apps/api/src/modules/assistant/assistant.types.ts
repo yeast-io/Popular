@@ -95,6 +95,7 @@ export interface AssistantWorkflowOptions extends AssistantAgentOptions {
   sessions?: AssistantSessionStore;
   downloads?: {
     providersFor(ownerId: string): Promise<DownloadProvider[]>;
+    defaultProviderFor?(ownerId: string): Promise<DownloadProvider | undefined>;
     createForOwner(ownerId: string, tmdbId: number, releaseId: string, provider: DownloadProvider): Promise<MovieDownload>;
   };
   report?: (event: string) => void;

@@ -37,3 +37,9 @@ it('shows letters for a service without a logo and preserves the card controls',
   expect(wrapper.emitted('open')).toHaveLength(1);
   wrapper.unmount();
 });
+
+it('uses the bundled HDArea favicon', () => {
+  const wrapper = mount(IntegrationCard, { props: { ...props, id: 'hdarea', title: 'HDArea', badge: 'HD' } });
+  expect(wrapper.get('.connection-badge img').attributes('src')).toMatch(/^(data:image\/|\/)/);
+  expect(wrapper.get('.connection-badge').text()).toBe(''); wrapper.unmount();
+});

@@ -87,6 +87,8 @@ export const MovieResourceAvailabilitySchema = Type.Union([
 ]);
 
 export const MovieResourceErrorCodeSchema = Type.Union([
+  Type.Literal('RESOURCE_SITE_NOT_CONFIGURED'),
+  Type.Literal('RESOURCE_SITE_FAILED'),
   Type.Literal('MTEAM_AUTH_FAILED'),
   Type.Literal('MTEAM_UNREACHABLE'),
   Type.Literal('MTEAM_TIMEOUT'),
@@ -94,9 +96,9 @@ export const MovieResourceErrorCodeSchema = Type.Union([
   Type.Literal('MTEAM_UNEXPECTED_RESPONSE'),
 ]);
 
-export const MovieResourceCheckSchema = Type.Object(
+export const MovieResourceSiteCheckSchema = Type.Object(
   {
-    provider: Type.Literal('mteam'),
+    provider: Type.String(),
     checking: Type.Boolean(),
     availability: MovieResourceAvailabilitySchema,
     checkedAt: Type.Optional(Type.String({ format: 'date-time' })),
@@ -108,6 +110,10 @@ export const MovieResourceCheckSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const MovieResourceCheckSchema = Type.Composite([MovieResourceSiteCheckSchema, Type.Object({
+  sources: Type.Optional(Type.Array(MovieResourceSiteCheckSchema)),
+  incomplete: Type.Optional(Type.Boolean()),
+})], { additionalProperties: false });
 export const MovieResourceCheckResponseSchema = MovieResourceCheckSchema;
 
 export const MovieReleaseSchema = Type.Object(
@@ -117,6 +123,7 @@ export const MovieReleaseSchema = Type.Object(
     detailsUrl: Type.String({ minLength: 1, maxLength: 2048 }),
     sizeBytes: Type.Optional(Type.Integer({ minimum: 0 })),
     seeders: Type.Integer({ minimum: 0 }),
+    seedersKnown: Type.Optional(Type.Boolean()),
     leechers: Type.Optional(Type.Integer({ minimum: 0 })),
     publishedAt: Type.Optional(Type.String({ minLength: 1 })),
     discount: Type.Optional(Type.String({ minLength: 1 })),
@@ -124,6 +131,7 @@ export const MovieReleaseSchema = Type.Object(
     medium: Type.Optional(Type.String({ minLength: 1 })),
     videoCodec: Type.Optional(Type.String({ minLength: 1 })),
     audioCodec: Type.Optional(Type.String({ minLength: 1 })),
+    releaseGroup: Type.Optional(Type.String({ minLength: 1 })),
     tags: Type.Array(Type.String({ minLength: 1 })),
   },
   { additionalProperties: false },

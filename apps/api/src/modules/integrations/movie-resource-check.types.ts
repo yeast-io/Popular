@@ -3,7 +3,7 @@
 import type { IntegrationFailureType, MovieRelease } from '@movie-hub/contract';
 import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
 
-export type MovieResourceProvider = 'mteam';
+export type MovieResourceProvider = string;
 export type MovieResourceAvailability = 'available' | 'unavailable' | 'unchecked' | 'unmatchable';
 export type MovieResourceMatchMethod = 'imdb';
 export type MovieResourceCheckErrorCode = IntegrationFailureType | 'permission' | 'rate_limited' | 'internal_error';
@@ -79,6 +79,7 @@ export interface MTeamRelease {
   medium?: string;
   videoCodec?: string;
   audioCodec?: string;
+  releaseGroup?: string;
   tags?: string[];
 }
 
@@ -123,3 +124,6 @@ export interface QueuedCheck {
 }
 
 export type MovieResourceCheckExecution = { started: false } | { started: true; result: MovieResourceCheckCompletion };
+
+export interface MTeamSearchPage { releases: MTeamRelease[]; nextPage?: number }
+export interface MTeamSearchOptions { page?: number; signal?: AbortSignal }

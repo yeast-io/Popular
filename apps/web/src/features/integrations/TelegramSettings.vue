@@ -122,6 +122,9 @@ onUnmounted(() => {
     :action-label="state.status === 'unbound' ? t('settings.bind') : undefined"
     @open="state.status === 'unbound' && act('bind')"
   >
+    <template #actions>
+      <slot v-if="state.status === 'connected'" name="notifications" :disabled="loading || busy" />
+    </template>
     <div class="integration-form">
       <p v-if="state.status === 'unavailable'">{{ t('telegram.unavailableHint') }}</p>
       <template v-else>

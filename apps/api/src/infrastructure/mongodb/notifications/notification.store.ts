@@ -232,6 +232,7 @@ export class MongoNotificationStore implements NotificationStore {
           'notificationTask.lastCheckedAt': now,
           ...(complete ? { 'notificationTask.downloaded': true, 'notificationTask.completedAt': now } : {}),
         },
+        $unset: { missingSince: 1, expiresAt: 1, lastErrorCode: 1 },
       })
       .exec();
     if (result.matchedCount && complete) {

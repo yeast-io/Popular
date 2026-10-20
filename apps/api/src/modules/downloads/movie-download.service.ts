@@ -1,5 +1,9 @@
+import type { MovieSiteResourcesService } from '../integrations/movie-site-resources.service.js';
+import type { ResourceSiteService } from '../resource-sites/resource-site.service.js';
+import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
+import type { IntegrationPreferencesService } from '../integrations/integration-preferences.service.js';
 import type { TorrentSnapshot, DownloadClient } from './movie-download-client.types.js';
-import type { DownloadProvider, DownloadProviderListResponse, MovieDownload, MovieDownloadListResponse, MovieDownloadStatus } from '@movie-hub/contract';
+import type { DownloadProvider, DownloadSource, DownloadProviderListResponse, MovieDownload, MovieDownloadListResponse, MovieDownloadStatus } from '@movie-hub/contract';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
@@ -17,6 +21,7 @@ import type { NotificationService } from '../notifications/notification.service.
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class MovieDownloadService {
+  preferences?: Pick<IntegrationPreferencesService, 'get'>;
   private readonly syncs = new Map<string, Promise<MovieDownloadRecord[]>>();
 
   constructor(
@@ -30,11 +35,17 @@ export class MovieDownloadService {
     private readonly resources: Pick<MovieResourceCheckService, 'listReleases'>,
     private readonly now: () => Date = () => new Date(),
     private readonly transmission?: { configs: TransmissionConfigStore; client: TransmissionClientPort },
-    private readonly notifications?: Pick<NotificationService, 'reserve' | 'submitted'>
+    private readonly notifications?: Pick<NotificationService, 'reserve' | 'submitted'>,
+    private readonly siteDownloads?: { resources: Pick<MovieSiteResourcesService, 'releaseForDownload'>; sites: Pick<ResourceSiteService, 'downloadTorrent'> }
   ) {}
 
   async providers(token: string | undefined): Promise<DownloadProviderListResponse> {
     return { providers: await this.providersFor(await this.auth.requireOwnerId(token)) };
+  }
+
+  async defaultProviderFor(ownerId: string): Promise<DownloadProvider | undefined> {
+    const provider = (await this.preferences?.get(ownerId))?.defaults.downloader;
+    return provider === 'qbittorrent' || provider === 'transmission' ? provider : undefined;
   }
 
   async providersFor(ownerId: string): Promise<DownloadProvider[]> {
@@ -50,20 +61,22 @@ export class MovieDownloadService {
     tmdbId: number,
     releaseId: string,
     requestedProvider?: DownloadProvider,
+    sourceProvider: DownloadSource = 'mteam',
   ): Promise<MovieDownload> {
-    return this.createForOwner(await this.auth.requireOwnerId(token), tmdbId, releaseId, requestedProvider);
+    return this.createForOwner(await this.auth.requireOwnerId(token), tmdbId, releaseId, requestedProvider, sourceProvider);
   }
 
   /** Internal entry: owner identity must come from a verified channel binding or authenticated conversation. */
   async createForOwner(
-    ownerId: string, tmdbId: number, releaseId: string, requestedProvider?: DownloadProvider,
+    ownerId: string, tmdbId: number, releaseId: string, requestedProvider?: DownloadProvider, sourceProvider: DownloadSource = 'mteam',
   ): Promise<MovieDownload> {
-    const existing = await this.downloads.findByRelease(ownerId, tmdbId, releaseId);
+    const existing = await this.downloads.findByRelease(ownerId, tmdbId, releaseId, sourceProvider);
     if (existing && requestedProvider && existing.provider !== requestedProvider) {
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'This release already belongs to another downloader');
     }
     if (existing && !['failed', 'missing'].includes(existing.status)) return toResponse(existing);
     let provider = requestedProvider ?? existing?.provider;
+    if (!provider) provider = await this.defaultProviderFor(ownerId);
     if (!provider) {
       const providers = await this.providersFor(ownerId);
       if (!providers.length)
@@ -87,15 +100,22 @@ export class MovieDownloadService {
           await this.downloads.updateProgress(existing.id, withSyncTime(added, this.now(), existing.addedAt)),
         );
     }
-    const mteamConfig = await this.mteamConfigs.find(ownerId, 'mteam');
-    if (!mteamConfig) throw new AppError(409, 'MTEAM_NOT_CONFIGURED', 'Configure M-Team before downloading');
-    const releaseList = await aiStep('download.resources.validate', () => this.resources.listReleases(ownerId, tmdbId));
-    const release = releaseList.releases.find((release) => release.id === releaseId);
-    if (!release) throw new AppError(404, 'NOT_FOUND', 'The selected M-Team release is no longer available');
+    const mteamConfig = sourceProvider === 'mteam' ? await this.mteamConfigs.find(ownerId, 'mteam') : null;
+    if (sourceProvider === 'mteam' && !mteamConfig) throw new AppError(409, 'MTEAM_NOT_CONFIGURED', 'Configure M-Team before downloading');
+    if (sourceProvider === 'hdarea' && !this.siteDownloads) throw new ResourceSiteError('notConfigured');
+    const release = await aiStep('download.resources.validate', async () => {
+      if (sourceProvider === 'hdarea') return this.siteDownloads!.resources.releaseForDownload(
+        ownerId, tmdbId, sourceProvider, releaseId
+      );
+      const list = await this.resources.listReleases(ownerId, tmdbId);
+      const selected = list.releases.find((release) => release.id === releaseId);
+      if (!selected) throw new AppError(404, 'NOT_FOUND', '');
+      return selected;
+    }, { sourceProvider, releaseId });
     const claim = existing
       ? await aiStep('download.task.retry', () => this.downloads.retry(existing.id))
       : await aiStep('download.task.claim', () => {
-        return this.downloads.createSubmitting(ownerId, tmdbId, releaseId, provider);
+        return this.downloads.createSubmitting(ownerId, tmdbId, releaseId, provider, sourceProvider);
       });
     let record = claim.record;
     // A different request or instance may have won the unique release claim.
@@ -105,16 +125,20 @@ export class MovieDownloadService {
     let torrent: Uint8Array;
     try {
       torrent = await aiStep('download.torrent.fetch', () => {
+        if (sourceProvider === 'hdarea') return this.siteDownloads!.sites.downloadTorrent(
+          ownerId, sourceProvider, releaseId
+        );
         return this.mteam.downloadTorrent(
-          mteamConfig.baseUrl,
-          this.secrets.decrypt(mteamConfig.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
+          mteamConfig!.baseUrl,
+          this.secrets.decrypt(mteamConfig!.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
           releaseId,
           userExternalRequestContext(ownerId, 'api_request'),
         );
       });
     } catch (error) {
       await this.downloads.markFailed(record.id, 'MOVIE_DOWNLOAD_FAILED', this.now());
-      throw new AppError(502, 'MOVIE_DOWNLOAD_FAILED', 'Could not retrieve the selected M-Team release', undefined, {
+      if (error instanceof ResourceSiteError) throw error;
+      throw new AppError(502, 'MOVIE_DOWNLOAD_FAILED', '', undefined, {
         cause: error,
       });
     }
@@ -222,7 +246,7 @@ export class MovieDownloadService {
   }
 
   private async sync(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]> {
-    let records = await this.downloads.listForMovie(ownerId, tmdbId);
+    let records = await aiStep('download.sync.records', () => this.downloads.listForMovie(ownerId, tmdbId));
     const syncable = records.filter((record) => {
       return ['submitting', 'downloading', 'paused', 'seeding', 'failed', 'missing'].includes(record.status);
     });
@@ -231,9 +255,11 @@ export class MovieDownloadService {
       const owned = syncable.filter((record) => record.provider === provider);
       if (!owned.length) continue;
       try {
-        const client = await this.clientFor(ownerId, provider);
+        const client = await aiStep('download.sync.client', () => this.clientFor(ownerId, provider), { provider });
         const hashes = owned.flatMap((record) => (record.torrentHash ? [record.torrentHash] : []));
-        const torrents = hashes.length ? await client.list(hashes) : [];
+        const torrents = hashes.length ? await aiStep('download.sync.inspect', () => {
+          return client.list(hashes);
+        }, { provider }) : [];
         const byHash = new Map(
           torrents.map((torrent) => {
             return [torrent.torrentHash.toLowerCase(), torrent];
@@ -245,9 +271,13 @@ export class MovieDownloadService {
             : await client.findByTag(record.lookupTag);
           if (torrent)
             await this.downloads.updateProgress(record.id, withSyncTime(torrent, this.now(), record.addedAt));
-          else if (record.torrentHash) await this.downloads.markMissing(record.id, this.now());
+          else if (record.torrentHash) await aiStep('download.sync.missing', () => {
+            return this.downloads.markMissing(record.id, this.now());
+          }, { taskId: record.id, provider });
         }
-      } catch {
+      } catch (error) {
+        currentAiTrace()?.fail(error, { provider, outcome: 'snapshot_preserved' });
+        currentAiTrace()?.clearFailure();
         // Keep this provider's last snapshot; the other downloader can still sync.
       }
     }
@@ -282,7 +312,7 @@ function toResponse(record: MovieDownloadRecord): MovieDownload {
   return {
     id: record.id,
     tmdbId: record.tmdbId,
-    sourceProvider: 'mteam',
+    sourceProvider: record.sourceProvider,
     sourceReleaseId: record.sourceReleaseId,
     provider: record.provider,
     status: record.status,

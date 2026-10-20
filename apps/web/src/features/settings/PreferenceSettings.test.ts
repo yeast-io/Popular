@@ -2,6 +2,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { afterEach, it, expect, vi } from 'vitest';
 import PreferenceSettings from './PreferenceSettings.vue';
+import { setLocale } from '../../i18n';
 import type { TasteProfileResponse } from '@movie-hub/contract';
 
 const profile = (): TasteProfileResponse => {
@@ -88,7 +89,7 @@ it('corrections submit the current version and deletion requires a separate conf
   const wrapper = mount(PreferenceSettings);
   await flushPromises();
   await wrapper.get('textarea').setValue('I like history movies');
-  await wrapper.get('.preference-entry button').trigger('click');
+  await wrapper.get('.preference-entry .preference-actions button').trigger('click');
   await flushPromises();
   expect(requests[0]).toEqual({ expectedVersion: 2, entryId: 'p1', content: 'I like history movies' });
   const deleteButton = wrapper.get('.preference-entry .preference-actions').findAll('button')[1]!;
@@ -177,4 +178,41 @@ it('shows empty revision content without incorrectly treating it as a generation
   } finally {
     if (wrapper.exists()) wrapper.unmount();
   }
+});
+
+
+it.each(['en-US', 'zh-CN'] as const)('expands only the first visible entry and preserves disclosure choices and drafts in %s', async (locale) => {
+  setLocale(locale);
+  const entries = [
+    { id: 'inferred', section: 'inferred', content: 'Possibly likes crime movies' },
+    { id: 'first', section: 'explicit', content: 'Likes science fiction' },
+    { id: 'second', section: 'explicit', content: 'Dislikes musicals' },
+  ].map(
+    (entry) => ({ ...entry, evidenceRefs: ['source'], updatedAt: '2026-10-20T00:00:00Z', protected: false })
+  );
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ...profile(), entries })));
+  const wrapper = mount(PreferenceSettings);
+  try {
+    await flushPromises();
+    const cards = wrapper.findAll('.preference-entry');
+    expect(cards.map((card) => card.get('.preference-entry-summary').attributes('aria-expanded') === 'true')).toEqual(
+      [true, false, false]
+    );
+    expect(cards.map((card) => card.get('.preference-entry-number').text())).toEqual(['1', '2', '3']);
+    const second = cards[1]!;
+    await second.get('.preference-entry-summary').trigger('click');
+    await second.get('textarea').setValue('Avoids musicals');
+    await second.get('.preference-entry-summary').trigger('click');
+    await second.get('.preference-entry-summary').trigger('click');
+    expect(second.get<HTMLTextAreaElement>('textarea').element.value).toBe('Avoids musicals');
+    expect(second.get('.preference-entry-preview').attributes('aria-hidden')).toBe('true');
+    expect(second.get('.preference-entry-reveal').attributes('aria-hidden')).toBe('false');
+    expect(cards[2]!.get('.preference-entry-reveal').attributes('inert')).toBeDefined();
+    await cards[0]!.get('.preference-entry-summary').trigger('click');
+    await second.get('.preference-actions button').trigger('click');
+    await flushPromises();
+    expect(cards.map((card) => card.get('.preference-entry-summary').attributes('aria-expanded') === 'true')).toEqual(
+      [false, true, false]
+    );
+  } finally { wrapper.unmount(); }
 });

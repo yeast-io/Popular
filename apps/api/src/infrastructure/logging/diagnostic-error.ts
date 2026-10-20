@@ -11,9 +11,9 @@ export function redactDiagnosticText(text: string, sensitiveValues: readonly str
     .replace(/\bsk-[a-zA-Z0-9_-]+/g, '[REDACTED]')
     .replace(/(Bearer\s+)[^\s"',}]+/gi, '$1[REDACTED]')
     .replace(/((?:mongodb(?:\+srv)?|rediss?|https?):\/\/)[^\s/@:]+(?::[^\s/@]*)?@/gi, '$1[REDACTED]@')
-    .replace(/([?&](?:X-Amz-Signature|X-Amz-Credential|token|access_token|api_key)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/([?&](?:X-Amz-Signature|X-Amz-Credential|token|access_token|api_key|passkey)=)[^&\s]+/gi, '$1[REDACTED]')
     .replace(
-      /((?:apiKey|api_key|password|authorization|cookie|secretKey|accessToken)["']?\s*[:=]\s*)[^\r\n,}]+/gi,
+      /((?:apiKey|api_key|passkey|password|authorization|cookie|secretKey|accessToken)["']?\s*[:=]\s*)[^\r\n,}]+/gi,
       '$1[REDACTED]',
     )
     .replace(/(dup key:\s*)\{[^\r\n]*\}/gi, '$1[REDACTED]')

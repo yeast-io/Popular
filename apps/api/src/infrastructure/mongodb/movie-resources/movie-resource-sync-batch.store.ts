@@ -7,7 +7,7 @@ export class MongoMovieResourceSyncBatchStore implements MovieResourceSyncBatchS
     private readonly batches: Model<MovieResourceSyncBatchDocument>
   ) {}
 
-  async createOrGetActive(ownerId: string, movieIds: number[], force: boolean, now: Date) {
+  async createOrGetActive(ownerId: string, movieIds: number[], force: boolean, now: Date, sites?: string[]) {
     const existing = await this.batches.findOne({ ownerId, active: true }).lean().exec();
     if (existing) return mapBatch(existing);
     try {
@@ -16,6 +16,7 @@ export class MongoMovieResourceSyncBatchStore implements MovieResourceSyncBatchS
         status: movieIds.length ? 'queued' : 'completed',
         active: movieIds.length > 0,
         movieIds,
+        ...(sites ? { sites } : {}),
         total: movieIds.length,
         cursor: 0,
         completed: 0,
@@ -90,6 +91,7 @@ function mapBatch(row: MovieResourceSyncBatchDocument): StoredMovieResourceSyncB
     ownerId: String(row.ownerId),
     status: row.status,
     movieIds: [...row.movieIds],
+    ...(row.sites ? { sites: [...row.sites] } : {}),
     cursor: row.cursor,
     force: row.force,
     rateLimitRetries: row.rateLimitRetries ?? 0,

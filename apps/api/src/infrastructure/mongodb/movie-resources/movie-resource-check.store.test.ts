@@ -72,7 +72,7 @@ test('reads only display-safe resource check state for the requested owner and m
   );
   assert.deepEqual(calls[0], {
     operation: 'read',
-    filter: { ownerId: key.ownerId, tmdbId: { $in: [key.tmdbId] }, provider: 'mteam' },
+    filter: { ownerId: key.ownerId, tmdbId: { $in: [key.tmdbId] } },
   }
   );
 });

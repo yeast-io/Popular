@@ -1,3 +1,4 @@
+import type { IntegrationPreferencesService } from './integration-preferences.service.js';
 import type { OpenAIConfigRecord, OpenAIConfigStore } from './openai-settings.types.js';
 import { currentAiTrace, aiStep } from '../../infrastructure/logging/ai-trace.js';
 import type { OpenAIConfiguration, OpenAIValidation } from '@movie-hub/contract';
@@ -12,6 +13,7 @@ export class OpenAIProbeError extends Error {
   }
 }
 export class OpenAISettingsService {
+  preferences?: IntegrationPreferencesService;
   private readonly pending = new Map<string, Promise<OpenAIConfiguration>>();
   private readonly lastAttempt = new Map<string, number>();
   constructor(
@@ -97,6 +99,7 @@ export class OpenAISettingsService {
     if (!(await this.store.saveValidation(ownerId, record.encryptedApiKey, validation))) {
       throw new AppError(409, 'CONFLICT', 'API key changed during testing; test the current key again');
     }
+    if (validation.status === 'valid') await this.preferences?.configured(ownerId, 'ai', 'openai');
     return this.response({ ...record, validation });
   }
 
@@ -130,7 +133,10 @@ export class OpenAISettingsService {
   }
 
   async delete(token: string | undefined): Promise<void> {
-    await this.store.delete(await this.auth.requireOwnerId(token));
+    const ownerId = await this.auth.requireOwnerId(token);
+    await this.preferences?.beforeDelete(ownerId, 'ai', 'openai');
+    await this.store.delete(ownerId);
+    await this.preferences?.deleted(ownerId, 'ai', 'openai');
   }
 
   async requireApiKey(ownerId: string): Promise<string> {

@@ -1,5 +1,6 @@
-import { Types, type Model } from 'mongoose';
-import type { DownloadProvider, MovieDownloadStatus } from '@movie-hub/contract';
+import { MISSING_DOWNLOAD_RETENTION_MS } from '../../../modules/downloads/movie-download.policy.js';
+import { Types, type Model, type UpdateWithAggregationPipeline } from 'mongoose';
+import type { DownloadProvider, DownloadSource, MovieDownloadStatus } from '@movie-hub/contract';
 import type { DownloadClaim, MovieDownloadProgress, MovieDownloadRecord, MovieDownloadStore } from '../../../modules/downloads/movie-download.types.js';
 import type { MovieDownloadDocument } from './movie-download.schema.js';
 
@@ -8,9 +9,9 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
     private readonly downloads: Model<MovieDownloadDocument>
   ) {}
 
-  async findByRelease(ownerId: string, tmdbId: number, releaseId: string): Promise<MovieDownloadRecord | null> {
+  async findByRelease(ownerId: string, tmdbId: number, releaseId: string, sourceProvider: DownloadSource = 'mteam'): Promise<MovieDownloadRecord | null> {
     const row = await this.downloads
-      .findOne({ ownerId, tmdbId, sourceProvider: 'mteam', sourceReleaseId: releaseId })
+      .findOne({ ownerId, tmdbId, sourceProvider, sourceReleaseId: releaseId })
       .lean()
       .exec();
     return row ? toMovieDownloadRecord(row) : null;
@@ -21,6 +22,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
     tmdbId: number,
     releaseId: string,
     provider: DownloadProvider,
+    sourceProvider: DownloadSource = 'mteam',
   ): Promise<DownloadClaim> {
     const id = new Types.ObjectId();
     try {
@@ -28,7 +30,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
         _id: id,
         ownerId,
         tmdbId,
-        sourceProvider: 'mteam',
+        sourceProvider,
         sourceReleaseId: releaseId,
         provider,
         lookupTag: `movie-hub-${id.toHexString()}`,
@@ -38,7 +40,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
       return { record: toMovieDownloadRecord(row.toObject()), claimed: true };
     } catch (error) {
       if (isDuplicateKey(error)) {
-        const existing = await this.findByRelease(ownerId, tmdbId, releaseId);
+        const existing = await this.findByRelease(ownerId, tmdbId, releaseId, sourceProvider);
         if (existing) return { record: existing, claimed: false };
       }
       throw error;
@@ -52,6 +54,12 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
         {
           $set: { status: 'submitting', progress: 0 },
           $unset: {
+            missingSince: 1,
+            expiresAt: 1,
+            downloadedBytes: 1,
+            totalBytes: 1,
+            downloadSpeed: 1,
+            etaSeconds: 1,
             torrentHash: 1,
             name: 1,
             lastErrorCode: 1,
@@ -79,23 +87,31 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
   async updateProgress(id: string, progress: MovieDownloadProgress): Promise<MovieDownloadRecord> {
     return this.update(id, {
       $set: progress,
-      $unset: { lastErrorCode: 1 },
+      $unset: { lastErrorCode: 1, missingSince: 1, expiresAt: 1 },
     });
   }
 
   async markFailed(id: string, errorCode: string, attemptedAt: Date): Promise<MovieDownloadRecord> {
     return this.update(id, {
       $set: { status: 'failed', lastErrorCode: errorCode, lastSyncedAt: attemptedAt },
+      $unset: { missingSince: 1, expiresAt: 1 },
     });
   }
 
   async markMissing(id: string, attemptedAt: Date): Promise<MovieDownloadRecord> {
-    return this.update(id, {
-      $set: { status: 'missing', lastErrorCode: 'DOWNLOAD_TORRENT_MISSING', lastSyncedAt: attemptedAt },
-    });
+    // Atomic initialization: repeated polls must retain the first missing timestamp.
+    return this.update(id, [{
+      $set: {
+        status: 'missing', lastErrorCode: 'DOWNLOAD_TORRENT_MISSING', lastSyncedAt: attemptedAt,
+        missingSince: { $ifNull: ['$missingSince', attemptedAt] },
+        expiresAt: { $add: [{ $ifNull: ['$missingSince', attemptedAt] }, MISSING_DOWNLOAD_RETENTION_MS] },
+        downloadSpeed: 0,
+        etaSeconds: '$$REMOVE',
+      },
+    }]);
   }
 
-  private async update(id: string, update: Record<string, unknown>): Promise<MovieDownloadRecord> {
+  private async update(id: string, update: Record<string, unknown> | UpdateWithAggregationPipeline): Promise<MovieDownloadRecord> {
     const row = await this.downloads.findByIdAndUpdate(id, update, { new: true }).lean().exec();
     if (!row) throw new Error('Movie download disappeared during update');
     return toMovieDownloadRecord(row);
@@ -107,7 +123,7 @@ export function toMovieDownloadRecord(row: MovieDownloadDocument & { _id: unknow
     id: String(row._id),
     ownerId: row.ownerId.toString(),
     tmdbId: row.tmdbId,
-    sourceProvider: 'mteam',
+    sourceProvider: row.sourceProvider as DownloadSource,
     sourceReleaseId: row.sourceReleaseId,
     provider: row.provider as DownloadProvider,
     lookupTag: row.lookupTag,

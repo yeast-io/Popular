@@ -12,13 +12,19 @@ describe('Movie Detail live releases', () => {
     document.body.style.overflow = '';
   });
 
-  it('replaces the poster resource badge with the movie download state', async () => {
+  it('keeps matching download badges on the poster and before the resource site icons', async () => {
     setLocale('zh-CN');
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith('/resources/mteam')) {
+        if (url.endsWith('/me/integration-preferences')) return Response.json({
+          defaults: { resource: 'mteam' }, selectedSites: [], effectiveSites: ['mteam'],
+          choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
+        }
+        );
+
+        if (url.endsWith('/resources')) {
           return Response.json({
             provider: 'mteam',
             checking: false,
@@ -65,7 +71,16 @@ describe('Movie Detail live releases', () => {
     expect(badge.text()).toBe('已下载');
     expect(badge.classes()).toContain('is-downloaded');
     expect(badge.element.tagName).toBe('SPAN');
-    expect(wrapper.get('.resource-status').text()).toBe('有可下载资源');
+    expect(wrapper.get('.detail-poster .poster-resource-badge').text()).toBe('已下载');
+    expect(wrapper.get('.resource-toolbar-badge').text()).toBe('已下载');
+    expect(wrapper.get('.resource-toolbar-badge').classes()).toContain('is-downloaded');
+    expect(wrapper.get('.resource-check-panel').text()).not.toContain('资源状态');
+    expect(
+      wrapper.get('.resource-check-panel').element.firstElementChild?.classList.contains('resource-toolbar-badge')
+    ).toBe(
+      true
+    );
+    expect(wrapper.get('.resource-status').text()).toBe('查看资源');
     wrapper.unmount();
   });
 
@@ -76,8 +91,14 @@ describe('Movie Detail live releases', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith('/me/integration-preferences')) return Response.json({
+          defaults: { resource: 'mteam' }, selectedSites: [], effectiveSites: ['mteam'],
+          choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
+        }
+        );
+
         urls.push(url);
-        if (url.endsWith('/resources/mteam')) {
+        if (url.endsWith('/resources')) {
           return Response.json({
             provider: 'mteam',
             checking: false,
@@ -180,7 +201,13 @@ describe('Movie Detail live releases', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/resources/mteam')) {
+        if (url.endsWith('/me/integration-preferences')) return Response.json({
+          defaults: { resource: 'mteam' }, selectedSites: [], effectiveSites: ['mteam'],
+          choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
+        }
+        );
+
+        if (url.endsWith('/resources')) {
           return Response.json({
             provider: 'mteam',
             checking: false,
@@ -293,7 +320,13 @@ describe('Movie Detail live releases', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith('/resources/mteam')) {
+        if (url.endsWith('/me/integration-preferences')) return Response.json({
+          defaults: { resource: 'mteam' }, selectedSites: [], effectiveSites: ['mteam'],
+          choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
+        }
+        );
+
+        if (url.endsWith('/resources')) {
           return Response.json({
             provider: 'mteam',
             checking: false,
@@ -357,7 +390,13 @@ describe('Movie Detail live releases', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith('/resources/mteam')) {
+        if (url.endsWith('/me/integration-preferences')) return Response.json({
+          defaults: { resource: 'mteam' }, selectedSites: [], effectiveSites: ['mteam'],
+          choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
+        }
+        );
+
+        if (url.endsWith('/resources')) {
           return Response.json({
             provider: 'mteam',
             checking: false,
@@ -466,7 +505,13 @@ describe('Movie Detail live releases', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith('/resources/mteam')) {
+        if (url.endsWith('/me/integration-preferences')) return Response.json({
+          defaults: { resource: 'mteam' }, selectedSites: [], effectiveSites: ['mteam'],
+          choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
+        }
+        );
+
+        if (url.endsWith('/resources')) {
           return Response.json({
             provider: 'mteam',
             checking: false,
@@ -502,7 +547,7 @@ describe('Movie Detail live releases', () => {
     await flushPromises();
 
     const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]');
-    expect(dialog?.querySelector('[role="alert"]')?.textContent).toBe('M-Team 请求超时，请稍后重试。');
+    expect(dialog?.querySelector('[role="alert"]')?.textContent).toContain('M-Team 请求超时，请稍后重试。');
     expect(dialog?.querySelectorAll('.release-card')).toHaveLength(0);
     wrapper.unmount();
   });

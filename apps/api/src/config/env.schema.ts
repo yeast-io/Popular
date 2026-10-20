@@ -10,6 +10,12 @@ const optionalUrl = z
   .optional()
   .or(z.literal('').transform(() => undefined));
 
+const resourceSiteOrigin = z.url().refine((value) => {
+  const url = new URL(value);
+  return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash &&
+    (!url.port || url.port === '443') && url.pathname === '/';
+}, 'must be an HTTPS origin without credentials, path, query or fragment').transform((value) => new URL(value).origin);
+
 const mongodbFields = {
   MONGODB_URI: z.url().refine((url) => {
     return ['mongodb:', 'mongodb+srv:'].includes(new URL(url).protocol);
@@ -82,6 +88,9 @@ export const EnvSchema = z
       .default(50 * 1024 * 1024),
     AVATAR_MAX_PIXELS: z.coerce.number().int().min(1).max(100_000_000).default(16_777_216),
     INTEGRATION_SECRET_KEY: z.string().min(32),
+    HDAREA_BASE_URL: resourceSiteOrigin.default('https://hdarea.club'),
+    MTEAM_BASE_URL: resourceSiteOrigin.default('https://api.m-team.cc'),
+    MTEAM_WEB_BASE_URL: resourceSiteOrigin.default('https://kp.m-team.cc'),
     MTEAM_ALLOWED_HOSTS: z
       .string()
       .default('api.m-team.cc,api.m-team.io')

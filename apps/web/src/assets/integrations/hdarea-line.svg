@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <title>HDArea — outline</title>
+  <g stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m4.33 7.85 2.76-1.38-1.12 2.76 5.6-.86 1.64-.59-3.29 7.97-2.18-.99 1.32-3.23-4.09.99-1.45 3.1-2.11-.59Z"/>
+    <path d="m10.19 5.28 4.81-1.84-1.85 3.69-3.49.66Z"/>
+    <path d="m15.85 3.5-.73 1.25h6l-4.15 11-7.9 3.95-3.69-1.91.79-2.04 2.18 1.32 6.52-2.7 3.03-6.66h-3.43Z"/>
+  </g>
+  <style>:root{color:#A3A3A0}</style>
+</svg>

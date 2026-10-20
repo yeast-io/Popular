@@ -25,7 +25,17 @@ export function registerMovieDownloadRoutes(
     {
       schema: { params: MovieIdParamsSchema, response: { 200: MovieDownloadListResponseSchema, 401: ApiErrorSchema } },
     },
-    async (request) => service.listAndSync(token(request), request.params.tmdbId),
+    async (request) => {
+      const trace = new AiTrace(app.log, { requestId: request.id, tmdbId: request.params.tmdbId }, '', 'download.sync', config.VERBOSE === true);
+      return withAiTrace(trace, async () => {
+        try {
+          return await aiStep('download.sync', () => service.listAndSync(token(request), request.params.tmdbId));
+        } catch (error) {
+          trace.fail(error);
+          throw error;
+        }
+      });
+    },
   );
 
   app.post<{ Params: MovieIdParams; Body: CreateMovieDownloadRequest }>(
@@ -52,7 +62,9 @@ export function registerMovieDownloadRoutes(
         try {
           const result = await aiStep('download.create', () => {
             return service.create(
-              token(request), request.params.tmdbId, request.body.sourceReleaseId, request.body.provider,
+              token(
+                request
+              ), request.params.tmdbId, request.body.sourceReleaseId, request.body.provider, request.body.sourceProvider,
             );
           });
           trace.event(

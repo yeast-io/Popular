@@ -1,3 +1,6 @@
+import type { IntegrationPreferencesService } from './integration-preferences.service.js';
+import { maskIntegrationSecret } from '@movie-hub/contract';
+import { replacementSecret } from './integration-secret.domain.js';
 import type { IntegrationFailureType, TransmissionConfiguration, SaveTransmissionConfigurationRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
@@ -6,6 +9,7 @@ import { SecretCrypto } from './secret-crypto.js';
 import type { TransmissionClientPort, TransmissionConfigRecord, TransmissionConfigStore, TransmissionCredential } from './transmission.types.js';
 
 export class TransmissionIntegrationService {
+  preferences?: IntegrationPreferencesService;
   constructor(
     private readonly auth: AuthService,
     private readonly configs: TransmissionConfigStore,
@@ -15,7 +19,7 @@ export class TransmissionIntegrationService {
   ) {}
 
   async get(token: string | undefined): Promise<TransmissionConfiguration> {
-    return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)));
+    return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)), this.secrets);
   }
 
   async save(
@@ -42,7 +46,8 @@ export class TransmissionIntegrationService {
       verifiedAt: attemptedAt,
       lastValidationAt: attemptedAt,
     });
-    return toResponse(saved);
+    await this.preferences?.configured(ownerId, 'downloader', 'transmission');
+    return toResponse(saved, this.secrets);
   }
 
   async retest(token: string | undefined): Promise<TransmissionConfiguration> {
@@ -58,7 +63,7 @@ export class TransmissionIntegrationService {
           version,
           verifiedAt: attemptedAt,
           lastValidationAt: attemptedAt,
-        }),
+        }), this.secrets,
       );
     } catch (error) {
       await this.configs.recordFailure(ownerId, attemptedAt, failureTypeOf(error));
@@ -67,7 +72,10 @@ export class TransmissionIntegrationService {
   }
 
   async delete(token: string | undefined): Promise<void> {
-    await this.configs.delete(await this.auth.requireOwnerId(token));
+    const ownerId = await this.auth.requireOwnerId(token);
+    await this.preferences?.beforeDelete(ownerId, 'downloader', 'transmission');
+    await this.configs.delete(ownerId);
+    await this.preferences?.deleted(ownerId, 'downloader', 'transmission');
   }
 }
 
@@ -118,7 +126,7 @@ function credentialFromInput(
   if (!username || username.includes(':'))
     throw new AppError(400, 'VALIDATION_ERROR', 'A username without colons is required');
   const canRetain = existing?.baseUrl === baseUrl && existing.username === username;
-  const password = input.password || (canRetain ? decryptCredential(existing, secrets).password : '');
+  const password = replacementSecret(input.password, existing ? decryptCredential(existing, secrets).password : undefined) || (canRetain ? decryptCredential(existing, secrets).password : '');
   if (!password)
     throw new AppError(400, 'VALIDATION_ERROR', 'Password is required when the address or username changes');
   return { username, password };
@@ -139,10 +147,11 @@ export function transmissionAppError(error: unknown, message: string): AppError 
   return new AppError(502, 'TRANSMISSION_UNEXPECTED_RESPONSE', message);
 }
 
-function toResponse(record: TransmissionConfigRecord | null): TransmissionConfiguration {
+function toResponse(record: TransmissionConfigRecord | null, secrets: SecretCrypto): TransmissionConfiguration {
   if (!record) return { provider: 'transmission', status: 'unconfigured' };
   return {
     provider: 'transmission',
+    passwordMasked: maskIntegrationSecret(decryptCredential(record, secrets).password),
     status: record.lastFailureType
       ? 'configured_invalid'
       : record.verifiedAt

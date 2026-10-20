@@ -1,4 +1,6 @@
+import { createIntegrationPreferencesModel } from './integrations/integration-preferences.schema.js';
 
+import { createResourceSiteCredentialModel } from './resource-sites/resource-site-credential.schema.js';
 import { createTelegramModel } from './telegram/telegram.schema.js';
 import { createAssistantMessageModel } from './assistant/assistant-message.schema.js';
 import { createNotificationPreferencesModel } from './notifications/notification-preferences.schema.js';
@@ -29,6 +31,8 @@ import { createConversationMessageModel } from './conversations/conversation-mes
 
 export function createModels(connection: Connection) {
   return {
+    integrationPreferences: createIntegrationPreferencesModel(connection),
+    resourceSiteCredentials: createResourceSiteCredentialModel(connection),
     assistantMessages: createAssistantMessageModel(connection),
     telegramBindings: createTelegramModel(connection),
     notificationPreferences: createNotificationPreferencesModel(connection),

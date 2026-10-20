@@ -19,3 +19,17 @@ describe('localized API errors', () => {
     );
   });
 });
+
+
+it('preserves actionable site failure reasons in both languages and ignores unknown server text', () => {
+  const failure = { error: { code: 'RESOURCE_SITE_FAILED', details: { reason: 'authentication' }, message: 'raw payload' } };
+  for (const locale of ['en-US', 'zh-CN'] as const) {
+    setLocale(locale);
+    const message = localizedErrorMessage(localizedApiError(failure), 'errors.unknown');
+    expect(message).toContain('Cookie');
+    expect(message).not.toContain('raw payload');
+  }
+  expect(apiErrorKey({ error: { code: 'RESOURCE_SITE_FAILED', details: { reason: '__proto__' } } })).toBe(
+    'resourceSite.error.invalidResponse'
+  );
+});

@@ -1,3 +1,5 @@
+import { withMTeamEndpoints } from './mteam-endpoints.domain.js';
+import { maskIntegrationSecret } from '@movie-hub/contract';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
@@ -176,4 +178,40 @@ test('keeps configurations and decrypted credentials isolated by authenticated o
   await service.deleteMTeam('alice-session');
   assert.equal((await service.getMTeam('alice-session')).status, 'unconfigured');
   assert.equal((await service.getMTeam('bob-session')).status, 'configured_valid');
+});
+
+test('M-Team returns a fixed display mask and retains the real key when the mask is submitted unchanged', async () => {
+  const { service, verifier } = fixture();
+  const saved = await service.saveMTeam('session', { baseUrl: 'https://api.m-team.cc', apiKey: 'actual-private-key' });
+  assert.equal(saved.apiKeyMasked, maskIntegrationSecret('actual-private-key'));
+  const read = await service.getMTeam('session'); assert.equal(read.apiKeyMasked, saved.apiKeyMasked);
+  assert.equal(JSON.stringify(read).includes('actual-private-key'), false);
+  await service.saveMTeam('session', { baseUrl: 'https://api.m-team.cc', apiKey: saved.apiKeyMasked });
+  assert.equal(verifier.calls.at(-1)!.apiKey, 'actual-private-key');
+});
+
+test('environment endpoints override old stored domains and submitted domains while retaining owner credentials', async () => {
+  const store = new MemoryConfigStore();
+  const verifier = new StubVerifier();
+  const endpoints = { baseUrl: 'https://api.new-mteam.example', webBaseUrl: 'https://new-mteam.example' };
+  const configured = withMTeamEndpoints(store, endpoints);
+  const service = new IntegrationService(auth, configured, verifier, crypto, new Set(['api.new-mteam.example']), () => {
+    return now;
+  }, endpoints);
+  const empty = await service.getMTeam('token');
+  assert.equal(empty.baseUrl, endpoints.baseUrl);
+  await service.saveMTeam(
+    'token',
+    { baseUrl: 'https://old.example', webBaseUrl: 'https://old.example', apiKey: 'private-test-key' }
+  );
+  assert.equal(verifier.calls[0]?.baseUrl, endpoints.baseUrl);
+  assert.equal((await service.getMTeam('token')).webBaseUrl, endpoints.webBaseUrl);
+  const raw = store.record!;
+  store.records.set(
+    `${raw.ownerId}:mteam`,
+    { ...raw, baseUrl: 'https://retired.example', webBaseUrl: 'https://retired.example' }
+  );
+  const effective = await configured.find(raw.ownerId, 'mteam');
+  assert.equal(effective?.baseUrl, endpoints.baseUrl);
+  assert.equal(effective?.encryptedApiKey, raw.encryptedApiKey);
 });

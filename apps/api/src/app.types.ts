@@ -1,3 +1,7 @@
+import type { IntegrationPreferencesService } from './modules/integrations/integration-preferences.service.js';
+import type { MovieSiteResourcesService } from './modules/integrations/movie-site-resources.service.js';
+import type { ResourceSearchService } from './modules/resource-search/resource-search.service.js';
+import type { ResourceSiteService } from './modules/resource-sites/resource-site.service.js';
 import type { DocsService } from './modules/docs/docs.service.js';
 import type { PreferenceService } from './modules/preferences/preference.service.js';
 import type { TelegramService } from './modules/telegram/telegram.service.js';
@@ -21,6 +25,10 @@ import type { ConversationService } from './modules/conversations/conversation.s
 import type { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
 
 export interface BuildAppOptions {
+  integrationPreferencesService?: IntegrationPreferencesService;
+  movieSiteResourcesService?: MovieSiteResourcesService;
+  resourceSiteService?: ResourceSiteService;
+  resourceSearchService?: ResourceSearchService;
   telegramService?: TelegramService;
   notificationTestService?: NotificationTestService;
   notificationService?: NotificationService;

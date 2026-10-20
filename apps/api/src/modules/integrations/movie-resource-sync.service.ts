@@ -1,12 +1,15 @@
+import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
 import type { SyncLogger } from './movie-resource-sync.types.js';
 import type { MovieResourceSyncBatch } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieStatusStore } from '../movies/movie.types.js';
-import type { MovieResourceCheckService } from './movie-resource-check.service.js';
+import type { MovieResourceBatchChecker } from './movie-site-resources.types.js';
 import type { MovieResourceCheckCompletion, MovieResourceCheckRecord, MovieResourceCheckStore } from './movie-resource-check.types.js';
 import type { MovieResourceSyncBatchStore, StoredMovieResourceSyncBatch, SyncCounter } from './movie-resource-sync.types.js';
 
 export class MovieResourceSyncService {
+  verbose = false;
   private readonly running = new Set<string>();
   private readonly tasks = new Set<Promise<void>>();
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
@@ -16,7 +19,7 @@ export class MovieResourceSyncService {
   constructor(
     private readonly statuses: MovieStatusStore,
     private readonly checks: Pick<MovieResourceCheckStore, 'readForMovies' | 'readOne'>,
-    private readonly checker: MovieResourceCheckService,
+    private readonly checker: MovieResourceBatchChecker,
     private readonly batches: MovieResourceSyncBatchStore,
     private readonly retryDelayMs: number,
     private readonly busyWaitMs: number,
@@ -34,19 +37,36 @@ export class MovieResourceSyncService {
       return publicBatch(active);
     }
 
+    const sites = await this.checker.selectedSites?.(ownerId);
+    if (sites && !sites.length) throw new ResourceSiteError('notConfigured');
     const interestedIds = await this.readAllInterestedIds(ownerId);
     const checks = await this.checks.readForMovies(ownerId, interestedIds);
-    const checkById = new Map(checks.map((check) => [check.tmdbId, check]));
+    const checkById = new Map(checks.filter((check) => {
+      return check.provider === (sites?.[0] ?? 'mteam');
+    }).map((check) => {
+      return [check.tmdbId, check];
+    }));
     const now = this.now();
     const staleBefore = new Date(now.getTime() - MovieResourceSyncService.STALE_CHECK_AGE_MS);
     const prioritized = interestedIds
-      .map((tmdbId) => ({ tmdbId, priority: priority(checkById.get(tmdbId), staleBefore) }))
+      .map((tmdbId) => {
+        return ({ tmdbId, priority: sites ? (sites.some(
+          (site) => {
+            return priority(
+              checks.find((check) => check.tmdbId === tmdbId && check.provider === site),
+              staleBefore
+            ) !== null;
+          }) ? 0 : null) : priority(
+          checkById.get(tmdbId),
+          staleBefore
+        ) });
+      })
       .filter((item): item is { tmdbId: number; priority: number } => item.priority !== null)
       .sort((left, right) => left.priority - right.priority)
       .map(({ tmdbId }) => tmdbId);
     // The batch has already applied its one-month eligibility boundary. Force
     // the selected records so shorter provider TTL/retry rules cannot skip them.
-    const batch = await this.batches.createOrGetActive(ownerId, prioritized, true, now);
+    const batch = await this.batches.createOrGetActive(ownerId, prioritized, true, now, sites);
     this.run(batch);
     return publicBatch(batch);
   }
@@ -74,8 +94,17 @@ export class MovieResourceSyncService {
         : 0;
     this.running.add(batch.id);
     this.schedule(() => {
-      const task = this.process(batch)
+      const trace = new AiTrace({
+        error: (bindings: unknown, message?: string) => {
+          return this.logger.error(bindings as Record<string, unknown>, message ?? 'Movie resource sync failed');
+        },
+        info: (bindings: unknown, message?: string) => {
+          return this.logger.info(bindings as Record<string, unknown>, message ?? 'Movie resource sync progress');
+        },
+      }, { ownerId: batch.ownerId, batchId: batch.id, correlationId: currentAiTrace()?.correlationId }, '', 'movie-resources.batch', this.verbose);
+      const task = withAiTrace(trace, () => aiStep('movie-resources.batch.process', () => this.process(batch)))
         .catch((error) => {
+          trace.fail(error, { stage: 'movie-resources.batch.process' });
           this.logger.error(
             { err: error, batchId: batch.id, ownerId: batch.ownerId },
             'Movie resource sync batch crashed',
@@ -117,10 +146,10 @@ export class MovieResourceSyncService {
       if (this.stopped) return;
       const tmdbId = batch.movieIds[index];
       if (!tmdbId) continue;
-      const execution = await this.checker.checkNowDetailed(batch.ownerId, tmdbId, batch.force);
+      const execution = await this.checker.checkNowDetailed(batch.ownerId, tmdbId, batch.force, batch.sites ?? (this.checker.selectedSites ? ['mteam'] : undefined));
       const result = execution.started ? execution.result : await this.waitForExistingCheck(batch.ownerId, tmdbId);
       if (this.stopped && !execution.started) return;
-      if (result.lastAttemptStatus === 'error' && result.lastErrorCode === 'authentication') {
+      if (!batch.sites && result.lastAttemptStatus === 'error' && result.lastErrorCode === 'authentication') {
         await this.batches.finish(batch.id, 'failed', 'update_api_key');
         return;
       }

@@ -1,6 +1,7 @@
 
 
 export interface SearchRetryOptions {
+  signal?: AbortSignal;
   minimumIntervalMs?: number;
   /** Injectable clock/wait only for deterministic policy tests. */
   now?: () => number;

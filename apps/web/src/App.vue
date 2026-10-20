@@ -12,8 +12,10 @@ import PreferenceSettings from './features/settings/PreferenceSettings.vue';
 import TelegramSettings from './features/integrations/TelegramSettings.vue';
 import WhatsAppSettings from './features/integrations/WhatsAppSettings.vue';
 import NotificationSettings from './features/notifications/NotificationSettings.vue';
+import DownloadNotificationSwitch from './features/notifications/DownloadNotificationSwitch.vue';
 import NotificationTestPage from './features/notifications/NotificationTestPage.vue';
 import OpenAISettings from './features/integrations/OpenAISettings.vue';
+import ResourceSiteSettings from './features/integrations/ResourceSiteSettings.vue';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
 import TransmissionSettings from './features/integrations/TransmissionSettings.vue';
 import QBittorrentSettings from './features/integrations/QBittorrentSettings.vue';
@@ -49,7 +51,7 @@ const currentPage = ref<Page>(pageFromPath());
 const notificationSettings = ref<InstanceType<typeof NotificationSettings>>();
 const settingsSection = ref<SettingsSection>('profile');
 const settingsVisited = ref(new Set<SettingsSection>(['profile']));
-const settingsSections = ['profile', 'ai', 'preferences', 'downloads', 'notifications'] as const;
+const settingsSections = ['profile', 'ai', 'preferences', 'resources', 'downloads', 'notifications'] as const;
 function selectSettingsSection(section: SettingsSection) {
   settingsSection.value = section;
   settingsVisited.value.add(section);
@@ -874,8 +876,11 @@ function closeAccountMenu() {
             <div v-if="settingsVisited.has('ai')" v-show="settingsSection === 'ai'" class="settings-form">
               <OpenAISettings :key="user.id" />
             </div>
-            <div v-if="settingsVisited.has('downloads')" v-show="settingsSection === 'downloads'" class="settings-form">
+            <div v-if="settingsVisited.has('resources')" v-show="settingsSection === 'resources'" class="settings-form">
               <MTeamSettings :key="user.id" />
+              <ResourceSiteSettings :key="`resource-sites-${user.id}`" />
+            </div>
+            <div v-if="settingsVisited.has('downloads')" v-show="settingsSection === 'downloads'" class="settings-form">
               <QBittorrentSettings :key="user.id" />
               <TransmissionSettings :key="user.id" />
             </div>
@@ -891,9 +896,22 @@ function closeAccountMenu() {
               v-show="settingsSection === 'notifications'"
               class="settings-form"
             >
-              <NotificationSettings :key="user.id" ref="notificationSettings" />
-              <TelegramSettings :key="user.id" @binding-change="notificationSettings?.refresh()" />
-              <WhatsAppSettings :key="user.id" @binding-change="notificationSettings?.refresh()" />
+              <NotificationSettings :key="user.id" ref="notificationSettings">
+                <template #default="controls">
+                  <TelegramSettings :key="user.id" @binding-change="notificationSettings?.refresh()">
+                    <template #notifications="binding">
+                      <DownloadNotificationSwitch channel="Telegram" :enabled="controls.enabledChannels.includes('telegram')"
+                        :disabled="controls.disabled || binding.disabled" @change="controls.toggleChannel('telegram', $event)" />
+                    </template>
+                  </TelegramSettings>
+                  <WhatsAppSettings :key="user.id" @binding-change="notificationSettings?.refresh()">
+                    <template #notifications="binding">
+                      <DownloadNotificationSwitch channel="WhatsApp" :enabled="controls.enabledChannels.includes('whatsapp')"
+                        :disabled="controls.disabled || binding.disabled" @change="controls.toggleChannel('whatsapp', $event)" />
+                    </template>
+                  </WhatsAppSettings>
+                </template>
+              </NotificationSettings>
             </div>
           </div>
         </div>

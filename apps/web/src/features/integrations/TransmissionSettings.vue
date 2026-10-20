@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { replacementSecret } from './integration-secret.domain';
 import IntegrationCard from '../settings/IntegrationCard.vue';
 import type { ApiError, IntegrationStatus, TransmissionConfiguration } from '@movie-hub/contract';
 import { computed, onMounted, ref } from 'vue';
@@ -44,7 +45,7 @@ async function testAndSave() {
   const body = {
     baseUrl: baseUrl.value.trim(),
     username: username.value.trim(),
-    ...(password.value ? { password: password.value } : {}),
+    ...(replacementSecret(password.value, config.value.passwordMasked) ? { password: replacementSecret(password.value, config.value.passwordMasked) } : {}),
   };
   try {
     const response = await fetch(`${apiBaseUrl}/me/integrations/transmission`, {
@@ -56,7 +57,6 @@ async function testAndSave() {
     const result = (await response.json()) as TransmissionConfiguration | ApiError;
     if (!response.ok) throw localizedApiError(result, 'errors.transmissionValidation');
     applyConfiguration(result as TransmissionConfiguration);
-    password.value = '';
     successMessage.value = t('transmission.saved');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.transmissionValidation');
@@ -109,6 +109,7 @@ async function deleteConfiguration() {
 
 function applyConfiguration(next: TransmissionConfiguration) {
   config.value = next;
+  password.value = next.passwordMasked ?? '';
   baseUrl.value = next.baseUrl ?? 'http://localhost:9091';
   username.value = next.username ?? '';
 }
@@ -119,7 +120,7 @@ function canSubmit(): boolean {
     configured.value &&
     config.value.baseUrl === baseUrl.value.trim().replace(/\/$/, '') &&
     config.value.username === username.value.trim();
-  return Boolean(username.value.trim()) && (Boolean(password.value) || canRetainPassword);
+  return Boolean(username.value.trim()) && (Boolean(replacementSecret(password.value, config.value.passwordMasked)) || canRetainPassword);
 }
 </script>
 
@@ -128,7 +129,6 @@ function canSubmit(): boolean {
     id="transmission"
     :title="t('transmission.title')"
     badge="Tr"
-    :description="t('settings.transmissionSummary')"
     :status-label="statusLabel"
     :status-class="config.status"
     :configured="configured"
@@ -182,11 +182,12 @@ function canSubmit(): boolean {
               <input
                 id="transmission-password"
                 v-model="password"
-                type="password"
+                :type="config.passwordMasked && password === config.passwordMasked ? 'text' : 'password'"
                 maxlength="4096"
                 autocomplete="new-password"
                 :placeholder="configured ? t('transmission.keepSecret') : ''"
               />
+            <small v-if="config.passwordMasked">{{ t('settings.credentialLength', { length: Array.from(config.passwordMasked).length }) }}</small>
             </label>
           </div>
         </div>

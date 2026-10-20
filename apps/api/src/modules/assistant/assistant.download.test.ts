@@ -41,7 +41,7 @@ const basePlan: ResourcePlan = {
   title: null, year: null, candidateId: null, resolution: null, providers: null,
   releaseIndex: null, page: null, refresh: false, question: null, unsupported: [],
 };
-function fixture(providers: DownloadProvider[] = ['qbittorrent', 'transmission'], locale: Locale = 'zh-CN') {
+function fixture(providers: DownloadProvider[] = ['qbittorrent', 'transmission'], locale: Locale = 'zh-CN', defaultProvider?: DownloadProvider) {
   let handling: AssistantRequestClassification['handling'];
   const requests: LlmGenerateInput[] = [];
   let detectedLocale: Locale | null = null;
@@ -100,6 +100,7 @@ function fixture(providers: DownloadProvider[] = ['qbittorrent', 'transmission']
       },
       downloads: {
         providersFor: async () => [...providers],
+        defaultProviderFor: async () => defaultProvider,
         createForOwner: async (owner, movie, release, provider) => {
           const persisted = await sessions.read(owner, 'telegram:chat');
           assert.equal(persisted?.stage, 'submitting', 'checkpoint must precede external submission');
@@ -503,4 +504,18 @@ test('web download answers stay complete and replayable when streaming was reque
   assert.deepEqual(await f.create().run(message, [], undefined, true), result);
   assert.equal(f.counts().calls, calls);
   assert.equal(f.submissions.length, 0);
+});
+
+
+test('the configured default downloader is used after resource selection; explicit downloader choices still win', async () => {
+  for (const explicit of [null, 'qbittorrent'] as const) {
+    const f = fixture(['qbittorrent', 'transmission'], 'en-US', 'transmission');
+    await f.send('Download Interstellar');
+    assert.equal(f.submissions.length, 0);
+    f.action('select_resource', 2, explicit);
+    await f.send(explicit ? 'Download release 2 with qBittorrent' : 'Download release 2');
+    assert.equal(f.submissions[0]?.release, 'release-2');
+    assert.equal(f.submissions[0]?.provider, explicit ?? 'transmission');
+    assert.equal((await f.state())?.stage, 'idle');
+  }
 });

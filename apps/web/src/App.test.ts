@@ -318,6 +318,8 @@ describe('settings workspace', () => {
         if (url.endsWith('/auth/me'))
           return Response.json({ user: { id: 'settings-user', email: 'test@example.com', displayName: 'Daniel' } });
         if (url.endsWith('/config')) return Response.json({ avatar: { maxBytes: 52428800, maxPixels: 16777216 } });
+        if (url.endsWith('/resource-search/sources')) return Response.json({ sources: [] });
+        if (url.endsWith('/resource-sites/hdarea')) return Response.json({ site: 'hdarea', status: 'unconfigured' });
         if (url.endsWith('/openai')) return Response.json({ configured: false });
         if (url.endsWith('/telegram')) return Response.json({ status: 'unbound' });
         if (url.endsWith('/whatsapp')) return Response.json({ status: 'unbound' });
@@ -354,8 +356,13 @@ describe('settings workspace', () => {
     await wrapper.get('#openai-api-key').setValue('sk-unsaved-personal-key');
     await wrapper.get('[data-settings-section="downloads"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Sources & Downloads');
-    expect(wrapper.findAll('.connection-copy h3').map((node) => node.text())).toContain('M-Team');
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Downloads');
+    expect(
+      wrapper.findAll('.connection-copy h3').filter((node) => node.isVisible()).map((node) => node.text())
+    ).toEqual([
+      'qBittorrent', 'Transmission',
+    ]
+    );
     expect(wrapper.get('#openai-api-key').isVisible()).toBe(false);
     await wrapper.get('[data-settings-section="ai"]').trigger('click');
     expect(wrapper.get('#openai-api-key').element).toHaveProperty('value', 'sk-unsaved-personal-key');
@@ -365,12 +372,83 @@ describe('settings workspace', () => {
     wrapper.unmount();
   });
 
+  it.each([
+    ['en-US', 'Sources', 'Downloads'],
+    ['zh-CN', '资源', '下载'],
+  ] as const)('separates sources and downloads in desktop and mobile navigation (%s)', async (locale, resources, downloads) => {
+    setLocale(locale);
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.get('[data-settings-section="resources"]').text()).toContain(resources);
+    expect(wrapper.get('[data-settings-section="downloads"]').text()).toContain(downloads);
+    await wrapper.get('[data-settings-section="resources"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe(resources);
+    expect(wrapper.find('.resource-search').exists()).toBe(false);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/resource-search/sources'))).toBe(false);
+    expect(wrapper.findAll('.connection-copy h3').map((node) => node.text())).toEqual(['M-Team', 'HDArea']);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => /\/(qbittorrent|transmission)$/.test(String(url)))).toBe(false);
+    await wrapper.get('#settings-category').setValue('downloads');
+    await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe(downloads);
+    expect(
+      wrapper.findAll('.connection-copy h3').filter((node) => node.isVisible()).map((node) => node.text())
+    ).toEqual([
+      'qBittorrent', 'Transmission',
+    ]
+    );
+    await wrapper.get('#settings-category').setValue('resources');
+    expect(
+      wrapper.findAll('.connection-copy h3').filter((node) => node.isVisible()).map((node) => node.text())
+    ).toEqual(
+      ['M-Team', 'HDArea']
+    );
+    wrapper.unmount();
+  });
+
+  it.each(
+    ['en-US', 'zh-CN'] as const
+  )('places independent download switches on bound message cards in %s', async (locale) => {
+    setLocale(locale);
+    const baseFetch = globalThis.fetch;
+    let enabled = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/telegram') || url.endsWith('/whatsapp')) return Response.json({ status: 'connected' });
+      if (url.endsWith('/notifications')) {
+        if (init?.method === 'PUT') enabled = JSON.parse(String(init.body)).enabled;
+        return Response.json({ enabled, defaultChannel: 'telegram', additionalChannels: [], channels: [
+          { id: 'telegram', name: 'Telegram', configured: true },
+          { id: 'whatsapp', name: 'WhatsApp', configured: true },
+        ] }
+        );
+      }
+      return baseFetch(input, init);
+    })
+    );
+    const wrapper = mount(App, { attachTo: document.body });
+    try {
+      await flushPromises();
+      await wrapper.get('#settings-category').setValue('notifications');
+      await flushPromises();
+      expect(wrapper.get('.settings-content-heading h2').text()).toBe(locale === 'zh-CN' ? '消息' : 'Messages');
+      const telegram = wrapper.get('[aria-labelledby="telegram-title"]');
+      const whatsapp = wrapper.get('[aria-labelledby="whatsapp-title"]');
+      expect(telegram.get('.download-notification-switch').isVisible()).toBe(true);
+      expect(whatsapp.get('.download-notification-switch').isVisible()).toBe(true);
+      await telegram.get('input[role="switch"]').setValue(true);
+      await flushPromises();
+      expect(enabled).toBe(true);
+      expect(whatsapp.get<HTMLInputElement>('input[role="switch"]').element.checked).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
   it('supports the mobile category selector without starting a Telegram or WhatsApp binding on visit', async () => {
     const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     await wrapper.get('#settings-category').setValue('notifications');
     await flushPromises();
-    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Notifications');
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Messages');
     expect(wrapper.findAll('.connection-copy h3').map((node) => node.text())).toEqual(['Telegram', 'WhatsApp']);
     expect(wrapper.get('.integration-disclosure').text()).toContain('Link account');
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/bind'))).toBe(false);

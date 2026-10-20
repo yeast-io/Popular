@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { ApiError, MTeamConfiguration, MovieResourceSyncBatch, MyMoviesResponse, MyMoviesFilter } from '@movie-hub/contract';
+import type { IntegrationPreferences, ApiError, MovieResourceSyncBatch, MyMoviesResponse, MyMoviesFilter } from '@movie-hub/contract';
+import ResourceSiteSelector from './ResourceSiteSelector.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
@@ -34,7 +35,7 @@ const activeStatusLabel = computed(() => {
 });
 onMounted(() => {
   void load();
-  void loadMTeamConfiguration();
+
   void loadSyncBatch();
 });
 onBeforeUnmount(() => {
@@ -81,17 +82,19 @@ function markPosterFailed(tmdbId: number) {
 }
 
 function resourceStatusLabel(movie: MyMoviesResponse['items'][number]): string {
-  if (mteamStatus.value === 'unconfigured') return t('movie.resource.mteamUnconfigured');
+  if (mteamStatus.value === 'unconfigured') return t('resourceSelection.none');
   const check = movie.resourceCheck;
   if (!check) return '';
+  if (check.incomplete && check.availability === 'available') return t('resourceSelection.availablePartial');
   if (check.checking) return t('movie.resource.checking');
+  if (check.incomplete) return t('resourceSelection.incomplete');
   if (check.lastAttemptStatus === 'error') {
     if (!check.checkedAt) return t('movie.resource.checkFailed');
     if (check.availability === 'available') return t('movie.resource.availableRefreshFailed');
     if (check.availability === 'unavailable') return t('movie.resource.unavailableRefreshFailed');
     return t('movie.resource.checkFailed');
   }
-  if (check.availability === 'available') return t('movie.resource.available');
+  if (check.availability === 'available') return t('resourceSelection.available');
   if (check.availability === 'unavailable') return t('movie.resource.unavailable');
   if (check.availability === 'unmatchable') return t('movie.resource.unmatchable');
   return t('movie.resource.pending');
@@ -106,15 +109,12 @@ function successfulCheckTime(movie: MyMoviesResponse['items'][number]): string {
     : '';
 }
 
-async function loadMTeamConfiguration() {
-  try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/mteam`, { credentials: 'include' });
-    const body = (await response.json()) as MTeamConfiguration | ApiError;
-    if (!response.ok) throw localizedApiError(body, 'errors.requestFailed');
-    mteamStatus.value = (body as MTeamConfiguration).status === 'unconfigured' ? 'unconfigured' : 'configured';
-  } catch {
-    mteamStatus.value = 'unknown';
-  }
+function preferencesLoaded(preferences: IntegrationPreferences) {
+  mteamStatus.value = preferences.effectiveSites.length ? 'configured' : 'unconfigured';
+}
+function preferencesChanged(preferences: IntegrationPreferences) {
+  preferencesLoaded(preferences);
+  void load();
 }
 
 async function startSync() {
@@ -122,7 +122,7 @@ async function startSync() {
   stopSyncDismissTimer();
   syncError.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/movies/resources/mteam/sync`, {
+    const response = await fetch(`${apiBaseUrl}/me/movies/resources/sync`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
@@ -147,7 +147,7 @@ async function loadSyncBatch() {
   try {
     const jobId = syncBatch.value?.id ?? window.localStorage.getItem(syncJobStorageKey);
     if (!jobId) return;
-    const response = await fetch(`${apiBaseUrl}/me/movies/resources/mteam/sync/${jobId}`, { credentials: 'include' });
+    const response = await fetch(`${apiBaseUrl}/me/movies/resources/sync/${jobId}`, { credentials: 'include' });
     const body = (await response.json()) as MovieResourceSyncBatch | ApiError | null;
     if (!response.ok) throw localizedApiError(body, 'errors.syncMovieResources');
     const wasActive = isSyncActive(syncBatch.value);
@@ -226,6 +226,8 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
           <p class="section-description">{{ t('myMovies.description') }}</p>
         </div>
       </div>
+      <div class="resource-batch-controls">
+    <ResourceSiteSelector :disabled="isSyncActive(syncBatch)" @loaded="preferencesLoaded" @changed="preferencesChanged" />
       <button
         v-if="mteamStatus !== 'unconfigured'"
         class="resource-sync-button"
@@ -249,10 +251,11 @@ function syncStatusLabel(batch: MovieResourceSyncBatch): string {
           {{ isSyncActive(syncBatch) ? t('myMovies.sync.inProgress') : t('myMovies.sync.start') }}
         </span>
       </button>
+      </div>
     </div>
     <p v-if="mteamStatus === 'unconfigured'" class="integration-guidance" role="status">
-      <span>{{ t('movie.resource.mteamUnconfigured') }}</span>
-      <a href="/settings">{{ t('movie.resource.configureMTeam') }}</a>
+      <span>{{ t('resourceSelection.none') }}</span>
+      <a href="/settings">{{ t('resourceSelection.configure') }}</a>
     </p>
     <section v-if="syncBatch" class="sync-progress" :aria-label="t('myMovies.sync.progressLabel')" aria-live="polite">
       <div class="sync-progress-heading">

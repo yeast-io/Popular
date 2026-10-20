@@ -285,6 +285,7 @@ test('live release queries return only active exact matches and reuse the short-
       sizeBytes: 1024,
       resolution: '4K',
       tags: ['中字'],
+      releaseGroup: 'EPiC',
     },
     { id: '2', title: 'Dead', imdbId: 'tt0133093', visible: true, banned: false, seeders: 0 },
     { id: '3', title: 'Wrong movie', imdbId: 'tt9999999', visible: true, banned: false, seeders: 20 },
@@ -311,6 +312,7 @@ test('live release queries return only active exact matches and reuse the short-
       sizeBytes: 1024,
       resolution: '4K',
       tags: ['中字'],
+      releaseGroup: 'EPiC',
     },
   ]
   );

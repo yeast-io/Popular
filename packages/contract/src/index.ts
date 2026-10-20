@@ -21,3 +21,12 @@ export * from './integrations/telegram.schema.js';
 export * from './preferences/preference.types.js';
 
 export * from './docs/docs.schema.js';
+export * from './integrations/resource-site.schema.js';
+export * from './integrations/integration-secret.policy.js';
+
+export * from './integrations/integration-secret.domain.js';
+
+export * from './integrations/resource-search.schema.js';
+
+export * from './integrations/integration-preferences.schema.js';
+export * from './integrations/movie-site-resources.schema.js';

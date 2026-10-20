@@ -1,3 +1,4 @@
+import { maskIntegrationSecret } from '@movie-hub/contract';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
@@ -181,4 +182,21 @@ test('routes enforce sessions, validate payloads and serialize only public confi
   } finally {
     await app.close();
   }
+});
+
+test('Transmission returns a password mask and only retains it for the original address and username', async () => {
+  const f = fixture();
+  const saved = await f.service.save(
+    'owner',
+    { baseUrl: 'http://nas:9091', username: 'user', password: 'actual-password' }
+  );
+  assert.equal(saved.passwordMasked, maskIntegrationSecret('actual-password'));
+  const read = await f.service.get('owner'); assert.equal(read.passwordMasked, saved.passwordMasked);
+  assert.equal(JSON.stringify(read).includes('actual-password'), false);
+  await f.service.save('owner', { baseUrl: 'http://nas:9091', username: 'user', password: saved.passwordMasked });
+  assert.equal(f.calls.at(-1)!.credential.password, 'actual-password');
+  await assert.rejects(
+    f.service.save('owner', { baseUrl: 'http://other:9091', username: 'user', password: saved.passwordMasked }),
+    AppError
+  );
 });

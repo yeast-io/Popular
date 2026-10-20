@@ -25,3 +25,16 @@ test('download contracts accept only supported provider choices and preserve leg
   assert.equal(Value.Check(DownloadProviderListResponseSchema, { providers: ['qbittorrent', 'transmission'] }), true);
   assert.equal(Value.Check(DownloadProviderListResponseSchema, { providers: [], password: 'secret' }), false);
 });
+
+test('HDArea download requests accept only source identity and reject client supplied credentials or torrent URLs', () => {
+  assert.equal(
+    Value.Check(CreateMovieDownloadRequestSchema, { sourceProvider: 'hdarea', sourceReleaseId: '123' }),
+    true
+  );
+  for (const extra of [{ passkey: 'must-not-be-sent' }, { torrentUrl: 'https://hdarea.example/download.php?passkey=secret' }, { sourceProvider: 'unknown' }]) {
+    assert.equal(
+      Value.Check(CreateMovieDownloadRequestSchema, { sourceProvider: 'hdarea', sourceReleaseId: '123', ...extra }),
+      false
+    );
+  }
+});

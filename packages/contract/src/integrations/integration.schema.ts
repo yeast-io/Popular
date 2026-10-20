@@ -21,6 +21,7 @@ export const IntegrationFailureTypeSchema = Type.Union([
 export const MTeamConfigurationSchema = Type.Object(
   {
     provider: Type.Literal('mteam'),
+    apiKeyMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
     status: IntegrationStatusSchema,
     baseUrl: Type.Optional(Type.String({ format: 'uri' })),
     webBaseUrl: Type.Optional(Type.String({ format: 'uri' })),
@@ -44,6 +45,8 @@ export const QBittorrentAuthMethodSchema = Type.Union([Type.Literal('api_key'), 
 export const QBittorrentConfigurationSchema = Type.Object(
   {
     provider: Type.Literal('qbittorrent'),
+    apiKeyMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
+    passwordMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
     status: IntegrationStatusSchema,
     baseUrl: Type.Optional(Type.String({ format: 'uri' })),
     authMethod: Type.Optional(QBittorrentAuthMethodSchema),
@@ -88,6 +91,7 @@ export type SaveQBittorrentConfigurationRequest = Static<typeof SaveQBittorrentC
 export const TransmissionConfigurationSchema = Type.Object(
   {
     provider: Type.Literal('transmission'),
+    passwordMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
     status: IntegrationStatusSchema,
     baseUrl: Type.Optional(Type.String({ format: 'uri' })),
     username: Type.Optional(Type.String()),

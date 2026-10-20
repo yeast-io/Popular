@@ -38,7 +38,7 @@ const movieDownloadSchema = new Schema(
     notificationTask: { type: notificationTaskSchema },
     ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     tmdbId: { type: Number, required: true, min: 1 },
-    sourceProvider: { type: String, required: true, enum: ['mteam'] },
+    sourceProvider: { type: String, required: true, enum: ['mteam', 'hdarea'] },
     sourceReleaseId: { type: String, required: true },
     provider: { type: String, required: true, enum: ['qbittorrent', 'transmission'] },
     lookupTag: { type: String, required: true },
@@ -57,12 +57,15 @@ const movieDownloadSchema = new Schema(
     lastErrorCode: { type: String },
     addedAt: { type: Date },
     lastSyncedAt: { type: Date },
+    missingSince: { type: Date },
+    expiresAt: { type: Date },
   },
   { timestamps: true, collection: 'movie_downloads' },
 );
 
 movieDownloadSchema.index({ ownerId: 1, tmdbId: 1, sourceProvider: 1, sourceReleaseId: 1 }, { unique: true });
 movieDownloadSchema.index({ ownerId: 1, tmdbId: 1, updatedAt: -1 });
+movieDownloadSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, partialFilterExpression: { status: 'missing' } });
 
 movieDownloadSchema.index({
   'notificationTask.cancelled': 1,

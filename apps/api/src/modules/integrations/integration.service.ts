@@ -1,7 +1,10 @@
+import type { IntegrationPreferencesService } from './integration-preferences.service.js';
+import { maskIntegrationSecret } from '@movie-hub/contract';
+import { replacementSecret } from './integration-secret.domain.js';
 import { MTEAM_DEFAULT_WEB_BASE_URL, type IntegrationFailureType, type MTeamConfiguration, type SaveMTeamConfigurationRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
-import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier } from './integration.types.js';
+import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier, MTeamEndpoints } from './integration.types.js';
 import { SecretCrypto } from './secret-crypto.js';
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
@@ -17,28 +20,30 @@ export class IntegrationValidationError extends Error {
 }
 
 export class IntegrationService {
+  preferences?: IntegrationPreferencesService;
   constructor(
     private readonly auth: AuthService,
     private readonly configs: IntegrationConfigStore,
     private readonly mteam: MTeamVerifier,
     private readonly secrets: SecretCrypto,
     private readonly allowedMTeamHosts: ReadonlySet<string>,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly endpoints?: MTeamEndpoints
   ) {}
 
   async getMTeam(token: string | undefined): Promise<MTeamConfiguration> {
     const ownerId = await this.auth.requireOwnerId(token);
-    return toResponse(await this.configs.find(ownerId, 'mteam'));
+    return { ...toResponse(await this.configs.find(ownerId, 'mteam'), this.secrets), ...this.endpoints };
   }
 
   async saveMTeam(token: string | undefined, input: SaveMTeamConfigurationRequest): Promise<MTeamConfiguration> {
     const ownerId = await this.auth.requireOwnerId(token);
-    const baseUrl = normalizeMTeamBaseUrl(input.baseUrl, this.allowedMTeamHosts);
+    const baseUrl = normalizeMTeamBaseUrl(this.endpoints?.baseUrl ?? input.baseUrl, this.allowedMTeamHosts);
     const existing = await this.configs.find(ownerId, 'mteam');
-    const webBaseUrl = normalizeMTeamWebBaseUrl(input.webBaseUrl ?? existing?.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL);
+    const webBaseUrl = this.endpoints?.webBaseUrl ?? normalizeMTeamWebBaseUrl(input.webBaseUrl ?? existing?.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL);
     const secretContext = integrationSecretContext(ownerId, 'mteam');
     const apiKey =
-      input.apiKey?.trim() || (existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : '');
+      replacementSecret(input.apiKey, existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : undefined)?.trim() || (existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : '');
     if (!apiKey) throw new AppError(400, 'VALIDATION_ERROR', 'M-Team API key is required for the first configuration');
     const attemptedAt = this.now();
 
@@ -64,7 +69,8 @@ export class IntegrationService {
       verifiedAt: attemptedAt,
       lastValidationAt: attemptedAt,
     });
-    return toResponse(saved);
+    await this.preferences?.configured(ownerId, 'resource', 'mteam');
+    return toResponse(saved, this.secrets);
   }
 
   async retestMTeam(token: string | undefined): Promise<MTeamConfiguration> {
@@ -95,12 +101,15 @@ export class IntegrationService {
       verifiedAt: attemptedAt,
       lastValidationAt: attemptedAt,
     });
-    return toResponse(saved);
+    await this.preferences?.configured(ownerId, 'resource', 'mteam');
+    return toResponse(saved, this.secrets);
   }
 
   async deleteMTeam(token: string | undefined): Promise<void> {
     const ownerId = await this.auth.requireOwnerId(token);
+    await this.preferences?.beforeDelete(ownerId, 'resource', 'mteam');
     await this.configs.delete(ownerId, 'mteam');
+    await this.preferences?.deleted(ownerId, 'resource', 'mteam');
   }
 }
 
@@ -171,7 +180,7 @@ function mteamValidationAppError(error: unknown): AppError {
   return new AppError(status, code, 'M-Team validation failed');
 }
 
-function toResponse(record: IntegrationConfigRecord | null): MTeamConfiguration {
+function toResponse(record: IntegrationConfigRecord | null, secrets: SecretCrypto): MTeamConfiguration {
   if (!record) return { provider: 'mteam', status: 'unconfigured' };
   const status = record.lastFailureType
     ? 'configured_invalid'
@@ -180,6 +189,7 @@ function toResponse(record: IntegrationConfigRecord | null): MTeamConfiguration 
       : 'configured_unverified';
   return {
     provider: 'mteam',
+    apiKeyMasked: maskIntegrationSecret(secrets.decrypt(record.encryptedApiKey, integrationSecretContext(record.ownerId, 'mteam'))),
     status,
     baseUrl: record.baseUrl,
     webBaseUrl: record.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,

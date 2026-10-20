@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <title>M-Team — outline</title>
+  <g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.75" y="2.75" width="18.5" height="18.5" rx="3"/>
+    <circle cx="8.25" cy="10.25" r="1.75"/>
+    <circle cx="15.75" cy="10.25" r="1.75"/>
+    <path d="M8.25 12v9.25M15.75 12v9.25"/>
+  </g>
+  <style>:root{color:#A3A3A0}</style>
+</svg>

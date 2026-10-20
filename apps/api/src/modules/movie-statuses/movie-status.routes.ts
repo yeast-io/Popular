@@ -1,3 +1,5 @@
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
+import { AiTrace, aiStep, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { ApiErrorSchema, MovieIdParamsSchema, MoviePreferenceResponseSchema, MovieReleaseListResponseSchema, MovieResourceCheckResponseSchema, MovieResourceSyncBatchSchema, MovieResourceSyncParamsSchema, MovieStatusResponseSchema, MyMoviesQuerySchema, MyMoviesResponseSchema, StartMovieResourceSyncRequestSchema, SetMoviePreferenceRequestSchema, SetMovieStatusRequestSchema, type MovieIdParams, type MovieResourceSyncParams, type MyMoviesQuery, type SetMoviePreferenceRequest, type SetMovieStatusRequest, type StartMovieResourceSyncRequest } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
@@ -12,9 +14,19 @@ export function registerMovieStatusRoutes(
   auth: AuthService,
   config: AppConfig,
   sync?: MovieResourceSyncService,
+  multiSite = false,
+  logger: AiLogger = app.log,
 ): void {
   const ownerId = (request: FastifyRequest) => {
     return auth.requireOwnerId(readSessionToken(request, config.SESSION_COOKIE_NAME));
+  };
+
+  const execute = <T>(request: FastifyRequest, stage: string, action: () => Promise<T>) => {
+    const trace = new AiTrace(logger, { requestId: request.id }, '', 'movie-statuses.api', config.VERBOSE);
+    return withAiTrace(trace, async () => {
+      try { return await aiStep(stage, action); }
+      catch (error) { trace.fail(error); throw error; }
+    });
   };
 
   app.put<{ Params: MovieIdParams; Body: SetMovieStatusRequest }>(
@@ -27,7 +39,10 @@ export function registerMovieStatusRoutes(
       },
     },
     async (request) => {
-      return service.set(await ownerId(request), request.params.tmdbId, request.body.status);
+      return execute(
+        request, 'movie-statuses.set',
+        async () => service.set(await ownerId(request), request.params.tmdbId, request.body.status)
+      );
     },
   );
 
@@ -67,13 +82,15 @@ export function registerMovieStatusRoutes(
       schema: { querystring: MyMoviesQuerySchema, response: { 200: MyMoviesResponseSchema, 401: ApiErrorSchema } },
     },
     async (request) => {
-      return service.list(
-        await ownerId(request),
-        request.query.status,
-        request.query.page ?? 1,
-        request.query.pageSize ?? 20,
-        request.query.locale,
-      );
+      return execute(request, 'movie-statuses.list', async () => {
+        return service.list(
+          await ownerId(request),
+          request.query.status,
+          request.query.page ?? 1,
+          request.query.pageSize ?? 20,
+          request.query.locale,
+        );
+      });
     },
   );
 
@@ -104,7 +121,7 @@ export function registerMovieStatusRoutes(
     },
   );
 
-  app.get<{ Params: MovieIdParams }>(
+  if (!multiSite) app.get<{ Params: MovieIdParams }>(
     '/me/movies/:tmdbId/resources/mteam/releases',
     {
       schema: {

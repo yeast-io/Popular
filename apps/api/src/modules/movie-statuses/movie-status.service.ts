@@ -1,3 +1,4 @@
+import type { MovieSiteResourcesService } from '../integrations/movie-site-resources.service.js';
 import type { MovieResourceCheckDispatcher } from './movie-status.types.js';
 import type { Locale, MovieReleaseListResponse, MovieResourceCheckResponse, MyMoviesFilter, MyMoviesResponse, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
@@ -11,7 +12,8 @@ export class MovieStatusService {
     private readonly movies: MovieCatalogStore,
     private readonly defaultLocale: Locale,
     private readonly resourceChecks?: MovieResourceCheckDispatcher,
-    private readonly resourceCheckStore?: Pick<MovieResourceCheckStore, 'readForMovies' | 'readOne'>
+    private readonly resourceCheckStore?: Pick<MovieResourceCheckStore, 'readForMovies' | 'readOne'>,
+    private readonly siteResources?: MovieSiteResourcesService
   ) {}
 
   async set(ownerId: string, tmdbId: number, status: TrackedMovieStatus) {
@@ -85,16 +87,21 @@ export class MovieStatusService {
       ) ?? [],
     ]);
     const stateById = new Map(result.items.map((item) => [item.tmdbId, item]));
-    const resourceCheckById = new Map(resourceChecks.map((check) => [check.tmdbId, check]));
+    const resourceCheckById = new Map(resourceChecks.filter((check) => {
+      return check.provider === 'mteam';
+    }).map((check) => {
+      return [check.tmdbId, check];
+    }));
+    const summaries = await this.siteResources?.summaries(ownerId, result.items.map((item) => item.tmdbId));
     return {
       items: movies.flatMap((movie) => {
         const state = stateById.get(movie.tmdbId);
         const storedResourceCheck = resourceCheckById.get(movie.tmdbId);
-        const resourceCheck = storedResourceCheck
+        const resourceCheck = summaries?.get(movie.tmdbId) ?? (storedResourceCheck
           ? toResourceCheckResponse(storedResourceCheck)
           : state?.status === 'interested'
             ? emptyResourceCheck()
-            : undefined;
+            : undefined);
         return state
           ? [
               {

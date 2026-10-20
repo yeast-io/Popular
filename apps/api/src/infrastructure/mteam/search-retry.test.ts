@@ -142,3 +142,15 @@ test('retry failures retain diagnostics and correlation even when verbose is dis
   assert.doesNotMatch(JSON.stringify(errors), /private user text|secret-token/);
   assert.match(JSON.stringify(errors), /stack|cause/);
 });
+
+test('caller cancellation prevents a search and aborts an in-flight search without retrying', async () => {
+  let calls = 0;
+  await assert.rejects(retryMTeamSearch(async () => { calls++; }, { signal: AbortSignal.abort() }));
+  assert.equal(calls, 0);
+  const controller = new AbortController();
+  const operation = retryMTeamSearch(async (_attempt, _id, signal) => {
+    calls++; controller.abort(); signal.throwIfAborted();
+  }, { signal: controller.signal }
+  );
+  await assert.rejects(operation); assert.equal(calls, 1);
+});

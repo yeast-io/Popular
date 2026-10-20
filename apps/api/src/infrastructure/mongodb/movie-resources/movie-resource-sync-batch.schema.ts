@@ -5,6 +5,7 @@ const movieResourceSyncBatchSchema = new Schema(
     ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     status: { type: String, required: true, enum: ['queued', 'running', 'paused', 'completed', 'failed', 'cancelled'] },
     active: { type: Boolean, required: true },
+    sites: { type: [String], default: undefined },
     movieIds: { type: [Number], required: true, default: [] },
     cursor: { type: Number, required: true, min: 0, default: 0 },
     total: { type: Number, required: true, min: 0 },
