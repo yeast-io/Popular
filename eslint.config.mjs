@@ -32,6 +32,7 @@ export default ts.config(
       '**/.vite/**',
       '.agents/**',
       '.codex/**',
+      '.archify/**',
     ],
   },
   {
