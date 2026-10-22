@@ -26,6 +26,8 @@ test('profile writes fence owner, version and applied-job receipt in one update'
 test('manual active slots and profile owners have database uniqueness', async () => {
   const connection = createConnection();
   const models = createPreferenceModels(connection);
+  assert.equal(models.profiles.collection.name, 'taste_profiles');
+  assert.equal(models.jobs.collection.name, 'preference_jobs');
   assert.ok(
     models.jobs.schema
       .indexes()

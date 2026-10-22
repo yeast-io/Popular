@@ -9,9 +9,8 @@ export function createRecommendationModel(connection: Connection) {
       leaseId: String,
       leaseUntil: Date,
     },
-    { timestamps: true }
+    { timestamps: true, collection: 'recommendation_tasks' }
   );
   schema.index({ ownerId: 1, conversation: 1 }, { unique: true });
-  // Preserve the existing model/collection identity; this refactor requires no data migration.
   return connection.model('RecommendationTask', schema);
 }

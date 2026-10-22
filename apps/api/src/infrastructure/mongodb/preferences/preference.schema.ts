@@ -8,7 +8,7 @@ export function createPreferenceModels(connection: Connection) {
       data: { type: Schema.Types.Mixed, required: true },
       appliedJobs: { type: [String], default: [] },
     },
-    { timestamps: true }
+    { timestamps: true, collection: 'taste_profiles' }
   );
   const job = new Schema(
     {
@@ -26,7 +26,7 @@ export function createPreferenceModels(connection: Connection) {
       nextAt: { type: Date, default: Date.now },
       error: { type: String, default: null },
     },
-    { timestamps: true }
+    { timestamps: true, collection: 'preference_jobs' }
   );
   job.index({ status: 1, nextAt: 1, leaseUntil: 1 });
   job.index({ ownerId: 1, createdAt: -1 });

@@ -6,7 +6,7 @@ import { createResourceQueryModel } from './resource-query.schema.js';
 test('resource query schema enforces owner/conversation uniqueness', async () => {
   const connection = createConnection();
   const model = createResourceQueryModel(connection);
-  assert.equal(model.collection.name, 'assistantresourcequeries');
+  assert.equal(model.collection.name, 'assistant_resource_queries');
   assert.ok(
     model.schema
       .indexes()

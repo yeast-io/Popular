@@ -10,7 +10,7 @@ export function createResourceQueryModel(connection: Connection) {
       leaseUntil: Date,
       expiresAt: Date,
     },
-    { timestamps: true }
+    { timestamps: true, collection: 'assistant_resource_queries' }
   );
   schema.index({ ownerId: 1, conversation: 1 }, { unique: true });
   schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

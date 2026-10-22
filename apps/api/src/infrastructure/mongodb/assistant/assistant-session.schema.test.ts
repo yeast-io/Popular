@@ -6,7 +6,7 @@ import { createAssistantSessionModel } from './assistant-session.schema.js';
 test('workflow session schema enforces owner/conversation uniqueness', async () => {
   const connection = createConnection();
   const model = createAssistantSessionModel(connection);
-  assert.equal(model.collection.name, 'assistantworkflowsessions');
+  assert.equal(model.collection.name, 'assistant_workflow_sessions');
   assert.ok(
     model.schema
       .indexes()

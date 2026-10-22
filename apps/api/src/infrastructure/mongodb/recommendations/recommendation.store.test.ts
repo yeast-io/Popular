@@ -9,7 +9,7 @@ test('recommendation schema retains existing model identity and owner/conversati
   const connection = createConnection();
   const model = createRecommendationModel(connection);
   assert.equal(model.modelName, 'RecommendationTask');
-  assert.equal(model.collection.name, 'recommendationtasks');
+  assert.equal(model.collection.name, 'recommendation_tasks');
   assert.ok(
     model.schema
       .indexes()
