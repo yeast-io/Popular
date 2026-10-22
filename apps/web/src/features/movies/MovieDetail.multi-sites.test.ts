@@ -103,7 +103,7 @@ it.each(['en-US', 'zh-CN'] as const)('groups selected sources, expands the prima
   expect(document.body.querySelector('.release-downloader-option.is-selected img')?.getAttribute('src')).toBeTruthy();
   groups[0]!.querySelector<HTMLButtonElement>('.release-download-button')!.click();
   await flushPromises();
-  expect(f.posts).toEqual([{ sourceReleaseId: '42', provider: 'transmission' }]);
+  expect(f.posts).toEqual([{ sourceReleaseId: '42', provider: 'transmission', downloaderInstanceId: 'transmission' }]);
   expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
   wrapper.unmount();
 });
@@ -292,7 +292,7 @@ it.each(['en-US', 'zh-CN'] as const)('downloads HDArea independently of an ident
   groups[1]!.open = true;
   groups[1]!.querySelector<HTMLButtonElement>('.release-download-button')!.click();
   await flushPromises();
-  expect(f.posts).toEqual([{ sourceReleaseId: '42', provider: 'transmission', sourceProvider: 'hdarea' }]);
+  expect(f.posts).toEqual([{ sourceReleaseId: '42', provider: 'transmission', downloaderInstanceId: 'transmission', sourceProvider: 'hdarea' }]);
   expect(groups[1]!.querySelector('[role="status"]')?.textContent).toContain('12%');
   expect(groups[0]!.querySelector('.release-download-progress')).toBeNull();
   groups[0]!.querySelector<HTMLButtonElement>('.release-download-button')!.click();

@@ -1,3 +1,4 @@
+import { siteAccountIdentityPending } from '../resource-sites/site-account.errors.js';
 import type {
   CheckLogger,
   MovieResourceCheckOptions,
@@ -72,9 +73,11 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     if (!(await this.movies.hasMovie(tmdbId))) {
       throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded before its resources can be checked.');
     }
-    if (!(await this.configs.find(ownerId, 'mteam'))) {
+    const config = await this.configs.find(ownerId, 'mteam');
+    if (!config) {
       throw new AppError(409, 'MTEAM_NOT_CONFIGURED', 'Configure M-Team before checking movie resources.');
     }
+    if (!config.externalUserId) throw siteAccountIdentityPending();
     return this.enqueue(ownerId, tmdbId, force);
   }
 
@@ -90,6 +93,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     if (!config) {
       throw new AppError(409, 'MTEAM_NOT_CONFIGURED', 'Configure M-Team before querying releases.');
     }
+    if (!config.externalUserId) throw siteAccountIdentityPending();
     const wallTime = Date.now();
     for (const [key, value] of this.releaseCache) {
       if (value.expiresAt <= wallTime) this.releaseCache.delete(key);
@@ -199,7 +203,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   private async enqueue(ownerId: string, tmdbId: number, force: boolean): Promise<boolean> {
     if (this.stopped) return false;
     const config = await this.configs.find(ownerId, 'mteam');
-    if (!config || config.lastFailureType === 'authentication') return false;
+    if (!config || !config.externalUserId || config.lastFailureType === 'authentication') return false;
     const key = taskKey(ownerId, tmdbId, 'mteam');
     if (this.queue.has(key)) return false;
     const attemptedAt = this.now();
@@ -228,7 +232,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
 
   async checkNowDetailed(ownerId: string, tmdbId: number, force = false): Promise<MovieResourceCheckExecution> {
     const config = await this.configs.find(ownerId, 'mteam');
-    if (!config || config.lastFailureType === 'authentication') {
+    if (!config || !config.externalUserId || config.lastFailureType === 'authentication') {
       return { started: true, result: { lastAttemptStatus: 'error', lastErrorCode: 'authentication' } };
     }
     const key: MovieResourceCheckKey = { ownerId, tmdbId, provider: 'mteam' };
@@ -252,7 +256,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     const startedAt = Date.now();
     try {
       const config = await this.configs.find(key.ownerId, 'mteam');
-      if (!config) throw new IntegrationValidationError('authentication', 'M-Team is not configured');
+      if (!config || !config.externalUserId) throw new IntegrationValidationError('authentication', 'M-Team identity is not verified');
       let apiKey: string;
       try {
         apiKey = this.secrets.decrypt(config.encryptedApiKey, integrationSecretContext(key.ownerId, 'mteam'));

@@ -55,7 +55,7 @@ For an explicit numbered download, return select_resource with the user's number
 expired or the number is out of range: the workflow validates and returns a precise error. Do not invent release IDs.
 Do not return status or clarify merely because stage=idle or the chosen number is outside the displayed page.
 select_provider: user explicitly names a downloader or chooses its offered number ONLY at stage=await_provider.
-Map offered numbers to context.providers. provider is null unless explicitly selected by the user.
+Map offered numbers or names to context.providers and return the selected downloaderInstanceId as provider. provider is null unless explicitly selected by the user.
 If a named downloader is absent from offered providers, still return its name; the server rejects it.
 A request specifying both a film and a downloader uses query; never skip resource selection.
 cancel: stop the pending assistant download interaction only. Never claim to cancel an already submitted torrent.

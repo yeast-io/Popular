@@ -1,4 +1,5 @@
 import type { IntegrationPreferencesService } from './integration-preferences.service.js';
+import { randomUUID } from 'node:crypto';
 import { maskIntegrationSecret } from '@movie-hub/contract';
 import { replacementSecret } from './integration-secret.domain.js';
 import type {
@@ -10,6 +11,7 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import { IntegrationValidationError } from './integration.service.js';
 import { SecretCrypto } from './secret-crypto.js';
+import { isPublicDownloaderAddress, isPublicDownloaderUrl } from './public-downloader-address.domain.js';
 import type {
   TransmissionClientPort,
   TransmissionConfigRecord,
@@ -28,17 +30,35 @@ export class TransmissionIntegrationService {
     private readonly now: () => Date = () => new Date()
   ) {}
 
-  async get(token: string | undefined): Promise<TransmissionConfiguration> {
-    return toResponse(await this.configs.find(await this.auth.requireOwnerId(token)), this.secrets);
+  async list(token: string | undefined): Promise<TransmissionConfiguration[]> {
+    const ownerId = await this.auth.requireOwnerId(token);
+    const records = this.configs.list ? await this.configs.list(ownerId) : [await this.configs.find(ownerId)].filter((record) => record !== null);
+    return records.map((record) => toResponse(record, this.secrets));
+  }
+
+  async get(token: string | undefined, downloaderInstanceId?: string): Promise<TransmissionConfiguration> {
+    const ownerId = await this.auth.requireOwnerId(token);
+    const record = await this.load(ownerId, downloaderInstanceId);
+    if (downloaderInstanceId && !record) throw new AppError(404, 'NOT_FOUND', 'Transmission instance not found');
+    return toResponse(record, this.secrets);
+  }
+
+  async create(token: string | undefined, input: SaveTransmissionConfigurationRequest): Promise<TransmissionConfiguration> {
+    return this.save(token, input, randomUUID(), true);
   }
 
   async save(
     token: string | undefined,
-    input: SaveTransmissionConfigurationRequest
+    input: SaveTransmissionConfigurationRequest,
+    downloaderInstanceId?: string,
+    creating = false
   ): Promise<TransmissionConfiguration> {
     const ownerId = await this.auth.requireOwnerId(token);
     const baseUrl = normalizeTransmissionBaseUrl(input.baseUrl);
-    const existing = await this.configs.find(ownerId);
+    const existing = creating ? null : await this.load(ownerId, downloaderInstanceId);
+    if (downloaderInstanceId && !creating && !existing) throw new AppError(404, 'NOT_FOUND', 'Transmission instance not found');
+    const name = (input.name ?? existing?.name ?? 'Transmission').trim();
+    if (!name || name.length > 80) throw new AppError(400, 'VALIDATION_ERROR', 'Enter a downloader name');
     const credential = credentialFromInput(input, baseUrl, existing, this.secrets);
     const attemptedAt = this.now();
     let version: string;
@@ -47,8 +67,11 @@ export class TransmissionIntegrationService {
     } catch (error) {
       throw transmissionAppError(error, 'Transmission validation failed');
     }
+    const instanceId = downloaderInstanceId ?? existing?.downloaderInstanceId ?? randomUUID();
     const saved = await this.configs.saveVerified({
       ownerId,
+      downloaderInstanceId: instanceId,
+      name,
       baseUrl,
       username: credential.username,
       encryptedCredential: this.secrets.encrypt(JSON.stringify(credential), credentialContext(ownerId)),
@@ -56,14 +79,15 @@ export class TransmissionIntegrationService {
       verifiedAt: attemptedAt,
       lastValidationAt: attemptedAt,
     });
-    await this.preferences?.configured(ownerId, 'downloader', 'transmission');
+    await this.preferences?.configured(ownerId, 'downloader', saved.downloaderInstanceId ?? 'transmission');
     return toResponse(saved, this.secrets);
   }
 
-  async retest(token: string | undefined): Promise<TransmissionConfiguration> {
+  async retest(token: string | undefined, downloaderInstanceId?: string): Promise<TransmissionConfiguration> {
     const ownerId = await this.auth.requireOwnerId(token);
-    const existing = await this.configs.find(ownerId);
+    const existing = await this.load(ownerId, downloaderInstanceId);
     if (!existing) throw new AppError(404, 'NOT_FOUND', 'Transmission is not configured');
+    normalizeTransmissionBaseUrl(existing.baseUrl);
     const attemptedAt = this.now();
     try {
       const { version } = await this.client.verify(existing.baseUrl, decryptCredential(existing, this.secrets));
@@ -77,16 +101,26 @@ export class TransmissionIntegrationService {
         this.secrets
       );
     } catch (error) {
-      await this.configs.recordFailure(ownerId, attemptedAt, failureTypeOf(error));
+      await this.configs.recordFailure(ownerId, attemptedAt, failureTypeOf(error), existing.downloaderInstanceId);
       throw transmissionAppError(error, 'Transmission validation failed');
     }
   }
 
-  async delete(token: string | undefined): Promise<void> {
+  async delete(token: string | undefined, downloaderInstanceId?: string): Promise<void> {
     const ownerId = await this.auth.requireOwnerId(token);
-    await this.preferences?.beforeDelete(ownerId, 'downloader', 'transmission');
-    await this.configs.delete(ownerId);
-    await this.preferences?.deleted(ownerId, 'downloader', 'transmission');
+    const existing = await this.load(ownerId, downloaderInstanceId);
+    if (!existing) throw new AppError(404, 'NOT_FOUND', 'Transmission instance not found');
+    const id = existing.downloaderInstanceId ?? 'transmission';
+    await this.preferences?.beforeDelete(ownerId, 'downloader', id);
+    await this.configs.delete(ownerId, existing.downloaderInstanceId);
+    await this.preferences?.deleted(ownerId, 'downloader', id);
+  }
+
+  private async load(ownerId: string, downloaderInstanceId?: string): Promise<TransmissionConfigRecord | null> {
+    if (downloaderInstanceId) return this.configs.find(ownerId, downloaderInstanceId);
+    const records = this.configs.list ? await this.configs.list(ownerId) : [await this.configs.find(ownerId)].filter((record) => record !== null);
+    if (records.length > 1) throw new AppError(409, 'DOWNLOAD_PROVIDER_REQUIRED', 'Choose a downloader instance');
+    return records[0] ?? null;
   }
 }
 
@@ -104,6 +138,7 @@ export function normalizeTransmissionBaseUrl(raw: string): string {
     || url.search
     || url.hash
     || url.pathname !== '/'
+    || !isPublicDownloaderAddress(url)
   ) {
     throw new AppError(400, 'TRANSMISSION_INVALID_URL', 'Transmission URL is invalid');
   }
@@ -164,8 +199,10 @@ function toResponse(record: TransmissionConfigRecord | null, secrets: SecretCryp
   if (!record) return { provider: 'transmission', status: 'unconfigured' };
   return {
     provider: 'transmission',
+    ...(record.downloaderInstanceId ? { downloaderInstanceId: record.downloaderInstanceId } : {}),
+    ...(record.name ? { name: record.name } : {}),
     passwordMasked: maskIntegrationSecret(decryptCredential(record, secrets).password),
-    status: record.lastFailureType
+    status: !isPublicDownloaderUrl(record.baseUrl) || record.lastFailureType
       ? 'configured_invalid'
       : record.verifiedAt
         ? 'configured_valid'

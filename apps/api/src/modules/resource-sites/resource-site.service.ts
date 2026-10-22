@@ -1,3 +1,4 @@
+import { siteAccountIdentityPending } from './site-account.errors.js';
 import type { IntegrationPreferencesService } from '../integrations/integration-preferences.service.js';
 import { maskIntegrationSecret } from '@movie-hub/contract';
 import { replacementSecret } from '../integrations/integration-secret.domain.js';
@@ -10,7 +11,7 @@ import type {
   ResourceSiteSession,
 } from './resource-site.types.js';
 import type { SecretCrypto } from '../integrations/secret-crypto.js';
-import type { ResourceSiteHttpClient } from '../../infrastructure/resource-sites/resource-site-http.client.js';
+import type { ResourceSiteHttpClientPort } from './resource-site.types.js';
 import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { ResourceSiteError } from './resource-site.errors.js';
 
@@ -21,7 +22,7 @@ export class ResourceSiteService {
     readonly registry: ReadonlyMap<string, ResourceSiteAdapter>,
     private readonly credentials: ResourceSiteCredentialStore,
     private readonly secrets: SecretCrypto,
-    private readonly http: Pick<ResourceSiteHttpClient, 'session'>,
+    private readonly http: ResourceSiteHttpClientPort,
     private readonly diagnostics: ResourceSiteDiagnostics
   ) {}
 
@@ -31,7 +32,8 @@ export class ResourceSiteService {
 
   async status(ownerId: string, site: string) {
     this.adapter(site);
-    return (await this.credentials.find(ownerId, site))?.status ?? 'unconfigured';
+    const row = await this.credentials.find(ownerId, site);
+    return !row ? 'unconfigured' : row.externalUserId ? row.status : 'configured_invalid';
   }
 
   async configuration(ownerId: string, site: string): Promise<ResourceSiteConfiguration> {
@@ -40,7 +42,7 @@ export class ResourceSiteService {
     return row
       ? {
           site,
-          status: row.status,
+          status: row.externalUserId ? row.status : 'configured_invalid',
           cookieMasked: maskIntegrationSecret(this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site))),
           ...(row.encryptedPasskey
             ? {
@@ -83,8 +85,10 @@ export class ResourceSiteService {
       this.protect(cookie);
       if (passkey) currentAiTrace()?.sensitive(passkey);
       const session = await this.http.session(adapter.baseUrl, cookie);
+      let externalUserId: string;
       try {
-        await aiStep('resource-sites.verify', () => adapter.verify(session));
+        externalUserId = await aiStep('resource-sites.verify', () => adapter.verify(session));
+        currentAiTrace()?.sensitive(externalUserId);
       } catch (error) {
         if (
           revalidating
@@ -99,6 +103,7 @@ export class ResourceSiteService {
         return this.credentials.save({
           ownerId,
           site,
+          externalUserId,
           ...(passkey
             ? { encryptedPasskey: this.secrets.encrypt(passkey, `${this.context(ownerId, site)}:passkey`) }
             : existing?.encryptedPasskey
@@ -121,6 +126,7 @@ export class ResourceSiteService {
       const adapter = this.adapter(site);
       const row = await aiStep('resource-sites.credentials.load', () => this.credentials.find(ownerId, site));
       if (!row) throw new ResourceSiteError('notConfigured');
+      if (!row.externalUserId) throw siteAccountIdentityPending();
       if (row.status !== 'configured_valid') throw new ResourceSiteError('authentication');
       if (!row.encryptedPasskey) throw new ResourceSiteError('passkeyRequired');
       if (!adapter.torrentUrl) throw new ResourceSiteError('invalidResponse');
@@ -163,6 +169,7 @@ export class ResourceSiteService {
       const adapter = this.adapter(site);
       const row = await aiStep('resource-sites.credentials.load', () => this.credentials.find(ownerId, site));
       if (!row) throw new ResourceSiteError('notConfigured');
+      if (!row.externalUserId) throw siteAccountIdentityPending();
       if (row.status !== 'configured_valid') throw new ResourceSiteError('authentication');
       const cookie = this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site));
       this.protect(cookie);

@@ -1,5 +1,5 @@
 import type { MessageKey } from './assistant.types.js';
-import type { DownloadProvider, Locale, MovieDownload, MovieDownloadStatus } from '@movie-hub/contract';
+import type { DownloaderChoice, Locale, MovieDownload, MovieDownloadStatus } from '@movie-hub/contract';
 
 export const messages = {
   'zh-CN': {
@@ -79,17 +79,17 @@ const statuses: Record<Locale, Record<MovieDownloadStatus, string>> = {
 export function assistantText(locale: Locale, key: MessageKey, values: Record<string, string | number> = {}): string {
   return messages[locale][key].replace(/\{(\w+)\}/g, (match, name: string) => String(values[name] ?? match));
 }
-export function downloadProvidersText(locale: Locale, title: string, providers: DownloadProvider[]): string {
+export function downloadProvidersText(locale: Locale, title: string, providers: DownloaderChoice[]): string {
   if (!providers.length) return assistantText(locale, 'noProvider');
   return assistantText(locale, 'providers', {
     title: title.replace(/\p{Cc}/gu, ' ').slice(0, 300),
-    providers: providers.map((provider, index) => `${index + 1}. ${provider}`).join('\n'),
+    providers: providers.map((provider, index) => `${index + 1}. ${provider.name} (${provider.provider})`).join('\n'),
   });
 }
 export function downloadSubmittedText(locale: Locale, result: MovieDownload): string {
   return assistantText(locale, 'submitted', {
     id: result.id,
-    provider: result.provider,
+    provider: result.downloaderName ?? result.provider,
     status: statuses[locale][result.status],
     progress: result.progress,
   });

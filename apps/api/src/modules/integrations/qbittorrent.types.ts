@@ -5,6 +5,8 @@ export type QBittorrentCredential
 
 export interface QBittorrentConfigRecord {
   ownerId: string;
+  downloaderInstanceId?: string;
+  name?: string;
   baseUrl: string;
   authMethod: QBittorrentAuthMethod;
   username?: string;
@@ -16,12 +18,13 @@ export interface QBittorrentConfigRecord {
 }
 
 export interface QBittorrentConfigStore {
-  find(ownerId: string): Promise<QBittorrentConfigRecord | null>;
+  find(ownerId: string, downloaderInstanceId?: string): Promise<QBittorrentConfigRecord | null>;
+  list?(ownerId: string): Promise<QBittorrentConfigRecord[]>;
   saveVerified(
     input: QBittorrentConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
   ): Promise<QBittorrentConfigRecord>;
-  recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType): Promise<void>;
-  delete(ownerId: string): Promise<void>;
+  recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType, downloaderInstanceId?: string): Promise<void>;
+  delete(ownerId: string, downloaderInstanceId?: string): Promise<void>;
 }
 
 export interface QBittorrentTorrent {

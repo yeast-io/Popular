@@ -7,6 +7,7 @@ export interface IntegrationConfigRecord {
   baseUrl: string;
   webBaseUrl?: string;
   encryptedApiKey: string;
+  externalUserId?: string;
   verifiedAt?: Date;
   lastValidationAt?: Date;
   lastFailureType?: IntegrationFailureType;
@@ -15,7 +16,7 @@ export interface IntegrationConfigRecord {
 export interface IntegrationConfigStore {
   find(ownerId: string, provider: 'mteam'): Promise<IntegrationConfigRecord | null>;
   saveVerified(
-    input: IntegrationConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
+    input: IntegrationConfigRecord & { externalUserId: string; verifiedAt: Date; lastValidationAt: Date },
   ): Promise<IntegrationConfigRecord>;
   recordFailure(
     ownerId: string,
@@ -27,7 +28,7 @@ export interface IntegrationConfigStore {
 }
 
 export interface MTeamVerifier {
-  verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void>;
+  verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<string>;
 }
 
 export interface MTeamEndpoints {

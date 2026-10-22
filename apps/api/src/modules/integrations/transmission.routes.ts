@@ -2,6 +2,8 @@ import {
   ApiErrorSchema,
   TransmissionConfigurationSchema,
   SaveTransmissionConfigurationRequestSchema,
+  DownloaderInstanceParamsSchema,
+  TransmissionConfigurationListSchema,
   type SaveTransmissionConfigurationRequest,
 } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -23,6 +25,39 @@ export function registerTransmissionRoutes(
     503: ApiErrorSchema,
     504: ApiErrorSchema,
   };
+
+  const instanceParams = DownloaderInstanceParamsSchema;
+  app.get('/me/integrations/transmission/instances', {
+    schema: { response: { 200: TransmissionConfigurationListSchema, 401: ApiErrorSchema } },
+  }, async (request) => transmission.list(token(request)));
+  app.post<{ Body: SaveTransmissionConfigurationRequest }>(
+    '/me/integrations/transmission/instances',
+    { schema: { body: SaveTransmissionConfigurationRequestSchema, response: { 201: TransmissionConfigurationSchema, ...errorResponses } } },
+    async (request, reply) => reply.status(201).send(await transmission.create(token(request), request.body))
+  );
+  app.get<{ Params: { downloaderInstanceId: string } }>(
+    '/me/integrations/transmission/instances/:downloaderInstanceId',
+    { schema: { params: instanceParams, response: { 200: TransmissionConfigurationSchema, ...errorResponses } } },
+    async (request) => transmission.get(token(request), request.params.downloaderInstanceId)
+  );
+  app.put<{ Params: { downloaderInstanceId: string }; Body: SaveTransmissionConfigurationRequest }>(
+    '/me/integrations/transmission/instances/:downloaderInstanceId',
+    { schema: { params: instanceParams, body: SaveTransmissionConfigurationRequestSchema, response: { 200: TransmissionConfigurationSchema, ...errorResponses } } },
+    async (request) => transmission.save(token(request), request.body, request.params.downloaderInstanceId)
+  );
+  app.post<{ Params: { downloaderInstanceId: string } }>(
+    '/me/integrations/transmission/instances/:downloaderInstanceId/test',
+    { schema: { params: instanceParams, response: { 200: TransmissionConfigurationSchema, ...errorResponses } } },
+    async (request) => transmission.retest(token(request), request.params.downloaderInstanceId)
+  );
+  app.delete<{ Params: { downloaderInstanceId: string } }>(
+    '/me/integrations/transmission/instances/:downloaderInstanceId',
+    { schema: { params: instanceParams, response: { 204: { type: 'null' }, ...errorResponses } } },
+    async (request, reply) => {
+      await transmission.delete(token(request), request.params.downloaderInstanceId);
+      return reply.status(204).send();
+    }
+  );
 
   app.get(
     '/me/integrations/transmission',

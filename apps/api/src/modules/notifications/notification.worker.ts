@@ -170,7 +170,7 @@ export async function buildDownloadNotification(
     id,
     title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
     resourceName: record.name ?? `TMDB ${record.tmdbId}`,
-    provider: record.provider,
+    provider: record.downloaderName ?? record.provider,
     totalBytes: record.totalBytes ?? 0,
     completedAt,
     detailUrl: `${webOrigin.replace(/\/$/, '')}/movies/${record.tmdbId}`,

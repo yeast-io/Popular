@@ -130,3 +130,19 @@ test('rejects an unsuccessful structured torrent-add response', async () => {
     /qBittorrent rejected the torrent/
   );
 });
+
+test('accepts a queued torrent URL reported as pending by qBittorrent', async () => {
+  const client = new QBittorrentClient(1_000, async () =>
+    Response.json(
+      { added_torrent_ids: [], failure_count: 0, pending_count: 1, success_count: 0 },
+      { status: 202 }
+    )
+  );
+
+  await client.addTorrent(
+    'http://qbittorrent:8080',
+    { authMethod: 'api_key', apiKey: 'qbt_secret' },
+    'https://tracker.example/download.php?id=991&passkey=private-key',
+    'movie-hub-pending'
+  );
+});

@@ -13,8 +13,8 @@ import {
 } from './client.js';
 
 test('uses the authenticated M-Team endpoint that requires no request parameters', () => {
-  assert.equal(verificationUrl('https://api.m-team.cc').href, 'https://api.m-team.cc/api/member/sysRoleList');
-  assert.equal(verificationUrl('https://api.m-team.cc/api').href, 'https://api.m-team.cc/api/member/sysRoleList');
+  assert.equal(verificationUrl('https://api.m-team.cc').href, 'https://api.m-team.cc/api/member/profile');
+  assert.equal(verificationUrl('https://api.m-team.cc/api').href, 'https://api.m-team.cc/api/member/profile');
 });
 
 test('rejects loopback, private, link-local, carrier NAT, documentation, and multicast addresses', () => {

@@ -49,7 +49,7 @@ function fixture(
       return owner === ownerId && enabled.has('qbittorrent')
         ? {
             ownerId,
-            baseUrl: 'http://qb:8080',
+            baseUrl: 'https://qb.example.com:8080',
             authMethod: 'api_key',
             encryptedCredential: secrets.encrypt(
               JSON.stringify({ authMethod: 'api_key', apiKey: 'private-key' }),
@@ -64,7 +64,7 @@ function fixture(
       return owner === ownerId && enabled.has('transmission')
         ? {
             ownerId,
-            baseUrl: 'http://tr:9091',
+            baseUrl: 'https://tr.example.com:9091',
             username: 'daniel',
             lastFailureType: 'authentication',
             encryptedCredential: secrets.encrypt(
@@ -88,7 +88,7 @@ function fixture(
         }) ?? null
       );
     },
-    async createSubmitting(owner, tmdbId, releaseId, provider, source: DownloadSource = 'mteam') {
+    async createSubmitting(owner, tmdbId, releaseId, provider, source: DownloadSource = 'mteam', downloaderInstanceId?: string, downloaderName?: string) {
       const existing = [...records.values()].find((record) => {
         return (
           record.ownerId === owner
@@ -105,6 +105,8 @@ function fixture(
         sourceProvider: source,
         sourceReleaseId: releaseId,
         provider,
+        ...(downloaderInstanceId ? { downloaderInstanceId } : {}),
+        ...(downloaderName ? { downloaderName } : {}),
         lookupTag: `tag-${source}-${releaseId}`,
         status: 'submitting',
         progress: 0,
@@ -215,6 +217,7 @@ function fixture(
           ownerId,
           provider: 'mteam',
           baseUrl: 'https://mteam.test',
+          externalUserId: '101',
           encryptedApiKey: secrets.encrypt('mteam-key', integrationSecretContext(ownerId, 'mteam')),
         };
       },
@@ -267,6 +270,8 @@ function fixture(
   );
   return {
     service,
+    qbConfigs,
+    qb,
     siteFetches,
     setSiteError(error: Error) {
       siteError = error;
@@ -301,7 +306,10 @@ function fixture(
 
 test('lists only owner-configured downloaders including saved configurations with failed validation', async () => {
   const { service } = fixture(['qbittorrent', 'transmission']);
-  assert.deepEqual((await service.providers('owner')).providers, ['qbittorrent', 'transmission']);
+  assert.deepEqual((await service.providers('owner')).providers, [
+    { downloaderInstanceId: 'qbittorrent', provider: 'qbittorrent', name: 'qBittorrent' },
+    { downloaderInstanceId: 'transmission', provider: 'transmission', name: 'Transmission' },
+  ]);
   assert.deepEqual((await service.providers('other')).providers, []);
   await assert.rejects(service.providers(undefined), { code: 'UNAUTHORIZED' });
 });
@@ -317,6 +325,46 @@ test('automatically selects the sole configured downloader and stores its actual
   }
 });
 
+test('recovers a qBittorrent task already added when its submission response is rejected', async () => {
+  const f = fixture(['qbittorrent']);
+  const originalAdd = f.qb.addTorrent.bind(f.qb);
+  f.qb.addTorrent = async (...args) => {
+    await originalAdd(...args);
+    throw new IntegrationValidationError('invalid_response', 'qBittorrent rejected the torrent');
+  };
+
+  const result = await f.service.create('owner', 603, '991');
+  assert.equal(result.status, 'downloading');
+  assert.equal(result.progress, 30);
+  assert.deepEqual(f.adds, ['qbittorrent']);
+  assert.deepEqual(f.lookups, ['qbittorrent']);
+  assert.equal((await f.service.create('owner', 603, '991')).id, result.id);
+  assert.deepEqual(f.adds, ['qbittorrent']);
+});
+
+test('two qBittorrent instances require a concrete choice and pin retries to that instance', async () => {
+  const f = fixture(['qbittorrent']);
+  const original = await f.qbConfigs.find('507f1f77bcf86cd799439011');
+  assert.ok(original);
+  const first = { ...original, downloaderInstanceId: '00000000-0000-4000-8000-000000000001', name: 'Home', baseUrl: 'https://home.example.com' };
+  const second = { ...original, downloaderInstanceId: '00000000-0000-4000-8000-000000000002', name: 'Seedbox', baseUrl: 'https://seedbox.example.com' };
+  f.qbConfigs.list = async () => [first, second];
+  f.qbConfigs.find = async (_owner, id) => [first, second].find((item) => item.downloaderInstanceId === id) ?? null;
+  const submittedUrls: string[] = [];
+  const originalAdd = f.qb.addTorrent.bind(f.qb);
+  f.qb.addTorrent = async (url, credential, torrentUrl, tag) => {
+    submittedUrls.push(url);
+    return originalAdd(url, credential, torrentUrl, tag);
+  };
+  await assert.rejects(f.service.create('owner', 603, '991', 'qbittorrent'), { code: 'DOWNLOAD_PROVIDER_REQUIRED' });
+  const submitted = await f.service.create('owner', 603, '991', 'qbittorrent', 'mteam', second.downloaderInstanceId);
+  assert.equal(submitted.downloaderInstanceId, second.downloaderInstanceId);
+  assert.equal(submitted.downloaderName, 'Seedbox');
+  assert.deepEqual(submittedUrls, [second.baseUrl]);
+  await assert.rejects(f.service.create('owner', 603, '991', 'qbittorrent', 'mteam', first.downloaderInstanceId), { code: 'DOWNLOAD_PROVIDER_CONFLICT' });
+  assert.deepEqual(submittedUrls, [second.baseUrl]);
+});
+
 test('requires selection with multiple downloaders and rejects absent configurations before submission', async () => {
   const both = fixture(['qbittorrent', 'transmission']);
   await assert.rejects(both.service.create('owner', 603, '991'), { code: 'DOWNLOAD_PROVIDER_REQUIRED' });
@@ -329,10 +377,10 @@ test('requires selection with multiple downloaders and rejects absent configurat
   const none = fixture([]);
   await assert.rejects(none.service.create('owner', 603, '991'), { code: 'DOWNLOAD_NOT_CONFIGURED' });
   await assert.rejects(none.service.create('owner', 603, '991', 'transmission'), {
-    code: 'TRANSMISSION_NOT_CONFIGURED',
+    code: 'DOWNLOAD_NOT_CONFIGURED',
   }
   );
-  await assert.rejects(none.service.create('owner', 603, '991', 'qbittorrent'), { code: 'QBITTORRENT_NOT_CONFIGURED' });
+  await assert.rejects(none.service.create('owner', 603, '991', 'qbittorrent'), { code: 'DOWNLOAD_NOT_CONFIGURED' });
 });
 
 test('never falls back to the other downloader after a failed submission', async () => {
@@ -425,7 +473,10 @@ test('download routes authenticate provider discovery, validate choices and seri
   try {
     assert.equal((await app.inject({ method: 'GET', url: '/api/v1/me/download-providers' })).statusCode, 401);
     const providers = await app.inject({ method: 'GET', url: '/api/v1/me/download-providers', headers });
-    assert.deepEqual(providers.json(), { providers: ['qbittorrent', 'transmission'] });
+    assert.deepEqual(providers.json(), { providers: [
+      { downloaderInstanceId: 'qbittorrent', provider: 'qbittorrent', name: 'qBittorrent' },
+      { downloaderInstanceId: 'transmission', provider: 'transmission', name: 'Transmission' },
+    ] });
     const missing = await app.inject({ method: 'POST', url, headers, payload: { sourceReleaseId: '991' } });
     assert.equal(missing.statusCode, 409);
     assert.equal(missing.json().error.code, 'DOWNLOAD_PROVIDER_REQUIRED');
@@ -536,7 +587,7 @@ test('trusted owner download entry reuses the existing claim and does not requir
   assert.deepEqual(adds, ['transmission']);
   await assert.rejects(service.create(undefined, 603, '991'), { code: 'UNAUTHORIZED' });
   await assert.rejects(service.createForOwner('507f1f77bcf86cd799439099', 603, '991', 'transmission'), {
-    code: 'TRANSMISSION_NOT_CONFIGURED',
+    code: 'DOWNLOAD_NOT_CONFIGURED',
   }
   );
 });

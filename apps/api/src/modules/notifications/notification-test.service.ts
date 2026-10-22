@@ -50,6 +50,8 @@ export class NotificationTestService {
           title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
           resourceName: record.name ?? `TMDB ${record.tmdbId}`,
           provider: record.provider,
+          ...(record.downloaderInstanceId ? { downloaderInstanceId: record.downloaderInstanceId } : {}),
+          ...(record.downloaderName ? { downloaderName: record.downloaderName } : {}),
           totalBytes: record.totalBytes ?? 0,
           ...(movie?.posterPath ? { posterUrl: `https://image.tmdb.org/t/p/w185${movie.posterPath}` } : {}),
           ...(record.lastSyncedAt ? { lastSyncedAt: record.lastSyncedAt.toISOString() } : {}),

@@ -2,6 +2,7 @@ import { Schema, type Connection, type InferSchemaType, type Types } from 'mongo
 
 const resourceSiteCredentialSchema = new Schema(
   {
+    externalUserId: { type: String },
     ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     site: { type: String, required: true },
     encryptedCookie: { type: String, required: true, select: false },
@@ -13,6 +14,11 @@ const resourceSiteCredentialSchema = new Schema(
   { timestamps: true, collection: 'resource_site_credentials' }
 );
 resourceSiteCredentialSchema.index({ ownerId: 1, site: 1 }, { unique: true });
+resourceSiteCredentialSchema.index(
+  { site: 1, externalUserId: 1 },
+  { unique: true, partialFilterExpression: { externalUserId: { $type: 'string' } } }
+);
+
 export type ResourceSiteCredentialDocument = InferSchemaType<typeof resourceSiteCredentialSchema> & {
   ownerId: Types.ObjectId;
 };

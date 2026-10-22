@@ -2,7 +2,9 @@ import { Schema, type Connection, type InferSchemaType, type Types } from 'mongo
 
 const transmissionConfigSchema = new Schema(
   {
-    ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User', unique: true },
+    ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
+    downloaderInstanceId: { type: String, required: true },
+    name: { type: String, required: true },
     baseUrl: { type: String, required: true },
     username: { type: String, required: true },
     encryptedCredential: { type: String, required: true, select: false },
@@ -13,6 +15,7 @@ const transmissionConfigSchema = new Schema(
   },
   { timestamps: true, collection: 'transmission_configs' }
 );
+transmissionConfigSchema.index({ ownerId: 1, downloaderInstanceId: 1 }, { unique: true });
 
 export type TransmissionConfigDocument = InferSchemaType<typeof transmissionConfigSchema> & { ownerId: Types.ObjectId };
 export const createTransmissionConfigModel = (connection: Connection) => {

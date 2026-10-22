@@ -1,4 +1,5 @@
 import type { AssistantSession } from './assistant-session.types.js';
+import type { DownloaderChoice } from '@movie-hub/contract';
 import type { AssistantDownloadAction, AssistantWorkflowTurn } from './assistant-workflow.types.js';
 import { RESOURCE_PAGE_SIZE } from '../resource-query/resource-query.presentation.js';
 import { buildAssistantPreferenceContext } from '../../config/system-prompts/assistant.prompts.js';
@@ -567,17 +568,18 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     };
     currentAiTrace()?.sensitive(release.title);
     delete session.provider;
-    session.providers = await aiStep('assistant.download.providers', () => {
-      return this.options.downloads!.providersFor(input.ownerId);
+    session.providers = await aiStep('assistant.download.providers', async () => {
+      if (this.options.downloads!.instancesFor) return this.options.downloads!.instancesFor(input.ownerId);
+      return (await this.options.downloads!.providersFor(input.ownerId)).map((provider) => ({ downloaderInstanceId: provider, provider, name: provider }));
     });
     session.stage = 'await_provider';
-    const preferred
-      = action.provider
-        ?? (await aiStep('assistant.download.default', async () => {
-          return this.options.downloads!.defaultProviderFor?.(input.ownerId);
-        }));
-    if (preferred && session.providers.includes(preferred)) session.provider = preferred;
-    else if (session.providers.length === 1) session.provider = session.providers[0]!;
+    const preferred = action.provider ?? (await aiStep('assistant.download.default', async () => {
+      return (await this.options.downloads!.defaultInstanceFor?.(input.ownerId))?.downloaderInstanceId
+        ?? await this.options.downloads!.defaultProviderFor?.(input.ownerId);
+    }));
+    const selected = preferred ? resolveDownloader(session.providers, preferred) : undefined;
+    if (selected) session.provider = selected.downloaderInstanceId;
+    else if (session.providers.length === 1) session.provider = session.providers[0]!.downloaderInstanceId;
     else
       return this.downloadReply(
         downloadProvidersText(turn.locale, session.selection?.title ?? '', session.providers ?? [])
@@ -595,14 +597,16 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     if (!session.selection || session.stage !== 'await_provider')
       return this.downloadReply(assistantText(turn.locale, 'selectFirst'));
     // Re-read configuration; the offered list is context, never authority to use a removed downloader.
-    session.providers = await aiStep('assistant.download.providers', () => {
-      return this.options.downloads!.providersFor(turn.input.ownerId);
+    session.providers = await aiStep('assistant.download.providers', async () => {
+      if (this.options.downloads!.instancesFor) return this.options.downloads!.instancesFor(turn.input.ownerId);
+      return (await this.options.downloads!.providersFor(turn.input.ownerId)).map((provider) => ({ downloaderInstanceId: provider, provider, name: provider }));
     });
-    if (!action.provider || !session.providers.includes(action.provider))
+    const selected = action.provider ? resolveDownloader(session.providers, action.provider) : undefined;
+    if (!selected)
       return this.downloadReply(
         downloadProvidersText(turn.locale, session.selection?.title ?? '', session.providers ?? [])
       );
-    session.provider = action.provider;
+    session.provider = selected.downloaderInstanceId;
     session.stage = 'submitting';
     session.submissionEventId = turn.eventId;
     return undefined;
@@ -618,6 +622,10 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     const selection = session.selection;
     currentAiTrace()?.sensitive(selection.title);
     try {
+      const downloader = (await this.options.downloads!.instancesFor?.(turn.input.ownerId))?.find((choice) => choice.downloaderInstanceId === session.provider);
+      if (this.options.downloads!.instancesFor && !downloader)
+        throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'Selected downloader is unavailable');
+      const provider = downloader?.provider ?? (session.provider as 'qbittorrent' | 'transmission');
       const result = await aiStep(
         'assistant.download.submit',
         () => {
@@ -625,12 +633,13 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
             turn.input.ownerId,
             selection.tmdbId,
             selection.releaseId,
-            session.provider!
+            provider,
+            'mteam',
+            downloader?.downloaderInstanceId
           );
         },
-        { provider: session.provider, tmdbId: selection.tmdbId }
+        { provider, tmdbId: selection.tmdbId }
       );
-      const provider = session.provider;
       this.reset(session);
       currentAiTrace()?.event('assistant.download.submitted', { taskId: result.id, provider, outcome: result.status });
       return this.downloadReply(downloadSubmittedText(turn.locale, result));
@@ -695,4 +704,15 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
       this.options.report?.('preference_enqueue_failed');
     }
   }
+}
+
+function resolveDownloader(choices: DownloaderChoice[], requested: string): DownloaderChoice | undefined {
+  const direct = choices.find((choice) => choice.downloaderInstanceId === requested);
+  if (direct) return direct;
+  const byName = choices.filter((choice) => choice.name.toLocaleLowerCase() === requested.toLocaleLowerCase());
+  if (byName.length === 1) return byName[0];
+  const byProvider = choices.filter((choice) => choice.provider === requested);
+  if (byProvider.length === 1) return byProvider[0];
+  const index = Number(requested);
+  return Number.isInteger(index) && index >= 1 && index <= choices.length ? choices[index - 1] : undefined;
 }

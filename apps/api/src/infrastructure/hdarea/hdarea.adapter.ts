@@ -1,7 +1,7 @@
 import type { ResourceSiteSearch } from '@movie-hub/contract';
-import type { ResourceSiteAdapter, ResourceSiteSession } from '../resource-site.types.js';
-import { ResourceSiteError } from '../resource-site.errors.js';
-import { authenticatedDocument, parseSearch, parseDetail } from './hdarea.parser.js';
+import type { ResourceSiteAdapter, ResourceSiteSession } from '../../modules/resource-sites/resource-site.types.js';
+import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
+import { parseAuthenticatedUserId, parseSearch, parseDetail } from './hdarea.parser.js';
 
 export class HDAreaAdapter implements ResourceSiteAdapter {
   readonly id = 'hdarea';
@@ -25,8 +25,8 @@ export class HDAreaAdapter implements ResourceSiteAdapter {
     return url.href;
   }
 
-  async verify(session: ResourceSiteSession, signal?: AbortSignal): Promise<void> {
-    authenticatedDocument(await session.get('index.php', signal));
+  async verify(session: ResourceSiteSession, signal?: AbortSignal): Promise<string> {
+    return parseAuthenticatedUserId(await session.get('index.php', signal), this.baseUrl);
   }
 
   async search(session: ResourceSiteSession, input: ResourceSiteSearch, signal?: AbortSignal) {

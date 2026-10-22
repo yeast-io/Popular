@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IntegrationPreferences, ApiError, DownloadProvider, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MoviePreference, MovieResourceCheckResponse, MovieStatus, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
+import type { IntegrationPreferences, ApiError, DownloadProvider, DownloaderChoice, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MoviePreference, MovieResourceCheckResponse, MovieStatus, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
 import { getIntegrationLogo } from '../settings/integration-logos';
 import ResourceSiteSelector from './ResourceSiteSelector.vue';
 import type { MovieSiteReleaseGroup } from './movie-site-releases.types';
@@ -36,9 +36,9 @@ const trailerOpen = ref(false);
 const trailerDialog = ref<HTMLElement | null>(null);
 const trailerCloseButton = ref<HTMLButtonElement | null>(null);
 const downloads = ref<MovieDownload[]>([]);
-const downloadProviders = ref<DownloadProvider[]>([]);
+const downloadProviders = ref<DownloaderChoice[]>([]);
 const downloadProvidersError = ref('');
-const selectedProvider = ref<DownloadProvider | ''>('');
+const selectedDownloaderId = ref('');
 const downloadChoiceDialog = ref<HTMLElement | null>(null);
 let downloadTrigger: HTMLElement | null = null;
 const confirmingRelease = ref<MovieRelease | null>(null);
@@ -384,9 +384,12 @@ async function loadDownloadProviders() {
     if (!response.ok) throw localizedApiError(await response.json(), 'movie.download.providersFailed');
     const result = (await response.json()) as DownloadProviderListResponse;
     if (!Array.isArray(result.providers)) throw new Error('Invalid downloader list');
-    downloadProviders.value = result.providers;
+    downloadProviders.value = result.providers.map((provider) => typeof provider === 'string'
+      ? { downloaderInstanceId: provider, provider: provider as DownloadProvider, name: providerName(provider as DownloadProvider) }
+      : provider);
     const preferred = integrationPreferences.value?.defaults.downloader;
-    selectedProvider.value = result.providers.includes(preferred as DownloadProvider) ? preferred as DownloadProvider : result.providers.length === 1 ? result.providers[0]! : '';
+    selectedDownloaderId.value = downloadProviders.value.find((choice) => choice.downloaderInstanceId === preferred)?.downloaderInstanceId
+      ?? (downloadProviders.value.length === 1 ? downloadProviders.value[0]!.downloaderInstanceId : '');
   } catch (error) {
     downloadProvidersError.value = localizedErrorMessage(error, 'movie.download.providersFailed');
   }
@@ -435,10 +438,29 @@ function providerName(provider: DownloadProvider): string {
   return provider === 'transmission' ? 'Transmission' : 'qBittorrent';
 }
 
+function instanceLabel(choice: DownloaderChoice): string {
+  return choice.name?.trim() || providerName(choice.provider);
+}
+
+function downloadActionLabel(releaseId: string, site: string): string {
+  if (submittingReleaseId.value === downloadKey(releaseId, site)) return t('movie.download.submitting');
+  const download = downloadFor(releaseId, site);
+  return download
+    ? t(download.status === 'missing' ? 'movie.download.redownload' : 'movie.download.retry')
+    : t('movie.download.action');
+}
+
+function choiceFor(download: MovieDownload): DownloaderChoice | undefined {
+  if (download.downloaderInstanceId)
+    return downloadProviders.value.find((choice) => choice.downloaderInstanceId === download.downloaderInstanceId);
+  const sameType = downloadProviders.value.filter((choice) => choice.provider === download.provider);
+  return sameType.length === 1 ? sameType[0] : undefined;
+}
+
 function canDownload(releaseId: string, site = 'mteam'): boolean {
   if (site !== 'mteam' && site !== 'hdarea') return false;
   const existing = downloadFor(releaseId, site);
-  return existing ? downloadProviders.value.includes(existing.provider) : downloadProviders.value.length > 0;
+  return existing ? Boolean(choiceFor(existing)) : downloadProviders.value.length > 0;
 }
 
 function downloadUnavailable(releaseId: string, site = 'mteam'): string {
@@ -453,12 +475,15 @@ function requestDownload(release: MovieRelease, site = 'mteam') {
   if (site !== 'mteam' && site !== 'hdarea') return;
   if (!canDownload(release.id, site) || submittingReleaseId.value) return;
   downloadTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const original = downloadFor(release.id, site)?.provider;
-  if (original || selectedProvider.value || downloadProviders.value.length === 1) {
-    void submitDownload(release, original ?? (selectedProvider.value || downloadProviders.value[0]!), site);
+  const prior = downloadFor(release.id, site);
+  const original = prior ? choiceFor(prior) : undefined;
+  const selected = original ?? downloadProviders.value.find((choice) => choice.downloaderInstanceId === selectedDownloaderId.value)
+    ?? (downloadProviders.value.length === 1 ? downloadProviders.value[0] : undefined);
+  if (selected) {
+    void submitDownload(release, selected, site);
     return;
   }
-  selectedProvider.value = original ?? '';
+  selectedDownloaderId.value = '';
   confirmingRelease.value = release;
   confirmingSite.value = site;
   void nextTick(() => {
@@ -468,20 +493,20 @@ function requestDownload(release: MovieRelease, site = 'mteam') {
 
 function cancelDownload() {
   confirmingRelease.value = null;
-  selectedProvider.value = '';
+  selectedDownloaderId.value = '';
   void nextTick(() => downloadTrigger?.focus({ preventScroll: true }));
 }
 
 async function confirmDownload() {
   const release = confirmingRelease.value;
-  const provider = selectedProvider.value;
+  const choice = downloadProviders.value.find((item) => item.downloaderInstanceId === selectedDownloaderId.value);
   const site = confirmingSite.value;
-  if (!release || !provider || submittingReleaseId.value) return;
+  if (!release || !choice || submittingReleaseId.value) return;
   cancelDownload();
-  await submitDownload(release, provider, site);
+  await submitDownload(release, choice, site);
 }
 
-async function submitDownload(release: MovieRelease, provider: DownloadProvider, site: DownloadSource = 'mteam') {
+async function submitDownload(release: MovieRelease, choice: DownloaderChoice, site: DownloadSource = 'mteam') {
   if (submittingReleaseId.value) return;
   const requestedTmdbId = props.tmdbId;
   const key = downloadKey(release.id, site);
@@ -508,7 +533,7 @@ async function submitDownload(release: MovieRelease, provider: DownloadProvider,
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sourceReleaseId: release.id, provider, ...(site !== 'mteam' ? { sourceProvider: site } : {}) }),
+      body: JSON.stringify({ sourceReleaseId: release.id, provider: choice.provider, downloaderInstanceId: choice.downloaderInstanceId, ...(site !== 'mteam' ? { sourceProvider: site } : {}) }),
     });
     const body = (await response.json()) as MovieDownload | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.movieDownloadFailed');
@@ -973,18 +998,17 @@ function syncedAtLabel(syncedAt: string): string {
               {{ t('movie.releases.close') }}
             </button>
           </div>
-          <div v-if="downloadProviders.length" class="release-downloader-select" role="group" :aria-label="t('resourceSelection.downloadTo')">
-            <span>{{ t('resourceSelection.downloadTo') }}</span>
+          <div v-if="downloadProviders.length" class="release-downloader-select" role="group" :aria-label="t('movie.download.chooseProvider')">
             <div class="release-downloader-options">
               <button
-                v-for="provider in downloadProviders" :key="provider" type="button"
-                class="release-downloader-option" :class="{ 'is-selected': selectedProvider === provider }"
-                :aria-pressed="selectedProvider === provider" :disabled="Boolean(submittingReleaseId)"
-                :aria-label="providerName(provider)" @click="selectedProvider = provider"
+                v-for="choice in downloadProviders" :key="choice.downloaderInstanceId" type="button"
+                class="release-downloader-option" :class="{ 'is-selected': selectedDownloaderId === choice.downloaderInstanceId }"
+                :aria-pressed="selectedDownloaderId === choice.downloaderInstanceId" :disabled="Boolean(submittingReleaseId)"
+                :aria-label="instanceLabel(choice)" @click="selectedDownloaderId = choice.downloaderInstanceId"
               >
-                <img :src="getIntegrationLogo(provider)" alt="" aria-hidden="true" />
-                <span>{{ providerName(provider) }}</span>
-                <small v-if="integrationPreferences?.defaults.downloader === provider">{{ t('integrationDefaults.default') }}</small>
+                <img :src="getIntegrationLogo(choice.provider)" alt="" aria-hidden="true" />
+                <span>{{ instanceLabel(choice) }}</span>
+                <small v-if="integrationPreferences?.defaults.downloader === choice.downloaderInstanceId">{{ t('integrationDefaults.default') }}</small>
               </button>
             </div>
           </div>
@@ -1089,21 +1113,13 @@ function syncedAtLabel(syncedAt: string): string {
                     class="release-download-button"
                     type="button"
                     :disabled="!canDownload(release.id, group.site) || Boolean(submittingReleaseId)"
-                    :title="canDownload(release.id, group.site) ? undefined : downloadUnavailable(release.id, group.site)"
+                    :aria-label="downloadActionLabel(release.id, group.site)"
+                    :title="canDownload(release.id, group.site) ? downloadActionLabel(release.id, group.site) : downloadUnavailable(release.id, group.site)"
                     @click="requestDownload(release, group.site)"
                   >
                     <svg aria-hidden="true" viewBox="0 0 24 24">
                       <path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" />
                     </svg>
-                    {{
-                      submittingReleaseId === downloadKey(release.id, group.site)
-                        ? t('movie.download.submitting')
-                        : downloadFor(release.id, group.site)
-                          ? downloadFor(release.id, group.site)!.status === 'missing'
-                            ? t('movie.download.redownload')
-                            : t('movie.download.retry')
-                          : t('movie.download.action')
-                    }}
                   </button>
                 </div>
                 <div
@@ -1128,7 +1144,7 @@ function syncedAtLabel(syncedAt: string): string {
                 >
                   <div>
                     <span
-                      >{{ providerName(downloadFor(release.id, group.site)!.provider) }} ·
+                      >{{ downloadFor(release.id, group.site)!.downloaderName || providerName(downloadFor(release.id, group.site)!.provider) }} ·
                       {{ downloadStatus(downloadFor(release.id, group.site)!) }}</span
                     >
                     <strong v-if="downloadFor(release.id, group.site)!.status !== 'missing'">{{ Math.round(downloadFor(release.id, group.site)!.progress) }}%</strong>
@@ -1162,20 +1178,20 @@ function syncedAtLabel(syncedAt: string): string {
             <div>
               <h3 id="download-confirm-title">{{ t('movie.download.confirmTitle') }}</h3>
               <fieldset class="download-provider-options" :aria-label="t('movie.download.provider')">
-                <label v-for="provider in downloadProviders" :key="provider" class="download-provider-option">
+                <label v-for="choice in downloadProviders" :key="choice.downloaderInstanceId" class="download-provider-option">
                   <input
-                    v-model="selectedProvider"
+                    v-model="selectedDownloaderId"
                     type="radio"
                     name="download-provider"
-                    :value="provider"
+                    :value="choice.downloaderInstanceId"
                     :disabled="
                       Boolean(
-                        downloadFor(confirmingRelease.id, confirmingSite) && downloadFor(confirmingRelease.id, confirmingSite)!.provider !== provider,
+                        downloadFor(confirmingRelease.id, confirmingSite) && choiceFor(downloadFor(confirmingRelease.id, confirmingSite)!)?.downloaderInstanceId !== choice.downloaderInstanceId,
                       )
                     "
                   />
-                  <img :src="getIntegrationLogo(provider)" alt="" class="download-provider-logo" aria-hidden="true" />
-                  <span>{{ providerName(provider) }}</span>
+                  <img :src="getIntegrationLogo(choice.provider)" alt="" class="download-provider-logo" aria-hidden="true" />
+                  <span>{{ instanceLabel(choice) }}</span>
                 </label>
               </fieldset>
               <p v-if="downloadFor(confirmingRelease.id, confirmingSite)" class="download-retry-note">
@@ -1188,7 +1204,7 @@ function syncedAtLabel(syncedAt: string): string {
                 <button
                   class="primary"
                   type="button"
-                  :disabled="!selectedProvider || Boolean(submittingReleaseId)"
+                  :disabled="!selectedDownloaderId || Boolean(submittingReleaseId)"
                   @click="confirmDownload"
                 >
                   {{ t('movie.download.confirm') }}

@@ -1,4 +1,5 @@
 import { Static, Type } from '@sinclair/typebox';
+import { DownloaderInstanceIdSchema } from '../downloads/movie-download.schema.js';
 
 export const MTEAM_DEFAULT_BASE_URL = 'https://api.m-team.cc';
 export const MTEAM_DEFAULT_WEB_BASE_URL = 'https://kp.m-team.cc';
@@ -45,6 +46,8 @@ export const QBittorrentAuthMethodSchema = Type.Union([Type.Literal('api_key'), 
 export const QBittorrentConfigurationSchema = Type.Object(
   {
     provider: Type.Literal('qbittorrent'),
+    downloaderInstanceId: Type.Optional(Type.String()),
+    name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
     apiKeyMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
     passwordMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
     status: IntegrationStatusSchema,
@@ -57,6 +60,8 @@ export const QBittorrentConfigurationSchema = Type.Object(
   },
   { additionalProperties: false }
 );
+export const QBittorrentConfigurationListSchema = Type.Array(QBittorrentConfigurationSchema);
+export const DownloaderInstanceParamsSchema = Type.Object({ downloaderInstanceId: DownloaderInstanceIdSchema });
 
 const QBittorrentBaseUrlSchema = Type.String({ minLength: 1, maxLength: 2048 });
 
@@ -64,6 +69,7 @@ export const SaveQBittorrentConfigurationRequestSchema = Type.Union([
   Type.Object(
     {
       baseUrl: QBittorrentBaseUrlSchema,
+      name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
       authMethod: Type.Literal('api_key'),
       apiKey: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
     },
@@ -72,6 +78,7 @@ export const SaveQBittorrentConfigurationRequestSchema = Type.Union([
   Type.Object(
     {
       baseUrl: QBittorrentBaseUrlSchema,
+      name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
       authMethod: Type.Literal('username_password'),
       username: Type.String({ minLength: 1, maxLength: 256 }),
       password: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
@@ -91,6 +98,8 @@ export type SaveQBittorrentConfigurationRequest = Static<typeof SaveQBittorrentC
 export const TransmissionConfigurationSchema = Type.Object(
   {
     provider: Type.Literal('transmission'),
+    downloaderInstanceId: Type.Optional(Type.String()),
+    name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
     passwordMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
     status: IntegrationStatusSchema,
     baseUrl: Type.Optional(Type.String({ format: 'uri' })),
@@ -101,10 +110,12 @@ export const TransmissionConfigurationSchema = Type.Object(
   },
   { additionalProperties: false }
 );
+export const TransmissionConfigurationListSchema = Type.Array(TransmissionConfigurationSchema);
 
 export const SaveTransmissionConfigurationRequestSchema = Type.Object(
   {
     baseUrl: Type.String({ minLength: 1, maxLength: 2048 }),
+    name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
     username: Type.String({ minLength: 1, maxLength: 256 }),
     password: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
   },

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { DownloadProvider, Locale, MovieDownload } from '@movie-hub/contract';
+import type { DownloadProvider, DownloaderChoice, Locale, MovieDownload } from '@movie-hub/contract';
 import { AssistantWorkflow } from './assistant.workflow.js';
 import { emptyAssistantSession } from './assistant-session.domain.js';
 import type { AssistantSession, AssistantSessionStore, AssistantDownloadContext } from './assistant-session.types.js';
@@ -73,7 +73,8 @@ const basePlan: ResourcePlan = {
 function fixture(
   providers: DownloadProvider[] = ['qbittorrent', 'transmission'],
   locale: Locale = 'zh-CN',
-  defaultProvider?: DownloadProvider
+  defaultProvider?: DownloadProvider,
+  instances?: DownloaderChoice[]
 ) {
   let handling: AssistantRequestClassification['handling'];
   const requests: LlmGenerateInput[] = [];
@@ -81,7 +82,7 @@ function fixture(
   const planningContexts: AssistantDownloadContext[] = [];
   const resourceLocales: Locale[] = [];
   const sessions = new Sessions();
-  let action = { action: 'query', releaseIndex: null as number | null, provider: null as DownloadProvider | null };
+  let action = { action: 'query', releaseIndex: null as number | null, provider: null as string | null };
   let intent = 'download';
   let plan: ResourcePlan = { ...basePlan, title: '星际穿越' };
   let context: ResourceQueryState | null = null;
@@ -89,7 +90,7 @@ function fixture(
   let movieCandidates = false;
   let calls = 0;
   let resourceCalls = 0;
-  const submissions: Array<{ owner: string; movie: number; release: string; provider: DownloadProvider }> = [];
+  const submissions: Array<{ owner: string; movie: number; release: string; provider: DownloadProvider; downloaderInstanceId?: string }> = [];
   const logs: unknown[] = [];
   const create = () => {
     return new AssistantWorkflow(
@@ -162,12 +163,13 @@ function fixture(
         },
         downloads: {
           providersFor: async () => [...providers],
+          ...(instances ? { instancesFor: async () => [...instances] } : {}),
           defaultProviderFor: async () => defaultProvider,
-          createForOwner: async (owner, movie, release, provider) => {
+          createForOwner: async (owner, movie, release, provider, _source, downloaderInstanceId) => {
             const persisted = await sessions.read(owner, 'telegram:chat');
             assert.equal(persisted?.stage, 'submitting', 'checkpoint must precede external submission');
             assert.equal(persisted?.selection?.releaseId, release);
-            submissions.push({ owner, movie, release, provider });
+            submissions.push({ owner, movie, release, provider, ...(downloaderInstanceId ? { downloaderInstanceId } : {}) });
             if (failSubmit) throw new Error('upstream secret-release-title.2160p failed');
             return {
               id: 'task-1',
@@ -203,7 +205,7 @@ function fixture(
     language(value: Locale | null) {
       detectedLocale = value;
     },
-    action(value: string, index: number | null = null, provider: DownloadProvider | null = null) {
+    action(value: string, index: number | null = null, provider: string | null = null) {
       action = { action: value, releaseIndex: index, provider };
     },
     intent(value: string) {
@@ -617,4 +619,24 @@ test('the configured default downloader is used after resource selection; explic
     assert.equal(f.submissions[0]?.provider, explicit ?? 'transmission');
     assert.equal((await f.state())?.stage, 'idle');
   }
+});
+
+test('assistant distinguishes two instances of the same downloader type', async () => {
+  const instances: DownloaderChoice[] = [
+    { downloaderInstanceId: '00000000-0000-4000-8000-000000000001', provider: 'qbittorrent', name: 'Home' },
+    { downloaderInstanceId: '00000000-0000-4000-8000-000000000002', provider: 'qbittorrent', name: 'Seedbox' },
+  ];
+  const f = fixture(['qbittorrent'], 'en-US', undefined, instances);
+  await f.send('Download Interstellar');
+  f.action('select_resource', 2);
+  const choice = await f.send('Download release 2');
+  assert.match(choice.replyText, /Home/);
+  assert.match(choice.replyText, /Seedbox/);
+  assert.equal(f.submissions.length, 0);
+  f.action('select_provider', null, '2');
+  await f.send('Use the second downloader');
+  assert.deepEqual(f.submissions, [{
+    owner: 'alice', movie: 157336, release: 'release-2', provider: 'qbittorrent',
+    downloaderInstanceId: instances[1]!.downloaderInstanceId,
+  }]);
 });

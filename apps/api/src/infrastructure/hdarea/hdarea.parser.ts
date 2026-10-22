@@ -1,8 +1,9 @@
+import { ExternalUserIdSchema } from '../../modules/resource-sites/site-account-identity.schema.js';
 import { load, type CheerioAPI } from 'cheerio';
-import { releaseTags } from '../release-tags.domain.js';
-import { releaseTitleMetadata } from '../release-metadata.domain.js';
+import { releaseTags } from '../../modules/resource-sites/release-tags.domain.js';
+import { releaseTitleMetadata } from '../../modules/resource-sites/release-metadata.domain.js';
 import type { ResourceSiteRelease } from '@movie-hub/contract';
-import { ResourceSiteError } from '../resource-site.errors.js';
+import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
 import { HDAREA_SELECTORS } from './hdarea.policy.js';
 
 export function authenticatedDocument(bytes: Uint8Array) {
@@ -16,6 +17,26 @@ export function authenticatedDocument(bytes: Uint8Array) {
   if (!$(HDAREA_SELECTORS.authenticated).length) throw new ResourceSiteError('authentication');
   return $;
 }
+export function parseAuthenticatedUserId(bytes: Uint8Array, baseUrl: string): string {
+  const $ = authenticatedDocument(bytes);
+  const ids = new Set<string>();
+  for (const link of $('#info_block a[href*="userdetails.php"]').toArray()) {
+    let url: URL;
+    try {
+      url = new URL($(link).attr('href') ?? '', baseUrl);
+    } catch {
+      throw new ResourceSiteError('invalidResponse');
+    }
+    if (url.origin !== new URL(baseUrl).origin || url.pathname !== '/userdetails.php' || url.username || url.password)
+      throw new ResourceSiteError('invalidResponse');
+    const result = ExternalUserIdSchema.safeParse(url.searchParams.get('id'));
+    if (!result.success || url.searchParams.getAll('id').length !== 1) throw new ResourceSiteError('invalidResponse');
+    ids.add(result.data);
+  }
+  if (ids.size !== 1) throw new ResourceSiteError('invalidResponse');
+  return [...ids][0]!;
+}
+
 export function parseSearch(
   bytes: Uint8Array,
   page: number,

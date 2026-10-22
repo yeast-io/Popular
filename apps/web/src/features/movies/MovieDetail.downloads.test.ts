@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { DownloadProvider, DownloadSource, MovieDownload } from '@movie-hub/contract';
+import type { DownloadProvider, DownloaderChoice, DownloadSource, MovieDownload } from '@movie-hub/contract';
 import { setLocale } from '../../i18n';
 import MovieDetail from './MovieDetail.vue';
 
@@ -17,11 +17,12 @@ async function setup(
     status?: MovieDownload['status'];
     extraRelease?: boolean;
     hdarea?: boolean;
+    downloaderChoices?: DownloaderChoice[];
     postResponse?: Promise<Response>;
   } = {}
 ) {
   setLocale(options.locale ?? 'en-US');
-  const posts: { sourceReleaseId: string; provider: DownloadProvider }[] = [];
+  const posts: { sourceReleaseId: string; provider: DownloadProvider; downloaderInstanceId: string }[] = [];
   const existing
     = options.retry || options.status
       ? [
@@ -47,7 +48,7 @@ async function setup(
       );
 
       if (url.endsWith('/download-providers'))
-        return options.providersFail ? new Response(null, { status: 503 }) : Response.json({ providers });
+        return options.providersFail ? new Response(null, { status: 503 }) : Response.json({ providers: options.downloaderChoices ?? providers });
       if (url.endsWith('/resources/mteam/releases') || url.endsWith('/resources/hdarea/releases'))
         return Response.json({
           provider: url.includes('/hdarea/') ? 'hdarea' : 'mteam',
@@ -111,6 +112,32 @@ async function setup(
 }
 
 describe('download provider selection', () => {
+  it('shows saved downloader names, hides the group caption, and gives the icon-only download button a label', async () => {
+    const f = await setup(['qbittorrent', 'transmission'], {
+      downloaderChoices: [
+        { downloaderInstanceId: '00000000-0000-4000-8000-000000000001', provider: 'qbittorrent', name: 'Home NAS' },
+        { downloaderInstanceId: '00000000-0000-4000-8000-000000000002', provider: 'transmission', name: 'Seedbox' },
+      ],
+    });
+    const choices = [...document.body.querySelectorAll<HTMLElement>('.release-downloader-option')];
+    expect(choices.map((choice) => choice.textContent?.trim())).toEqual(['Home NAS', 'Seedbox']);
+    expect(choices.every((choice) => choice.querySelector('img') !== null)).toBe(true);
+    expect(document.body.querySelector('.release-downloader-select')?.textContent).not.toContain('Download to');
+    expect(document.body.querySelector('.release-downloader-select')?.getAttribute('aria-label')).toBe('Choose a downloader');
+    const button = document.body.querySelector<HTMLButtonElement>('.release-download-button')!;
+    expect(button.textContent?.trim()).toBe('');
+    expect(button.getAttribute('aria-label')).toBe('Download');
+    expect(button.querySelector('svg')).not.toBeNull();
+    f.wrapper.unmount();
+  });
+
+  it('uses downloader types when saved names are unavailable', async () => {
+    const f = await setup(['qbittorrent', 'transmission']);
+    const choices = [...document.body.querySelectorAll<HTMLElement>('.release-downloader-option')];
+    expect(choices.map((choice) => choice.textContent?.trim())).toEqual(['qBittorrent', 'Transmission']);
+    f.wrapper.unmount();
+  });
+
   it('moves the submitted release to the top and scrolls the list before the server responds', async () => {
     let respond!: (response: Response) => void;
     const postResponse = new Promise<Response>((resolve) => {
@@ -206,7 +233,7 @@ describe('download provider selection', () => {
       const f = await setup([provider]);
       await f.clickDownload();
       expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
-      expect(f.posts).toEqual([{ sourceReleaseId: '991', provider }]);
+      expect(f.posts).toEqual([{ sourceReleaseId: '991', provider, downloaderInstanceId: provider }]);
       expect(document.body.querySelector('.release-download-progress')?.textContent).toContain(
         provider === 'transmission' ? 'Transmission' : 'qBittorrent'
       );
@@ -226,7 +253,7 @@ describe('download provider selection', () => {
     await flushPromises();
     dialog.querySelector<HTMLButtonElement>('.primary')!.click();
     await flushPromises();
-    expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission' }]);
+    expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission', downloaderInstanceId: 'transmission' }]);
     expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
     f.wrapper.unmount();
   });
@@ -268,7 +295,7 @@ describe('download provider selection', () => {
   it('reports submission errors and never sends to the other downloader', async () => {
     const f = await setup(['transmission'], { fail: true });
     await f.clickDownload();
-    expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission' }]);
+    expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission', downloaderInstanceId: 'transmission' }]);
     expect(document.body.querySelector('.release-card [role="alert"]')?.textContent).toContain(
       'Transmission could not be reached'
     );
@@ -279,7 +306,7 @@ describe('download provider selection', () => {
     const f = await setup(['qbittorrent', 'transmission'], { retry: 'transmission' });
     await f.clickDownload();
     expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
-    expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission' }]);
+    expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission', downloaderInstanceId: 'transmission' }]);
     f.wrapper.unmount();
   });
 });
@@ -301,11 +328,12 @@ it.each(['en-US', 'zh-CN'] as const)('shows a neutral missing task without stale
   expect(status.textContent).toContain(locale === 'zh-CN' ? '下载器中不存在该任务' : 'Task is missing from the downloader');
   expect(status.textContent).not.toContain('2%');
   expect(status.querySelector('progress')).toBeNull();
-  expect(card.querySelector('.release-download-button')?.textContent).toContain(
+  expect(card.querySelector('.release-download-button')?.textContent?.trim()).toBe('');
+  expect(card.querySelector('.release-download-button')?.getAttribute('aria-label')).toBe(
     locale === 'zh-CN' ? '重新下载' : 'Download again'
   );
   expect(f.posts).toEqual([]);
   await f.clickDownload();
-  expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'qbittorrent' }]);
+  expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'qbittorrent', downloaderInstanceId: 'qbittorrent' }]);
   f.wrapper.unmount();
 });

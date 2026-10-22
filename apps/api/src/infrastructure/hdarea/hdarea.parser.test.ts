@@ -1,8 +1,8 @@
+import { parseAuthenticatedUserId } from './hdarea.parser.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseSearch, parseDetail } from './hdarea.parser.js';
-import { ResourceSiteError } from '../resource-site.errors.js';
-import { HDAreaAdapter } from './hdarea.adapter.js';
+import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
 
 const bytes = (value: string) => Buffer.from(value);
 const authenticated = '<a href="usercp.php">Account</a>';
@@ -43,23 +43,6 @@ test('detail parsing requires a title but does not depend on a download link', (
     release: { id: '123', title: 'Interstellar 2014' },
   }
   );
-});
-test('search encodes keywords and translates one-based pages; IMDb takes priority', async () => {
-  const paths: string[] = [];
-  const adapter = new HDAreaAdapter('https://hdarea.example/');
-  const session = {
-    get: async (path: string) => {
-      paths.push(path);
-      return bytes(authenticated + '没有找到');
-    },
-  };
-  await adapter.search(session, { query: '星际穿越 & 2014', page: 2 });
-  let params = new URL(paths[0]!, adapter.baseUrl).searchParams;
-  assert.equal(params.get('search'), '星际穿越 & 2014');
-  assert.equal(params.get('page'), '1');
-  await adapter.search(session, { query: 'ignored', imdbId: 'tt0816692' });
-  params = new URL(paths[1]!, adapter.baseUrl).searchParams;
-  assert.equal(params.get('search'), 'tt0816692');
 });
 
 test('extracts title metadata and absolute publication time from either list time layout', () => {
@@ -130,4 +113,23 @@ test('detail tags use heading and metadata rows while ignoring the description',
       .tags,
     undefined
   );
+});
+
+test('reads only the authenticated current-user block, ignoring other member links and names', () => {
+  const page = authenticated
+    + '<a href="userdetails.php?id=999">Another user</a>'
+    + '<div id="info_block"><a href="userdetails.php?id=00123">Me</a></div>';
+  assert.equal(parseAuthenticatedUserId(Buffer.from(page), 'https://hdarea.club/'), '123');
+});
+
+test('missing, ambiguous, foreign and malformed current-user links fail closed', () => {
+  for (const content of [
+    '<a href="userdetails.php?id=123">Not in the current-user block</a>',
+    '<div id="info_block"><a href="userdetails.php?id=123">A</a><a href="userdetails.php?id=456">B</a></div>',
+    '<div id="info_block"><a href="https://evil.example/userdetails.php?id=123">Me</a></div>',
+    '<div id="info_block"><a href="userdetails.php?id=0">Me</a></div>',
+    '<div id="info_block"><a href="userdetails.php?id=123&id=456">Me</a></div>',
+    '<div id="info_block"><a href="userdetails.php?id=not-an-id">Me</a></div>',
+  ]) assert.throws(() => parseAuthenticatedUserId(Buffer.from(authenticated + content), 'https://hdarea.club/'), ResourceSiteError);
+  assert.throws(() => parseAuthenticatedUserId(Buffer.from('<input type="password">'), 'https://hdarea.club/'), ResourceSiteError);
 });

@@ -1,12 +1,12 @@
-import type { DownloadProvider, Locale } from '@movie-hub/contract';
+import type { DownloaderChoice, Locale } from '@movie-hub/contract';
 
 export interface AssistantSession {
   updatedAt: string;
   locale?: Locale;
   stage: 'idle' | 'await_movie' | 'await_resource' | 'await_provider' | 'submitting';
   selection?: { tmdbId: number; source: string; releaseId: string; title: string; selectedAt: string };
-  providers?: DownloadProvider[];
-  provider?: DownloadProvider;
+  providers?: DownloaderChoice[];
+  provider?: string;
   submissionEventId?: string;
   events: Array<{ id: string; replyText: string; intent: 'download' }>;
 }
@@ -21,7 +21,7 @@ export interface AssistantSessionStore {
 /** Snapshot metadata for model decisions; IDs and release payloads stay server-side. */
 export interface AssistantDownloadContext {
   stage: AssistantSession['stage'];
-  providers: DownloadProvider[];
+  providers: DownloaderChoice[];
   hasSelection: boolean;
   resources: { hasSnapshot: boolean; releaseCount: number; page: number; pageCount: number };
 }

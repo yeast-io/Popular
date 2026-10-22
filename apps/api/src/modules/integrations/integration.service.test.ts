@@ -62,6 +62,7 @@ class StubVerifier implements MTeamVerifier {
   async verify(baseUrl: string, apiKey: string) {
     this.calls.push({ baseUrl, apiKey });
     if (this.error) throw this.error;
+    return '101';
   }
 }
 

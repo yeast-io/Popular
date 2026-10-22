@@ -26,7 +26,7 @@ describe('Transmission settings', () => {
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mount(TransmissionSettings);
     await flushPromises();
-    expect(wrapper.findAll('input')).toHaveLength(3);
+    expect(wrapper.findAll('input')).toHaveLength(4);
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined();
     await wrapper.get('#transmission-base-url').setValue('http://nas:9091');
     await wrapper.get('#transmission-username').setValue('daniel');
@@ -36,17 +36,18 @@ describe('Transmission settings', () => {
     const request = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT');
     expect(String(request?.[0])).toContain('/me/integrations/transmission');
     expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+      name: 'Transmission',
       baseUrl: 'http://nas:9091',
       username: 'daniel',
       password: 'private-password',
     }
     );
     expect((wrapper.get('#transmission-password').element as HTMLInputElement).value).toBe('');
-    expect(wrapper.text()).toContain('validated and saved');
+    expect(wrapper.text()).toContain('Verified and saved.');
     expect(wrapper.text()).toContain('4.0.6');
   });
 
-  it('retains the password only for the saved address and username and can retest', async () => {
+  it('retains the password only for the saved address and username when testing and saving', async () => {
     const fetchMock = vi.fn(async () => Response.json(saved));
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mount(TransmissionSettings);
@@ -64,12 +65,9 @@ describe('Transmission settings', () => {
     expect(
       JSON.parse(String((fetchMock.mock.calls as unknown as [unknown, RequestInit?][]).at(-1)?.[1]?.body))
     ).toEqual(
-      { baseUrl: saved.baseUrl, username: saved.username }
+      { name: 'Transmission', baseUrl: saved.baseUrl, username: saved.username }
     );
-    const retest = wrapper.findAll('button').find((button) => button.text() === 'Retest current configuration')!;
-    await retest.trigger('click');
-    await flushPromises();
-    expect((fetchMock.mock.calls as unknown as [string, RequestInit?][]).at(-1)?.[0]).toContain('/transmission/test');
+    expect(wrapper.get('.integration-actions').findAll('button').map((button) => button.text())).toEqual(['Delete', 'Test and save']);
   });
 
   it('shows localized connection errors without a success message', async () => {

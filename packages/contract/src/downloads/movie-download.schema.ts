@@ -5,10 +5,17 @@ export type DownloadSource = Static<typeof DownloadSourceSchema>;
 
 export const DownloadProviderSchema = Type.Union([Type.Literal('qbittorrent'), Type.Literal('transmission')]);
 export type DownloadProvider = Static<typeof DownloadProviderSchema>;
+export const DownloaderInstanceIdSchema = Type.String({ pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' });
+export const DownloaderChoiceSchema = Type.Object({
+  downloaderInstanceId: DownloaderInstanceIdSchema,
+  provider: DownloadProviderSchema,
+  name: Type.String({ minLength: 1, maxLength: 80 }),
+}, { additionalProperties: false });
+export type DownloaderChoice = Static<typeof DownloaderChoiceSchema>;
 
 export const DownloadProviderListResponseSchema = Type.Object(
   {
-    providers: Type.Array(DownloadProviderSchema),
+    providers: Type.Array(DownloaderChoiceSchema),
   },
   { additionalProperties: false }
 );
@@ -31,6 +38,8 @@ export const MovieDownloadSchema = Type.Object(
     sourceProvider: DownloadSourceSchema,
     sourceReleaseId: Type.String({ minLength: 1 }),
     provider: DownloadProviderSchema,
+    downloaderInstanceId: Type.Optional(DownloaderInstanceIdSchema),
+    downloaderName: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
     status: MovieDownloadStatusSchema,
     progress: Type.Number({ minimum: 0, maximum: 100 }),
     downloadedBytes: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -54,6 +63,7 @@ export const MovieDownloadListResponseSchema = Type.Object(
 export const CreateMovieDownloadRequestSchema = Type.Object(
   {
     provider: Type.Optional(DownloadProviderSchema),
+    downloaderInstanceId: Type.Optional(DownloaderInstanceIdSchema),
     sourceProvider: Type.Optional(DownloadSourceSchema),
     sourceReleaseId: Type.String({ minLength: 1, maxLength: 128, pattern: '^\\d+$' }),
   },

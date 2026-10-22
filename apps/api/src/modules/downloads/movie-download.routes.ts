@@ -86,7 +86,8 @@ export function registerMovieDownloadRoutes(
               request.params.tmdbId,
               request.body.sourceReleaseId,
               request.body.provider,
-              request.body.sourceProvider
+              request.body.sourceProvider,
+              request.body.downloaderInstanceId
             );
           });
           trace.event('download.create.completed', {

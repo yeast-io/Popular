@@ -2,14 +2,17 @@
 import { replacementSecret } from './integration-secret.domain';
 import IntegrationCard from '../settings/IntegrationCard.vue';
 import type { ApiError, IntegrationStatus, TransmissionConfiguration } from '@movie-hub/contract';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { formatDate, t } from '../../i18n';
 import { localizedApiError, localizedErrorMessage } from '../../i18n/api-error';
 
 const { apiBaseUrl } = loadWebConfig();
+const props = defineProps<{ instance?: TransmissionConfiguration; creating?: boolean; embedded?: boolean }>();
+const emit = defineEmits<{ changed: [] }>();
 const config = ref<TransmissionConfiguration>({ provider: 'transmission', status: 'unconfigured' });
-const baseUrl = ref('http://localhost:9091');
+const name = ref(props.creating ? '' : 'Transmission');
+const baseUrl = ref('');
 const username = ref('');
 const password = ref('');
 const loading = ref(true);
@@ -19,11 +22,24 @@ const confirmDelete = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 const configured = computed(() => config.value.status !== 'unconfigured');
+const fieldPrefix = computed(() => props.instance?.downloaderInstanceId ? `transmission-${props.instance.downloaderInstanceId}` : 'transmission');
 const statusLabel = computed(() => {
   return t(`transmission.status.${config.value.status}` as `transmission.status.${IntegrationStatus}`);
 });
 
-onMounted(loadConfiguration);
+onMounted(() => {
+  if (props.instance) {
+    applyConfiguration(props.instance);
+    loading.value = false;
+  } else if (props.creating) {
+    loading.value = false;
+  } else {
+    void loadConfiguration();
+  }
+});
+watch(() => props.instance, (next) => {
+  if (next) applyConfiguration(next);
+});
 
 async function loadConfiguration() {
   loading.value = true;
@@ -43,13 +59,19 @@ async function testAndSave() {
   successMessage.value = '';
   submitting.value = true;
   const body = {
+    name: name.value.trim(),
     baseUrl: baseUrl.value.trim(),
     username: username.value.trim(),
     ...(replacementSecret(password.value, config.value.passwordMasked) ? { password: replacementSecret(password.value, config.value.passwordMasked) } : {}),
   };
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/transmission`, {
-      method: 'PUT',
+    const endpoint = props.creating
+      ? '/me/integrations/transmission/instances'
+      : props.instance?.downloaderInstanceId
+        ? `/me/integrations/transmission/instances/${props.instance.downloaderInstanceId}`
+        : '/me/integrations/transmission';
+    const response = await fetch(`${apiBaseUrl}${endpoint}`, {
+      method: props.creating ? 'POST' : 'PUT',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -58,29 +80,9 @@ async function testAndSave() {
     if (!response.ok) throw localizedApiError(result, 'errors.transmissionValidation');
     applyConfiguration(result as TransmissionConfiguration);
     successMessage.value = t('transmission.saved');
+    emit('changed');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.transmissionValidation');
-  } finally {
-    submitting.value = false;
-  }
-}
-
-async function retest() {
-  errorMessage.value = '';
-  successMessage.value = '';
-  submitting.value = true;
-  try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/transmission/test`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-    const result = (await response.json()) as TransmissionConfiguration | ApiError;
-    if (!response.ok) throw localizedApiError(result, 'errors.transmissionValidation');
-    applyConfiguration(result as TransmissionConfiguration);
-    successMessage.value = t('transmission.retested');
-  } catch (error) {
-    errorMessage.value = localizedErrorMessage(error, 'errors.transmissionValidation');
-    await loadConfiguration();
   } finally {
     submitting.value = false;
   }
@@ -91,7 +93,10 @@ async function deleteConfiguration() {
   errorMessage.value = '';
   successMessage.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/transmission`, {
+    const endpoint = props.instance?.downloaderInstanceId
+      ? `/me/integrations/transmission/instances/${props.instance.downloaderInstanceId}`
+      : '/me/integrations/transmission';
+    const response = await fetch(`${apiBaseUrl}${endpoint}`, {
       method: 'DELETE',
       credentials: 'include',
     });
@@ -100,6 +105,7 @@ async function deleteConfiguration() {
     password.value = '';
     confirmDelete.value = false;
     successMessage.value = t('transmission.deleted');
+    emit('changed');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
   } finally {
@@ -109,12 +115,14 @@ async function deleteConfiguration() {
 
 function applyConfiguration(next: TransmissionConfiguration) {
   config.value = next;
+  name.value = next.name ?? 'Transmission';
   password.value = next.passwordMasked ?? '';
-  baseUrl.value = next.baseUrl ?? 'http://localhost:9091';
+  baseUrl.value = next.baseUrl ?? '';
   username.value = next.username ?? '';
 }
 
 function canSubmit(): boolean {
+  if (!name.value.trim()) return false;
   if (!baseUrl.value.trim()) return false;
   const canRetainPassword
     = configured.value
@@ -126,8 +134,10 @@ function canSubmit(): boolean {
 
 <template>
   <IntegrationCard
-    id="transmission"
-    :title="t('transmission.title')"
+    :id="config.downloaderInstanceId ?? (creating ? 'new-transmission' : 'transmission')"
+    provider="transmission"
+    :default-id="config.downloaderInstanceId ?? 'transmission'"
+    :title="creating ? t('downloader.addTransmission') : (config.name ?? t('transmission.title'))"
     badge="Tr"
     :status-label="statusLabel"
     :status-class="config.status"
@@ -135,6 +145,8 @@ function canSubmit(): boolean {
     :busy="submitting || deleting"
     :loading="loading"
     :notice="errorMessage"
+    :force-open="creating"
+    :embedded="embedded"
   >
     <div v-if="loading" class="loading compact-loading">{{ t('transmission.loading') }}</div>
     <template v-else>
@@ -159,28 +171,33 @@ function canSubmit(): boolean {
         </div>
       </dl>
       <form class="integration-form" novalidate @submit.prevent="testAndSave">
-        <div class="settings-fields integration-fields">
-          <label for="transmission-base-url">
+        <div class="settings-fields integration-fields downloader-fields">
+          <label :for="`${fieldPrefix}-name`">
+            {{ t('downloader.name') }}
+            <input :id="`${fieldPrefix}-name`" v-model="name" required maxlength="80" />
+          </label>
+          <label :for="`${fieldPrefix}-base-url`">
             {{ t('transmission.baseUrl') }}
             <input
-              id="transmission-base-url"
+              :id="`${fieldPrefix}-base-url`"
               v-model="baseUrl"
               type="url"
               required
               maxlength="2048"
               autocomplete="url"
+              :placeholder="t('transmission.baseUrlPlaceholder')"
             />
             <small>{{ t('transmission.baseUrlHint') }}</small>
           </label>
           <div class="transmission-credentials">
-            <label for="transmission-username">
+            <label :for="`${fieldPrefix}-username`">
               {{ t('transmission.username') }}
-              <input id="transmission-username" v-model="username" required maxlength="256" autocomplete="username" />
+              <input :id="`${fieldPrefix}-username`" v-model="username" required maxlength="256" autocomplete="username" />
             </label>
-            <label for="transmission-password">
+            <label :for="`${fieldPrefix}-password`">
               {{ t('transmission.password') }}
               <input
-                id="transmission-password"
+                :id="`${fieldPrefix}-password`"
                 v-model="password"
                 :type="config.passwordMasked && password === config.passwordMasked ? 'text' : 'password'"
                 maxlength="4096"
@@ -191,7 +208,7 @@ function canSubmit(): boolean {
             </label>
           </div>
         </div>
-        <div class="settings-card-footer integration-form-footer">
+        <div class="settings-card-footer integration-form-footer downloader-form-footer">
           <div class="settings-feedback integration-feedback">
             <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
             <p v-if="successMessage" class="success settings-message" role="status">{{ successMessage }}</p>
@@ -214,15 +231,6 @@ function canSubmit(): boolean {
               @click="confirmDelete = true"
             >
               {{ t('transmission.delete') }}
-            </button>
-            <button
-              v-if="configured"
-              class="secondary"
-              type="button"
-              :disabled="submitting || deleting"
-              @click="retest"
-            >
-              {{ t('transmission.retest') }}
             </button>
             <button class="primary" type="submit" :disabled="submitting || deleting || !canSubmit()">
               {{ submitting ? t('transmission.testing') : t('transmission.testAndSave') }}

@@ -30,7 +30,9 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
     tmdbId: number,
     releaseId: string,
     provider: DownloadProvider,
-    sourceProvider: DownloadSource = 'mteam'
+    sourceProvider: DownloadSource = 'mteam',
+    downloaderInstanceId?: string,
+    downloaderName?: string
   ): Promise<DownloadClaim> {
     const id = new Types.ObjectId();
     try {
@@ -41,6 +43,8 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
         sourceProvider,
         sourceReleaseId: releaseId,
         provider,
+        ...(downloaderInstanceId ? { downloaderInstanceId } : {}),
+        ...(downloaderName ? { downloaderName } : {}),
         lookupTag: `movie-hub-${id.toHexString()}`,
         status: 'submitting',
         progress: 0,
@@ -141,6 +145,8 @@ export function toMovieDownloadRecord(row: MovieDownloadDocument & { _id: unknow
     sourceProvider: row.sourceProvider as DownloadSource,
     sourceReleaseId: row.sourceReleaseId,
     provider: row.provider as DownloadProvider,
+    ...(row.downloaderInstanceId ? { downloaderInstanceId: row.downloaderInstanceId } : {}),
+    ...(row.downloaderName ? { downloaderName: row.downloaderName } : {}),
     lookupTag: row.lookupTag,
     ...(row.executionMode ? { executionMode: row.executionMode as 'local' | 'remote' } : {}),
     status: row.status as MovieDownloadStatus,

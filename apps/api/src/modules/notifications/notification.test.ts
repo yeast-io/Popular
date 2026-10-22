@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NotificationService } from './notification.service.js';
-import { NotificationWorker } from './notification.worker.js';
+import { NotificationWorker, buildDownloadNotification } from './notification.worker.js';
 import { CHECK_INTERVAL_MS } from './notification.policy.js';
 import type {
   ClaimedDownload,
@@ -12,6 +12,15 @@ import type {
 } from './notification.types.js';
 import type { MovieDownloadProgress } from '../downloads/movie-download.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
+
+test('completion notification labels the concrete downloader instance', async () => {
+  const notification = await buildDownloadNotification({
+    id: 'download-1', ownerId: 'owner-1', tmdbId: 7, provider: 'qbittorrent',
+    downloaderInstanceId: '00000000-0000-4000-8000-000000000001', downloaderName: 'Seedbox',
+    sourceProvider: 'mteam', sourceReleaseId: 'release', lookupTag: 'tag', status: 'completed', progress: 100,
+  }, 'notification-1', new Date(), { readMovies: async () => [] }, 'en-US', 'https://popular.example.com');
+  assert.equal(notification.provider, 'Seedbox');
+});
 
 function fixture() {
   let time = Date.now();

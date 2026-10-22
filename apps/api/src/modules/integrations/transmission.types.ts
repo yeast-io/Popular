@@ -7,6 +7,8 @@ export interface TransmissionCredential {
 
 export interface TransmissionConfigRecord {
   ownerId: string;
+  downloaderInstanceId?: string;
+  name?: string;
   baseUrl: string;
   username: string;
   encryptedCredential: string;
@@ -17,12 +19,13 @@ export interface TransmissionConfigRecord {
 }
 
 export interface TransmissionConfigStore {
-  find(ownerId: string): Promise<TransmissionConfigRecord | null>;
+  find(ownerId: string, downloaderInstanceId?: string): Promise<TransmissionConfigRecord | null>;
+  list?(ownerId: string): Promise<TransmissionConfigRecord[]>;
   saveVerified(
     input: TransmissionConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
   ): Promise<TransmissionConfigRecord>;
-  recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType): Promise<void>;
-  delete(ownerId: string): Promise<void>;
+  recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType, downloaderInstanceId?: string): Promise<void>;
+  delete(ownerId: string, downloaderInstanceId?: string): Promise<void>;
 }
 
 export interface TransmissionClientPort {

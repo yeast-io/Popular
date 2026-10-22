@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ResourceSiteHttpClient } from './resource-site-http.client.js';
+import { HDAreaHttpClient } from './hdarea-http.client.js';
 import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
 
 test('concurrent users have independent Cookie jars, including Set-Cookie updates', async () => {
   const seen: Array<{ path: string; cookie: string }> = [];
-  const client = new ResourceSiteHttpClient({
+  const client = new HDAreaHttpClient({
     intervalMs: 0,
     fetch: async (input, init) => {
       const cookie = new Headers(init?.headers).get('cookie')!;
@@ -27,7 +27,7 @@ test('concurrent users have independent Cookie jars, including Set-Cookie update
 });
 test('never forwards credentials across origins or follows a login redirect', async () => {
   let calls = 0;
-  const client = new ResourceSiteHttpClient({
+  const client = new HDAreaHttpClient({
     intervalMs: 0,
     fetch: async () => {
       calls++;
@@ -42,7 +42,7 @@ test('never forwards credentials across origins or follows a login redirect', as
 });
 test('429 stops queued and subsequent requests, respecting a cooldown without retries', async () => {
   let calls = 0;
-  const client = new ResourceSiteHttpClient({
+  const client = new HDAreaHttpClient({
     intervalMs: 0,
     fetch: async () => {
       calls++;
@@ -61,7 +61,7 @@ test('429 stops queued and subsequent requests, respecting a cooldown without re
 });
 test('bounded bodies and cancellation reject without another network request', async () => {
   let calls = 0;
-  const client = new ResourceSiteHttpClient({
+  const client = new HDAreaHttpClient({
     intervalMs: 0,
     maxBytes: 2,
     fetch: async () => {

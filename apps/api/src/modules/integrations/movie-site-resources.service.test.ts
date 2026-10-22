@@ -106,7 +106,7 @@ function harness() {
             id: 'hdarea',
             name: 'HDArea',
             baseUrl: 'https://hdarea.example/',
-            async verify() {},
+            async verify() { return '101'; },
             async search() {
               return { releases: [] };
             },

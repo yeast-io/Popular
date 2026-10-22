@@ -1,3 +1,4 @@
+import { MTeamMemberProfileSchema } from './member-profile.schema.js';
 import { parseTorrentUrl } from './torrent-url.schema.js';
 import { releaseTitleMetadata } from '../../modules/resource-sites/release-metadata.domain.js';
 import type { MTeamSearchPage, MTeamSearchOptions } from '../../modules/integrations/movie-resource-check.types.js';
@@ -34,14 +35,14 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     }
   ) {}
 
-  async verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void> {
+  async verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<string> {
     const body = await withAbsoluteTimeout(this.timeoutMs, async (signal) => {
       const url = verificationUrl(baseUrl);
       const addresses = await resolvePublicAddresses(url.hostname);
       const address = addresses[0];
       if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
       return this.observe('connection.test', context, () => {
-        return postJson(url, apiKey, address, undefined, signal, MAX_RESPONSE_BYTES);
+        return postJson(url, apiKey, address, {}, signal, MAX_RESPONSE_BYTES);
       });
     });
 
@@ -57,6 +58,9 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
         'M-Team rejected the validation request'
       );
     }
+    const identity = MTeamMemberProfileSchema.safeParse(payload);
+    if (!identity.success) throw new IntegrationValidationError('invalid_response', 'M-Team profile has no valid current-user ID');
+    return identity.data.data.id;
   }
 
   async searchMovies(
@@ -325,7 +329,7 @@ export function isPublicAddress(address: string): boolean {
 }
 
 export function verificationUrl(baseUrl: string): URL {
-  return apiUrl(baseUrl, 'member/sysRoleList');
+  return apiUrl(baseUrl, 'member/profile');
 }
 
 function apiUrl(baseUrl: string, path: string): URL {

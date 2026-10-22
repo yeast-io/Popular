@@ -86,6 +86,7 @@ function harness(identity: { title: string; imdbId?: string } | null = { title: 
         ownerId: 'owner-a',
         provider: 'mteam' as const,
         baseUrl: 'https://api.m-team.cc',
+        externalUserId: '101',
         encryptedApiKey,
         ...(lastFailureType ? { lastFailureType } : {}),
       };

@@ -33,6 +33,7 @@ it('renders one button per available channel and sends only the selected channel
                 title: 'Movie',
                 resourceName: 'release',
                 provider: 'qbittorrent',
+                downloaderName: 'Seedbox',
                 totalBytes: 1024,
               },
             ],
@@ -45,6 +46,7 @@ it('renders one button per available channel and sends only the selected channel
   const wrapper = mount(NotificationTestPage);
   await flushPromises();
   expect(wrapper.text()).toContain('Movie');
+  expect(wrapper.text()).toContain('Seedbox');
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(wrapper.findAll('article button')).toHaveLength(3);
   expect(wrapper.get('[data-channel="telegram"]').text()).toBe('Send Telegram test');

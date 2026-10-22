@@ -13,6 +13,7 @@ const configs = {
       ownerId: owner,
       provider: 'mteam',
       baseUrl: 'https://api.m-team.cc',
+      externalUserId: '101',
       encryptedApiKey: secrets.encrypt(`key-${owner}`, integrationSecretContext(owner, 'mteam')),
       verifiedAt: new Date(),
     };
@@ -79,4 +80,18 @@ test('M-Team protects each account from concurrent searches and cancellation nev
   finish();
   await first;
   assert.equal(calls, 2);
+});
+
+test('legacy M-Team identity cannot perform searches until it is verified', async () => {
+  const source = new MTeamSearchSource({
+    find: async (owner) => {
+      const row: Awaited<ReturnType<IntegrationConfigStore['find']>> = await configs.find(owner);
+      delete row!.externalUserId;
+      return row;
+    },
+  }, secrets, { searchMoviePage: async () => { throw new Error('Unverified identity reached the site'); } }, 0);
+  assert.equal(await source.status('A'), 'configured_invalid');
+  await assert.rejects(source.search('A', { query: 'Film' }, new AbortController().signal), (error: unknown) => {
+    return error instanceof Error && 'code' in error && error.code === 'RESOURCE_SITE_IDENTITY_PENDING';
+  });
 });

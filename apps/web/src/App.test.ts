@@ -318,6 +318,11 @@ describe('settings workspace', () => {
         if (url.endsWith('/auth/me'))
           return Response.json({ user: { id: 'settings-user', email: 'test@example.com', displayName: 'Daniel' } });
         if (url.endsWith('/config')) return Response.json({ avatar: { maxBytes: 52428800, maxPixels: 16777216 } });
+        if (url.endsWith('/me/preferences')) return Response.json({
+          version: 2, autoMaintain: true, entries: [], withdrawn: [], revisions: [],
+          generatedAt: null, generatedFingerprint: null, updatedAt: null, text: '',
+          ratedCount: 0, minimumRatings: 5, marksChanged: false, task: null,
+        });
         if (url.endsWith('/resource-search/sources')) return Response.json({ sources: [] });
         if (url.endsWith('/resource-sites/hdarea')) return Response.json({ site: 'hdarea', status: 'unconfigured' });
         if (url.endsWith(
@@ -328,6 +333,14 @@ describe('settings workspace', () => {
         if (url.endsWith('/openai')) return Response.json({ configured: false });
         if (url.endsWith('/telegram')) return Response.json({ status: 'unbound' });
         if (url.endsWith('/whatsapp')) return Response.json({ status: 'unbound' });
+        if (url.endsWith('/integrations/qbittorrent/instances')) return Response.json([{
+          provider: 'qbittorrent', status: 'configured_valid', downloaderInstanceId: '00000000-0000-4000-8000-000000000001', name: 'qBittorrent',
+          baseUrl: 'https://qb.example.com', authMethod: 'api_key', apiKeyMasked: '••••',
+        }]);
+        if (url.endsWith('/integrations/transmission/instances')) return Response.json([{
+          provider: 'transmission', status: 'configured_valid', downloaderInstanceId: '00000000-0000-4000-8000-000000000002', name: 'Transmission',
+          baseUrl: 'https://tr.example.com', username: 'user', passwordMasked: '••••',
+        }]);
         if (url.endsWith('/notifications'))
           return Response.json({
             enabled: false,
@@ -346,6 +359,60 @@ describe('settings workspace', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['en-US', 'zh-CN'] as const)('keeps Tools selected after a reload (%s)', async (locale) => {
+    setLocale(locale);
+    let wrapper = mount(App);
+    await flushPromises();
+    await wrapper.get('[data-settings-section="downloads"]').trigger('click');
+    await flushPromises();
+    expect(window.location.search).toBe('?section=tools');
+    wrapper.unmount();
+
+    wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get('[data-settings-section="downloads"]').attributes('aria-current')).toBe('page');
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe(locale === 'zh-CN' ? '工具' : 'Tools');
+    expect(wrapper.findAll('.connection-copy h3').map((heading) => heading.text())).toEqual(['qBittorrent', 'Transmission']);
+    wrapper.unmount();
+  });
+
+  it.each([
+    ['profile', 'profile'],
+    ['ai-assistant', 'ai'],
+    ['movie-preferences', 'preferences'],
+    ['sources', 'resources'],
+    ['tools', 'downloads'],
+    ['keys', 'keys'],
+    ['messages', 'notifications'],
+    ['unknown', 'profile'],
+    ['downloads', 'profile'],
+  ])('restores the section from its public name %s', async (slug, section) => {
+    window.history.replaceState({}, '', `/settings?section=${slug}`);
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get(`[data-settings-section="${section}"]`).attributes('aria-current')).toBe('page');
+    wrapper.unmount();
+  });
+
+  it('syncs settings selection on history navigation and retains other URL parameters', async () => {
+    window.history.replaceState({}, '', '/settings?section=tools&source=test');
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper.get('[data-settings-section="keys"]').trigger('click');
+    await flushPromises();
+    expect(window.location.search).toBe('?section=keys&source=test');
+
+    window.history.replaceState({}, '', '/settings?section=tools&source=test');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Tools');
+    window.history.replaceState({}, '', '/settings?section=keys&source=test');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Keys');
+    wrapper.unmount();
+  });
+
   it('groups settings by purpose, loads categories on demand and preserves unsaved drafts', async () => {
     const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
@@ -361,7 +428,13 @@ describe('settings workspace', () => {
     await wrapper.get('#openai-api-key').setValue('sk-unsaved-personal-key');
     await wrapper.get('[data-settings-section="downloads"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Downloads');
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Tools');
+    expect(wrapper.get('.settings-add-downloader').attributes('aria-label')).toBe('Add downloader');
+    expect(wrapper.get('.settings-add-downloader').find('svg').exists()).toBe(true);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    await wrapper.get('.settings-add-downloader').trigger('click');
+    expect(wrapper.get('[role="dialog"]').attributes('aria-modal')).toBe('true');
+    expect(wrapper.find('.downloader-type-picker').exists()).toBe(true);
     expect(
       wrapper.findAll('.connection-copy h3').filter((node) => node.isVisible()).map((node) => node.text())
     ).toEqual([
@@ -378,14 +451,14 @@ describe('settings workspace', () => {
   });
 
   it.each([
-    ['en-US', 'Sources', 'Downloads', 'Keys'],
-    ['zh-CN', '资源', '下载', '密钥'],
-  ] as const)('separates sources and downloads in desktop and mobile navigation (%s)', async (locale, resources, downloads, keys) => {
+    ['en-US', 'Sources', 'Tools', 'Keys'],
+    ['zh-CN', '资源', '工具', '密钥'],
+  ] as const)('separates sources and tools in desktop and mobile navigation (%s)', async (locale, resources, tools, keys) => {
     setLocale(locale);
     const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
     expect(wrapper.get('[data-settings-section="resources"]').text()).toContain(resources);
-    expect(wrapper.get('[data-settings-section="downloads"]').text()).toContain(downloads);
+    expect(wrapper.get('[data-settings-section="downloads"]').text()).toContain(tools);
     await wrapper.get('[data-settings-section="resources"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('.settings-content-heading h2').text()).toBe(resources);
@@ -395,7 +468,7 @@ describe('settings workspace', () => {
     expect(vi.mocked(fetch).mock.calls.some(([url]) => /\/(qbittorrent|transmission)$/.test(String(url)))).toBe(false);
     await wrapper.get('#settings-category').setValue('downloads');
     await flushPromises();
-    expect(wrapper.get('.settings-content-heading h2').text()).toBe(downloads);
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe(tools);
     expect(
       wrapper.findAll('.connection-copy h3').filter((node) => node.isVisible()).map((node) => node.text())
     ).toEqual([

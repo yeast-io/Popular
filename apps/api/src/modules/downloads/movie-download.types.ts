@@ -7,6 +7,8 @@ export interface MovieDownloadRecord {
   sourceProvider: DownloadSource;
   sourceReleaseId: string;
   provider: DownloadProvider;
+  downloaderInstanceId?: string;
+  downloaderName?: string;
   lookupTag: string;
   executionMode?: 'local' | 'remote';
   torrentHash?: string;
@@ -48,6 +50,8 @@ export interface MovieDownloadStore {
     releaseId: string,
     provider: DownloadProvider,
     sourceProvider?: DownloadSource,
+    downloaderInstanceId?: string,
+    downloaderName?: string,
   ): Promise<DownloadClaim>;
   retry(id: string): Promise<DownloadClaim>;
   listForMovie(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]>;

@@ -1,3 +1,4 @@
+import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type { IntegrationPreferencesService } from './integration-preferences.service.js';
 import { maskIntegrationSecret } from '@movie-hub/contract';
 import { replacementSecret } from './integration-secret.domain.js';
@@ -63,9 +64,13 @@ export class IntegrationService {
     if (!apiKey) throw new AppError(400, 'VALIDATION_ERROR', 'M-Team API key is required for the first configuration');
     const attemptedAt = this.now();
 
+    let externalUserId: string;
+    currentAiTrace()?.sensitive(apiKey);
     try {
-      await this.mteam.verify(baseUrl, apiKey, userExternalRequestContext(ownerId, 'manual_refresh'));
+      externalUserId = await aiStep('mteam.identity.verify', () => this.mteam.verify(baseUrl, apiKey, userExternalRequestContext(ownerId, 'manual_refresh')));
+      currentAiTrace()?.sensitive(externalUserId);
     } catch (error) {
+      currentAiTrace()?.fail(error, { stage: 'mteam.identity.verify' });
       const failureType
         = error instanceof IntegrationValidationError
           ? error.failureType === 'permission' || error.failureType === 'rate_limited'
@@ -76,15 +81,16 @@ export class IntegrationService {
       throw mteamValidationAppError(error);
     }
 
-    const saved = await this.configs.saveVerified({
+    const saved = await aiStep('mteam.identity.save', () => this.configs.saveVerified({
       ownerId,
       provider: 'mteam',
+      externalUserId,
       baseUrl,
       webBaseUrl,
       encryptedApiKey: this.secrets.encrypt(apiKey, secretContext),
       verifiedAt: attemptedAt,
       lastValidationAt: attemptedAt,
-    });
+    }));
     await this.preferences?.configured(ownerId, 'resource', 'mteam');
     return toResponse(saved, this.secrets);
   }
@@ -94,14 +100,18 @@ export class IntegrationService {
     const existing = await this.configs.find(ownerId, 'mteam');
     if (!existing) throw new AppError(404, 'NOT_FOUND', 'M-Team is not configured');
     const attemptedAt = this.now();
-
+    let externalUserId: string;
+    const apiKey = this.secrets.decrypt(existing.encryptedApiKey, integrationSecretContext(ownerId, 'mteam'));
+    currentAiTrace()?.sensitive(apiKey);
     try {
-      await this.mteam.verify(
+      externalUserId = await aiStep('mteam.identity.verify', () => this.mteam.verify(
         existing.baseUrl,
-        this.secrets.decrypt(existing.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
+        apiKey,
         userExternalRequestContext(ownerId, 'manual_refresh')
-      );
+      ));
+      currentAiTrace()?.sensitive(externalUserId);
     } catch (error) {
+      currentAiTrace()?.fail(error, { stage: 'mteam.identity.verify' });
       const failureType
         = error instanceof IntegrationValidationError
           ? error.failureType === 'permission' || error.failureType === 'rate_limited'
@@ -112,11 +122,12 @@ export class IntegrationService {
       throw mteamValidationAppError(error);
     }
 
-    const saved = await this.configs.saveVerified({
+    const saved = await aiStep('mteam.identity.save', () => this.configs.saveVerified({
       ...existing,
+      externalUserId,
       verifiedAt: attemptedAt,
       lastValidationAt: attemptedAt,
-    });
+    }));
     await this.preferences?.configured(ownerId, 'resource', 'mteam');
     return toResponse(saved, this.secrets);
   }
@@ -198,7 +209,7 @@ function mteamValidationAppError(error: unknown): AppError {
 
 function toResponse(record: IntegrationConfigRecord | null, secrets: SecretCrypto): MTeamConfiguration {
   if (!record) return { provider: 'mteam', status: 'unconfigured' };
-  const status = record.lastFailureType
+  const status = !record.externalUserId || record.lastFailureType
     ? 'configured_invalid'
     : record.verifiedAt
       ? 'configured_valid'

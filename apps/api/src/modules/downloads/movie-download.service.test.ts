@@ -26,6 +26,7 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
     lastErrorCode: 'MOVIE_DOWNLOAD_FAILED',
   };
   const updates: MovieDownloadRecord[] = [];
+  let downloaderBaseUrl = 'https://downloads.example.com:8080';
   const downloads = {
     async findByRelease() {
       return failed;
@@ -40,7 +41,7 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
     async find() {
       return {
         ownerId,
-        baseUrl: 'http://qbittorrent:8080',
+        baseUrl: downloaderBaseUrl,
         authMethod: 'api_key' as const,
         encryptedCredential: secrets.encrypt(
           JSON.stringify({ authMethod: 'api_key', apiKey: 'secret' }),
@@ -55,6 +56,7 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
         ownerId,
         provider: 'mteam' as const,
         baseUrl: 'https://m-team.test',
+        externalUserId: '101',
         encryptedApiKey: secrets.encrypt('mteam-key', integrationSecretContext(ownerId, 'mteam')),
       };
     },
@@ -106,6 +108,9 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
   assert.equal(result.status, 'downloading');
   assert.equal(result.progress, 40);
   assert.equal(updates[0]?.torrentHash, 'ABC123');
+  downloaderBaseUrl = 'http://192.168.1.20:8080';
+  await assert.rejects(service.create('session', 123, 'release-1'), { code: 'QBITTORRENT_INVALID_URL' });
+  assert.equal(addCalls, 0);
 });
 
 test('recovers a failed download while syncing an open release dialog', async () => {
@@ -139,7 +144,7 @@ test('recovers a failed download while syncing an open release dialog', async ()
     async find() {
       return {
         ownerId,
-        baseUrl: 'http://qbittorrent:8080',
+        baseUrl: 'https://downloads.example.com:8080',
         authMethod: 'api_key' as const,
         encryptedCredential: secrets.encrypt(
           JSON.stringify({ authMethod: 'api_key', apiKey: 'secret' }),

@@ -17,6 +17,8 @@ function fixture() {
     ownerId: 'alice',
     tmdbId: 7,
     provider: 'qbittorrent',
+    downloaderInstanceId: '00000000-0000-4000-8000-000000000001',
+    downloaderName: 'Seedbox',
     sourceProvider: 'mteam',
     sourceReleaseId: 'r',
     lookupTag: 'tag',
@@ -143,6 +145,7 @@ test('lists only owned saved completed downloads with localized movie metadata',
   await assert.rejects(() => f.service.list(undefined, 1), { code: 'UNAUTHORIZED' });
   const listed = await f.service.list('alice', 1);
   assert.equal(listed.items[0]?.title, 'Movie');
+  assert.equal(listed.items[0]?.downloaderName, 'Seedbox');
   assert.deepEqual(
     listed.channels.map((channel) => [channel.id, channel.configured]),
     [

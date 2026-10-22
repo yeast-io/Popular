@@ -2,14 +2,17 @@
 import { replacementSecret } from './integration-secret.domain';
 import IntegrationCard from '../settings/IntegrationCard.vue';
 import type { ApiError, IntegrationStatus, QBittorrentAuthMethod, QBittorrentConfiguration } from '@movie-hub/contract';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { formatDate, t } from '../../i18n';
 import { localizedApiError, localizedErrorMessage } from '../../i18n/api-error';
 
 const { apiBaseUrl } = loadWebConfig();
+const props = defineProps<{ instance?: QBittorrentConfiguration; creating?: boolean; embedded?: boolean }>();
+const emit = defineEmits<{ changed: [] }>();
 const config = ref<QBittorrentConfiguration>({ provider: 'qbittorrent', status: 'unconfigured' });
-const baseUrl = ref('http://localhost:8080');
+const name = ref(props.creating ? '' : 'qBittorrent');
+const baseUrl = ref('');
 const authMethod = ref<QBittorrentAuthMethod>('api_key');
 const apiKey = ref('');
 const username = ref('');
@@ -21,11 +24,24 @@ const confirmDelete = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 const configured = computed(() => config.value.status !== 'unconfigured');
+const fieldPrefix = computed(() => props.instance?.downloaderInstanceId ? `qbittorrent-${props.instance.downloaderInstanceId}` : 'qbittorrent');
 const statusLabel = computed(() => {
   return t(`qbittorrent.status.${config.value.status}` as `qbittorrent.status.${IntegrationStatus}`);
 });
 
-onMounted(loadConfiguration);
+onMounted(() => {
+  if (props.instance) {
+    applyConfiguration(props.instance);
+    loading.value = false;
+  } else if (props.creating) {
+    loading.value = false;
+  } else {
+    void loadConfiguration();
+  }
+});
+watch(() => props.instance, (next) => {
+  if (next) applyConfiguration(next);
+});
 
 async function loadConfiguration() {
   loading.value = true;
@@ -46,16 +62,22 @@ async function testAndSave() {
   submitting.value = true;
   const body
     = authMethod.value === 'api_key'
-      ? { baseUrl: baseUrl.value.trim(), authMethod: 'api_key', ...(replacementSecret(apiKey.value, config.value.apiKeyMasked) ? { apiKey: replacementSecret(apiKey.value, config.value.apiKeyMasked) } : {}) }
+      ? { name: name.value.trim(), baseUrl: baseUrl.value.trim(), authMethod: 'api_key', ...(replacementSecret(apiKey.value, config.value.apiKeyMasked) ? { apiKey: replacementSecret(apiKey.value, config.value.apiKeyMasked) } : {}) }
       : {
+          name: name.value.trim(),
           baseUrl: baseUrl.value.trim(),
           authMethod: 'username_password',
           username: username.value.trim(),
           ...(replacementSecret(password.value, config.value.passwordMasked) ? { password: replacementSecret(password.value, config.value.passwordMasked) } : {}),
         };
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, {
-      method: 'PUT',
+    const endpoint = props.creating
+      ? '/me/integrations/qbittorrent/instances'
+      : props.instance?.downloaderInstanceId
+        ? `/me/integrations/qbittorrent/instances/${props.instance.downloaderInstanceId}`
+        : '/me/integrations/qbittorrent';
+    const response = await fetch(`${apiBaseUrl}${endpoint}`, {
+      method: props.creating ? 'POST' : 'PUT',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -64,26 +86,7 @@ async function testAndSave() {
     if (!response.ok) throw localizedApiError(result, 'errors.qbittorrentValidation');
     applyConfiguration(result as QBittorrentConfiguration);
     successMessage.value = t('qbittorrent.saved');
-  } catch (error) {
-    errorMessage.value = localizedErrorMessage(error, 'errors.qbittorrentValidation');
-  } finally {
-    submitting.value = false;
-  }
-}
-
-async function retest() {
-  errorMessage.value = '';
-  successMessage.value = '';
-  submitting.value = true;
-  try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent/test`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-    const result = (await response.json()) as QBittorrentConfiguration | ApiError;
-    if (!response.ok) throw localizedApiError(result, 'errors.qbittorrentValidation');
-    applyConfiguration(result as QBittorrentConfiguration);
-    successMessage.value = t('qbittorrent.retested');
+    emit('changed');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.qbittorrentValidation');
   } finally {
@@ -96,7 +99,10 @@ async function deleteConfiguration() {
   errorMessage.value = '';
   successMessage.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/qbittorrent`, {
+    const endpoint = props.instance?.downloaderInstanceId
+      ? `/me/integrations/qbittorrent/instances/${props.instance.downloaderInstanceId}`
+      : '/me/integrations/qbittorrent';
+    const response = await fetch(`${apiBaseUrl}${endpoint}`, {
       method: 'DELETE',
       credentials: 'include',
     });
@@ -104,6 +110,7 @@ async function deleteConfiguration() {
     applyConfiguration({ provider: 'qbittorrent', status: 'unconfigured' });
     confirmDelete.value = false;
     successMessage.value = t('qbittorrent.deleted');
+    emit('changed');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
   } finally {
@@ -113,14 +120,16 @@ async function deleteConfiguration() {
 
 function applyConfiguration(next: QBittorrentConfiguration) {
   config.value = next;
+  name.value = next.name ?? 'qBittorrent';
   apiKey.value = next.apiKeyMasked ?? '';
   password.value = next.passwordMasked ?? '';
-  baseUrl.value = next.baseUrl ?? 'http://localhost:8080';
+  baseUrl.value = next.baseUrl ?? '';
   authMethod.value = next.authMethod ?? 'api_key';
   username.value = next.username ?? '';
 }
 
 function canSubmit(): boolean {
+  if (!name.value.trim()) return false;
   if (!baseUrl.value.trim()) return false;
   if (authMethod.value === 'api_key') {
     return Boolean(replacementSecret(apiKey.value, config.value.apiKeyMasked)) || (configured.value && config.value.authMethod === 'api_key');
@@ -135,8 +144,10 @@ function canSubmit(): boolean {
 
 <template>
   <IntegrationCard
-    id="qbittorrent"
-    :title="t('qbittorrent.title')"
+    :id="config.downloaderInstanceId ?? (creating ? 'new-qbittorrent' : 'qbittorrent')"
+    provider="qbittorrent"
+    :default-id="config.downloaderInstanceId ?? 'qbittorrent'"
+    :title="creating ? t('downloader.addQBittorrent') : (config.name ?? t('qbittorrent.title'))"
     badge="qB"
     :status-label="statusLabel"
     :status-class="config.status"
@@ -144,6 +155,8 @@ function canSubmit(): boolean {
     :busy="submitting || deleting"
     :loading="loading"
     :notice="errorMessage"
+    :force-open="creating"
+    :embedded="embedded"
   >
     <div v-if="loading" class="loading compact-loading">{{ t('qbittorrent.loading') }}</div>
     <template v-else>
@@ -168,46 +181,41 @@ function canSubmit(): boolean {
         </div>
       </dl>
       <form class="integration-form" novalidate @submit.prevent="testAndSave">
-        <div class="settings-fields integration-fields">
-          <label for="qbittorrent-base-url">
+        <div class="settings-fields integration-fields downloader-fields">
+          <label :for="`${fieldPrefix}-name`">
+            {{ t('downloader.name') }}
+            <input :id="`${fieldPrefix}-name`" v-model="name" required maxlength="80" />
+          </label>
+          <label :for="`${fieldPrefix}-base-url`">
             {{ t('qbittorrent.baseUrl') }}
             <input
-              id="qbittorrent-base-url"
+              :id="`${fieldPrefix}-base-url`"
               v-model="baseUrl"
               type="url"
               required
               maxlength="2048"
               autocomplete="url"
+              :placeholder="t('qbittorrent.baseUrlPlaceholder')"
             />
             <small>{{ t('qbittorrent.baseUrlHint') }}</small>
           </label>
           <fieldset class="auth-method-fieldset">
             <legend>{{ t('qbittorrent.authMethod') }}</legend>
             <div class="auth-method-options">
-              <button
-                type="button"
-                class="auth-method-option"
-                :class="{ active: authMethod === 'api_key' }"
-                :aria-pressed="authMethod === 'api_key'"
-                @click="authMethod = 'api_key'"
-              >
-                {{ t('qbittorrent.auth.apiKey') }}
-              </button>
-              <button
-                type="button"
-                class="auth-method-option"
-                :class="{ active: authMethod === 'username_password' }"
-                :aria-pressed="authMethod === 'username_password'"
-                @click="authMethod = 'username_password'"
-              >
-                {{ t('qbittorrent.auth.password') }}
-              </button>
+              <label class="auth-method-option">
+                <input v-model="authMethod" type="radio" :name="`${fieldPrefix}-auth-method`" value="api_key" />
+                <span>{{ t('qbittorrent.auth.apiKey') }}</span>
+              </label>
+              <label class="auth-method-option">
+                <input v-model="authMethod" type="radio" :name="`${fieldPrefix}-auth-method`" value="username_password" />
+                <span>{{ t('qbittorrent.auth.password') }}</span>
+              </label>
             </div>
           </fieldset>
-          <label v-if="authMethod === 'api_key'" for="qbittorrent-api-key">
+          <label v-if="authMethod === 'api_key'" :for="`${fieldPrefix}-api-key`">
             {{ t('qbittorrent.apiKey') }}
             <input
-              id="qbittorrent-api-key"
+              :id="`${fieldPrefix}-api-key`"
               v-model="apiKey"
               :type="config.apiKeyMasked && apiKey === config.apiKeyMasked ? 'text' : 'password'"
               maxlength="4096"
@@ -217,25 +225,25 @@ function canSubmit(): boolean {
             <small v-if="config.apiKeyMasked">{{ t('settings.credentialLength', { length: Array.from(config.apiKeyMasked).length }) }}</small>
           </label>
           <template v-else>
-            <label for="qbittorrent-username">
+            <label :for="`${fieldPrefix}-username`">
               {{ t('qbittorrent.username') }}
-              <input id="qbittorrent-username" v-model="username" maxlength="256" autocomplete="username" />
+              <input :id="`${fieldPrefix}-username`" v-model="username" maxlength="256" autocomplete="username" />
             </label>
-            <label for="qbittorrent-password">
+            <label :for="`${fieldPrefix}-password`">
               {{ t('qbittorrent.password') }}
               <input
-                id="qbittorrent-password"
+                :id="`${fieldPrefix}-password`"
                 v-model="password"
                 :type="config.passwordMasked && password === config.passwordMasked ? 'text' : 'password'"
                 maxlength="4096"
                 autocomplete="new-password"
                 :placeholder="configured ? t('qbittorrent.keepSecret') : ''"
               />
-            <small v-if="config.passwordMasked">{{ t('settings.credentialLength', { length: Array.from(config.passwordMasked).length }) }}</small>
+              <small v-if="config.passwordMasked">{{ t('settings.credentialLength', { length: Array.from(config.passwordMasked).length }) }}</small>
             </label>
           </template>
         </div>
-        <div class="settings-card-footer integration-form-footer">
+        <div class="settings-card-footer integration-form-footer downloader-form-footer">
           <div class="settings-feedback integration-feedback">
             <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
             <p v-if="successMessage" class="success settings-message" role="status">{{ successMessage }}</p>
@@ -258,15 +266,6 @@ function canSubmit(): boolean {
               @click="confirmDelete = true"
             >
               {{ t('qbittorrent.delete') }}
-            </button>
-            <button
-              v-if="configured"
-              class="secondary"
-              type="button"
-              :disabled="submitting || deleting"
-              @click="retest"
-            >
-              {{ t('qbittorrent.retest') }}
             </button>
             <button class="primary" type="submit" :disabled="submitting || deleting || !canSubmit()">
               {{ submitting ? t('qbittorrent.testing') : t('qbittorrent.testAndSave') }}

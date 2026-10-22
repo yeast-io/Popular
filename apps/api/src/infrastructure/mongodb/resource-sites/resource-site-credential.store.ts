@@ -1,3 +1,4 @@
+import { siteAccountInUse, siteAccountIdentityPending } from '../../../modules/resource-sites/site-account.errors.js';
 import type { Model } from 'mongoose';
 import type {
   ResourceSiteCredential,
@@ -14,6 +15,7 @@ export class MongoResourceSiteCredentialStore implements ResourceSiteCredentialS
       ? {
           ownerId: row.ownerId.toString(),
           site: row.site,
+          ...(row.externalUserId ? { externalUserId: row.externalUserId } : {}),
           encryptedCookie: row.encryptedCookie,
           ...(row.encryptedPasskey ? { encryptedPasskey: row.encryptedPasskey } : {}),
           version: row.version,
@@ -23,8 +25,19 @@ export class MongoResourceSiteCredentialStore implements ResourceSiteCredentialS
       : null;
   }
 
-  async save(input: ResourceSiteCredential): Promise<void> {
-    await this.model.updateOne({ ownerId: input.ownerId, site: input.site }, { $set: input }, { upsert: true }).exec();
+  async save(input: ResourceSiteCredential & { externalUserId: string }): Promise<void> {
+    const retainedBinding = await this.model.exists({
+      ownerId: input.ownerId, site: input.site,
+      $or: [{ externalUserId: input.externalUserId }, { externalUserId: { $not: { $type: 'string' } } }],
+    });
+    if (!retainedBinding && await this.model.exists({ site: input.site, ownerId: { $ne: input.ownerId }, externalUserId: { $not: { $type: 'string' } } }))
+      throw siteAccountIdentityPending();
+    try {
+      await this.model.updateOne({ ownerId: input.ownerId, site: input.site }, { $set: input }, { upsert: true }).exec();
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 11000) throw siteAccountInUse(error);
+      throw error;
+    }
   }
 
   async invalidate(ownerId: string, site: string, version: string): Promise<void> {

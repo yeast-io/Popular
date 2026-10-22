@@ -338,7 +338,10 @@ test('topic switches leave download selection before workflow dispatches the new
         title: 'Old release',
         selectedAt: new Date().toISOString(),
       },
-      providers: ['qbittorrent', 'transmission'],
+      providers: [
+        { downloaderInstanceId: 'qbittorrent', provider: 'qbittorrent', name: 'qbittorrent' },
+        { downloaderInstanceId: 'transmission', provider: 'transmission', name: 'transmission' },
+      ],
     };
     let creates = 0;
     const runner = new AssistantWorkflow(
@@ -446,7 +449,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
                 title: 'Fixed release',
                 selectedAt: new Date().toISOString(),
               },
-              providers: ['transmission' as const],
+              providers: [{ downloaderInstanceId: 'transmission', provider: 'transmission' as const, name: 'transmission' }],
               provider: 'transmission' as const,
             }
           : {}),

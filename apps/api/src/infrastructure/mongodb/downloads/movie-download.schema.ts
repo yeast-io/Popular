@@ -51,6 +51,8 @@ const movieDownloadSchema = new Schema(
     sourceProvider: { type: String, required: true, enum: ['mteam', 'hdarea'] },
     sourceReleaseId: { type: String, required: true },
     provider: { type: String, required: true, enum: ['qbittorrent', 'transmission'] },
+    downloaderInstanceId: { type: String },
+    downloaderName: { type: String },
     lookupTag: { type: String, required: true },
     torrentHash: { type: String },
     name: { type: String },

@@ -2,7 +2,7 @@ import type { LlmMessage } from '../llm/llm.types.js';
 
 import type { messages } from './assistant.presentation.js';
 
-import type { DownloadProvider, Locale, MovieDownload } from '@movie-hub/contract';
+import type { DownloadProvider, DownloaderChoice, Locale, MovieDownload } from '@movie-hub/contract';
 import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import type { AssistantSessionStore } from './assistant-session.types.js';
 import type { ResourceQueryCapability } from '../resource-query/resource-query.types.js';
@@ -94,11 +94,15 @@ export interface AssistantWorkflowOptions extends AssistantAgentOptions {
   downloads?: {
     providersFor(ownerId: string): Promise<DownloadProvider[]>;
     defaultProviderFor?(ownerId: string): Promise<DownloadProvider | undefined>;
+    instancesFor?(ownerId: string): Promise<DownloaderChoice[]>;
+    defaultInstanceFor?(ownerId: string): Promise<DownloaderChoice | undefined>;
     createForOwner(
       ownerId: string,
       tmdbId: number,
       releaseId: string,
       provider: DownloadProvider,
+      sourceProvider?: 'mteam',
+      downloaderInstanceId?: string,
     ): Promise<MovieDownload>;
   };
   report?: (event: string) => void;

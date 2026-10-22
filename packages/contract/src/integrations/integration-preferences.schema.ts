@@ -4,7 +4,7 @@ import { IntegrationStatusSchema } from './integration.schema.js';
 export const IntegrationCategorySchema = Type.Union((['resource', 'downloader', 'ai'] as const).map((id) => {
   return Type.Literal(id);
 }));
-const IntegrationIdSchema = Type.String({ pattern: '^[a-z][a-z0-9-]{0,31}$' });
+const IntegrationIdSchema = Type.String({ pattern: '^[a-z0-9][a-z0-9-]{0,63}$' });
 export const IntegrationDefaultsSchema = Type.Object({
   resource: Type.Optional(IntegrationIdSchema),
   downloader: Type.Optional(IntegrationIdSchema),

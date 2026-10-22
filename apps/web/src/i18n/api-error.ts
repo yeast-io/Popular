@@ -32,6 +32,8 @@ const errorKeys = {
   INTEGRATION_VALIDATION_FAILED: 'errors.mteamValidation',
   RESOURCE_SITE_NOT_CONFIGURED: 'resourceSite.error.notConfigured',
   RESOURCE_SITE_FAILED: 'resourceSite.error.invalidResponse',
+  RESOURCE_SITE_ACCOUNT_IN_USE: 'resourceSite.error.accountInUse',
+  RESOURCE_SITE_IDENTITY_PENDING: 'resourceSite.error.identityPending',
   MTEAM_NOT_CONFIGURED: 'errors.mteamNotConfigured',
   MTEAM_INVALID_URL: 'errors.mteamInvalidUrl',
   MTEAM_AUTH_FAILED: 'errors.mteamAuthFailed',

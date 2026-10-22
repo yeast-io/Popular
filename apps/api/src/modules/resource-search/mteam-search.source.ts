@@ -1,3 +1,4 @@
+import { siteAccountIdentityPending } from '../resource-sites/site-account.errors.js';
 import { MTEAM_SEARCH_MINIMUM_INTERVAL_MS } from './resource-search.policy.js';
 import type { ResourceSiteSearch, ResourceSiteRelease } from '@movie-hub/contract';
 import type { ResourceSearchSource } from './resource-search.types.js';
@@ -27,11 +28,11 @@ export class MTeamSearchSource implements ResourceSearchSource {
     const config = await this.configs.find(ownerId, 'mteam');
     return !config
       ? ('unconfigured' as const)
-      : config.lastFailureType
-        ? ('configured_invalid' as const)
-        : config.verifiedAt
-          ? ('configured_valid' as const)
-          : ('configured_unverified' as const);
+      : !config.externalUserId || config.lastFailureType
+          ? ('configured_invalid' as const)
+          : config.verifiedAt
+            ? ('configured_valid' as const)
+            : ('configured_unverified' as const);
   }
 
   async search(ownerId: string, input: ResourceSiteSearch, signal: AbortSignal) {
@@ -53,6 +54,7 @@ export class MTeamSearchSource implements ResourceSearchSource {
     signal.throwIfAborted();
     const config = await this.configs.find(ownerId, 'mteam');
     if (!config) throw new ResourceSiteError('notConfigured');
+    if (!config.externalUserId) throw siteAccountIdentityPending();
     const key = this.secrets.decrypt(config.encryptedApiKey, integrationSecretContext(ownerId, 'mteam'));
     currentAiTrace()?.sensitive(key);
     try {

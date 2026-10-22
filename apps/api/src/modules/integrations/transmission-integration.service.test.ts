@@ -68,12 +68,11 @@ function fixture() {
   };
 }
 
-const input = { baseUrl: 'http://nas:9091/', username: 'daniel', password: 'transmission-secret' };
+const input = { baseUrl: 'https://downloads.example.com:9091/', username: 'daniel', password: 'transmission-secret' };
 
-test('normalizes host addresses and rejects paths, embedded credentials and non-HTTP URLs', () => {
-  assert.equal(normalizeTransmissionBaseUrl(' http://192.168.1.10:9091/ '), 'http://192.168.1.10:9091');
-  assert.equal(normalizeTransmissionBaseUrl('https://NAS.example:443'), 'https://nas.example');
-  assert.equal(normalizeTransmissionBaseUrl('http://[::1]:9091'), 'http://[::1]:9091');
+test('normalizes public addresses and rejects private hosts, paths and embedded credentials', () => {
+  assert.equal(normalizeTransmissionBaseUrl(' http://8.8.4.4:9091/ '), 'http://8.8.4.4:9091');
+  assert.equal(normalizeTransmissionBaseUrl('https://DOWNLOADS.example.com:443'), 'https://downloads.example.com');
   for (const value of [
     'ftp://nas',
     'http://u:p@nas',
@@ -81,6 +80,8 @@ test('normalizes host addresses and rejects paths, embedded credentials and non-
     'http://nas#x',
     'http://nas/transmission/rpc',
     'http://nas/transmission/web/',
+    'http://192.168.1.10:9091',
+    'http://[::1]:9091',
     'invalid',
   ]) {
     assert.throws(() => normalizeTransmissionBaseUrl(value), AppError);
@@ -110,7 +111,7 @@ test('retains a password only for the same address and username', async () => {
   await service.save('owner', { baseUrl: input.baseUrl, username: input.username });
   assert.equal(calls.at(-1)?.credential.password, input.password);
   for (const update of [
-    { baseUrl: 'http://other:9091', username: input.username },
+    { baseUrl: 'https://other.example.com:9091', username: input.username },
     { baseUrl: input.baseUrl, username: 'other' },
     { baseUrl: input.baseUrl, username: 'invalid:username', password: 'password' },
   ])
@@ -118,12 +119,26 @@ test('retains a password only for the same address and username', async () => {
   assert.equal(calls.length, 2);
 });
 
+test('rejects a private Transmission address before verification, including a previously saved one', async () => {
+  const f = fixture();
+  await f.service.save('owner', input);
+  const verifiedCalls = f.calls.length;
+  await assert.rejects(f.service.save('owner', { ...input, baseUrl: 'http://192.168.1.10:9091' }), {
+    code: 'TRANSMISSION_INVALID_URL',
+  });
+  assert.equal(f.calls.length, verifiedCalls);
+  f.records.set('owner', { ...f.records.get('owner')!, baseUrl: 'http://nas:9091' });
+  assert.equal((await f.service.get('owner')).status, 'configured_invalid');
+  await assert.rejects(f.service.retest('owner'), { code: 'TRANSMISSION_INVALID_URL' });
+  assert.equal(f.calls.length, verifiedCalls);
+});
+
 test('failed candidate saves preserve current config; retest failures mark it invalid and can recover', async () => {
   const { service, records, failWith } = fixture();
   await service.save('owner', input);
   const original = records.get('owner')!;
   failWith(new IntegrationValidationError('authentication', 'private upstream message'));
-  await assert.rejects(service.save('owner', { ...input, baseUrl: 'http://other:9091' }), {
+  await assert.rejects(service.save('owner', { ...input, baseUrl: 'https://other.example.com:9091' }), {
     code: 'TRANSMISSION_AUTH_FAILED',
   }
   );
@@ -172,7 +187,7 @@ test('routes enforce sessions, validate payloads and serialize only public confi
     const saved = await app.inject({ method: 'PUT', url, headers, payload: input });
     assert.equal(saved.statusCode, 200);
     assert.equal(saved.json().provider, 'transmission');
-    assert.equal(saved.json().baseUrl, 'http://nas:9091');
+    assert.equal(saved.json().baseUrl, 'https://downloads.example.com:9091');
     for (const key of ['password', 'encryptedCredential', 'ownerId']) assert.equal(key in saved.json(), false);
     const other = await app.inject({ method: 'GET', url, headers: { cookie: `${config.SESSION_COOKIE_NAME}=other` } });
     assert.equal(other.json().status, 'unconfigured');
@@ -195,7 +210,7 @@ test('routes enforce sessions, validate payloads and serialize only public confi
 test('Transmission returns a password mask and only retains it for the original address and username', async () => {
   const f = fixture();
   const saved = await f.service.save('owner', {
-    baseUrl: 'http://nas:9091',
+    baseUrl: 'https://downloads.example.com:9091',
     username: 'user',
     password: 'actual-password',
   }
@@ -204,10 +219,10 @@ test('Transmission returns a password mask and only retains it for the original 
   const read = await f.service.get('owner');
   assert.equal(read.passwordMasked, saved.passwordMasked);
   assert.equal(JSON.stringify(read).includes('actual-password'), false);
-  await f.service.save('owner', { baseUrl: 'http://nas:9091', username: 'user', password: saved.passwordMasked });
+  await f.service.save('owner', { baseUrl: 'https://downloads.example.com:9091', username: 'user', password: saved.passwordMasked });
   assert.equal(f.calls.at(-1)!.credential.password, 'actual-password');
   await assert.rejects(
-    f.service.save('owner', { baseUrl: 'http://other:9091', username: 'user', password: saved.passwordMasked }),
+    f.service.save('owner', { baseUrl: 'https://other.example.com:9091', username: 'user', password: saved.passwordMasked }),
     AppError
   );
 });

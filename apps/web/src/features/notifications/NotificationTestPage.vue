@@ -107,7 +107,7 @@ onUnmounted(() => {
         <div class="test-download-info">
           <h2>{{ item.title }}</h2>
           <p class="test-resource-name" :title="item.resourceName">{{ item.resourceName }}</p>
-          <small>{{ item.provider }} · {{ (item.totalBytes / 1024 ** 3).toFixed(2) }} GiB</small>
+          <small>{{ item.downloaderName ?? item.provider }} · {{ (item.totalBytes / 1024 ** 3).toFixed(2) }} GiB</small>
           <div v-if="feedback[item.id]" role="status">
             <p
               v-for="result in feedback[item.id]"

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ResourceSiteCredential, ResourceSiteCredentialStore } from './resource-site.types.js';
 import { ResourceSiteService } from './resource-site.service.js';
-import { createResourceSiteRegistry } from './resource-site.registry.js';
+import { HDAreaAdapter } from '../../infrastructure/hdarea/hdarea.adapter.js';
 import { SecretCrypto } from '../integrations/secret-crypto.js';
-import { ResourceSiteHttpClient } from '../../infrastructure/resource-sites/resource-site-http.client.js';
+import { HDAreaHttpClient } from '../../infrastructure/hdarea/hdarea-http.client.js';
 import { ResourceSiteError } from './resource-site.errors.js';
 
 function fixture() {
@@ -27,14 +27,15 @@ function fixture() {
     },
   };
   const service = new ResourceSiteService(
-    createResourceSiteRegistry('https://hdarea.club/'),
+    new Map([['hdarea', new HDAreaAdapter('https://hdarea.club/')]]),
     store,
     new SecretCrypto('test-key-at-least-thirty-two-characters'),
-    new ResourceSiteHttpClient({
+    new HDAreaHttpClient({
       intervalMs: 0,
       fetch: async (_input, init) => {
         seen.push(new Headers(init?.headers).get('cookie')!);
-        return new Response(expired ? '<input type="password">' : '<a href="usercp.php">Account</a><p>没有找到</p>');
+        const id = new Headers(init?.headers).get('cookie')?.includes('uid=B') ? '202' : '101';
+        return new Response(expired ? '<input type="password">' : `<a href="usercp.php">Account</a><div id="info_block"><a href="userdetails.php?id=${id}">Me</a></div><p>没有找到</p>`);
       },
     }),
     {
@@ -141,4 +142,20 @@ test('torrent URLs require valid owner credentials without fetching torrent cont
     f.service.torrentUrl('missing', 'hdarea', '123'),
     (error) => error instanceof ResourceSiteError && error.reason === 'notConfigured'
   );
+});
+
+test('unresolved legacy identity is shown as invalid and cannot search, fetch details or download', async () => {
+  const f = fixture();
+  await f.service.configure('A', 'hdarea', 'uid=A', 'private-passkey');
+  delete f.rows.get('A:hdarea')!.externalUserId;
+  const calls = f.seen.length;
+  const pending = (error: unknown) => error instanceof Error && 'code' in error && error.code === 'RESOURCE_SITE_IDENTITY_PENDING';
+  assert.equal(await f.service.status('A', 'hdarea'), 'configured_invalid');
+  assert.equal((await f.service.configuration('A', 'hdarea')).status, 'configured_invalid');
+  await assert.rejects(f.service.search('A', 'hdarea', { query: 'Film' }), pending);
+  await assert.rejects(f.service.detail('A', 'hdarea', '42'), pending);
+  await assert.rejects(f.service.torrentUrl('A', 'hdarea', '42'), pending);
+  assert.equal(f.seen.length, calls);
+  await f.service.configure('A', 'hdarea');
+  assert.equal(await f.service.status('A', 'hdarea'), 'configured_valid');
 });

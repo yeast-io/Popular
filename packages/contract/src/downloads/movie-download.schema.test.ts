@@ -22,7 +22,12 @@ test('download contracts accept only supported provider choices and preserve leg
     );
   }
   assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceReleaseId: '991', provider: 'unknown' }), false);
-  assert.equal(Value.Check(DownloadProviderListResponseSchema, { providers: ['qbittorrent', 'transmission'] }), true);
+  const downloaderInstanceId = '00000000-0000-4000-8000-000000000001';
+  assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceReleaseId: '991', provider: 'qbittorrent', downloaderInstanceId }), true);
+  assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceReleaseId: '991', downloaderInstanceId: 'qbittorrent' }), false);
+  assert.equal(Value.Check(DownloadProviderListResponseSchema, { providers: [
+    { downloaderInstanceId, provider: 'qbittorrent', name: 'Home' },
+  ] }), true);
   assert.equal(Value.Check(DownloadProviderListResponseSchema, { providers: [], password: 'secret' }), false);
 });
 

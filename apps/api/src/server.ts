@@ -1,3 +1,5 @@
+import { MongoSiteAccountMigrationStore } from './infrastructure/mongodb/resource-sites/site-account-migration.store.js';
+import { SiteAccountMigrationService } from './modules/resource-sites/site-account-migration.service.js';
 import { randomUUID } from 'node:crypto';
 import { GatewayPool } from './infrastructure/socket/gateway-pool.service.js';
 import { MongoRemoteControlStore } from './infrastructure/mongodb/remote-downloads/remote-control.store.js';
@@ -25,8 +27,8 @@ import { ResourceSearchService } from './modules/resource-search/resource-search
 import { MTeamSearchSource } from './modules/resource-search/mteam-search.source.js';
 import { ResourceSiteSearchSource } from './modules/resource-search/resource-site-search.source.js';
 import { ResourceSiteService } from './modules/resource-sites/resource-site.service.js';
-import { createResourceSiteRegistry } from './modules/resource-sites/resource-site.registry.js';
-import { ResourceSiteHttpClient } from './infrastructure/resource-sites/resource-site-http.client.js';
+import { HDAreaAdapter } from './infrastructure/hdarea/hdarea.adapter.js';
+import { HDAreaHttpClient } from './infrastructure/hdarea/hdarea-http.client.js';
 import { MongoResourceSiteCredentialStore } from './infrastructure/mongodb/resource-sites/resource-site-credential.store.js';
 import { ResourceSiteResourceProvider } from './modules/resource-query/resource-site-resource.provider.js';
 import { MTeamResourceProvider } from './modules/resource-query/mteam-resource.provider.js';
@@ -81,6 +83,7 @@ import { MongoMovieResourceSyncBatchStore } from './infrastructure/mongodb/movie
 import { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
 import { MongoQBittorrentConfigStore } from './infrastructure/mongodb/integrations/qbittorrent-config.store.js';
 import { MongoTransmissionConfigStore } from './infrastructure/mongodb/integrations/transmission-config.store.js';
+import { MongoDownloaderInstanceMigration } from './infrastructure/mongodb/integrations/downloader-instance-migration.store.js';
 import { TransmissionClient } from './infrastructure/transmission/client.js';
 import { TransmissionIntegrationService } from './modules/integrations/transmission-integration.service.js';
 import { QBittorrentClient } from './infrastructure/qbittorrent/client.js';
@@ -127,6 +130,21 @@ try {
   await connectInfrastructure(infrastructure);
   shutdown.assertRunning();
   const models = createModels(infrastructure.mongodb.getConnection());
+  const downloaderMigration = new MongoDownloaderInstanceMigration(
+    models.qbittorrentConfigs,
+    models.transmissionConfigs,
+    models.movieDownloads,
+    models.integrationPreferences
+  );
+  const downloaderMigrationTrace = new AiTrace(loggers.error, {}, '', 'downloader-instance.migration', config.VERBOSE);
+  await withAiTrace(downloaderMigrationTrace, async () => {
+    try {
+      await downloaderMigrationTrace.step('downloader-instance.migration', () => downloaderMigration.migrate());
+    } catch (error) {
+      downloaderMigrationTrace.fail(error);
+      throw error;
+    }
+  });
   await Promise.all([models.externalRequestEvents.init(), models.externalUsageDaily.init()]);
   const externalUsageStore = new MongoExternalUsageStore(models.externalRequestEvents, models.externalUsageDaily, {
     error: (bindings, message) => loggers.error.error(bindings, message),
@@ -278,14 +296,24 @@ try {
     }
   );
   const movieService = new MovieService(trendingStore, trendingSync, tmdb, trendingStore, movieStatusStore);
-  await models.resourceSiteCredentials.init();
+  await Promise.all([models.integrationConfigs.init(), models.resourceSiteCredentials.init()]);
+  const hdarea = new HDAreaAdapter(config.HDAREA_BASE_URL);
   const resourceSiteService = new ResourceSiteService(
-    createResourceSiteRegistry(config.HDAREA_BASE_URL),
+    new Map([[hdarea.id, hdarea]]),
     new MongoResourceSiteCredentialStore(models.resourceSiteCredentials),
     secrets,
-    new ResourceSiteHttpClient(),
+    new HDAreaHttpClient(),
     { logger: loggers.error, verbose: config.VERBOSE }
   );
+  await new SiteAccountMigrationService(
+    new MongoSiteAccountMigrationStore(models.integrationConfigs, models.resourceSiteCredentials),
+    mteam,
+    config.MTEAM_BASE_URL,
+    resourceSiteService.registry,
+    new HDAreaHttpClient(),
+    secrets,
+    { logger: loggers.error, verbose: config.VERBOSE }
+  ).migrate();
   const resourceSearchService = new ResourceSearchService([
     new MTeamSearchSource(integrationConfigStore, secrets, mteam),
     ...[...resourceSiteService.registry.values()].map((site) => {
@@ -324,37 +352,33 @@ try {
     async (ownerId) => {
       const [resources, qb, tr, ai] = await Promise.all([
         resourceSearchService.list(ownerId),
-        qbittorrentConfigStore.find(ownerId),
-        transmissionConfigStore.find(ownerId),
+        qbittorrentConfigStore.list(ownerId),
+        transmissionConfigStore.list(ownerId),
         openaiConfigStore.find(ownerId),
       ]
       );
       return [
         ...resources.sources.map((source) => ({ ...source, category: 'resource' as const })),
-        {
-          id: 'qbittorrent',
-          name: 'qBittorrent',
+        ...qb.map((instance) => ({
+          id: instance.downloaderInstanceId!,
+          name: instance.name ?? 'qBittorrent',
           category: 'downloader' as const,
-          status: !qb
-            ? ('unconfigured' as const)
-            : qb.lastFailureType
-              ? ('configured_invalid' as const)
-              : qb.verifiedAt
-                ? ('configured_valid' as const)
-                : ('configured_unverified' as const),
-        },
-        {
-          id: 'transmission',
-          name: 'Transmission',
+          status: instance.lastFailureType
+            ? ('configured_invalid' as const)
+            : instance.verifiedAt
+              ? ('configured_valid' as const)
+              : ('configured_unverified' as const),
+        })),
+        ...tr.map((instance) => ({
+          id: instance.downloaderInstanceId!,
+          name: instance.name ?? 'Transmission',
           category: 'downloader' as const,
-          status: !tr
-            ? ('unconfigured' as const)
-            : tr.lastFailureType
-              ? ('configured_invalid' as const)
-              : tr.verifiedAt
-                ? ('configured_valid' as const)
-                : ('configured_unverified' as const),
-        },
+          status: instance.lastFailureType
+            ? ('configured_invalid' as const)
+            : instance.verifiedAt
+              ? ('configured_valid' as const)
+              : ('configured_unverified' as const),
+        })),
         {
           id: 'openai',
           name: 'OpenAI',

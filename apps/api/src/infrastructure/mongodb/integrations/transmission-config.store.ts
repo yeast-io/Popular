@@ -9,9 +9,14 @@ import type { TransmissionConfigDocument } from './transmission-config.schema.js
 export class MongoTransmissionConfigStore implements TransmissionConfigStore {
   constructor(private readonly configs: Model<TransmissionConfigDocument>) {}
 
-  async find(ownerId: string): Promise<TransmissionConfigRecord | null> {
-    const row = await this.configs.findOne({ ownerId }).select('+encryptedCredential').lean().exec();
+  async find(ownerId: string, downloaderInstanceId?: string): Promise<TransmissionConfigRecord | null> {
+    const row = await this.configs.findOne({ ownerId, ...(downloaderInstanceId ? { downloaderInstanceId } : {}) }).select('+encryptedCredential').lean().exec();
     return row ? toRecord(row) : null;
+  }
+
+  async list(ownerId: string): Promise<TransmissionConfigRecord[]> {
+    const rows = await this.configs.find({ ownerId }).select('+encryptedCredential').sort({ createdAt: 1 }).lean().exec();
+    return rows.map(toRecord);
   }
 
   async saveVerified(
@@ -19,10 +24,12 @@ export class MongoTransmissionConfigStore implements TransmissionConfigStore {
   ): Promise<TransmissionConfigRecord> {
     const row = await this.configs
       .findOneAndUpdate(
-        { ownerId: input.ownerId },
+        { ownerId: input.ownerId, ...(input.downloaderInstanceId ? { downloaderInstanceId: input.downloaderInstanceId } : {}) },
         {
           $set: {
             baseUrl: input.baseUrl,
+            ...(input.downloaderInstanceId ? { downloaderInstanceId: input.downloaderInstanceId } : {}),
+            ...(input.name ? { name: input.name } : {}),
             encryptedCredential: input.encryptedCredential,
             version: input.version,
             verifiedAt: input.verifiedAt,
@@ -42,20 +49,22 @@ export class MongoTransmissionConfigStore implements TransmissionConfigStore {
     return toRecord(row);
   }
 
-  async recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType): Promise<void> {
+  async recordFailure(ownerId: string, attemptedAt: Date, failureType: IntegrationFailureType, downloaderInstanceId?: string): Promise<void> {
     await this.configs
-      .updateOne({ ownerId }, { $set: { lastValidationAt: attemptedAt, lastFailureType: failureType } })
+      .updateOne({ ownerId, ...(downloaderInstanceId ? { downloaderInstanceId } : {}) }, { $set: { lastValidationAt: attemptedAt, lastFailureType: failureType } })
       .exec();
   }
 
-  async delete(ownerId: string): Promise<void> {
-    await this.configs.deleteOne({ ownerId }).exec();
+  async delete(ownerId: string, downloaderInstanceId?: string): Promise<void> {
+    await this.configs.deleteOne({ ownerId, ...(downloaderInstanceId ? { downloaderInstanceId } : {}) }).exec();
   }
 }
 
 function toRecord(row: TransmissionConfigDocument & { _id: unknown }): TransmissionConfigRecord {
   return {
     ownerId: row.ownerId.toString(),
+    ...(row.downloaderInstanceId ? { downloaderInstanceId: row.downloaderInstanceId } : {}),
+    ...(row.name ? { name: row.name } : {}),
     baseUrl: row.baseUrl,
     encryptedCredential: row.encryptedCredential,
     username: row.username,

@@ -8,6 +8,7 @@ import MovieDetail from './features/movies/MovieDetail.vue';
 import { useI18n } from './i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
 import SettingsIcon from './features/settings/SettingsIcon.vue';
+import { settingsSectionFromSearch, settingsSectionSlug } from './features/settings/settings-navigation.domain';
 import PreferenceSettings from './features/settings/PreferenceSettings.vue';
 import TelegramSettings from './features/integrations/TelegramSettings.vue';
 import WhatsAppSettings from './features/integrations/WhatsAppSettings.vue';
@@ -18,8 +19,7 @@ import OpenAISettings from './features/integrations/OpenAISettings.vue';
 import ResourceSiteSettings from './features/integrations/ResourceSiteSettings.vue';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
 import RemoteClientSettings from './features/remote-clients/RemoteClientSettings.vue';
-import TransmissionSettings from './features/integrations/TransmissionSettings.vue';
-import QBittorrentSettings from './features/integrations/QBittorrentSettings.vue';
+import DownloaderSettings from './features/integrations/DownloaderSettings.vue';
 import UsageStatistics from './features/usage/UsageStatistics.vue';
 import AiChat from './features/ai/AiChat.vue';
 import type { AuthField, Page, SettingsSection } from './app.types.js';
@@ -48,12 +48,18 @@ const notificationTestEnabled = ref(false);
 const aiAssistantEnabled = ref(false);
 const currentPage = ref<Page>(pageFromPath());
 const notificationSettings = ref<InstanceType<typeof NotificationSettings>>();
-const settingsSection = ref<SettingsSection>('profile');
-const settingsVisited = ref(new Set<SettingsSection>(['profile']));
+const downloaderSettings = ref<InstanceType<typeof DownloaderSettings>>();
+const settingsSection = ref<SettingsSection>(settingsSectionFromSearch(window.location.search));
+const settingsVisited = ref(new Set<SettingsSection>([settingsSection.value]));
 const settingsSections = ['profile', 'ai', 'preferences', 'resources', 'downloads', 'keys', 'notifications'] as const;
 function selectSettingsSection(section: SettingsSection) {
   settingsSection.value = section;
   settingsVisited.value.add(section);
+  if (currentPage.value === 'settings') {
+    const url = new URL(window.location.href);
+    url.searchParams.set('section', settingsSectionSlug(section));
+    if (url.search !== window.location.search) window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }
 }
 function selectMobileSettings(event: Event) {
   selectSettingsSection((event.target as HTMLSelectElement).value as SettingsSection);
@@ -198,8 +204,8 @@ function clearAuthFieldError(field: AuthField) {
 
 function setUser(nextUser: AuthUser) {
   if (user.value?.id !== nextUser.id) {
-    settingsSection.value = 'profile';
-    settingsVisited.value = new Set(['profile']);
+    settingsSection.value = currentPage.value === 'settings' ? settingsSectionFromSearch(window.location.search) : 'profile';
+    settingsVisited.value = new Set([settingsSection.value]);
   }
   user.value = nextUser;
   profileName.value = nextUser.displayName;
@@ -357,6 +363,10 @@ function syncPageFromLocation() {
     return;
   }
   currentPage.value = nextPage;
+  if (nextPage === 'settings') {
+    settingsSection.value = settingsSectionFromSearch(window.location.search);
+    settingsVisited.value.add(settingsSection.value);
+  }
   if (nextPage === 'login' || nextPage === 'register') mode.value = nextPage;
   selectedMovieId.value = movieIdFromPath();
   errorMessage.value = '';
@@ -385,7 +395,7 @@ function navigate(page: Page) {
     = page === 'notification-tests'
       ? '/dev/notification-tests'
       : page === 'settings'
-        ? '/settings'
+        ? `/settings?section=${settingsSectionSlug(settingsSection.value)}`
         : page === 'usage'
           ? '/usage'
           : page === 'my-movies'
@@ -393,7 +403,7 @@ function navigate(page: Page) {
             : page === 'ai'
               ? '/ai'
               : '/';
-  if (window.location.pathname !== path) window.history.pushState({}, '', path);
+  if (`${window.location.pathname}${window.location.search}` !== path) window.history.pushState({}, '', path);
   currentPage.value = page;
   errorMessage.value = '';
   successMessage.value = '';
@@ -776,6 +786,13 @@ function closeAccountMenu() {
                 <h2>{{ t(`settings.${settingsSection}`) }}</h2>
                 <p>{{ t(`settings.${settingsSection}Description`) }}</p>
               </div>
+              <button v-if="settingsSection === 'downloads'" class="settings-add-downloader" type="button"
+                :aria-label="t('downloader.add')" :title="t('downloader.add')"
+                @click="downloaderSettings?.openAddDialog()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
             </div>
             <form v-show="settingsSection === 'profile'" class="settings-form" novalidate @submit.prevent="saveProfile">
               <section class="settings-card profile-settings-card" :aria-label="t('settings.profile')">
@@ -863,8 +880,7 @@ function closeAccountMenu() {
               <ResourceSiteSettings :key="`resource-sites-${user.id}`" />
             </div>
             <div v-if="settingsVisited.has('downloads')" v-show="settingsSection === 'downloads'" class="settings-form">
-              <QBittorrentSettings :key="user.id" />
-              <TransmissionSettings :key="user.id" />
+              <DownloaderSettings :key="user.id" ref="downloaderSettings" />
             </div>
             <div v-if="settingsVisited.has('keys')" v-show="settingsSection === 'keys'" class="settings-form">
               <RemoteClientSettings :key="user.id" />

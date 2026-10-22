@@ -56,7 +56,7 @@ export const DownloadActionSchema = z.strictObject({
     'clarify',
   ]),
   releaseIndex: z.number().int().positive().nullable(),
-  provider: z.enum(['qbittorrent', 'transmission']).nullable(),
+  provider: z.string().trim().min(1).max(80).nullable(),
 });
 
 export function createRecommendationRankSchema(requestedCount: number) {

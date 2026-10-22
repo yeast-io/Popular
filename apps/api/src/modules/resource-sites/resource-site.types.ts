@@ -5,6 +5,7 @@ export interface ResourceSiteCredential {
   ownerId: string;
   site: string;
   encryptedCookie: string;
+  externalUserId?: string;
   encryptedPasskey?: string;
   version: string;
   status: 'configured_valid' | 'configured_invalid';
@@ -12,7 +13,7 @@ export interface ResourceSiteCredential {
 }
 export interface ResourceSiteCredentialStore {
   find(ownerId: string, site: string): Promise<ResourceSiteCredential | null>;
-  save(input: ResourceSiteCredential): Promise<void>;
+  save(input: ResourceSiteCredential & { externalUserId: string }): Promise<void>;
   invalidate(ownerId: string, site: string, version: string): Promise<void>;
   delete(ownerId: string, site: string): Promise<void>;
 }
@@ -25,7 +26,7 @@ export interface ResourceSiteAdapter {
   readonly baseUrl: string;
   detailsUrl?(id: string): string;
   torrentUrl?(id: string, passkey: string): string;
-  verify(session: ResourceSiteSession, signal?: AbortSignal): Promise<void>;
+  verify(session: ResourceSiteSession, signal?: AbortSignal): Promise<string>;
   search(
     session: ResourceSiteSession,
     input: ResourceSiteSearch,
@@ -37,15 +38,6 @@ export interface ResourceSiteDiagnostics {
   logger: AiLogger;
   verbose: boolean;
 }
-export interface ResourceSiteHttpOptions {
-  fetch?: typeof fetch;
-  intervalMs?: number;
-  timeoutMs?: number;
-  maxBytes?: number;
-}
-export interface ResourceSiteHttpLane {
-  tail: Promise<void>;
-  pending: number;
-  nextAt: number;
-  blockedUntil: number;
+export interface ResourceSiteHttpClientPort {
+  session(baseUrl: string, cookie: string): Promise<ResourceSiteSession>;
 }

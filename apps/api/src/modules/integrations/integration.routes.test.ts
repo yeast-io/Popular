@@ -1,3 +1,4 @@
+import { siteAccountInUse, siteAccountIdentityPending } from '../resource-sites/site-account.errors.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildApp } from '../../app.js';
@@ -49,6 +50,7 @@ test('M-Team routes require authentication and never serialize the API key', asy
       if (apiKey === 'must-not-leak-on-failure') {
         throw new Error(`upstream rejected credential ${apiKey}`);
       }
+      return '101';
     },
   };
   const service = new IntegrationService(
@@ -87,6 +89,30 @@ test('M-Team routes require authentication and never serialize the API key', asy
   assert.equal(failed.statusCode, 503);
   assert.equal(failed.json().error.code, 'MTEAM_UNREACHABLE');
   assert.equal(failed.body.includes('must-not-leak-on-failure'), false);
+
+  for (const language of ['en-US', 'zh-CN']) {
+    for (const [error, status, code] of [
+      [siteAccountInUse(new Error('private-original-index')), 409, 'RESOURCE_SITE_ACCOUNT_IN_USE'],
+      [siteAccountIdentityPending(), 503, 'RESOURCE_SITE_IDENTITY_PENDING'],
+    ] as const) {
+      store.saveVerified = async () => {
+        throw error;
+      };
+      for (const method of ['PUT', 'POST'] as const) {
+        const response = await app.inject({
+          method,
+          url: `/api/v1/me/integrations/mteam${method === 'POST' ? '/test' : ''}`,
+          headers: { 'cookie': `${config.SESSION_COOKIE_NAME}=valid-session`, 'accept-language': language },
+          ...(method === 'PUT' ? { payload: { baseUrl: 'https://api.m-team.cc', apiKey: 'must-not-leak' } } : {}),
+        });
+        assert.equal(response.statusCode, status);
+        assert.equal(response.json().error.code, code);
+        assert.equal(response.body.includes('private-original-index'), false);
+        assert.equal(response.body.includes('must-not-leak'), false);
+        if (language === 'zh-CN') assert.match(response.json().error.message, /站点账号/);
+      }
+    }
+  }
 
   await app.close();
 });

@@ -6,6 +6,8 @@ import { getIntegrationLogo } from './integration-logos';
 
 const props = defineProps<{
   id: string;
+  provider?: string;
+  defaultId?: string;
   title: string;
   badge: string;
   description?: string;
@@ -17,22 +19,24 @@ const props = defineProps<{
   notice?: string;
   actionLabel?: string | undefined;
   forceOpen?: boolean;
+  embedded?: boolean;
 }>();
 const emit = defineEmits<{ open: [] }>();
 const defaultCategory = computed(() => {
+  const identity = props.provider ?? props.id;
   return ['mteam', 'hdarea'].includes(
-    props.id
+    identity
   )
     ? 'resource' as const
     : ['qbittorrent', 'transmission'].includes(
-        props.id
+        identity
       )
         ? 'downloader' as const
-        : props.id === 'openai' ? 'ai' as const : undefined;
+        : identity === 'openai' ? 'ai' as const : undefined;
 });
 const expanded = ref(false);
 const logoFailed = ref(false);
-const logoSrc = computed(() => getIntegrationLogo(props.id));
+const logoSrc = computed(() => getIntegrationLogo(props.provider ?? props.id));
 watch(logoSrc, () => {
   logoFailed.value = false;
 });
@@ -51,12 +55,12 @@ function toggle() {
 <template>
   <section
     class="settings-card integration-card"
-    :class="{ 'is-expanded': expanded }"
-    :aria-labelledby="`${id}-title`"
+    :class="{ 'is-expanded': expanded, 'is-embedded': embedded }"
+    :aria-labelledby="embedded ? undefined : `${id}-title`"
     :aria-busy="loading || busy"
   >
-    <div class="connection-card-heading">
-      <span class="connection-badge" :class="id" aria-hidden="true">
+    <div v-if="!embedded" class="connection-card-heading">
+      <span class="connection-badge" :class="provider ?? id" aria-hidden="true">
         <img
           v-if="logoSrc && !logoFailed"
           class="connection-logo"
@@ -75,7 +79,7 @@ function toggle() {
         </div>
         <p v-if="description">{{ description }}</p>
       </div>
-      <IntegrationDefaultAction v-if="configured && defaultCategory" :id="id" :category="defaultCategory" :status="statusClass" :disabled="loading || busy" />
+      <IntegrationDefaultAction v-if="configured && defaultCategory" :id="defaultId ?? id" :category="defaultCategory" :status="statusClass" :disabled="loading || busy" />
       <slot name="actions" />
       <button
         class="integration-disclosure"
@@ -96,6 +100,6 @@ function toggle() {
       </button>
     </div>
     <p v-if="notice && !expanded" class="error settings-message connection-card-notice" role="alert">{{ notice }}</p>
-    <div v-show="expanded" :id="`${id}-body`" class="connection-card-body"><slot /></div>
+    <div v-show="embedded || expanded" :id="`${id}-body`" class="connection-card-body"><slot /></div>
   </section>
 </template>

@@ -1,3 +1,4 @@
+import { localizeSiteAccountError } from './site-account.errors.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   ApiErrorSchema,
@@ -36,6 +37,7 @@ export function registerResourceSiteRoutes(
     401: ApiErrorSchema,
     409: ApiErrorSchema,
     502: ApiErrorSchema,
+    503: ApiErrorSchema,
     504: ApiErrorSchema,
   };
   const execute = async <T>(
@@ -55,6 +57,7 @@ export function registerResourceSiteRoutes(
         return await aiStep(`resource-sites.api.${operation}`, () => action(ownerId, abort.signal));
       } catch (error) {
         trace.fail(error);
+        localizeSiteAccountError(error, request.headers['accept-language']);
         if (error instanceof ResourceSiteError && request.headers['accept-language']?.startsWith('zh'))
           error.message = resourceSiteMessages.zh[error.reason];
         throw error;

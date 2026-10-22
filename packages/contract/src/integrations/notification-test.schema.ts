@@ -11,6 +11,8 @@ export const NotificationTestListSchema = Type.Object({
       title: Type.String(),
       resourceName: Type.String(),
       provider: DownloadProviderSchema,
+      downloaderInstanceId: Type.Optional(Type.String()),
+      downloaderName: Type.Optional(Type.String()),
       totalBytes: Type.Number(),
       posterUrl: Type.Optional(Type.String()),
       lastSyncedAt: Type.Optional(Type.String()),

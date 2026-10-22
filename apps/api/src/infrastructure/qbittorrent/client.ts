@@ -23,7 +23,7 @@ export class QBittorrentClient implements QBittorrentClientPort {
     body.append('tags', tag);
     const response = await this.request(baseUrl, credential, 'torrents/add', { method: 'POST', body });
     const result = (await response.text()).trim();
-    if (!isSuccessfulAddResponse(result)) throw invalidResponse('qBittorrent rejected the torrent');
+    if (!isSuccessfulAddResponse(result)) throw invalidResponse(`qBittorrent rejected the torrent (HTTP ${response.status})`);
   }
 
   async listTorrents(
@@ -174,8 +174,8 @@ function isSuccessfulAddResponse(value: string): boolean {
     const payload = JSON.parse(value) as unknown;
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
     const result = payload as Record<string, unknown>;
-    return (
-      typeof result.success_count === 'number' && Number.isSafeInteger(result.success_count) && result.success_count > 0
+    return [result.success_count, result.pending_count].some(
+      (count) => typeof count === 'number' && Number.isSafeInteger(count) && count > 0
     );
   } catch {
     return false;
