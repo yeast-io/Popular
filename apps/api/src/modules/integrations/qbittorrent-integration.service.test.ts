@@ -60,9 +60,9 @@ test('validates and encrypts API-key credentials without returning the secret', 
   assert.equal(response.apiKeyMasked, maskIntegrationSecret('qbt_top_secret'));
   assert.equal((await service.get('session')).apiKeyMasked, response.apiKeyMasked);
   await service.save('session', { baseUrl: 'http://nas:8080', authMethod: 'api_key', apiKey: response.apiKeyMasked });
-  assert.deepEqual(
-    calls.at(-1),
-    { baseUrl: 'http://nas:8080', credential: { authMethod: 'api_key', apiKey: 'qbt_top_secret' } }
+  assert.deepEqual(calls.at(-1), {
+    baseUrl: 'http://nas:8080',
+    credential: { authMethod: 'api_key', apiKey: 'qbt_top_secret' },
+  }
   );
-
 });

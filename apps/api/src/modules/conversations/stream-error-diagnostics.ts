@@ -1,7 +1,7 @@
 // Extract metadata explicitly; error messages and database error values can contain secrets.
 export function streamErrorDiagnostics(error: unknown) {
-  const causes: Array<{ errorType: string; locations: string[]; databaseCode?: number; validationFields?: string[] }> =
-    [];
+  const causes: Array<{ errorType: string; locations: string[]; databaseCode?: number; validationFields?: string[] }>
+    = [];
   const types = new Set([
     'Error',
     'TypeError',
@@ -36,7 +36,7 @@ export function streamErrorDiagnostics(error: unknown) {
       .filter((line) => /^\s+at /.test(line))
       .flatMap((line) => {
         return [...line.matchAll(/(?:file:\/\/)?(\/[A-Za-z0-9_./@%+~-]+\.(?:[cm]?js|tsx?):\d+:\d+)/g)].map(
-          (match) => match[1]!,
+          (match) => match[1]!
         );
       })
       .slice(0, 5);

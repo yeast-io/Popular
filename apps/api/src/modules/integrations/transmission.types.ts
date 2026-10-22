@@ -27,7 +27,7 @@ export interface TransmissionConfigStore {
 
 export interface TransmissionClientPort {
   verify(baseUrl: string, credential: TransmissionCredential): Promise<{ version: string }>;
-  addTorrent(baseUrl: string, credential: TransmissionCredential, torrent: Uint8Array, tag: string): Promise<string>;
+  addTorrent(baseUrl: string, credential: TransmissionCredential, torrentUrl: string, tag: string): Promise<string>;
   listTorrents(baseUrl: string, credential: TransmissionCredential, hashes?: string[]): Promise<TransmissionTorrent[]>;
   findByTag(baseUrl: string, credential: TransmissionCredential, tag: string): Promise<TransmissionTorrent | null>;
 }

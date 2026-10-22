@@ -1,4 +1,5 @@
 import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
+
 export interface MovieRecord {
   tmdbId: number;
   title: string;
@@ -147,11 +148,7 @@ export interface MovieSearchProvider {
     locale: Locale,
     context?: ExternalRequestContext,
   ): Promise<Omit<TrendingPageRecord, 'fetchedAt'>>;
-  fetchDetails(
-    tmdbId: number,
-    locale: Locale,
-    context?: ExternalRequestContext,
-  ): Promise<MovieDetailRecord>;
+  fetchDetails(tmdbId: number, locale: Locale, context?: ExternalRequestContext): Promise<MovieDetailRecord>;
 }
 
 export interface SyncLock {

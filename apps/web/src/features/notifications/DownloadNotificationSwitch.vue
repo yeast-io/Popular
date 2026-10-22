@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from '../../i18n';
+
 defineProps<{ channel: string; enabled: boolean; disabled?: boolean }>();
 const emit = defineEmits<{ change: [enabled: boolean] }>();
 </script>

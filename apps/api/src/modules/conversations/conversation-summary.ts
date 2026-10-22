@@ -5,7 +5,7 @@ import type { LlmGenerateInput } from '../llm/llm.types.js';
 export function buildSummaryRequest(
   previous: ConversationSummary | undefined,
   messages: ConversationMessage[],
-  maxOutputTokens: number,
+  maxOutputTokens: number
 ): LlmGenerateInput {
   const previousText = previous?.content ?? '(none)';
   const transcript = messages.map(({ sequence, role, content }) => `[${sequence}] ${role}: ${content}`).join('\n');

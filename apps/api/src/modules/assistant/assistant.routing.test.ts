@@ -10,36 +10,61 @@ import { emptyAssistantSession } from './assistant-session.domain.js';
 import type { AssistantSession } from './assistant-session.types.js';
 
 const input: AssistantInputWorkflowMessage = {
-  ownerId: 'alice', channel: 'web', chatId: 'routing-thread', messageId: 'turn-1',
-  text: 'private-user-message', receivedAt: new Date().toISOString(),
+  ownerId: 'alice',
+  channel: 'web',
+  chatId: 'routing-thread',
+  messageId: 'turn-1',
+  text: 'private-user-message',
+  receivedAt: new Date().toISOString(),
 };
 const defaults = { systemPrompt: 'Be concise.', maxContextTokens: 8_000, maxOutputTokens: 500 };
 function workflow(intent: AssistantIntent, options: Partial<AssistantWorkflowOptions>, preferenceSignal = 'none') {
-  return new AssistantWorkflow(async () => {
-    return ({ generate: async (request) => {
-      return ({
-        content: request.operation === 'assistant.intent'
-          ? JSON.stringify({ intent, preferenceSignal, locale: options.locale }) : 'Discussion reply',
-        inputTokens: 1, outputTokens: 1,
-      });
-    } });
-  }, { ...defaults, ...options });
+  return new AssistantWorkflow(
+    async () => {
+      return {
+        generate: async (request) => {
+          return {
+            content:
+              request.operation === 'assistant.intent'
+                ? JSON.stringify({ intent, preferenceSignal, locale: options.locale })
+                : 'Discussion reply',
+            inputTokens: 1,
+            outputTokens: 1,
+          };
+        },
+      };
+    },
+    { ...defaults, ...options }
+  );
 }
 
 for (const locale of ['en-US', 'zh-CN'] as const) {
   test(`workflow routes unclear follow-ups only to a single active task and clarifies conflicts (${locale})`, async () => {
-    for (const [resourcesActive, recommendationsActive] of [[false, false], [true, false], [false, true], [true, true]]) {
+    for (const [resourcesActive, recommendationsActive] of [
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ]) {
       const calls: string[] = [];
       const scopes: string[][] = [];
       const traceEvents: Record<string, unknown>[] = [];
       const runner = workflow('unclear', {
         locale,
-        diagnostics: { verbose: true, logger: {
-          info: (fields: unknown) => { traceEvents.push(fields as Record<string, unknown>); },
-          error: () => assert.fail('Successful routing must not log errors'),
-        } },
+        diagnostics: {
+          verbose: true,
+          logger: {
+            info: (fields: unknown) => {
+              traceEvents.push(fields as Record<string, unknown>);
+            },
+            error: () => assert.fail('Successful routing must not log errors'),
+          },
+        },
         resources: {
-          active: async (owner, conversation) => { scopes.push([owner, conversation]); return resourcesActive!; },
+          active: async (owner, conversation) => {
+            scopes.push([owner, conversation]);
+            return resourcesActive!;
+          },
           run: async (owner, conversation, eventId, _text, _history, _decisions, signal, replyLocale) => {
             assert.equal(owner, input.ownerId);
             assert.equal(conversation, 'web:routing-thread');
@@ -51,7 +76,10 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
           },
         },
         recommendations: {
-          active: async (owner, conversation) => { scopes.push([owner, conversation]); return recommendationsActive!; },
+          active: async (owner, conversation) => {
+            scopes.push([owner, conversation]);
+            return recommendationsActive!;
+          },
           runResult: async (_owner, _conversation, _event, _text, _history, _decisions, _signal, replyLocale) => {
             assert.equal(replyLocale, locale);
             calls.push('recommend');
@@ -61,7 +89,10 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       }
       );
       const result = await runner.run(input);
-      assert.deepEqual(scopes, [['alice', 'web:routing-thread'], ['alice', 'web:routing-thread']]);
+      assert.deepEqual(scopes, [
+        ['alice', 'web:routing-thread'],
+        ['alice', 'web:routing-thread'],
+      ]);
       if (resourcesActive !== recommendationsActive) {
         const expected = resourcesActive ? 'resources' : 'recommend';
         assert.equal(result.intent, expected);
@@ -69,9 +100,15 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       } else {
         assert.equal(result.intent, 'unclear');
         assert.deepEqual(calls, []);
-        assert.match(result.replyText, resourcesActive
-          ? locale === 'en-US' ? /Both a resource query/ : /都有效/
-          : locale === 'en-US' ? /Please clarify/ : /补充/
+        assert.match(
+          result.replyText,
+          resourcesActive
+            ? locale === 'en-US'
+              ? /Both a resource query/
+              : /都有效/
+            : locale === 'en-US'
+              ? /Please clarify/
+              : /补充/
         );
       }
       assert.ok(traceEvents.some((event) => event.stage === 'assistant.route.selected'));
@@ -96,17 +133,30 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       const cause = new Error('original transport failure');
       const error = new Error('capability failed', { cause });
       const fail = (stage: string): never => {
-        const trace = new AiTrace({ error: (fields: unknown) => {
-          errors.push(fields as Record<string, unknown>);
-        } }, { correlationId: currentAiTrace()?.correlationId }, input.text, 'test.tool', false);
+        const trace = new AiTrace(
+          {
+            error: (fields: unknown) => {
+              errors.push(fields as Record<string, unknown>);
+            },
+          },
+          { correlationId: currentAiTrace()?.correlationId },
+          input.text,
+          'test.tool',
+          false
+        );
         trace.fail(error, { stage });
         throw error;
       };
       const runner = workflow(intent, {
         locale,
-        diagnostics: { verbose: false, logger: { error: (fields: unknown) => {
-          errors.push(fields as Record<string, unknown>);
-        } } },
+        diagnostics: {
+          verbose: false,
+          logger: {
+            error: (fields: unknown) => {
+              errors.push(fields as Record<string, unknown>);
+            },
+          },
+        },
         resources: { active: async () => false, run: async () => fail('assistant.tool.resources') },
         recommendations: { active: async () => false, runResult: async () => fail('assistant.tool.recommendations') },
       }
@@ -115,10 +165,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       assert.equal(result.intent, intent);
       assert.match(result.replyText, locale === 'en-US' ? /did not complete/ : /未完成/);
       assert.ok(
-        errors.some(
-          (entry) => {
-            return entry.stage === (intent === 'recommend' ? 'assistant.tool.recommendations' : 'assistant.tool.resources');
-          })
+        errors.some((entry) => {
+          return (
+            entry.stage === (intent === 'recommend' ? 'assistant.tool.recommendations' : 'assistant.tool.resources')
+          );
+        })
       );
       assert.match(JSON.stringify(errors), /original transport failure/);
       assert.match(JSON.stringify(errors), /stack/);
@@ -130,13 +181,24 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
 test('explicit requests bypass old active-task lookups and execute their workflow node', async () => {
   for (const intent of ['discuss', 'recommend', 'resources'] as const) {
     const calls: string[] = [];
-    const active = async () => { assert.fail('Explicit requests must not guess from prior sessions'); };
+    const active = async () => {
+      assert.fail('Explicit requests must not guess from prior sessions');
+    };
     const result = await workflow(intent, {
-      resources: { active, run: async () => { calls.push('resources'); return { replyText: 'Resources' }; } },
-      recommendations: { active, runResult: async () => {
-        calls.push('recommend');
-        return { replyText: 'Recommendations' };
-      } },
+      resources: {
+        active,
+        run: async () => {
+          calls.push('resources');
+          return { replyText: 'Resources' };
+        },
+      },
+      recommendations: {
+        active,
+        runResult: async () => {
+          calls.push('recommend');
+          return { replyText: 'Recommendations' };
+        },
+      },
     }
     ).run(
       input
@@ -156,21 +218,30 @@ test('preference enqueue remains independent of the main route without running b
         calls.push('enqueue');
       },
     } as unknown as PreferenceService;
-    const result = await workflow(intent, {
-      preferences,
-      resources: { active: async () => {
-        return false;
-      }, run: async () => {
-        calls.push('resources');
-        return { replyText: 'Resources' };
-      } },
-      recommendations: { active: async () => {
-        return false;
-      }, runResult: async () => {
-        calls.push('recommend');
-        return { replyText: 'Recommendations' };
-      } },
-    }, 'explicit'
+    const result = await workflow(
+      intent,
+      {
+        preferences,
+        resources: {
+          active: async () => {
+            return false;
+          },
+          run: async () => {
+            calls.push('resources');
+            return { replyText: 'Resources' };
+          },
+        },
+        recommendations: {
+          active: async () => {
+            return false;
+          },
+          runResult: async () => {
+            calls.push('recommend');
+            return { replyText: 'Recommendations' };
+          },
+        },
+      },
+      'explicit'
     ).run(
       input
     );
@@ -186,28 +257,53 @@ test('workflow reads profile context for both normal and streamed discussion usi
     const profile = emptyProfile();
     const seen: LlmGenerateInput[] = [];
     // A non-empty profile comes from the real profile domain shape.
-    profile.entries.push(
-      { id: 'taste-1', section: 'explicit', content: 'private-profile-evidence', evidenceRefs: [], protected: true, updatedAt: new Date().toISOString() }
+    profile.entries.push({
+      id: 'taste-1',
+      section: 'explicit',
+      content: 'private-profile-evidence',
+      evidenceRefs: [],
+      protected: true,
+      updatedAt: new Date().toISOString(),
+    }
     );
-    const preferences = { store: { read: async (owner: string) => {
-      assert.equal(owner, input.ownerId); read = true; return profile;
-    } } } as unknown as PreferenceService;
-    const runner = new AssistantWorkflow(async () => {
-      return ({
-        generate: async (request) => {
-          seen.push(request);
-          return { content: request.operation === 'assistant.intent' ? '{"intent":"discuss","preferenceSignal":"none"}' : 'Profile-aware reply', inputTokens: 1, outputTokens: 1 };
+    const preferences = {
+      store: {
+        read: async (owner: string) => {
+          assert.equal(owner, input.ownerId);
+          read = true;
+          return profile;
         },
-        stream: async function* (request) {
-          seen.push(request);
-          yield { type: 'delta', delta: 'Profile-aware reply' };
-          yield { type: 'completed', inputTokens: 1, outputTokens: 1 };
-        },
-      });
-    }, { ...defaults, preferences });
+      },
+    } as unknown as PreferenceService;
+    const runner = new AssistantWorkflow(
+      async () => {
+        return {
+          generate: async (request) => {
+            seen.push(request);
+            return {
+              content:
+                request.operation === 'assistant.intent'
+                  ? '{"intent":"discuss","preferenceSignal":"none"}'
+                  : 'Profile-aware reply',
+              inputTokens: 1,
+              outputTokens: 1,
+            };
+          },
+          stream: async function* (request) {
+            seen.push(request);
+            yield { type: 'delta', delta: 'Profile-aware reply' };
+            yield { type: 'completed', inputTokens: 1, outputTokens: 1 };
+          },
+        };
+      },
+      { ...defaults, preferences }
+    );
     const result = await runner.run(input, [], undefined, streaming);
     assert.equal(read, true);
-    if (streaming) for await (const _event of result.stream!) { /* consume model stream */ }
+    if (streaming)
+      for await (const _event of result.stream!) {
+        /* consume model stream */
+      }
     assert.ok(seen.at(-1)?.messages.some((message) => message.content.includes('private-profile-evidence')));
   }
 });
@@ -216,8 +312,13 @@ test('cancellation after active-task resolution cannot dispatch business operati
   const controller = new AbortController();
   const runner = workflow('unclear', {
     resources: {
-      active: async () => { controller.abort(); return true; },
-      run: async () => { assert.fail('Cancelled route must not execute'); },
+      active: async () => {
+        controller.abort();
+        return true;
+      },
+      run: async () => {
+        assert.fail('Cancelled route must not execute');
+      },
     },
   }
   );
@@ -227,43 +328,71 @@ test('cancellation after active-task resolution cannot dispatch business operati
 test('topic switches leave download selection before workflow dispatches the new request', async () => {
   for (const intent of ['discuss', 'recommend', 'resources', 'download'] as const) {
     let session: AssistantSession = {
-      ...emptyAssistantSession(), updatedAt: new Date().toISOString(), stage: 'await_provider',
-      selection: { tmdbId: 157336, source: 'mteam', releaseId: 'old-release', title: 'Old release', selectedAt: new Date().toISOString() },
+      ...emptyAssistantSession(),
+      updatedAt: new Date().toISOString(),
+      stage: 'await_provider',
+      selection: {
+        tmdbId: 157336,
+        source: 'mteam',
+        releaseId: 'old-release',
+        title: 'Old release',
+        selectedAt: new Date().toISOString(),
+      },
       providers: ['qbittorrent', 'transmission'],
     };
     let creates = 0;
-    const runner = new AssistantWorkflow(async () => {
-      return ({ generate: async (request) => {
-        return ({
-          content: request.operation === 'assistant.intent' ? JSON.stringify({ intent, preferenceSignal: 'none' })
-            : request.operation === 'assistant.download.plan' ? '{"action":"other","releaseIndex":null,"provider":null}' : 'Discussion reply',
-          inputTokens: 1, outputTokens: 1,
-        });
-      } });
-    }, {
-      ...defaults,
-      sessions: {
-        ensure: async () => {}, acquire: async () => true, read: async () => structuredClone(session),
-        save: async (_owner, _conversation, _lease, next) => {
-          session = structuredClone(next);
-          return true;
-        }, release: async () => {},
+    const runner = new AssistantWorkflow(
+      async () => {
+        return {
+          generate: async (request) => {
+            return {
+              content:
+                request.operation === 'assistant.intent'
+                  ? JSON.stringify({ intent, preferenceSignal: 'none' })
+                  : request.operation === 'assistant.download.plan'
+                    ? '{"action":"other","releaseIndex":null,"provider":null}'
+                    : 'Discussion reply',
+              inputTokens: 1,
+              outputTokens: 1,
+            };
+          },
+        };
       },
-      downloads: { providersFor: async () => {
-        return ['qbittorrent'];
-      }, createForOwner: async () => {
-        creates++;
-        throw new Error('Unexpected download');
-      } },
-      resources: { active: async () => {
-        return false;
-      }, context: async () => {
-        return null;
-      }, run: async () => {
-        return ({ replyText: 'Resources' });
-      } },
-      recommendations: { active: async () => false, runResult: async () => ({ replyText: 'Recommendations' }) },
-    });
+      {
+        ...defaults,
+        sessions: {
+          ensure: async () => {},
+          acquire: async () => true,
+          read: async () => structuredClone(session),
+          save: async (_owner, _conversation, _lease, next) => {
+            session = structuredClone(next);
+            return true;
+          },
+          release: async () => {},
+        },
+        downloads: {
+          providersFor: async () => {
+            return ['qbittorrent'];
+          },
+          createForOwner: async () => {
+            creates++;
+            throw new Error('Unexpected download');
+          },
+        },
+        resources: {
+          active: async () => {
+            return false;
+          },
+          context: async () => {
+            return null;
+          },
+          run: async () => {
+            return { replyText: 'Resources' };
+          },
+        },
+        recommendations: { active: async () => false, runResult: async () => ({ replyText: 'Recommendations' }) },
+      }
+    );
     const result = await runner.run(input);
     assert.equal(result.intent, intent === 'download' ? 'unclear' : intent);
     assert.equal(session.stage, 'idle');
@@ -276,10 +405,21 @@ test('route context failures preserve the failing stage and original cause with 
   const logs: unknown[] = [];
   const failure = new Error('context read failed', { cause: new Error('database unavailable') });
   const runner = workflow('unclear', {
-    diagnostics: { verbose: false, logger: { error: (...args: unknown[]) => { logs.push(args); } } },
+    diagnostics: {
+      verbose: false,
+      logger: {
+        error: (...args: unknown[]) => {
+          logs.push(args);
+        },
+      },
+    },
     resources: {
-      active: async () => { throw failure; },
-      run: async () => { assert.fail('Failed context resolution must not dispatch a resource query'); },
+      active: async () => {
+        throw failure;
+      },
+      run: async () => {
+        assert.fail('Failed context resolution must not dispatch a resource query');
+      },
     },
   }
   );
@@ -294,64 +434,116 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     for (const stage of ['idle', 'await_movie', 'await_resource', 'await_provider', 'submitting'] as const) {
       const resume = stage === 'submitting';
       let session: AssistantSession = {
-        ...emptyAssistantSession(), updatedAt: new Date().toISOString(), stage,
-        ...(resume || stage === 'await_provider' ? {
-          selection: { tmdbId: 157336, source: 'mteam', releaseId: 'fixed-release', title: 'Fixed release', selectedAt: new Date().toISOString() },
-          providers: ['transmission' as const], provider: 'transmission' as const,
-        } : {}),
+        ...emptyAssistantSession(),
+        updatedAt: new Date().toISOString(),
+        stage,
+        ...(resume || stage === 'await_provider'
+          ? {
+              selection: {
+                tmdbId: 157336,
+                source: 'mteam',
+                releaseId: 'fixed-release',
+                title: 'Fixed release',
+                selectedAt: new Date().toISOString(),
+              },
+              providers: ['transmission' as const],
+              provider: 'transmission' as const,
+            }
+          : {}),
         ...(resume ? { submissionEventId: 'web:routing-thread:turn-1' } : {}),
       };
       const routes: Record<string, unknown>[] = [];
-      let planned = 0, submitted = 0;
-      const runner = new AssistantWorkflow(async () => {
-        return ({ generate: async (request) => {
-          if (request.operation === 'assistant.intent') return {
-            // Existing stages must work even when the latest message alone is discussion/unclear.
-            content: JSON.stringify(
-              { intent: stage === 'idle' ? 'download' : 'unclear', preferenceSignal: 'none', locale }
-            ), inputTokens: 1, outputTokens: 1,
+      let planned = 0,
+        submitted = 0;
+      const runner = new AssistantWorkflow(
+        async () => {
+          return {
+            generate: async (request) => {
+              if (request.operation === 'assistant.intent')
+                return {
+                  // Existing stages must work even when the latest message alone is discussion/unclear.
+                  content: JSON.stringify({
+                    intent: stage === 'idle' ? 'download' : 'unclear',
+                    preferenceSignal: 'none',
+                    locale,
+                  }
+                  ),
+                  inputTokens: 1,
+                  outputTokens: 1,
+                };
+              assert.equal(request.operation, 'assistant.download.plan');
+              planned++;
+              return {
+                content: '{"action":"clarify","releaseIndex":null,"provider":null}',
+                inputTokens: 1,
+                outputTokens: 1,
+              };
+            },
           };
-          assert.equal(request.operation, 'assistant.download.plan');
-          planned++;
-          return { content: '{"action":"clarify","releaseIndex":null,"provider":null}', inputTokens: 1, outputTokens: 1 };
-        } });
-      }, {
-        ...defaults, locale,
-        diagnostics: { verbose: true, logger: {
-          info: (event: unknown) => {
-            const fields = event as Record<string, unknown>;
-            if (fields.stage === 'assistant.route.selected') routes.push(fields);
+        },
+        {
+          ...defaults,
+          locale,
+          diagnostics: {
+            verbose: true,
+            logger: {
+              info: (event: unknown) => {
+                const fields = event as Record<string, unknown>;
+                if (fields.stage === 'assistant.route.selected') routes.push(fields);
+              },
+              error: () => assert.fail('Unified download routing must not fail'),
+            },
           },
-          error: () => assert.fail('Unified download routing must not fail'),
-        } },
-        sessions: {
-          ensure: async () => {}, acquire: async () => true, read: async () => structuredClone(session),
-          save: async (_owner, _conversation, _lease, next) => {
-            session = structuredClone(next);
-            return true;
-          }, release: async () => {},
-        },
-        resources: {
-          active: async () => { assert.fail('Download routing must not resolve old resource sessions'); },
-          context: async () => null,
-          run: async () => { assert.fail('Clarification/recovery must not query resources'); },
-        },
-        recommendations: {
-          active: async () => { assert.fail('Download routing must not resolve old recommendation sessions'); },
-          runResult: async () => { assert.fail('Download routing must not recommend'); },
-        },
-        downloads: {
-          providersFor: async () => { assert.fail('Recovery must reuse the pinned downloader'); },
-          createForOwner: async (owner, tmdbId, releaseId, provider) => {
-            submitted++;
-            assert.equal(session.stage, 'submitting');
-            assert.equal(owner, 'alice');
-            assert.equal(releaseId, 'fixed-release');
-            assert.equal(provider, 'transmission');
-            return { id: 'recovered-task', tmdbId, sourceProvider: 'mteam', sourceReleaseId: releaseId, provider, status: 'submitting', progress: 0 };
+          sessions: {
+            ensure: async () => {},
+            acquire: async () => true,
+            read: async () => structuredClone(session),
+            save: async (_owner, _conversation, _lease, next) => {
+              session = structuredClone(next);
+              return true;
+            },
+            release: async () => {},
           },
-        },
-      });
+          resources: {
+            active: async () => {
+              assert.fail('Download routing must not resolve old resource sessions');
+            },
+            context: async () => null,
+            run: async () => {
+              assert.fail('Clarification/recovery must not query resources');
+            },
+          },
+          recommendations: {
+            active: async () => {
+              assert.fail('Download routing must not resolve old recommendation sessions');
+            },
+            runResult: async () => {
+              assert.fail('Download routing must not recommend');
+            },
+          },
+          downloads: {
+            providersFor: async () => {
+              assert.fail('Recovery must reuse the pinned downloader');
+            },
+            createForOwner: async (owner, tmdbId, releaseId, provider) => {
+              submitted++;
+              assert.equal(session.stage, 'submitting');
+              assert.equal(owner, 'alice');
+              assert.equal(releaseId, 'fixed-release');
+              assert.equal(provider, 'transmission');
+              return {
+                id: 'recovered-task',
+                tmdbId,
+                sourceProvider: 'mteam',
+                sourceReleaseId: releaseId,
+                provider,
+                status: 'submitting',
+                progress: 0,
+              };
+            },
+          },
+        }
+      );
       const result = await runner.run(input);
       assert.equal(result.intent, 'download');
       assert.equal(routes.length, 1, 'Every download must traverse resolve_route exactly once');

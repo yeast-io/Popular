@@ -1,5 +1,3 @@
-
-
 import type { IntegrationFailureType, MovieRelease } from '@movie-hub/contract';
 import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
 
@@ -26,24 +24,24 @@ export interface MovieResourceCheckRecord extends MovieResourceCheckKey {
   identityFingerprint?: string;
 }
 
-type SuccessfulMovieResourceCheck =
+type SuccessfulMovieResourceCheck
+  = | {
+    lastAttemptStatus: 'success';
+    checkedAt: Date;
+    expiresAt: Date;
+    availability: 'available' | 'unavailable';
+    matchedBy: MovieResourceMatchMethod;
+  }
   | {
-      lastAttemptStatus: 'success';
-      checkedAt: Date;
-      expiresAt: Date;
-      availability: 'available' | 'unavailable';
-      matchedBy: MovieResourceMatchMethod;
-    }
-  | {
-      lastAttemptStatus: 'success';
-      checkedAt: Date;
-      availability: 'unmatchable';
-      identityFingerprint: string;
-    };
+    lastAttemptStatus: 'success';
+    checkedAt: Date;
+    availability: 'unmatchable';
+    identityFingerprint: string;
+  };
 
-export type MovieResourceCheckCompletion =
-  | SuccessfulMovieResourceCheck
-  | {
+export type MovieResourceCheckCompletion
+  = | SuccessfulMovieResourceCheck
+    | {
       lastAttemptStatus: 'error';
       lastErrorCode: MovieResourceCheckErrorCode;
     };
@@ -94,13 +92,8 @@ export interface MTeamResourceSearcher {
   ): Promise<MTeamRelease[]>;
 }
 
-export interface MTeamTorrentDownloader {
-  downloadTorrent(
-    baseUrl: string,
-    apiKey: string,
-    releaseId: string,
-    context?: ExternalRequestContext,
-  ): Promise<Uint8Array>;
+export interface MTeamTorrentUrlProvider {
+  torrentUrl(baseUrl: string, apiKey: string, releaseId: string, context?: ExternalRequestContext): Promise<string>;
 }
 
 export interface CheckLogger {
@@ -125,5 +118,11 @@ export interface QueuedCheck {
 
 export type MovieResourceCheckExecution = { started: false } | { started: true; result: MovieResourceCheckCompletion };
 
-export interface MTeamSearchPage { releases: MTeamRelease[]; nextPage?: number }
-export interface MTeamSearchOptions { page?: number; signal?: AbortSignal }
+export interface MTeamSearchPage {
+  releases: MTeamRelease[];
+  nextPage?: number;
+}
+export interface MTeamSearchOptions {
+  page?: number;
+  signal?: AbortSignal;
+}

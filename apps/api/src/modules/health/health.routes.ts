@@ -8,7 +8,7 @@ export function registerHealthRoutes(app: FastifyInstance, dependencies: HealthD
     {
       schema: { response: { 200: LivenessSchema } },
     },
-    async () => ({ status: 'ok' as const, timestamp: new Date().toISOString() }),
+    async () => ({ status: 'ok' as const, timestamp: new Date().toISOString() })
   );
 
   app.get(
@@ -18,7 +18,7 @@ export function registerHealthRoutes(app: FastifyInstance, dependencies: HealthD
     },
     async (_request, reply) => {
       const checks = await Promise.all(
-        dependencies.map(async (dependency) => [dependency.name, await dependency.check()] as const),
+        dependencies.map(async (dependency) => [dependency.name, await dependency.check()] as const)
       );
       const byName = Object.fromEntries(checks) as Record<
         HealthDependency['name'],
@@ -36,6 +36,5 @@ export function registerHealthRoutes(app: FastifyInstance, dependencies: HealthD
         timestamp: new Date().toISOString(),
         dependencies: dependenciesResult,
       };
-    },
-  );
+    });
 }

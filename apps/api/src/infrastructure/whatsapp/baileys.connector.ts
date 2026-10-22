@@ -1,4 +1,19 @@
-import makeWASocket, { BufferJSON, Browsers, DisconnectReason, getContentType, normalizeMessageContent, initAuthCreds, jidNormalizedUser, proto, generateMessageIDV2, type AnyMessageContent, type AuthenticationCreds, type AuthenticationState, type SignalDataSet, type BinaryNode } from '@whiskeysockets/baileys';
+import makeWASocket, {
+  BufferJSON,
+  Browsers,
+  DisconnectReason,
+  getContentType,
+  normalizeMessageContent,
+  initAuthCreds,
+  jidNormalizedUser,
+  proto,
+  generateMessageIDV2,
+  type AnyMessageContent,
+  type AuthenticationCreds,
+  type AuthenticationState,
+  type SignalDataSet,
+  type BinaryNode,
+} from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import type { WhatsAppConfiguration } from '@movie-hub/contract';
@@ -98,8 +113,10 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
       const observeRefresh = (node: BinaryNode) => {
         if (stopped || closed || socket !== current || data.creds.me) return;
         if (
-          !Array.isArray(node.content) ||
-          !node.content.some((child) => child.tag === 'companion_reg_refresh' || child.tag === 'pair-device-rotate-qr')
+          !Array.isArray(node.content)
+          || !node.content.some(
+            (child) => child.tag === 'companion_reg_refresh' || child.tag === 'pair-device-rotate-qr'
+          )
         )
           return;
         options.report?.({
@@ -131,19 +148,19 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
             const selfIds = [current.user?.id, current.user?.lid]
               .filter((id): id is string => !!id)
               .map(
-              jidNormalizedUser
-            );
+                jidNormalizedUser
+              );
             if (message.key.fromMe && !selfIds.includes(jidNormalizedUser(chatId))) continue;
             const content = normalizeMessageContent(message.message);
             const messageType = getContentType(content);
             if (!content || !messageType || ['protocolMessage', 'senderKeyDistributionMessage'].includes(messageType))
               continue;
-            const text =
-              content.conversation ??
-              content.extendedTextMessage?.text ??
-              content.imageMessage?.caption ??
-              content.videoMessage?.caption ??
-              content.documentMessage?.caption;
+            const text
+              = content.conversation
+                ?? content.extendedTextMessage?.text
+                ?? content.imageMessage?.caption
+                ?? content.videoMessage?.caption
+                ?? content.documentMessage?.caption;
             await options.receive?.({
               channel: 'whatsapp',
               chatId,
@@ -191,8 +208,8 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
             ++qrVersion;
             const rawCode = (update.lastDisconnect?.error as { output?: { statusCode?: unknown } } | undefined)?.output
               ?.statusCode;
-            const code =
-              typeof rawCode === 'number' && Number.isInteger(rawCode) && rawCode >= 0 && rawCode <= 9999
+            const code
+              = typeof rawCode === 'number' && Number.isInteger(rawCode) && rawCode >= 0 && rawCode <= 9999
                 ? rawCode
                 : undefined;
             const codeField = code === undefined ? {} : { code };
@@ -214,8 +231,8 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
               const failureReason = disconnectReason(code);
               const state = { failureReason, ...(code === undefined ? {} : { disconnectCode: code }) };
               if (
-                ['logged_out', 'bad_session', 'connection_replaced', 'forbidden'].includes(failureReason) ||
-                attempts > 5
+                ['logged_out', 'bad_session', 'connection_replaced', 'forbidden'].includes(failureReason)
+                || attempts > 5
               ) {
                 options.update({ status: 'disconnected', ...state });
                 return;
@@ -228,7 +245,7 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
               () => {
                 void writes.then(open).catch(() => fail('connection_error'));
               },
-              code === DisconnectReason.restartRequired ? 0 : Math.min(30_000, 1_000 * 2 ** attempts),
+              code === DisconnectReason.restartRequired ? 0 : Math.min(30_000, 1_000 * 2 ** attempts)
             );
             reconnect.unref();
           }
@@ -249,7 +266,7 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
       },
       ownsChat: (chatId) => {
         return [socket?.user?.id, socket?.user?.lid].some(
-          (id) => id && jidNormalizedUser(id) === jidNormalizedUser(chatId),
+          (id) => id && jidNormalizedUser(id) === jidNormalizedUser(chatId)
         );
       },
       async sendSelf() {
@@ -326,8 +343,8 @@ function disconnectReason(code?: number): NonNullable<WhatsAppConfiguration['fai
 
 // An allowlist keeps arbitrary errors (which may contain identities or secrets) out of logs.
 function diagnosticReason(error: unknown): NonNullable<WhatsAppDiagnostic['reason']> {
-  const message =
-    error instanceof Error
+  const message
+    = error instanceof Error
       ? error.message
       : typeof error === 'object' && error !== null && 'message' in error
         ? error.message

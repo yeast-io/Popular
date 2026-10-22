@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MTeamClient, classifyMTeamHttpFailure, createPinnedLookup, isPublicAddress, parseSearchReleases, parseSearchPage, resolvePublicAddresses, verificationUrl, withAbsoluteTimeout } from './client.js';
+import {
+  MTeamClient,
+  classifyMTeamHttpFailure,
+  createPinnedLookup,
+  isPublicAddress,
+  parseSearchReleases,
+  parseSearchPage,
+  resolvePublicAddresses,
+  verificationUrl,
+  withAbsoluteTimeout,
+} from './client.js';
 
 test('uses the authenticated M-Team endpoint that requires no request parameters', () => {
   assert.equal(verificationUrl('https://api.m-team.cc').href, 'https://api.m-team.cc/api/member/sysRoleList');
@@ -40,16 +50,14 @@ test('pinned lookup follows the Node callback shape for single and all-address r
   const single = await new Promise<{ address: string | object[]; family: number | undefined }>((resolve, reject) => {
     pinned('api.m-team.cc', { all: false }, (error, address, family) => {
       return error ? reject(error) : resolve({ address, family });
-    },
-    );
+    });
   });
   assert.deepEqual(single, { address: '1.1.1.1', family: 4 });
 
   const all = await new Promise<{ address: string | object[]; family: number | undefined }>((resolve, reject) => {
     pinned('api.m-team.cc', { all: true }, (error, address, family) => {
       return error ? reject(error) : resolve({ address, family });
-    },
-    );
+    });
   });
   assert.deepEqual(all, { address: [{ address: '1.1.1.1', family: 4 }], family: undefined });
 });
@@ -60,13 +68,12 @@ test('absolute validation timeout rejects even when the underlying operation nev
     withAbsoluteTimeout(20, async () => new Promise<never>(() => undefined)),
     (error: unknown) => {
       return (
-        error instanceof Error &&
-        error.name === 'IntegrationValidationError' &&
-        'failureType' in error &&
-        error.failureType === 'timeout'
+        error instanceof Error
+        && error.name === 'IntegrationValidationError'
+        && 'failureType' in error
+        && error.failureType === 'timeout'
       );
-    },
-  );
+    });
   assert.ok(Date.now() - startedAt < 500);
 });
 
@@ -111,7 +118,7 @@ test('parses the M-Team movie search fields used by availability checks', () => 
         audioCodec: 'DTS-HD MA',
         tags: ['中字', 'DoVi'],
       },
-    ],
+    ]
   );
 });
 
@@ -137,18 +144,38 @@ test('search client records terminal pre-HTTP errors once with attempt metadata 
   const events: Array<{ attempt: number; operationId: string; outcome: string }> = [];
   const errors: Record<string, unknown>[] = [];
   const infos: unknown[] = [];
-  const client = new MTeamClient(100, { record: async (event) => { events.push(event); } }, {
-    minimumIntervalMs: 0, verbose: false,
-    logger: { error: (entry: Record<string, unknown>) => {
-      return errors.push(entry);
-    }, info: (entry: Record<string, unknown>) => {
-      return infos.push(entry);
-    } },
-  });
-  await assert.rejects(client.searchMovies('https://127.0.0.1', 'private-api-key', { title: 'private movie query' }, {
-    actorType: 'user', ownerId: 'alice', trigger: 'api_request',
-  }
-  ), /Private network addresses/
+  const client = new MTeamClient(
+    100,
+    {
+      record: async (event) => {
+        events.push(event);
+      },
+    },
+    {
+      minimumIntervalMs: 0,
+      verbose: false,
+      logger: {
+        error: (entry: Record<string, unknown>) => {
+          return errors.push(entry);
+        },
+        info: (entry: Record<string, unknown>) => {
+          return infos.push(entry);
+        },
+      },
+    }
+  );
+  await assert.rejects(
+    client.searchMovies(
+      'https://127.0.0.1',
+      'private-api-key',
+      { title: 'private movie query' },
+      {
+        actorType: 'user',
+        ownerId: 'alice',
+        trigger: 'api_request',
+      }
+    ),
+    /Private network addresses/
   );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.attempt, 1);
@@ -163,15 +190,20 @@ test('search client records terminal pre-HTTP errors once with attempt metadata 
 test('absolute request timeout respects parent cancellation and keeps its original reason', async () => {
   const controller = new AbortController();
   const reason = new Error('parent query cancelled');
-  const work = withAbsoluteTimeout(1000, async () => {
-    controller.abort(reason);
-    return new Promise<never>(() => undefined);
-  }, { signal: controller.signal }
+  const work = withAbsoluteTimeout(
+    1000,
+    async () => {
+      controller.abort(reason);
+      return new Promise<never>(() => undefined);
+    },
+    { signal: controller.signal }
   );
   await assert.rejects(work, (error) => error === reason);
-  await assert.rejects(withAbsoluteTimeout(1000, async () => 'must not execute', {
-    signal: AbortSignal.abort(reason),
-  }), (error) => error === reason
+  await assert.rejects(
+    withAbsoluteTimeout(1000, async () => 'must not execute', {
+      signal: AbortSignal.abort(reason),
+    }),
+    (error) => error === reason
   );
 });
 
@@ -182,10 +214,16 @@ test('M-Team pagination uses total metadata and caps native pages at 100', () =>
 });
 
 test('extracts M-Team release groups from titles while retaining structured codecs', () => {
-  const releases = parseSearchReleases({ data: [{
-    id: '99', name: 'Movie.2026.1080p.WEB-DL.H264-TURG',
-    videoCodec: '16', status: { visible: true, banned: false, seeders: 1 },
-  }] }
+  const releases = parseSearchReleases({
+    data: [
+      {
+        id: '99',
+        name: 'Movie.2026.1080p.WEB-DL.H264-TURG',
+        videoCodec: '16',
+        status: { visible: true, banned: false, seeders: 1 },
+      },
+    ],
+  }
   );
   assert.equal(releases[0]?.releaseGroup, 'TURG');
   assert.equal(releases[0]?.videoCodec, 'H.265');

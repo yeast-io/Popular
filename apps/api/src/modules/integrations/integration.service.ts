@@ -1,10 +1,20 @@
 import type { IntegrationPreferencesService } from './integration-preferences.service.js';
 import { maskIntegrationSecret } from '@movie-hub/contract';
 import { replacementSecret } from './integration-secret.domain.js';
-import { MTEAM_DEFAULT_WEB_BASE_URL, type IntegrationFailureType, type MTeamConfiguration, type SaveMTeamConfigurationRequest } from '@movie-hub/contract';
+import {
+  MTEAM_DEFAULT_WEB_BASE_URL,
+  type IntegrationFailureType,
+  type MTeamConfiguration,
+  type SaveMTeamConfigurationRequest,
+} from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
-import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier, MTeamEndpoints } from './integration.types.js';
+import type {
+  IntegrationConfigRecord,
+  IntegrationConfigStore,
+  MTeamVerifier,
+  MTeamEndpoints,
+} from './integration.types.js';
 import { SecretCrypto } from './secret-crypto.js';
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
@@ -21,6 +31,7 @@ export class IntegrationValidationError extends Error {
 
 export class IntegrationService {
   preferences?: IntegrationPreferencesService;
+
   constructor(
     private readonly auth: AuthService,
     private readonly configs: IntegrationConfigStore,
@@ -40,18 +51,23 @@ export class IntegrationService {
     const ownerId = await this.auth.requireOwnerId(token);
     const baseUrl = normalizeMTeamBaseUrl(this.endpoints?.baseUrl ?? input.baseUrl, this.allowedMTeamHosts);
     const existing = await this.configs.find(ownerId, 'mteam');
-    const webBaseUrl = this.endpoints?.webBaseUrl ?? normalizeMTeamWebBaseUrl(input.webBaseUrl ?? existing?.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL);
+    const webBaseUrl
+      = this.endpoints?.webBaseUrl
+        ?? normalizeMTeamWebBaseUrl(input.webBaseUrl ?? existing?.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL);
     const secretContext = integrationSecretContext(ownerId, 'mteam');
-    const apiKey =
-      replacementSecret(input.apiKey, existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : undefined)?.trim() || (existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : '');
+    const apiKey
+      = replacementSecret(
+        input.apiKey,
+        existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : undefined
+      )?.trim() || (existing ? this.secrets.decrypt(existing.encryptedApiKey, secretContext) : '');
     if (!apiKey) throw new AppError(400, 'VALIDATION_ERROR', 'M-Team API key is required for the first configuration');
     const attemptedAt = this.now();
 
     try {
       await this.mteam.verify(baseUrl, apiKey, userExternalRequestContext(ownerId, 'manual_refresh'));
     } catch (error) {
-      const failureType =
-        error instanceof IntegrationValidationError
+      const failureType
+        = error instanceof IntegrationValidationError
           ? error.failureType === 'permission' || error.failureType === 'rate_limited'
             ? 'remote_error'
             : error.failureType
@@ -83,11 +99,11 @@ export class IntegrationService {
       await this.mteam.verify(
         existing.baseUrl,
         this.secrets.decrypt(existing.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
-        userExternalRequestContext(ownerId, 'manual_refresh'),
+        userExternalRequestContext(ownerId, 'manual_refresh')
       );
     } catch (error) {
-      const failureType =
-        error instanceof IntegrationValidationError
+      const failureType
+        = error instanceof IntegrationValidationError
           ? error.failureType === 'permission' || error.failureType === 'rate_limited'
             ? 'remote_error'
             : error.failureType
@@ -147,11 +163,11 @@ export function normalizeMTeamWebBaseUrl(raw: string): string {
     throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL is invalid');
   }
   const hostname = url.hostname.toLowerCase();
-  const trustedHost =
-    hostname === 'm-team.cc' ||
-    hostname.endsWith('.m-team.cc') ||
-    hostname === 'm-team.io' ||
-    hostname.endsWith('.m-team.io');
+  const trustedHost
+    = hostname === 'm-team.cc'
+      || hostname.endsWith('.m-team.cc')
+      || hostname === 'm-team.io'
+      || hostname.endsWith('.m-team.io');
   if (url.protocol !== 'https:') throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL must use HTTPS');
   if (url.username || url.password)
     throw new AppError(400, 'MTEAM_INVALID_URL', 'M-Team Web Base URL cannot contain credentials');
@@ -189,7 +205,9 @@ function toResponse(record: IntegrationConfigRecord | null, secrets: SecretCrypt
       : 'configured_unverified';
   return {
     provider: 'mteam',
-    apiKeyMasked: maskIntegrationSecret(secrets.decrypt(record.encryptedApiKey, integrationSecretContext(record.ownerId, 'mteam'))),
+    apiKeyMasked: maskIntegrationSecret(
+      secrets.decrypt(record.encryptedApiKey, integrationSecretContext(record.ownerId, 'mteam'))
+    ),
     status,
     baseUrl: record.baseUrl,
     webBaseUrl: record.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,

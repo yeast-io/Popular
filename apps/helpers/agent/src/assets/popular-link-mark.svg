@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>    <mask id="weave">
+      <rect width="1024" height="1024" fill="white"/>
+      <rect x="340" y="244" width="364" height="272" rx="136" fill="none" stroke="black" stroke-width="108"/>
+    </mask>
+</defs>
+  <rect x="304" y="410" width="204" height="364" rx="102" fill="none" stroke="black" stroke-width="64" mask="url(#weave)"/>
+  <rect x="340" y="244" width="364" height="272" rx="136" fill="none" stroke="black" stroke-width="64"/>
+  <path d="M304 540v-28a102 102 0 0 1 102-102" fill="none" stroke="black" stroke-width="64" stroke-linecap="round"/>
+</svg>

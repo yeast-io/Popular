@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { IntegrationStatusSchema } from './integration.schema.js';
+
 export const ResourceSiteParamsSchema = Type.Object({ site: Type.String({ pattern: '^[a-z][a-z0-9-]{0,31}$' }) });
 export const ResourceSiteReleaseParamsSchema = Type.Object({
   site: Type.String({ pattern: '^[a-z][a-z0-9-]{0,31}$' }), id: Type.String({ pattern: '^\\d+$', maxLength: 32 }),

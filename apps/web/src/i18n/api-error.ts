@@ -62,9 +62,7 @@ const errorKeys = {
 } as const satisfies Record<ErrorCode, TranslationKey>;
 
 export class LocalizedApiError extends Error {
-  constructor(
-    readonly translationKey: TranslationKey
-  ) {
+  constructor(readonly translationKey: TranslationKey) {
     super(translationKey);
     this.name = 'LocalizedApiError';
   }
@@ -85,7 +83,7 @@ export function localizedApiError(value: unknown, fallback?: TranslationKey): Lo
 
 export async function localizedResponseError(
   response: Response,
-  fallback: TranslationKey = 'errors.requestFailed',
+  fallback: TranslationKey = 'errors.requestFailed'
 ): Promise<LocalizedApiError> {
   try {
     return localizedApiError(await response.json(), fallback);

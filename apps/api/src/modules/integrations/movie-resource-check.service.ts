@@ -1,12 +1,29 @@
-import type { CheckLogger, MovieResourceCheckOptions, QueuedCheck, MovieResourceCheckExecution } from './movie-resource-check.types.js';
+import type {
+  CheckLogger,
+  MovieResourceCheckOptions,
+  QueuedCheck,
+  MovieResourceCheckExecution,
+} from './movie-resource-check.types.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
-import { MTEAM_DEFAULT_WEB_BASE_URL, type Locale, type MovieRelease, type MovieReleaseListResponse } from '@movie-hub/contract';
+import {
+  MTEAM_DEFAULT_WEB_BASE_URL,
+  type Locale,
+  type MovieRelease,
+  type MovieReleaseListResponse,
+} from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieResourceCheckDispatcher } from '../movie-statuses/movie-status.types.js';
 import type { MovieCatalogStore, MovieSearchProvider } from '../movies/movie.types.js';
 import { IntegrationValidationError, integrationSecretContext } from './integration.service.js';
 import type { IntegrationConfigStore } from './integration.types.js';
-import type { MTeamRelease, MTeamResourceSearcher, MovieResourceCheckErrorCode, MovieResourceCheckKey, MovieResourceCheckCompletion, MovieResourceCheckStore } from './movie-resource-check.types.js';
+import type {
+  MTeamRelease,
+  MTeamResourceSearcher,
+  MovieResourceCheckErrorCode,
+  MovieResourceCheckKey,
+  MovieResourceCheckCompletion,
+  MovieResourceCheckStore,
+} from './movie-resource-check.types.js';
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 import type { SecretCrypto } from './secret-crypto.js';
 
@@ -61,7 +78,11 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     return this.enqueue(ownerId, tmdbId, force);
   }
 
-  async listReleases(ownerId: string, tmdbId: number, options: { force?: boolean } = {}): Promise<MovieReleaseListResponse> {
+  async listReleases(
+    ownerId: string,
+    tmdbId: number,
+    options: { force?: boolean } = {}
+  ): Promise<MovieReleaseListResponse> {
     if (!(await this.movies.hasMovie(tmdbId))) {
       throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded before its releases can be queried.');
     }
@@ -85,7 +106,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       tmdbId,
       config.baseUrl,
       config.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,
-      config.encryptedApiKey,
+      config.encryptedApiKey
     )
       .then((value) => {
         this.releaseCache.set(cacheKey, { expiresAt: Date.now() + this.options.releaseListTtlMs, value });
@@ -101,7 +122,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     tmdbId: number,
     baseUrl: string,
     webBaseUrl: string,
-    encryptedApiKey: string,
+    encryptedApiKey: string
   ): Promise<MovieReleaseListResponse> {
     const key: MovieResourceCheckKey = { ownerId, tmdbId, provider: 'mteam' };
     const attemptedAt = this.now();
@@ -121,17 +142,23 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       });
       const completion = this.toSuccessfulCompletion(lookup);
       await this.checks.recordAttempt(key, attemptedAt, completion);
-      if (currentAiTrace()) currentAiTrace()?.event('resources.mteam.lookup.completed', { tmdbId, outcome: completion.availability, durationMs: Date.now() - startedAt });
-      else this.logger.info(
-        {
-          ownerId,
+      if (currentAiTrace())
+        currentAiTrace()?.event('resources.mteam.lookup.completed', {
           tmdbId,
-          provider: 'mteam',
-          availability: completion.availability,
+          outcome: completion.availability,
           durationMs: Date.now() - startedAt,
-        },
-        'Live M-Team release query completed',
-      );
+        });
+      else
+        this.logger.info(
+          {
+            ownerId,
+            tmdbId,
+            provider: 'mteam',
+            availability: completion.availability,
+            durationMs: Date.now() - startedAt,
+          },
+          'Live M-Team release query completed'
+        );
       return {
         provider: 'mteam',
         availability: completion.availability,
@@ -145,18 +172,26 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       if (failure.lastErrorCode === 'authentication') {
         await this.configs.recordFailure(ownerId, 'mteam', attemptedAt, 'authentication');
       }
-      if (currentAiTrace()) currentAiTrace()?.fail(error, { stage: 'resources.mteam.lookup', tmdbId, provider: 'mteam', outcome: 'failure', durationMs: Date.now() - startedAt });
-      else this.logger.error(
-        {
-          err: error,
-          ownerId,
+      if (currentAiTrace())
+        currentAiTrace()?.fail(error, {
+          stage: 'resources.mteam.lookup',
           tmdbId,
           provider: 'mteam',
-          errorCode: failure.lastErrorCode,
+          outcome: 'failure',
           durationMs: Date.now() - startedAt,
-        },
-        'Live M-Team release query failed',
-      );
+        });
+      else
+        this.logger.error(
+          {
+            err: error,
+            ownerId,
+            tmdbId,
+            provider: 'mteam',
+            errorCode: failure.lastErrorCode,
+            durationMs: Date.now() - startedAt,
+          },
+          'Live M-Team release query failed'
+        );
       throw publicMTeamAppError(failure.lastErrorCode, error);
     }
   }
@@ -177,7 +212,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       new Date(attemptedAt.getTime() - this.options.retryDelayMs),
       identityFingerprint,
       config.verifiedAt,
-      force,
+      force
     );
     if (!acquired) return false;
     this.queue.set(key, { ownerId, tmdbId, attemptedAt });
@@ -206,7 +241,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       new Date(attemptedAt.getTime() - this.options.retryDelayMs),
       identityFingerprint,
       config.verifiedAt,
-      force,
+      force
     );
     if (!acquired) return { started: false };
 
@@ -238,7 +273,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
           availability: result.availability,
           durationMs: Date.now() - startedAt,
         },
-        'Movie resource check completed',
+        'Movie resource check completed'
       );
       return result;
     } catch (error) {
@@ -250,7 +285,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
         } catch (recordError) {
           this.logger.error(
             { err: recordError, ownerId: key.ownerId, provider: 'mteam' },
-            'Could not disable automatic checks after authentication failure',
+            'Could not disable automatic checks after authentication failure'
           );
         }
       }
@@ -263,7 +298,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
           errorCode: result.lastErrorCode,
           durationMs: Date.now() - startedAt,
         },
-        'Movie resource check failed',
+        'Movie resource check failed'
       );
       return result;
     }
@@ -296,7 +331,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
         } catch (error) {
           this.logger.error(
             { err: error, ownerId: entry[1].ownerId, tmdbId: entry[1].tmdbId, provider: 'mteam' },
-            'Movie resource check worker failed',
+            'Movie resource check worker failed'
           );
         }
       }
@@ -310,7 +345,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     ownerId: string,
     baseUrl: string,
     apiKey: string,
-    tmdbId: number,
+    tmdbId: number
   ): Promise<Extract<MovieResourceCheckCompletion, { lastAttemptStatus: 'success' }>> {
     return this.toSuccessfulCompletion(await this.lookupReleases(ownerId, baseUrl, apiKey, tmdbId));
   }
@@ -319,7 +354,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     ownerId: string,
     baseUrl: string,
     apiKey: string,
-    tmdbId: number,
+    tmdbId: number
   ): Promise<{
     availability: 'available' | 'unavailable' | 'unmatchable';
     checkedAt: Date;
@@ -328,27 +363,31 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }> {
     let identity = (await this.movies.readMovieIdentity?.(tmdbId, this.locale)) ?? null;
     if (!identity?.imdbId) {
-      const detail = await aiStep('resources.movie.identity.refresh', () => {
-        return this.tmdb.fetchDetails(
-          tmdbId,
-          this.locale,
-          userExternalRequestContext(ownerId, 'background_check'),
-        );
-      }, { provider: 'tmdb', tmdbId });
+      const detail = await aiStep(
+        'resources.movie.identity.refresh',
+        () => {
+          return this.tmdb.fetchDetails(tmdbId, this.locale, userExternalRequestContext(ownerId, 'background_check'));
+        },
+        { provider: 'tmdb', tmdbId }
+      );
       await this.movies.writeMovieDetail(detail, this.now(), this.locale);
       identity = { title: detail.title, ...(detail.imdbId ? { imdbId: detail.imdbId } : {}) };
     }
 
     if (identity.imdbId) {
       const imdbId = normalizeImdbId(identity.imdbId);
-      const releases = await aiStep('resources.mteam.search', () => {
-        return this.mteam.searchMovies(
-          baseUrl,
-          apiKey,
-          { imdbId },
-          userExternalRequestContext(ownerId, 'background_check'),
-        );
-      }, { provider: 'mteam', tmdbId, attempt: 1 });
+      const releases = await aiStep(
+        'resources.mteam.search',
+        () => {
+          return this.mteam.searchMovies(
+            baseUrl,
+            apiKey,
+            { imdbId },
+            userExternalRequestContext(ownerId, 'background_check')
+          );
+        },
+        { provider: 'mteam', tmdbId, attempt: 1 }
+      );
       const exact = releases.filter((release) => release.imdbId === imdbId);
       const checkedAt = this.now();
       return {
@@ -360,14 +399,18 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
 
     // A title query is only candidate discovery. Phase one cannot promote a
     // title-only candidate to a reliable match or an available resource.
-    await aiStep('resources.mteam.search.title', () => {
-      return this.mteam.searchMovies(
-        baseUrl,
-        apiKey,
-        { title: identity.title },
-        userExternalRequestContext(ownerId, 'background_check'),
-      );
-    }, { provider: 'mteam', tmdbId, attempt: 1 });
+    await aiStep(
+      'resources.mteam.search.title',
+      () => {
+        return this.mteam.searchMovies(
+          baseUrl,
+          apiKey,
+          { title: identity.title },
+          userExternalRequestContext(ownerId, 'background_check')
+        );
+      },
+      { provider: 'mteam', tmdbId, attempt: 1 }
+    );
     const checkedAt = this.now();
     return {
       availability: 'unmatchable',
@@ -378,7 +421,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }
 
   private toSuccessfulCompletion(
-    lookup: Awaited<ReturnType<MovieResourceCheckService['lookupReleases']>>,
+    lookup: Awaited<ReturnType<MovieResourceCheckService['lookupReleases']>>
   ): Extract<MovieResourceCheckCompletion, { lastAttemptStatus: 'success' }> {
     if (lookup.availability === 'unmatchable') {
       return {
@@ -394,8 +437,8 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       matchedBy: 'imdb',
       checkedAt: lookup.checkedAt,
       expiresAt: new Date(
-        lookup.checkedAt.getTime() +
-          (lookup.availability === 'available' ? this.options.availableTtlMs : this.options.unavailableTtlMs),
+        lookup.checkedAt.getTime()
+        + (lookup.availability === 'available' ? this.options.availableTtlMs : this.options.unavailableTtlMs)
       ),
     };
   }

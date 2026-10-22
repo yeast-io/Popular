@@ -1,7 +1,19 @@
-import type { TrendingSyncResult, TrendingSyncTrigger, TrendingSyncLogger, SyncContext } from './trending-sync.types.js';
+import type {
+  TrendingSyncResult,
+  TrendingSyncTrigger,
+  TrendingSyncLogger,
+  SyncContext,
+} from './trending-sync.types.js';
 import { randomUUID } from 'node:crypto';
 import type { Locale } from '@movie-hub/contract';
-import type { MovieRecord, SyncLock, TrendingPageRecord, TrendingProvider, TrendingSnapshotRecord, TrendingStore } from './movie.types.js';
+import type {
+  MovieRecord,
+  SyncLock,
+  TrendingPageRecord,
+  TrendingProvider,
+  TrendingSnapshotRecord,
+  TrendingStore,
+} from './movie.types.js';
 import { systemExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class TrendingSyncService {
@@ -17,7 +29,7 @@ export class TrendingSyncService {
   syncConfiguredPages(
     pageCount: number,
     concurrency: number,
-    trigger: TrendingSyncTrigger,
+    trigger: TrendingSyncTrigger
   ): Promise<TrendingSyncResult> {
     const locale = this.defaultLocale;
     const context: SyncContext = { runId: randomUUID(), trigger, scope: 'configured-pages' };
@@ -33,7 +45,7 @@ export class TrendingSyncService {
             generation: snapshot.generation,
             pages: snapshot.pages.length,
           },
-          'TMDB trending snapshot published',
+          'TMDB trending snapshot published'
         );
         return {
           status: 'completed',
@@ -48,7 +60,7 @@ export class TrendingSyncService {
     page: number,
     trigger: TrendingSyncTrigger,
     locale: Locale,
-    generation?: string,
+    generation?: string
   ): Promise<TrendingSyncResult> {
     const context: SyncContext = { runId: randomUUID(), trigger, scope: 'page' };
     return this.runLogged(context, locale, { page }, () => {
@@ -70,8 +82,8 @@ export class TrendingSyncService {
     const fields = { operation: 'tmdb.trending.fetch', ...context, language: locale, page };
     this.logger.info(fields, 'TMDB trending page fetch started');
     try {
-      const trigger =
-        context.trigger === 'scheduler'
+      const trigger
+        = context.trigger === 'scheduler'
           ? 'scheduled_sync'
           : context.trigger === 'request'
             ? 'api_request'
@@ -79,13 +91,13 @@ export class TrendingSyncService {
       const result = await this.provider.fetchPage(page, locale, systemExternalRequestContext(trigger));
       this.logger.info(
         { ...fields, movies: result.movies.length, durationMs: Date.now() - startedAt },
-        'TMDB trending page fetched',
+        'TMDB trending page fetched'
       );
       return result;
     } catch (error) {
       this.logger.info(
         { ...fields, durationMs: Date.now() - startedAt },
-        'TMDB trending page fetch failed; sync failure follows',
+        'TMDB trending page fetch failed; sync failure follows'
       );
       throw error;
     }
@@ -95,7 +107,7 @@ export class TrendingSyncService {
     pageCount: number,
     concurrency: number,
     locale: Locale,
-    context: SyncContext,
+    context: SyncContext
   ): Promise<TrendingSnapshotRecord> {
     const sourceResults: Array<Awaited<ReturnType<TrendingProvider['fetchPage']>>> = [];
     const requestedPages = Array.from({ length: pageCount }, (_, index) => index + 1);
@@ -104,8 +116,8 @@ export class TrendingSyncService {
         ...(await Promise.all(
           requestedPages.slice(offset, offset + concurrency).map((page) => {
             return this.fetchPage(page, locale, context);
-          }),
-        )),
+          })
+        ))
       );
     }
     const first = sourceResults[0];
@@ -145,7 +157,7 @@ export class TrendingSyncService {
     page: number,
     locale: Locale,
     generation: string,
-    context: SyncContext,
+    context: SyncContext
   ): Promise<number> {
     const snapshot = await this.store.readSnapshot(locale, generation);
     if (!snapshot) throw new Error('Trending snapshot generation is not available');
@@ -153,7 +165,7 @@ export class TrendingSyncService {
     const seen = new Set(
       snapshot.pages.flatMap(({ movies }) => {
         return movies.map(({ tmdbId }) => tmdbId);
-      }),
+      })
     );
     const movies: MovieRecord[] = [];
     const previous = snapshot.pages.at(-1)!;
@@ -179,7 +191,7 @@ export class TrendingSyncService {
       locale,
       generation,
       sourcePage,
-      snapshot.pageSize,
+      snapshot.pageSize
     );
     return movies.length;
   }
@@ -187,7 +199,7 @@ export class TrendingSyncService {
   private async withLock(
     locale: Locale,
     suffix: string,
-    operation: () => Promise<TrendingSyncResult>,
+    operation: () => Promise<TrendingSyncResult>
   ): Promise<TrendingSyncResult> {
     const key = `lock:sync:trending:movie:week:${locale}:${suffix}`;
     const owner = await this.lock.acquire(key, this.lockTtlSeconds);
@@ -203,7 +215,7 @@ export class TrendingSyncService {
     context: SyncContext,
     locale: Locale,
     details: Record<string, unknown>,
-    operation: () => Promise<TrendingSyncResult>,
+    operation: () => Promise<TrendingSyncResult>
   ): Promise<TrendingSyncResult> {
     const startedAt = Date.now();
     const fields = { operation: 'tmdb.trending.sync', ...context, language: locale, ...details };

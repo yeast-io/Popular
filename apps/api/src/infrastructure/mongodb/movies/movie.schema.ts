@@ -16,7 +16,7 @@ const movieSchema = new Schema(
     imdbId: { type: String },
     runtimeMinutes: { type: Number, min: 0 },
   },
-  { timestamps: true, collection: 'movies' },
+  { timestamps: true, collection: 'movies' }
 );
 
 movieSchema.index({ tmdbId: 1 }, { unique: true });

@@ -22,7 +22,7 @@ test('movie inference preserves provenance and never becomes an explicit stateme
       { changes: [{ ...change, section: 'explicit' }] },
       change.evidenceRefs,
       'manual',
-      'job2',
+      'job2'
     );
   });
 });
@@ -34,7 +34,7 @@ test('unknown sources, cross-entry targets and protected corrections are rejecte
       { changes: [{ ...change, evidenceRefs: ['another-user'] }] },
       change.evidenceRefs,
       'manual',
-      'job2',
+      'job2'
     );
   });
   assert.throws(() => {
@@ -43,7 +43,7 @@ test('unknown sources, cross-entry targets and protected corrections are rejecte
       { changes: [{ ...change, operation: 'replace', entryId: 'unknown' }] },
       change.evidenceRefs,
       'manual',
-      'job2',
+      'job2'
     );
   });
   profile.entries[0]!.protected = true;
@@ -70,7 +70,7 @@ test('regeneration removes unsupported inferences while preserving explicit entr
   const next = applyProposal(profile, { changes: [] }, ['movie:2:disliked'], 'manual', 'job2');
   assert.deepEqual(
     next.entries.map((entry) => entry.id),
-    ['manual'],
+    ['manual']
   );
   assert.equal(next.revisions.at(-1)?.entries.length, 2);
 });

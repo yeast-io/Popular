@@ -10,6 +10,7 @@ export class NotificationWorker {
   private timer?: ReturnType<typeof setInterval>;
   private running: Promise<void> | undefined;
   private stopped = false;
+
   constructor(
     private readonly service: NotificationService,
     private readonly downloads: Pick<MovieDownloadService, 'inspect'>,
@@ -23,6 +24,7 @@ export class NotificationWorker {
     private readonly poster: (path: string) => Promise<Buffer | undefined> = loadPoster,
     private readonly scanTraceEnabled = false
   ) {}
+
   start() {
     this.stopped = false;
     this.timer = setInterval(() => {
@@ -31,11 +33,13 @@ export class NotificationWorker {
     this.timer.unref();
     void this.tick();
   }
+
   async stop() {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     await this.running;
   }
+
   async tick(): Promise<void> {
     if (this.running || this.stopped) return this.running;
     const started = Date.now();
@@ -51,6 +55,7 @@ export class NotificationWorker {
       this.running = undefined;
     }
   }
+
   private async run() {
     const store = this.service.store;
     for (let i = 0; i < 20 && !this.stopped; i++) {
@@ -77,6 +82,7 @@ export class NotificationWorker {
       await this.process(claim);
     }
   }
+
   private async active(claim: ClaimedDownload) {
     const preferences = await this.service.store.preferences(claim.record.ownerId);
     if (this.stopped) return false;
@@ -86,6 +92,7 @@ export class NotificationWorker {
     }
     return this.service.store.renew(claim, this.now());
   }
+
   private async process(claim: ClaimedDownload) {
     const store = this.service.store;
     let error: string | undefined;
@@ -122,6 +129,7 @@ export class NotificationWorker {
       if (error) this.report(error);
     }
   }
+
   private async payload(claim: ClaimedDownload): Promise<DownloadNotification> {
     return buildDownloadNotification(
       claim.record,
@@ -130,7 +138,7 @@ export class NotificationWorker {
       this.movies,
       this.locale,
       this.webOrigin,
-      this.poster,
+      this.poster
     );
   }
 }
@@ -142,7 +150,7 @@ export async function buildDownloadNotification(
   movies: Pick<MovieCatalogStore, 'readMovies'>,
   locale: Locale,
   webOrigin: string,
-  posterLoader: (path: string) => Promise<Buffer | undefined> = loadPoster,
+  posterLoader: (path: string) => Promise<Buffer | undefined> = loadPoster
 ): Promise<DownloadNotification> {
   let movie;
   try {

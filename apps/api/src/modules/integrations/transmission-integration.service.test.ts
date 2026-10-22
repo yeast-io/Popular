@@ -4,8 +4,16 @@ import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { SecretCrypto } from './secret-crypto.js';
-import { TransmissionIntegrationService, normalizeTransmissionBaseUrl, decryptCredential } from './transmission-integration.service.js';
-import type { TransmissionConfigRecord, TransmissionConfigStore, TransmissionCredential } from './transmission.types.js';
+import {
+  TransmissionIntegrationService,
+  normalizeTransmissionBaseUrl,
+  decryptCredential,
+} from './transmission-integration.service.js';
+import type {
+  TransmissionConfigRecord,
+  TransmissionConfigStore,
+  TransmissionCredential,
+} from './transmission.types.js';
 import { IntegrationValidationError } from './integration.service.js';
 
 function fixture() {
@@ -47,7 +55,7 @@ function fixture() {
         return { version: '4.0.6' };
       },
     },
-    secrets,
+    secrets
   );
   return {
     records,
@@ -186,12 +194,15 @@ test('routes enforce sessions, validate payloads and serialize only public confi
 
 test('Transmission returns a password mask and only retains it for the original address and username', async () => {
   const f = fixture();
-  const saved = await f.service.save(
-    'owner',
-    { baseUrl: 'http://nas:9091', username: 'user', password: 'actual-password' }
+  const saved = await f.service.save('owner', {
+    baseUrl: 'http://nas:9091',
+    username: 'user',
+    password: 'actual-password',
+  }
   );
   assert.equal(saved.passwordMasked, maskIntegrationSecret('actual-password'));
-  const read = await f.service.get('owner'); assert.equal(read.passwordMasked, saved.passwordMasked);
+  const read = await f.service.get('owner');
+  assert.equal(read.passwordMasked, saved.passwordMasked);
   assert.equal(JSON.stringify(read).includes('actual-password'), false);
   await f.service.save('owner', { baseUrl: 'http://nas:9091', username: 'user', password: saved.passwordMasked });
   assert.equal(f.calls.at(-1)!.credential.password, 'actual-password');

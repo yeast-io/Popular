@@ -1,10 +1,9 @@
+import { registerRemoteClientRoutes } from './modules/remote-clients/remote-client.routes.js';
 import { registerIntegrationPreferencesRoutes } from './modules/integrations/integration-preferences.routes.js';
 import { registerResourceSearchRoutes } from './modules/resource-search/resource-search.routes.js';
 import { registerResourceSiteRoutes } from './modules/resource-sites/resource-site.routes.js';
 import type { BuildAppOptions } from './app.types.js';
-import { DocsService } from './modules/docs/docs.service.js';
-import { registerDocsRoutes } from './modules/docs/docs.routes.js';
-import { aiAssistantPageEnabled, docsPageEnabled } from './config/env.js';
+import { aiAssistantPageEnabled } from './config/env.js';
 import { registerTelegramRoutes } from './modules/telegram/telegram.routes.js';
 import { registerPreferenceRoutes } from './modules/preferences/preference.routes.js';
 
@@ -44,8 +43,11 @@ import { registerPublicConfigRoutes } from './modules/config/public-config.route
 import { registerConversationRoutes } from './modules/conversations/conversation.routes.js';
 
 export async function buildApp({
-  resourceSiteService, resourceSearchService, integrationPreferencesService, movieSiteResourcesService,
-  docsService,
+  remoteClientService,
+  resourceSiteService,
+  resourceSearchService,
+  integrationPreferencesService,
+  movieSiteResourcesService,
   telegramService,
   notificationTestService,
   notificationService,
@@ -84,24 +86,28 @@ export async function buildApp({
 
   await app.register(
     async (api) => {
-      if (integrationPreferencesService && authService) registerIntegrationPreferencesRoutes(
-        api, integrationPreferencesService, authService, config, loggers.error, movieSiteResourcesService,
-        movieResourceSyncService
-      );
-      if (resourceSearchService && authService) registerResourceSearchRoutes(
-        api, resourceSearchService, authService, config, loggers.error
-      );
-      if (resourceSiteService && authService) registerResourceSiteRoutes(
-        api, resourceSiteService, authService, config, loggers.error
-      );
+      if (remoteClientService && authService)
+        registerRemoteClientRoutes(api, remoteClientService, authService, config, loggers.error);
+      if (integrationPreferencesService && authService)
+        registerIntegrationPreferencesRoutes(
+          api,
+          integrationPreferencesService,
+          authService,
+          config,
+          loggers.error,
+          movieSiteResourcesService,
+          movieResourceSyncService
+        );
+      if (resourceSearchService && authService)
+        registerResourceSearchRoutes(api, resourceSearchService, authService, config, loggers.error);
+      if (resourceSiteService && authService)
+        registerResourceSiteRoutes(api, resourceSiteService, authService, config, loggers.error);
       if (telegramService) registerTelegramRoutes(api, telegramService, config);
       if (notificationTestService) registerNotificationTestRoutes(api, notificationTestService, config);
       if (notificationService) registerNotificationRoutes(api, notificationService, config);
       if (whatsappService) registerWhatsAppRoutes(api, whatsappService, config);
       if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config);
       registerPublicConfigRoutes(api, config);
-      if (docsPageEnabled(config) && authService)
-        registerDocsRoutes(api, docsService ?? new DocsService(), authService, config, loggers.error);
       registerHealthRoutes(api, healthDependencies);
       if (authService) registerAuthRoutes(api, authService, config);
       if (preferenceService && authService) registerPreferenceRoutes(api, preferenceService, authService, config);
@@ -109,7 +115,11 @@ export async function buildApp({
       if (movieService) registerMovieRoutes(api, movieService, authService, config);
       if (movieStatusService && authService)
         registerMovieStatusRoutes(
-          api, movieStatusService, authService, config, movieResourceSyncService,
+          api,
+          movieStatusService,
+          authService,
+          config,
+          movieResourceSyncService,
           Boolean(movieSiteResourcesService)
         );
       if (transmissionIntegrationService) registerTransmissionRoutes(api, transmissionIntegrationService, config);
@@ -123,10 +133,10 @@ export async function buildApp({
           config,
           conversationTurnService,
           authService,
-          loggers.error,
+          loggers.error
         );
     },
-    { prefix: '/api/v1' },
+    { prefix: '/api/v1' }
   );
 
   return app;

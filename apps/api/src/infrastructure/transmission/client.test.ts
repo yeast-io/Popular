@@ -20,7 +20,7 @@ test('uses the fixed RPC path, Basic auth and the 409 session handshake', async 
   assert.equal(calls[0]?.url, 'http://nas:9091/transmission/rpc');
   assert.equal(
     calls[0]?.headers.get('authorization'),
-    `Basic ${Buffer.from('daniel:secret:with:colons').toString('base64')}`,
+    `Basic ${Buffer.from('daniel:secret:with:colons').toString('base64')}`
   );
   assert.equal(calls[0]?.headers.get('x-transmission-session-id'), null);
   assert.equal(calls[1]?.headers.get('x-transmission-session-id'), 'session-one');
@@ -109,7 +109,7 @@ test('maps network and timeout errors without echoing upstream secrets', async (
   }
 });
 
-test('adds base64 torrent content and accepts duplicate responses without requiring a label mutation', async () => {
+test('adds torrent URLs and accepts duplicate responses without requiring a label mutation', async () => {
   for (const modern of [false, true]) {
     for (const duplicate of [false, true]) {
       let count = 0;
@@ -126,7 +126,7 @@ test('adds base64 torrent content and accepts duplicate responses without requir
         const body = JSON.parse(String(init?.body));
         assert.equal(body.method, modern ? 'torrent_add' : 'torrent-add');
         assert.deepEqual(modern ? body.params : body.arguments, {
-          metainfo: 'AQID',
+          filename: 'https://tracker.example/download.php?id=991&passkey=private-key',
           labels: ['movie-hub-one'],
           paused: false,
         }
@@ -140,12 +140,17 @@ test('adds base64 torrent content and accepts duplicate responses without requir
             : 'torrent-added';
         const args = { [key]: { [modern ? 'hash_string' : 'hashString']: 'ABC123', name: 'Movie', id: 1 } };
         return Response.json(
-          modern ? { jsonrpc: '2.0', id: 1, result: args } : { result: 'success', tag: 1, arguments: args },
+          modern ? { jsonrpc: '2.0', id: 1, result: args } : { result: 'success', tag: 1, arguments: args }
         );
       });
       assert.equal(
-        await client.addTorrent('http://nas:9091', credential, new Uint8Array([1, 2, 3]), 'movie-hub-one'),
-        'abc123',
+        await client.addTorrent(
+          'http://nas:9091',
+          credential,
+          'https://tracker.example/download.php?id=991&passkey=private-key',
+          'movie-hub-one'
+        ),
+        'abc123'
       );
       assert.equal(count, 2);
     }
@@ -177,7 +182,7 @@ test('queries hashes and converts legacy and modern torrent fields into progress
         torrents: [{ ...torrent, name: 'Movie', status: 4, error: 0, eta: -1, labels: ['movie-hub-one'] }],
       };
       return Response.json(
-        modern ? { jsonrpc: '2.0', id: 1, result: args } : { result: 'success', tag: 1, arguments: args },
+        modern ? { jsonrpc: '2.0', id: 1, result: args } : { result: 'success', tag: 1, arguments: args }
       );
     });
     assert.deepEqual(await client.listTorrents('http://nas:9091', credential, ['abc123']), [
@@ -218,8 +223,8 @@ test('finds recovery labels and rejects incomplete add and torrent-list response
     return Response.json({ result: 'success', tag: 1, arguments: { torrents: [{}] } });
   });
   await assert.rejects(
-    invalid.addTorrent('http://nas', credential, new Uint8Array(), 'tag'),
-    IntegrationValidationError,
+    invalid.addTorrent('http://nas', credential, 'https://tracker.example/download.php?id=991', 'tag'),
+    IntegrationValidationError
   );
   await assert.rejects(invalid.listTorrents('http://nas', credential), IntegrationValidationError);
 });

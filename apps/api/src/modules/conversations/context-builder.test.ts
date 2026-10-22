@@ -25,7 +25,7 @@ test('context builder keeps the newest messages in chronological order within bu
       responseReserveTokens: 5,
       messageOverheadTokens: 1,
     },
-    counter,
+    counter
   );
 
   assert.deepEqual(result.messages, [
@@ -47,7 +47,7 @@ test('context builder rejects a newest message that cannot fit', () => {
         maxContextTokens: 5,
         responseReserveTokens: 0,
       },
-      counter,
+      counter
     );
   }, ContextBudgetExceededError
   );
@@ -63,11 +63,11 @@ test('context builder accounts for response reserve and safety margin', () => {
       safetyMarginTokens: 2,
       messageOverheadTokens: 1,
     },
-    counter,
+    counter
   );
   assert.deepEqual(
     result.messages.map(({ content }) => content),
-    ['s', '12'],
+    ['s', '12']
   );
   assert.equal(result.usedTokens, 5);
 });

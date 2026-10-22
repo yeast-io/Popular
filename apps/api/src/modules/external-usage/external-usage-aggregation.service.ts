@@ -37,7 +37,7 @@ export class ExternalUsageAggregationService {
         if (this.scanTraceEnabled)
           this.logger.info?.(
             { event: 'external_usage_scan_completed', since, durationMs: Date.now() - started },
-            'External usage aggregation completed',
+            'External usage aggregation completed'
           );
       })
       .catch((error) => {

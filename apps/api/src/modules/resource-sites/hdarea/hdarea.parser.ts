@@ -8,15 +8,25 @@ import { HDAREA_SELECTORS } from './hdarea.policy.js';
 export function authenticatedDocument(bytes: Uint8Array) {
   const $ = load(Buffer.from(bytes).toString('utf8'));
   if ($('form[action*="takelogin"], input[type="password"]').length) throw new ResourceSiteError('authentication');
-  if ($('#challenge-form, .cf-turnstile, iframe[src*="captcha"]').length || /just a moment|access denied|captcha|验证码/i.test($('title').text()))
+  if (
+    $('#challenge-form, .cf-turnstile, iframe[src*="captcha"]').length
+    || /just a moment|access denied|captcha|验证码/i.test($('title').text())
+  )
     throw new ResourceSiteError('blocked');
   if (!$(HDAREA_SELECTORS.authenticated).length) throw new ResourceSiteError('authentication');
   return $;
 }
-export function parseSearch(bytes: Uint8Array, page: number, baseUrl = 'https://resource.invalid/'): { releases: ResourceSiteRelease[]; nextPage?: number } {
+export function parseSearch(
+  bytes: Uint8Array,
+  page: number,
+  baseUrl = 'https://resource.invalid/'
+): { releases: ResourceSiteRelease[]; nextPage?: number } {
   const $ = authenticatedDocument(bytes);
   const rows = $(HDAREA_SELECTORS.rows);
-  if (!rows.length && !/没有种子|没有找到|沒有找到|没有符合|沒有符合|no torrents|no results|nothing found/i.test($.text()))
+  if (
+    !rows.length
+    && !/没有种子|没有找到|沒有找到|没有符合|沒有符合|no torrents|no results|nothing found/i.test($.text())
+  )
     throw new ResourceSiteError('invalidResponse');
   const releases: ResourceSiteRelease[] = [];
   for (const row of rows.toArray()) {
@@ -35,7 +45,9 @@ export function parseSearch(bytes: Uint8Array, page: number, baseUrl = 'https://
     const publishedAt = parsePublishedAt(timeCell.find('span[title]').attr('title') ?? timeCell.text());
     const titleCell = cells.filter((_index, cell) => $(cell).find('.torrentname').length > 0).first();
     const tags = releaseTags(title, ...tagEvidence($, titleCell));
-    releases.push({ id, title,
+    releases.push({
+      id,
+      title,
       ...(tags.length ? { tags } : {}),
       ...releaseTitleMetadata(title),
       ...(publishedAt ? { publishedAt } : {}),
@@ -44,16 +56,22 @@ export function parseSearch(bytes: Uint8Array, page: number, baseUrl = 'https://
       ...(imdbId ? { imdbId } : {}),
     });
   }
-  const nextPage = $('a[href*="torrents.php"][href*="page="]').toArray().some((a) => {
-    try {
-      const url = new URL($(a).attr('href')!, baseUrl);
-      return url.origin === new URL(baseUrl).origin && url.pathname === '/torrents.php' && url.searchParams.get(
-        'page'
-      ) === String(
-        page
-      );
-    } catch { return false; }
-  }) ? page + 1 : undefined;
+  const nextPage = $('a[href*="torrents.php"][href*="page="]')
+    .toArray()
+    .some((a) => {
+      try {
+        const url = new URL($(a).attr('href')!, baseUrl);
+        return (
+          url.origin === new URL(baseUrl).origin
+          && url.pathname === '/torrents.php'
+          && url.searchParams.get('page') === String(page)
+        );
+      } catch {
+        return false;
+      }
+    })
+    ? page + 1
+    : undefined;
   return { releases: [...new Map(releases.map((r) => [r.id, r])).values()], ...(nextPage ? { nextPage } : {}) };
 }
 export function parseDetail(bytes: Uint8Array, id: string): { release: ResourceSiteRelease } {
@@ -63,16 +81,32 @@ export function parseDetail(bytes: Uint8Array, id: string): { release: ResourceS
   if (!title) throw new ResourceSiteError('invalidResponse');
   const imdbId = $('a[href*="imdb.com/title/tt"]').first().attr('href')?.match(/tt\d+/)?.[0];
   const metadataRows = $('tr').filter((_index, row) => {
-    return /^(?:副标题|副標題|标签|標籤|字幕|Subtitle|Tags)[:：]?$/i.test($(row).children('td,th').first().text().trim());
+    return /^(?:副标题|副標題|标签|標籤|字幕|Subtitle|Tags)[:：]?$/i.test(
+      $(row).children('td,th').first().text().trim()
+    );
   });
-  const tags = releaseTags(title, ...tagEvidence($, heading), ...tagEvidence($, $('#subtitle, .subtitle')),
-    ...metadataRows.toArray().flatMap((row) => tagEvidence($, $(row).children('td,th').slice(1))));
-  return { release: { id, title, ...releaseTitleMetadata(title), ...(tags.length ? { tags } : {}), ...(imdbId ? { imdbId } : {}) } };
+  const tags = releaseTags(
+    title,
+    ...tagEvidence($, heading),
+    ...tagEvidence($, $('#subtitle, .subtitle')),
+    ...metadataRows.toArray().flatMap((row) => tagEvidence($, $(row).children('td,th').slice(1)))
+  );
+  return {
+    release: {
+      id,
+      title,
+      ...releaseTitleMetadata(title),
+      ...(tags.length ? { tags } : {}),
+      ...(imdbId ? { imdbId } : {}),
+    },
+  };
 }
 function parseSize(text: string): number | undefined {
   const match = text.replace(/,/g, '').match(/([\d.]+)\s*(B|[KMGT]i?B)/i);
   if (!match) return undefined;
-  const value = Number(match[1]) * 1024 ** ({ b: 0, kb: 1, kib: 1, mb: 2, mib: 2, gb: 3, gib: 3, tb: 4, tib: 4 }[match[2]!.toLowerCase()] ?? 0);
+  const value
+    = Number(match[1])
+      * 1024 ** ({ b: 0, kb: 1, kib: 1, mb: 2, mib: 2, gb: 3, gib: 3, tb: 4, tib: 4 }[match[2]!.toLowerCase()] ?? 0);
   return Number.isFinite(value) && value >= 0 ? Math.round(value) : undefined;
 }
 
@@ -82,7 +116,11 @@ function parsePublishedAt(text: string): string | undefined {
   const value = `${match[1]}T${match[2]}+08:00`;
   const date = new Date(value);
   // Reject impossible dates instead of silently normalizing them, and never substitute the fetch time.
-  if (!Number.isFinite(date.getTime()) || new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 19) !== `${match[1]}T${match[2]}`) return undefined;
+  if (
+    !Number.isFinite(date.getTime())
+    || new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 19) !== `${match[1]}T${match[2]}`
+  )
+    return undefined;
   return `${match[1]} ${match[2]}`;
 }
 

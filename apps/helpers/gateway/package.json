@@ -1,0 +1,38 @@
+{
+  "name": "@movie-hub/helper-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test 'src/**/*.test.ts' 'tools/*.test.mjs'",
+    "setup:env": "node tools/setup-env.mjs",
+    "simulate": "node --import tsx tools/simulate-agent.ts"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.41",
+    "@fastify/websocket": "^11.2.0",
+    "@movie-hub/contract": "workspace:*",
+    "fastify": "^5.6.2",
+    "ioredis": "^5.8.1",
+    "jose": "^6.1.0",
+    "pino": "^10.1.0",
+    "ws": "^8.22.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

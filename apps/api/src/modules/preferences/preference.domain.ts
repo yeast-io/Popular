@@ -22,11 +22,11 @@ export function profileText(profile: TasteProfile): string {
         profile.entries
           .filter((entry) => entry.section === section)
           .map(
-          (entry) => `- [${entry.id}] ${entry.content}`
-        )
+            (entry) => `- [${entry.id}] ${entry.content}`
+          )
           .join(
-          '\n'
-        ) || '(none)'
+            '\n'
+          ) || '(none)'
       }`;
     })
     .join('\n\n');
@@ -41,7 +41,7 @@ export function applyProposal(
   proposal: PreferenceProposal,
   sources: string[],
   kind: 'manual' | 'chat',
-  source: string,
+  source: string
 ): TasteProfile {
   const allowed = new Set(sources);
   const entries: TasteEntry[] = structuredClone(profile.entries);
@@ -67,8 +67,8 @@ export function applyProposal(
     if (change.operation !== 'remove' && !change.content.trim()) throw new Error('Empty preference');
     // User removals cannot be restored by regenerating from the same evidence. New statements may express a new choice.
     if (
-      kind === 'manual' &&
-      change.evidenceRefs.some((ref) => {
+      kind === 'manual'
+      && change.evidenceRefs.some((ref) => {
         return profile.withdrawn.includes(ref);
       })
     )
@@ -92,8 +92,8 @@ export function applyProposal(
         entries.push(entry);
     }
   }
-  const supported =
-    kind === 'manual'
+  const supported
+    = kind === 'manual'
       ? entries.filter((entry) => {
           return entry.section !== 'inferred' || entry.protected || entry.evidenceRefs.every((ref) => allowed.has(ref));
         })
@@ -105,7 +105,7 @@ export function applyProposal(
     updatedAt: now,
     version: profile.version + 1,
     revisions: [...profile.revisions, { version: profile.version, at: now, source, entries: profile.entries }].slice(
-      -30,
+      -30
     ),
   };
 }

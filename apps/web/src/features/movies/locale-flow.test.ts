@@ -50,9 +50,9 @@ describe('localized movie page flows', () => {
                 fetchedAt,
                 generation: trendingGeneration,
                 locale: english ? 'en-US' : 'zh-CN',
-              },
+              }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
@@ -94,7 +94,7 @@ describe('localized movie page flows', () => {
           locale: english ? 'en-US' : 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
@@ -128,7 +128,7 @@ describe('localized movie page flows', () => {
           if (url.includes('locale=en-US')) resolveEnglish = resolve;
           else resolveChinese = resolve;
         });
-      }),
+      })
     );
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
@@ -148,7 +148,7 @@ describe('localized movie page flows', () => {
         generation: trendingGeneration,
         locale: 'en-US',
       }
-      ),
+      )
     );
     await flushPromises();
     expect(wrapper.text()).toContain('English trending');
@@ -164,7 +164,7 @@ describe('localized movie page flows', () => {
         generation: trendingGeneration,
         locale: 'zh-CN',
       }
-      ),
+      )
     );
     await flushPromises();
     expect(wrapper.text()).toContain('English trending');
@@ -198,7 +198,7 @@ describe('localized movie page flows', () => {
               fetchedAt,
               generation: trendingGeneration,
               locale: 'zh-CN',
-            },
+            }
       );
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -262,9 +262,9 @@ describe('localized movie page flows', () => {
                 source: 'tmdb',
                 resultCompleteness: 'complete',
                 locale: 'zh-CN',
-              },
+              }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
@@ -309,7 +309,7 @@ describe('localized movie page flows', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: true } });
@@ -335,7 +335,7 @@ describe('localized movie page flows', () => {
         ['PUT', '{"preference":"liked"}'],
         ['PUT', '{"preference":"disliked"}'],
         ['DELETE', undefined],
-      ],
+      ]
     );
     wrapper.unmount();
   });
@@ -361,7 +361,7 @@ describe('localized movie page flows', () => {
           locale: english ? 'en-US' : 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieDetail, { props: { tmdbId: 42, authenticated: false } });
@@ -396,7 +396,7 @@ describe('localized movie page flows', () => {
           locale: english ? 'en-US' : 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MyMovies);

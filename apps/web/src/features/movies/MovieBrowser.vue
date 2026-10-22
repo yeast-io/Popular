@@ -30,11 +30,11 @@ let requestGeneration = 0;
 const searching = computed(() => query.value.trim().length > 0);
 const canLoadMore = computed(() => {
   return (
-    hasMore.value &&
-    !loading.value &&
-    !loadingMore.value &&
-    loadedLocale.value === locale.value &&
-    loadedQuery.value === query.value.trim()
+    hasMore.value
+    && !loading.value
+    && !loadingMore.value
+    && loadedLocale.value === locale.value
+    && loadedQuery.value === query.value.trim()
   );
 });
 const freshness = computed(() => {
@@ -77,7 +77,7 @@ watch(
     loadedQuery.value = '';
     debounceTimer = setTimeout(() => void loadFirstPage(generation), 300);
   },
-  { flush: 'sync' },
+  { flush: 'sync' }
 );
 
 async function loadFirstPage(generation = ++requestGeneration) {
@@ -93,14 +93,14 @@ async function loadFirstPage(generation = ++requestGeneration) {
     if (term) {
       const result = await request<SearchMoviesResponse>(
         `${apiBaseUrl}/movies/search?query=${encodeURIComponent(term)}&page=1&locale=${requestedLocale}`,
-        { signal: controller.signal },
+        { signal: controller.signal }
       );
       if (generation !== requestGeneration || controller.signal.aborted) return;
       applySearch(result, false);
     } else {
       const result = await request<TrendingMoviesResponse>(
         `${apiBaseUrl}/movies/trending?page=1&locale=${requestedLocale}`,
-        { signal: controller.signal },
+        { signal: controller.signal }
       );
       if (generation !== requestGeneration || controller.signal.aborted) return;
       applyTrending(result, false);
@@ -127,7 +127,7 @@ async function loadMore() {
   try {
     if (term) {
       const result = await request<SearchMoviesResponse>(
-        `${apiBaseUrl}/movies/search?query=${encodeURIComponent(term)}&page=${currentPage + 1}&locale=${requestedLocale}`,
+        `${apiBaseUrl}/movies/search?query=${encodeURIComponent(term)}&page=${currentPage + 1}&locale=${requestedLocale}`
       );
       if (generation !== requestGeneration) return;
       applySearch(result, true);

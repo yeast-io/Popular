@@ -3,9 +3,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 export class SecretCrypto {
   private readonly key: Buffer;
 
-  constructor(
-    keyMaterial: string
-  ) {
+  constructor(keyMaterial: string) {
     this.key = createHash('sha256').update('movie-hub:integration-secrets:v1\0').update(keyMaterial).digest();
   }
 
@@ -30,7 +28,7 @@ export class SecretCrypto {
     decipher.setAAD(Buffer.from(context, 'utf8'));
     decipher.setAuthTag(Buffer.from(encodedTag, 'base64url'));
     return Buffer.concat([decipher.update(Buffer.from(encodedCiphertext, 'base64url')), decipher.final()]).toString(
-      'utf8',
+      'utf8'
     );
   }
 }

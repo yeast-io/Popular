@@ -2,8 +2,8 @@ import js from '@eslint/js';
 import ts from 'typescript-eslint';
 import vue from 'eslint-plugin-vue';
 import globals from 'globals';
+import stylistic from '@stylistic/eslint-plugin';
 import constructorLayout from './tools/eslint/constructor-layout.mjs';
-import callbackCallLayout from './tools/eslint/callback-call-layout.mjs';
 
 const schemaBoundaryRestrictions = [
   {
@@ -25,24 +25,52 @@ export default ts.config(
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      '**/src-tauri/target/**',
+      '**/src-tauri/gen/**',
       '**/coverage/**',
       '**/.cache/**',
       '**/.vite/**',
       '.agents/**',
       '.codex/**',
-      'shared/**',
     ],
   },
   {
     files: ['**/*.{js,mjs,cjs,ts,vue}'],
-    extends: [js.configs.recommended, ...ts.configs.recommended, ...vue.configs['flat/essential']],
+    extends: [
+      js.configs.recommended,
+      ...ts.configs.recommended,
+      ...vue.configs['flat/essential'],
+      stylistic.configs.customize({ indent: 2, quotes: 'single', semi: true, braceStyle: '1tbs', jsx: false }),
+    ],
     languageOptions: { globals: { ...globals.node, ...globals.browser }, parserOptions: { parser: ts.parser } },
     plugins: {
-      project: { rules: { 'constructor-layout': constructorLayout, 'callback-call-layout': callbackCallLayout } },
+      project: { rules: { 'constructor-layout': constructorLayout } },
     },
     rules: {
-      'project/constructor-layout': 'error',
-      'project/callback-call-layout': ['error', { maxLength: 120 }],
+      '@stylistic/padding-line-between-statements': [
+        'error',
+        { blankLine: 'always', prev: 'import', next: '*' },
+        { blankLine: 'any', prev: 'import', next: 'import' },
+      ],
+
+      '@stylistic/lines-between-class-members': [
+        'error',
+        {
+          enforce: [
+            { blankLine: 'always', prev: 'field', next: 'method' },
+            { blankLine: 'always', prev: 'method', next: 'method' },
+          ],
+        },
+      ],
+
+      '@stylistic/arrow-parens': ['error', 'always'],
+      '@stylistic/quotes': ['error', 'single', { avoidEscape: true, allowTemplateLiterals: 'always' }],
+      // Constructor layout forbids a trailing comma after its last parameter.
+      '@stylistic/comma-dangle': ['error', {
+        arrays: 'always-multiline', objects: 'always-multiline', imports: 'always-multiline',
+        exports: 'always-multiline', functions: 'never', generics: 'always-multiline', tuples: 'always-multiline',
+      }],
+      'project/constructor-layout': ['error', { maxLength: 120 }],
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_', ignoreRestSiblings: true },
@@ -85,8 +113,6 @@ export default ts.config(
     files: ['apps/api/src/modules/{assistant,preferences,recommendations}/agents/**/*.ts'],
     rules: {
       'curly': ['error', 'multi-line'],
-      'brace-style': ['error', '1tbs', { allowSingleLine: true }],
-      'block-spacing': ['error', 'always'],
       'no-restricted-imports': [
         'error',
         {
@@ -100,5 +126,5 @@ export default ts.config(
         },
       ],
     },
-  },
+  }
 );

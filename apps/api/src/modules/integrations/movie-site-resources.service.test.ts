@@ -18,10 +18,14 @@ function harness() {
   let releases: ResourceSiteRelease[] = [{ id: '42', title: 'Film', imdbId: 'tt0000603', seeders: 2 }];
   const key = (owner: string, tmdbId: number, site: string) => `${owner}:${tmdbId}:${site}`;
   const checks: MovieResourceCheckStore = {
-    async readForMovies(owner, ids) { return [...rows.values()].filter((row) => {
-      return row.ownerId === owner && ids.includes(row.tmdbId);
-    }); },
-    async readOne(input) { return rows.get(key(input.ownerId, input.tmdbId, input.provider)) ?? null; },
+    async readForMovies(owner, ids) {
+      return [...rows.values()].filter((row) => {
+        return row.ownerId === owner && ids.includes(row.tmdbId);
+      });
+    },
+    async readOne(input) {
+      return rows.get(key(input.ownerId, input.tmdbId, input.provider)) ?? null;
+    },
     async tryAcquire(input) {
       const id = key(input.ownerId, input.tmdbId, input.provider);
       const old = rows.get(id);
@@ -35,49 +39,136 @@ function harness() {
     },
     async recordAttempt(input, _at, result) {
       const id = key(input.ownerId, input.tmdbId, input.provider);
-      rows.set(id, { ...input, availability: 'unchecked', ...rows.get(id), ...result, checking: rows.get(id)?.checking ?? false });
+      rows.set(id, {
+        ...input,
+        availability: 'unchecked',
+        ...rows.get(id),
+        ...result,
+        checking: rows.get(id)?.checking ?? false,
+      });
     },
   };
-  const preferences = { async get(owner: string): Promise<IntegrationPreferences> {
-    return { defaults: { resource: 'mteam' }, selectedSites: selections.get(owner) ?? [], effectiveSites: selections.get(owner) ?? ['mteam', 'hdarea'], choices: [] };
-  } };
-  const service = new MovieSiteResourcesService(checks, {
-    async request() { throw new ResourceSiteError('notConfigured'); },
-    async checkNowDetailed(owner, tmdbId) {
-      mteamCalls.push(owner);
-      const result = { lastAttemptStatus: 'success' as const, availability: 'unavailable' as const, checkedAt: new Date(), expiresAt: new Date(Date.now() + 60_000), matchedBy: 'imdb' as const };
-      await checks.recordAttempt({ ownerId: owner, tmdbId, provider: 'mteam' }, new Date(), result);
-      return { started: true, result };
+  const preferences = {
+    async get(owner: string): Promise<IntegrationPreferences> {
+      return {
+        defaults: { resource: 'mteam' },
+        selectedSites: selections.get(owner) ?? [],
+        effectiveSites: selections.get(owner) ?? ['mteam', 'hdarea'],
+        choices: [],
+      };
     },
-    async listReleases() { return { provider: 'mteam', availability: 'available', queriedAt: new Date().toISOString(), cached: false, releases: [{ id: '42', title: 'M-Team Film', detailsUrl: 'https://kp.m-team.cc/detail/42', seeders: 10, tags: [] }] }; },
-  }, preferences, {
-    async search(owner, _site, input) {
-      calls.push({ owner, page: input.page ?? 1 });
-      await gate;
-      if (fail) throw new ResourceSiteError('timeout');
-      if (pageResults.has(input.page ?? 1)) return pageResults.get(input.page ?? 1)!;
-      return { releases, ...(nextPage ? { nextPage } : {}) };
+  };
+  const service = new MovieSiteResourcesService(
+    checks,
+    {
+      async request() {
+        throw new ResourceSiteError('notConfigured');
+      },
+      async checkNowDetailed(owner, tmdbId) {
+        mteamCalls.push(owner);
+        const result = {
+          lastAttemptStatus: 'success' as const,
+          availability: 'unavailable' as const,
+          checkedAt: new Date(),
+          expiresAt: new Date(Date.now() + 60_000),
+          matchedBy: 'imdb' as const,
+        };
+        await checks.recordAttempt({ ownerId: owner, tmdbId, provider: 'mteam' }, new Date(), result);
+        return { started: true, result };
+      },
+      async listReleases() {
+        return {
+          provider: 'mteam',
+          availability: 'available',
+          queriedAt: new Date().toISOString(),
+          cached: false,
+          releases: [
+            { id: '42', title: 'M-Team Film', detailsUrl: 'https://kp.m-team.cc/detail/42', seeders: 10, tags: [] },
+          ],
+        };
+      },
     },
-  }, {
-    registry: new Map([['hdarea', { id: 'hdarea', name: 'HDArea', baseUrl: 'https://hdarea.example/',
-      async verify() {}, async search() { return { releases: [] }; }, async detail(id) { return { id: String(id), title: '' }; },
-      detailsUrl(id: string) { return `https://hdarea.example/details.php?id=${id}`; },
-    }]]),
-    async configuration(_owner, site) { return { site, status: 'configured_valid', verifiedAt: '2026-10-20T00:00:00Z' }; },
-    async cacheVersion() { return version; },
-  }, {
-    async hasMovie() { return true; }, async readMovieIdentity() { return { title: 'Film', imdbId: 'tt0000603' }; }, async writeMovieDetail() {},
-  }, { async fetchDetails() { throw new Error('Unexpected movie refresh'); } }, 'en-US', { logger: { error() {} }, verbose: false }, 60_000);
-  return { service, checks, calls, mteamCalls, selections, pageResults, block() { let release!: () => void; gate = new Promise<void>((resolve) => {
-    release = resolve;
-  }); return release; }, setVersion: (value: string) => {
-    version = value;
-  }, setFailure: (value: boolean) => {
-    fail = value;
-  }, setResults: (value: ResourceSiteRelease[], next?: number) => {
-    releases = value;
-    nextPage = next;
-  } };
+    preferences,
+    {
+      async search(owner, _site, input) {
+        calls.push({ owner, page: input.page ?? 1 });
+        await gate;
+        if (fail) throw new ResourceSiteError('timeout');
+        if (pageResults.has(input.page ?? 1)) return pageResults.get(input.page ?? 1)!;
+        return { releases, ...(nextPage ? { nextPage } : {}) };
+      },
+    },
+    {
+      registry: new Map([
+        [
+          'hdarea',
+          {
+            id: 'hdarea',
+            name: 'HDArea',
+            baseUrl: 'https://hdarea.example/',
+            async verify() {},
+            async search() {
+              return { releases: [] };
+            },
+            async detail(id) {
+              return { id: String(id), title: '' };
+            },
+            detailsUrl(id: string) {
+              return `https://hdarea.example/details.php?id=${id}`;
+            },
+          },
+        ],
+      ]),
+      async configuration(_owner, site) {
+        return { site, status: 'configured_valid', verifiedAt: '2026-10-20T00:00:00Z' };
+      },
+      async cacheVersion() {
+        return version;
+      },
+    },
+    {
+      async hasMovie() {
+        return true;
+      },
+      async readMovieIdentity() {
+        return { title: 'Film', imdbId: 'tt0000603' };
+      },
+      async writeMovieDetail() {},
+    },
+    {
+      async fetchDetails() {
+        throw new Error('Unexpected movie refresh');
+      },
+    },
+    'en-US',
+    { logger: { error() {} }, verbose: false },
+    60_000
+  );
+  return {
+    service,
+    checks,
+    calls,
+    mteamCalls,
+    selections,
+    pageResults,
+    block() {
+      let release!: () => void;
+      gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return release;
+    },
+    setVersion: (value: string) => {
+      version = value;
+    },
+    setFailure: (value: boolean) => {
+      fail = value;
+    },
+    setResults: (value: ResourceSiteRelease[], next?: number) => {
+      releases = value;
+      nextPage = next;
+    },
+  };
 }
 test('release snapshots are separated by owner, site and credential version; source capability stays explicit', async () => {
   const f = harness();
@@ -88,7 +179,10 @@ test('release snapshots are separated by owner, site and credential version; sou
   await f.service.listReleases('bob', 603, 'hdarea');
   f.setVersion('v2');
   await f.service.listReleases('alice', 603, 'hdarea');
-  assert.deepEqual(f.calls.map((call) => call.owner), ['alice', 'bob', 'alice']);
+  assert.deepEqual(
+    f.calls.map((call) => call.owner),
+    ['alice', 'bob', 'alice']
+  );
   const mteam = await f.service.listReleases('alice', 603, 'mteam');
   assert.equal(mteam.releases[0]?.id, first.releases[0]?.id);
   assert.equal(mteam.supportsDownload, true);
@@ -133,7 +227,6 @@ test('unknown seeder counts remain visible and invalid pagination cannot loop fo
   await f.service.stop();
 });
 
-
 test('background checks queue per site and duplicate queued checks do not fan out upstream', async () => {
   const f = harness();
   f.selections.set('alice', ['hdarea']);
@@ -159,10 +252,12 @@ test('an inactive first page is followed and an empty later page cannot overwrit
   assert.equal(result.releases[0]?.id, '2');
   await f.service.listReleases('alice', 603, 'hdarea', 3);
   assert.equal((await f.service.summary('alice', 603, ['hdarea'])).availability, 'available');
-  assert.deepEqual(f.calls.map((call) => call.page), [1, 2, 3]);
+  assert.deepEqual(
+    f.calls.map((call) => call.page),
+    [1, 2, 3]
+  );
   await f.service.stop();
 });
-
 
 test('a forced site refresh bypasses its cached snapshot and preserves other owners', async () => {
   const f = harness();
@@ -175,22 +270,38 @@ test('a forced site refresh bypasses its cached snapshot and preserves other own
     assert.equal(fresh.releases[0]?.id, '99');
     assert.equal((await f.service.listReleases('alice', 603, 'hdarea')).releases[0]?.id, '99');
     assert.equal((await f.service.listReleases('bob', 603, 'hdarea')).releases[0]?.id, '42');
-    assert.deepEqual(f.calls.map((call) => call.owner), ['alice', 'bob', 'alice']);
+    assert.deepEqual(
+      f.calls.map((call) => call.owner),
+      ['alice', 'bob', 'alice']
+    );
     assert.equal(f.mteamCalls.length, 0);
-  } finally { await f.service.stop(); }
+  } finally {
+    await f.service.stop();
+  }
 });
 
 test('preserves HDArea metadata through projection and cached responses', async () => {
   const f = harness();
-  const release = { id: '42', title: 'Movie 1080p H264-GROUP', seeders: 2,
-    publishedAt: '2026-10-05 23:05:14', medium: 'WEB-DL', videoCodec: 'H.264', audioCodec: 'E-AC-3 5.1', releaseGroup: 'GROUP', tags: ['4K', 'DoVi', 'chinese-subtitles'] };
+  const release = {
+    id: '42',
+    title: 'Movie 1080p H264-GROUP',
+    seeders: 2,
+    publishedAt: '2026-10-05 23:05:14',
+    medium: 'WEB-DL',
+    videoCodec: 'H.264',
+    audioCodec: 'E-AC-3 5.1',
+    releaseGroup: 'GROUP',
+    tags: ['4K', 'DoVi', 'chinese-subtitles'],
+  };
   f.setResults([release]);
   for (const cached of [false, true]) {
     const result = await f.service.listReleases('alice', 603, 'hdarea');
     assert.equal(result.cached, cached);
-    assert.deepEqual(
-      result.releases[0],
-      { ...release, seedersKnown: true, detailsUrl: 'https://hdarea.example/details.php?id=42' }
+    assert.deepEqual(result.releases[0], {
+      ...release,
+      seedersKnown: true,
+      detailsUrl: 'https://hdarea.example/details.php?id=42',
+    }
     );
   }
   await f.service.stop();

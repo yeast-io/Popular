@@ -22,7 +22,7 @@ describe('M-Team settings', () => {
           lastValidationAt: '2026-10-12T05:00:00.000Z',
         }
         );
-      }),
+      })
     );
     const wrapper = mount(MTeamSettings);
     await flushPromises();
@@ -109,10 +109,10 @@ describe('M-Team settings', () => {
                 details: { failureType: 'network' },
               },
             },
-            { status: 502 },
+            { status: 502 }
           );
         return new Promise<Response>(() => undefined);
-      }),
+      })
     );
     const wrapper = mount(MTeamSettings);
     await flushPromises();

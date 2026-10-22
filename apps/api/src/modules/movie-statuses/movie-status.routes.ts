@@ -1,6 +1,26 @@
 import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import { AiTrace, aiStep, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
-import { ApiErrorSchema, MovieIdParamsSchema, MoviePreferenceResponseSchema, MovieReleaseListResponseSchema, MovieResourceCheckResponseSchema, MovieResourceSyncBatchSchema, MovieResourceSyncParamsSchema, MovieStatusResponseSchema, MyMoviesQuerySchema, MyMoviesResponseSchema, StartMovieResourceSyncRequestSchema, SetMoviePreferenceRequestSchema, SetMovieStatusRequestSchema, type MovieIdParams, type MovieResourceSyncParams, type MyMoviesQuery, type SetMoviePreferenceRequest, type SetMovieStatusRequest, type StartMovieResourceSyncRequest } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  MovieIdParamsSchema,
+  MoviePreferenceResponseSchema,
+  MovieReleaseListResponseSchema,
+  MovieResourceCheckResponseSchema,
+  MovieResourceSyncBatchSchema,
+  MovieResourceSyncParamsSchema,
+  MovieStatusResponseSchema,
+  MyMoviesQuerySchema,
+  MyMoviesResponseSchema,
+  StartMovieResourceSyncRequestSchema,
+  SetMoviePreferenceRequestSchema,
+  SetMovieStatusRequestSchema,
+  type MovieIdParams,
+  type MovieResourceSyncParams,
+  type MyMoviesQuery,
+  type SetMoviePreferenceRequest,
+  type SetMovieStatusRequest,
+  type StartMovieResourceSyncRequest,
+} from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
@@ -15,7 +35,7 @@ export function registerMovieStatusRoutes(
   config: AppConfig,
   sync?: MovieResourceSyncService,
   multiSite = false,
-  logger: AiLogger = app.log,
+  logger: AiLogger = app.log
 ): void {
   const ownerId = (request: FastifyRequest) => {
     return auth.requireOwnerId(readSessionToken(request, config.SESSION_COOKIE_NAME));
@@ -24,8 +44,12 @@ export function registerMovieStatusRoutes(
   const execute = <T>(request: FastifyRequest, stage: string, action: () => Promise<T>) => {
     const trace = new AiTrace(logger, { requestId: request.id }, '', 'movie-statuses.api', config.VERBOSE);
     return withAiTrace(trace, async () => {
-      try { return await aiStep(stage, action); }
-      catch (error) { trace.fail(error); throw error; }
+      try {
+        return await aiStep(stage, action);
+      } catch (error) {
+        trace.fail(error);
+        throw error;
+      }
     });
   };
 
@@ -39,19 +63,17 @@ export function registerMovieStatusRoutes(
       },
     },
     async (request) => {
-      return execute(
-        request, 'movie-statuses.set',
-        async () => service.set(await ownerId(request), request.params.tmdbId, request.body.status)
-      );
-    },
-  );
+      return execute(request, 'movie-statuses.set', async () => {
+        return service.set(await ownerId(request), request.params.tmdbId, request.body.status);
+      });
+    });
 
   app.delete<{ Params: MovieIdParams }>(
     '/me/movies/:tmdbId/status',
     {
       schema: { params: MovieIdParamsSchema, response: { 200: MovieStatusResponseSchema, 401: ApiErrorSchema } },
     },
-    async (request) => service.clear(await ownerId(request), request.params.tmdbId),
+    async (request) => service.clear(await ownerId(request), request.params.tmdbId)
   );
 
   app.put<{ Params: MovieIdParams; Body: SetMoviePreferenceRequest }>(
@@ -65,15 +87,14 @@ export function registerMovieStatusRoutes(
     },
     async (request) => {
       return service.setPreference(await ownerId(request), request.params.tmdbId, request.body.preference);
-    },
-  );
+    });
 
   app.delete<{ Params: MovieIdParams }>(
     '/me/movies/:tmdbId/preference',
     {
       schema: { params: MovieIdParamsSchema, response: { 200: MoviePreferenceResponseSchema, 401: ApiErrorSchema } },
     },
-    async (request) => service.clearPreference(await ownerId(request), request.params.tmdbId),
+    async (request) => service.clearPreference(await ownerId(request), request.params.tmdbId)
   );
 
   app.get<{ Querystring: MyMoviesQuery }>(
@@ -88,18 +109,17 @@ export function registerMovieStatusRoutes(
           request.query.status,
           request.query.page ?? 1,
           request.query.pageSize ?? 20,
-          request.query.locale,
+          request.query.locale
         );
       });
-    },
-  );
+    });
 
   app.get<{ Params: MovieIdParams }>(
     '/me/movies/:tmdbId/resources/mteam',
     {
       schema: { params: MovieIdParamsSchema, response: { 200: MovieResourceCheckResponseSchema, 401: ApiErrorSchema } },
     },
-    async (request) => service.resourceCheck(await ownerId(request), request.params.tmdbId),
+    async (request) => service.resourceCheck(await ownerId(request), request.params.tmdbId)
   );
 
   app.post<{ Params: MovieIdParams }>(
@@ -118,28 +138,28 @@ export function registerMovieStatusRoutes(
     },
     async (request, reply) => {
       return reply.status(202).send(await service.recheckResource(await ownerId(request), request.params.tmdbId));
-    },
-  );
+    });
 
-  if (!multiSite) app.get<{ Params: MovieIdParams }>(
-    '/me/movies/:tmdbId/resources/mteam/releases',
-    {
-      schema: {
-        params: MovieIdParamsSchema,
-        response: {
-          200: MovieReleaseListResponseSchema,
-          401: ApiErrorSchema,
-          404: ApiErrorSchema,
-          409: ApiErrorSchema,
-          429: ApiErrorSchema,
-          502: ApiErrorSchema,
-          503: ApiErrorSchema,
-          504: ApiErrorSchema,
+  if (!multiSite)
+    app.get<{ Params: MovieIdParams }>(
+      '/me/movies/:tmdbId/resources/mteam/releases',
+      {
+        schema: {
+          params: MovieIdParamsSchema,
+          response: {
+            200: MovieReleaseListResponseSchema,
+            401: ApiErrorSchema,
+            404: ApiErrorSchema,
+            409: ApiErrorSchema,
+            429: ApiErrorSchema,
+            502: ApiErrorSchema,
+            503: ApiErrorSchema,
+            504: ApiErrorSchema,
+          },
         },
       },
-    },
-    async (request) => service.releases(await ownerId(request), request.params.tmdbId),
-  );
+      async (request) => service.releases(await ownerId(request), request.params.tmdbId)
+    );
 
   if (sync) {
     app.post<{ Body: StartMovieResourceSyncRequest }>(
@@ -150,7 +170,7 @@ export function registerMovieStatusRoutes(
           response: { 202: MovieResourceSyncBatchSchema, 401: ApiErrorSchema },
         },
       },
-      async (request, reply) => reply.status(202).send(await sync.start(await ownerId(request))),
+      async (request, reply) => reply.status(202).send(await sync.start(await ownerId(request)))
     );
 
     app.get<{ Params: MovieResourceSyncParams }>(
@@ -161,7 +181,7 @@ export function registerMovieStatusRoutes(
           response: { 200: MovieResourceSyncBatchSchema, 401: ApiErrorSchema, 404: ApiErrorSchema },
         },
       },
-      async (request) => sync.get(await ownerId(request), request.params.jobId),
+      async (request) => sync.get(await ownerId(request), request.params.jobId)
     );
   }
 }

@@ -13,6 +13,7 @@ apps/
       mongodb/ redis/ minio/
     modules/health/         liveness and readiness routes
   web/src/                  Vue application and web configuration
+  docs/                     standalone static documentation linked to .archify
 packages/
   contract/src/             runtime TypeBox schemas and derived TS types
 ```
@@ -31,6 +32,30 @@ corepack pnpm build
 ```
 
 MongoDB, Redis and MinIO are remote dependencies. Fill in their values in `.env`; startup deliberately fails if required configuration is missing, a connection cannot be established, or the configured MinIO bucket does not exist. The application does not create a bucket because a typo must not silently create a second storage location.
+
+## Static documentation
+
+Run `pnpm docs:dev` and open http://127.0.0.1:5175. This standalone site has English and Simplified Chinese navigation and links to each `.archify/<project>/index.html`. It runs independently of the API and main web app, without login or environment page flags.
+
+`pnpm docs:build` generates `apps/docs/dist`, which can be served by any static host. Rebuild after changing `.archify`. Only projects with an `index.html` are included; source snapshots under `evidence`, hidden files and symlinks are excluded. Existing diagram pages retain their own language controls. The main application's Docs navigation and `/api/v1/docs` endpoints have been removed.
+
+## Code style
+
+ESLint Stylistic owns JavaScript, TypeScript and Vue script formatting: two-space indentation, single quotes, semicolons and blank lines between class methods. TypeScript/Vue correctness checks, constructor layout and the project's schema/type boundaries remain enabled. The former custom callback formatter has been removed because it conflicted with Stylistic fixes.
+
+```bash
+pnpm lint       # Check code quality and formatting
+pnpm lint:fix   # Apply supported automatic fixes
+pnpm check      # Rule tests, lint and workspace type checks
+```
+
+Stylistic reports multiple statements on one line; this rule requires manual line breaks when no automatic fix is available. Constructor signatures longer than 120 characters (including indentation and `constructor(...) {`, excluding the body) expand to one parameter per line. Short multiline signatures automatically merge onto one line when safe; signatures containing comments or multiline parameter expressions retain their layout. Inline or multiline bodies are preserved. The final parameter has no trailing comma. Format fixes must converge: running `pnpm lint:fix` again should produce no further changes.
+
+On Node 24, the current Vitest DOM environment may collide with Node's experimental Web Storage API. Run the web tests with the DOM implementation instead:
+
+```bash
+NODE_OPTIONS=--no-experimental-webstorage pnpm --filter @movie-hub/web test
+```
 
 ## Health endpoints
 

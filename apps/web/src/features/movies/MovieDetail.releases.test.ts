@@ -61,7 +61,7 @@ describe('Movie Detail live releases', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
@@ -149,7 +149,7 @@ describe('Movie Detail live releases', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
@@ -252,7 +252,7 @@ describe('Movie Detail live releases', () => {
               status: 'downloading',
               progress: 20,
             },
-            { status: 201 },
+            { status: 201 }
           );
         }
         if (url.endsWith('/downloads')) {
@@ -286,7 +286,7 @@ describe('Movie Detail live releases', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
@@ -370,7 +370,7 @@ describe('Movie Detail live releases', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
@@ -484,7 +484,7 @@ describe('Movie Detail live releases', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
@@ -493,7 +493,7 @@ describe('Movie Detail live releases', () => {
     await flushPromises();
 
     const titles = [...document.body.querySelectorAll<HTMLElement>('.release-card h3')].map(
-      (title) => title.textContent,
+      (title) => title.textContent
     );
     expect(titles).toEqual(['Failed Download', 'Missing Download', 'Plain A', 'Plain B']);
     wrapper.unmount();
@@ -523,7 +523,7 @@ describe('Movie Detail live releases', () => {
         if (url.endsWith('/resources/mteam/releases')) {
           return Response.json(
             { error: { code: 'MTEAM_TIMEOUT', message: 'failed', requestId: 'r1' } },
-            { status: 504 },
+            { status: 504 }
           );
         }
         return Response.json({
@@ -538,7 +538,7 @@ describe('Movie Detail live releases', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });

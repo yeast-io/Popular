@@ -7,6 +7,7 @@ import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { DownloadNotification } from '../notifications/notification.types.js';
 import type { IncomingMessage } from '../incoming-message.types.js';
+
 export const bindingHash = (value: string): string => {
   return createHash('sha256').update(value).digest('hex');
 };
@@ -21,6 +22,7 @@ export class TelegramService {
     },
     private readonly logger?: AiLogger
   ) {}
+
   async get(token: string | undefined): Promise<TelegramConfiguration> {
     const owner = await this.auth.requireOwnerId(token);
     if (!this.transport) return { status: 'unavailable' };
@@ -30,6 +32,7 @@ export class TelegramService {
       return { status: 'pending', expiresAt: record.expiresAt.toISOString() };
     return { status: 'unbound' };
   }
+
   async start(token: string | undefined): Promise<TelegramBinding> {
     const owner = await this.auth.requireOwnerId(token);
     if (!this.transport) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Telegram is not configured');
@@ -44,6 +47,7 @@ export class TelegramService {
       bindingUrl: `https://t.me/${username}?start=${secret}`,
     };
   }
+
   async accept(update: TelegramUpdate): Promise<void> {
     const message = update.message;
     const trace = new AiTrace(
@@ -56,7 +60,7 @@ export class TelegramService {
         chatId: message?.chat.id,
       },
       message?.text ?? message?.caption ?? '',
-      'telegram.receive',
+      'telegram.receive'
     );
     trace.sensitive((message?.text ?? message?.caption ?? '').trim());
     await withAiTrace(trace, async () => {
@@ -73,12 +77,12 @@ export class TelegramService {
         const chatId = String(message.chat.id);
         const ownerId = await trace.step('telegram.binding.lookup', () => this.store.findOwnerByChatId(chatId));
         if (!ownerId) return skip('chat_not_bound');
-        const messageType =
-          message.text !== undefined
+        const messageType
+          = message.text !== undefined
             ? 'text'
             : (['photo', 'video', 'audio', 'voice', 'document', 'sticker'].find(
-              (key) => message[key as keyof typeof message] != null,
-            ) ?? 'unknown');
+                (key) => message[key as keyof typeof message] != null
+              ) ?? 'unknown');
         const text = message.text ?? message.caption;
         trace.event('telegram.message.accepted', { ownerId, messageType });
         await trace.step(
@@ -93,10 +97,10 @@ export class TelegramService {
                 ...(message.message_id !== undefined ? { messageId: String(message.message_id) } : {}),
                 ...(text !== undefined ? { text } : {}),
               }
-              ),
+              )
             );
           },
-          { ownerId },
+          { ownerId }
         );
         return;
       }
@@ -109,7 +113,7 @@ export class TelegramService {
           message.from!.username
             ? `@${message.from!.username}`
             : (message.from!.first_name ?? String(message.chat.id)).slice(0, 100),
-          this.now(),
+          this.now()
         );
       });
       trace.event('telegram.binding.result', { consumed });
@@ -122,9 +126,11 @@ export class TelegramService {
   async remove(token: string | undefined): Promise<void> {
     await this.store.remove(await this.auth.requireOwnerId(token));
   }
+
   async canReply(ownerId: string, chatId: string): Promise<boolean> {
     return !!this.transport && (await this.store.find(ownerId))?.chatId === chatId;
   }
+
   async setTyping(ownerId: string, chatId: string, active: boolean, signal?: AbortSignal): Promise<void> {
     // Telegram clears typing on reply or expiry; Bot API has no explicit stop action.
     if (!active) return;
@@ -133,12 +139,14 @@ export class TelegramService {
     signal?.throwIfAborted();
     await this.transport?.typing?.(chatId, signal);
   }
+
   async reply(ownerId: string, chatId: string, text: string, poster?: Buffer): Promise<string> {
     if (!(await this.canReply(ownerId, chatId))) throw new AppError(409, 'CONFLICT', 'Telegram binding changed');
     return poster?.length
       ? this.transport!.sendPhoto(chatId, poster, escapeHtml(text))
       : this.transport!.send(chatId, text);
   }
+
   async test(token: string | undefined): Promise<{ messageId: string }> {
     const owner = await this.auth.requireOwnerId(token);
     const chatId = await this.recipient(owner);
@@ -146,15 +154,18 @@ export class TelegramService {
       throw new AppError(409, 'CONFLICT', 'Wait 30 seconds before testing again');
     return { messageId: await this.transport!.send(chatId, 'Popular: Telegram notification test / Telegram 通知测试') };
   }
+
   async isConfigured(ownerId: string): Promise<boolean> {
     return !!this.transport && !!(await this.store.find(ownerId))?.chatId;
   }
+
   private async recipient(ownerId: string): Promise<string> {
     if (!this.transport) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Telegram is not configured');
     const chatId = (await this.store.find(ownerId))?.chatId;
     if (!chatId) throw new AppError(409, 'CONFLICT', 'Link your Telegram account first');
     return chatId;
   }
+
   async sendNotification(ownerId: string, notification: DownloadNotification): Promise<{ messageId: string }> {
     const chatId = await this.recipient(ownerId);
     const caption = downloadCaption(notification);
@@ -172,8 +183,8 @@ const escapeHtml = (value: string): string => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(
-    /'/g, '&#39;'
-  );
+      /'/g, '&#39;'
+    );
 };
 // Bound unescaped UTF-16 length before encoding so captions stay below Telegram's 1024-character limit,
 // including emoji, and never cut HTML tags or entities in half.

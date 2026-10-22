@@ -9,8 +9,8 @@ test('logs exception type, source location and database code without raw message
     keyValue: { content: 'private chat and sk-secret' },
   }
   );
-  error.stack =
-    'MongoServerError: private chat and sk-secret\n    at insert (/app/conversation.store.ts:68:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)';
+  error.stack
+    = 'MongoServerError: private chat and sk-secret\n    at insert (/app/conversation.store.ts:68:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)';
   assert.deepEqual(streamErrorDiagnostics(error), {
     causes: [
       {
@@ -26,7 +26,7 @@ test('logs exception type, source location and database code without raw message
 test('limits cause depth and selects only known validation field names', () => {
   const error = Object.assign(new Error('private chat'), {
     name: 'ValidationError',
-    errors: { outputTokens: { value: 'sk-secret' }, 'private chat': {} },
+    errors: { 'outputTokens': { value: 'sk-secret' }, 'private chat': {} },
   }
   );
   error.stack = 'ValidationError: private chat';

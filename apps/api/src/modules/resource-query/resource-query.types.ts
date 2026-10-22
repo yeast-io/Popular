@@ -22,7 +22,12 @@ export interface ResourceSourceResult {
 export interface ResourceProvider {
   id: string;
   name: string;
-  query(ownerId: string, tmdbId: number, signal: AbortSignal, options?: { refresh: boolean }): Promise<ResourceSourceResult>;
+  query(
+    ownerId: string,
+    tmdbId: number,
+    signal: AbortSignal,
+    options?: { refresh: boolean },
+  ): Promise<ResourceSourceResult>;
 }
 export interface ResourceMovie {
   tmdbId: number;

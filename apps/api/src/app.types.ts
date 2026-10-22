@@ -1,8 +1,9 @@
+import type { RemoteDownloadCoordinator } from './modules/remote-downloads/remote-download-coordinator.service.js';
+import type { RemoteClientService } from './modules/remote-clients/remote-client.service.js';
 import type { IntegrationPreferencesService } from './modules/integrations/integration-preferences.service.js';
 import type { MovieSiteResourcesService } from './modules/integrations/movie-site-resources.service.js';
 import type { ResourceSearchService } from './modules/resource-search/resource-search.service.js';
 import type { ResourceSiteService } from './modules/resource-sites/resource-site.service.js';
-import type { DocsService } from './modules/docs/docs.service.js';
 import type { PreferenceService } from './modules/preferences/preference.service.js';
 import type { TelegramService } from './modules/telegram/telegram.service.js';
 import type { NotificationTestService } from './modules/notifications/notification-test.service.js';
@@ -25,6 +26,8 @@ import type { ConversationService } from './modules/conversations/conversation.s
 import type { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
 
 export interface BuildAppOptions {
+  remoteDownloadCoordinator?: RemoteDownloadCoordinator;
+  remoteClientService?: RemoteClientService;
   integrationPreferencesService?: IntegrationPreferencesService;
   movieSiteResourcesService?: MovieSiteResourcesService;
   resourceSiteService?: ResourceSiteService;
@@ -33,7 +36,6 @@ export interface BuildAppOptions {
   notificationTestService?: NotificationTestService;
   notificationService?: NotificationService;
   whatsappService?: WhatsAppService;
-  docsService?: DocsService;
   config: AppConfig;
   healthDependencies: HealthDependency[];
   authService?: AuthService;

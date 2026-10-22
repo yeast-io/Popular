@@ -5,10 +5,9 @@ import type { OpenAIConfiguration, OpenAIValidation } from '@movie-hub/contract'
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { SecretCrypto } from './secret-crypto.js';
+
 export class OpenAIProbeError extends Error {
-  constructor(
-    readonly reason: NonNullable<OpenAIValidation['failureReason']>
-  ) {
+  constructor(readonly reason: NonNullable<OpenAIValidation['failureReason']>) {
     super('OpenAI connection verification failed');
   }
 }
@@ -16,6 +15,7 @@ export class OpenAISettingsService {
   preferences?: IntegrationPreferencesService;
   private readonly pending = new Map<string, Promise<OpenAIConfiguration>>();
   private readonly lastAttempt = new Map<string, number>();
+
   constructor(
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly store: OpenAIConfigStore,
@@ -54,6 +54,7 @@ export class OpenAISettingsService {
         : {}),
     };
   }
+
   private recommendedModels(available: readonly string[]): string[] {
     const recommended = this.verification?.recommendedModels;
     return recommended
@@ -75,6 +76,7 @@ export class OpenAISettingsService {
       if (this.pending.get(ownerId) === operation) this.pending.delete(ownerId);
     }
   }
+
   private async verify(ownerId: string): Promise<OpenAIConfiguration> {
     const record = await this.store.find(ownerId);
     if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Save an API key before testing');
@@ -108,9 +110,9 @@ export class OpenAISettingsService {
     const record = await this.store.find(ownerId);
     if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Save an API key before choosing a model');
     if (
-      record.validation?.method !== 'model_list' ||
-      record.validation.status !== 'valid' ||
-      !this.recommendedModels(record.validation.models).includes(model)
+      record.validation?.method !== 'model_list'
+      || record.validation.status !== 'valid'
+      || !this.recommendedModels(record.validation.models).includes(model)
     ) {
       throw new AppError(400, 'VALIDATION_ERROR', 'Test the current key and choose a model from its list');
     }

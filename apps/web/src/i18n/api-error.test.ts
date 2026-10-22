@@ -15,11 +15,10 @@ describe('localized API errors', () => {
   it('renders the mapped error in the active locale', () => {
     setLocale('en-US');
     expect(localizedErrorMessage(localizedApiError({ error: { code: 'NOT_FOUND' } }), 'errors.unknown')).toBe(
-      'The requested content could not be found.',
+      'The requested content could not be found.'
     );
   });
 });
-
 
 it('preserves actionable site failure reasons in both languages and ignores unknown server text', () => {
   const failure = { error: { code: 'RESOURCE_SITE_FAILED', details: { reason: 'authentication' }, message: 'raw payload' } };

@@ -1,13 +1,20 @@
-import { ApiErrorSchema, NotificationTestListSchema, NotificationTestResultSchema, SendNotificationTestSchema, type SendNotificationTest } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  NotificationTestListSchema,
+  NotificationTestResultSchema,
+  SendNotificationTestSchema,
+  type SendNotificationTest,
+} from '@movie-hub/contract';
 import type { FastifyInstance } from 'fastify';
 import { notificationTestEnabled } from '../../config/env.js';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { NotificationTestService } from './notification-test.service.js';
+
 export function registerNotificationTestRoutes(
   app: FastifyInstance,
   service: NotificationTestService,
-  config: AppConfig,
+  config: AppConfig
 ) {
   if (!notificationTestEnabled(config)) return;
   app.get<{ Querystring: { page?: number } }>(
@@ -24,8 +31,7 @@ export function registerNotificationTestRoutes(
     },
     (request) => {
       return service.list(readSessionToken(request, config.SESSION_COOKIE_NAME), request.query.page ?? 1);
-    },
-  );
+    });
   app.post<{ Params: { id: string }; Body: SendNotificationTest }>(
     '/me/notification-tests/downloads/:id/send',
     {
@@ -49,8 +55,7 @@ export function registerNotificationTestRoutes(
       return service.send(
         readSessionToken(request, config.SESSION_COOKIE_NAME),
         request.params.id,
-        request.body.channel,
+        request.body.channel
       );
-    },
-  );
+    });
 }

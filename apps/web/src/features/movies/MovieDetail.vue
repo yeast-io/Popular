@@ -62,7 +62,9 @@ const statusOptions = computed(() => {
     ['interested', t('movie.status.interested')],
   ] as const;
 });
-function downloadKey(releaseId: string, site = 'mteam'): string { return `${site}:${releaseId}`; }
+function downloadKey(releaseId: string, site = 'mteam'): string {
+  return `${site}:${releaseId}`;
+}
 function orderedGroupReleases(group: MovieSiteReleaseGroup): MovieRelease[] {
   const source = group.site === 'mteam' ? releases.value : group.result?.releases ?? [];
   const tracked = new Set(downloads.value.filter((item) => {
@@ -127,8 +129,7 @@ watch(
       stopResourcePolling();
       stopDownloadPolling();
     }
-  },
-);
+  });
 
 async function load() {
   requestController?.abort();
@@ -253,9 +254,11 @@ function preferencesChanged(preferences: IntegrationPreferences) {
 }
 function groupToggled(site: string, event: Event) {
   const open = (event.target as HTMLDetailsElement).open;
-  expandedSites.value = open ? [...new Set([...expandedSites.value, site])] : expandedSites.value.filter((id) => {
-    return id !== site;
-  });
+  expandedSites.value = open
+    ? [...new Set([...expandedSites.value, site])]
+    : expandedSites.value.filter((id) => {
+        return id !== site;
+      });
 }
 async function loadReleaseGroup(group: MovieSiteReleaseGroup, more = false, refresh = false) {
   const generation = releaseGeneration;
@@ -296,7 +299,10 @@ function resourceAction() {
   else void recheckResource();
 }
 async function showReleases() {
-  if (!props.authenticated) { emit('requireLogin'); return; }
+  if (!props.authenticated) {
+    emit('requireLogin');
+    return;
+  }
   if (releasesLoading.value) return;
   releaseTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   releasesOpen.value = true;
@@ -438,8 +444,8 @@ function canDownload(releaseId: string, site = 'mteam'): boolean {
 function downloadUnavailable(releaseId: string, site = 'mteam'): string {
   if (site !== 'mteam' && site !== 'hdarea') return t('resourceSelection.downloadUnsupported');
   return (
-    downloadProvidersError.value ||
-    (downloadFor(releaseId, site) ? t('movie.download.originalUnconfigured') : t('movie.download.unconfigured'))
+    downloadProvidersError.value
+    || (downloadFor(releaseId, site) ? t('movie.download.originalUnconfigured') : t('movie.download.unconfigured'))
   );
 }
 
@@ -481,8 +487,20 @@ async function submitDownload(release: MovieRelease, provider: DownloadProvider,
   const key = downloadKey(release.id, site);
   submittingReleaseId.value = key;
   activeDownloadReleaseId.value = key;
+  const generation = releaseGeneration;
   void nextTick(() => {
-    if (requestedTmdbId === props.tmdbId && releasePanelContent.value) releasePanelContent.value.scrollTop = 0;
+    const panel = releasePanelContent.value;
+    if (!panel || !releasesOpen.value || generation !== releaseGeneration || requestedTmdbId !== props.tmdbId) return;
+    const card = Array.from(panel.querySelectorAll<HTMLElement>('[data-release-key]')).find((element) => {
+      return element.dataset.releaseKey === key;
+    });
+    if (!card) return;
+    const top = panel.scrollTop + card.getBoundingClientRect().top - panel.getBoundingClientRect().top - panel.clientTop;
+    panel.scrollTo({
+      top: Math.max(0, top),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    }
+    );
   });
   downloadErrors.value = { ...downloadErrors.value, [key]: '' };
   try {
@@ -580,7 +598,7 @@ function trapDialogFocus(event: KeyboardEvent, dialog: HTMLElement | null) {
   if (event.key !== 'Tab' || !dialog) return;
   const focusable = [
     ...dialog.querySelectorAll<HTMLElement>(
-      'summary, button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      'summary, button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
     ),
   ].filter((element) => {
     const closed = element.closest('details:not([open])');
@@ -996,6 +1014,7 @@ function syncedAtLabel(syncedAt: string): string {
               <li
                 v-for="release in orderedGroupReleases(group)"
                 :key="`${group.site}:${release.id}`"
+                :data-release-key="downloadKey(release.id, group.site)"
                 class="release-card"
                 :class="downloadCardClass(release.id, group.site)"
               >

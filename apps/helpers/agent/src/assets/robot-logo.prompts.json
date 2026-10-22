@@ -1,0 +1,17 @@
+{
+  "generator": "image_gen built-in",
+  "reference": "User-selected robot A from the white/black concept board",
+  "productionPrompt": "Precise production asset extraction from the supplied selected robot-logo board. Preserve the exact existing robot A design: tilted asymmetric rounded head, bent antenna ending in a circle, one vertical pill eye, one winking arch, side ear discs. This is NOT a redesign or new concept: retain original geometry, proportions, tilt, expression, colors and placement within its icon. Remove all presentation board, labels, other icons, drop shadows and texture. Output exactly ONE centered standalone icon on a transparent canvas, square composition at high resolution, generous clean margins of around 8%, clean flat graphic edges. For the app tile variants the rounded-square tile itself stays opaque, and only outside its rounded corners is transparent. No captions, no duplicate small mark, no extra objects, no gradients or new decorative features.",
+  "variants": {
+    "white": "the WHITE rounded-square app icon in the TOP LEFT of the reference board. Keep the white tile, black robot body, white visor, black vertical-pill and wink eyes, amber antenna tip and left ear. Extract only that icon.",
+    "black": "the BLACK rounded-square app icon in the TOP RIGHT of the reference board. Keep the black tile, ivory robot body, black visor, ivory vertical-pill and wink eyes, amber antenna tip and left ear. Extract only that icon.",
+    "mark": "the BLACK MONOCHROME robot silhouette in the BOTTOM LEFT of the reference board. Extract only that robot mark with its antenna and ears. There must be NO square tile or background. All face openings, space around antenna, ear gaps, and eyes negative space must be transparent, not white paint. Use only solid black and transparent pixels (with edge antialiasing)."
+  },
+  "whiteRefinementPrompt": "Precise edge cleanup of this selected WHITE robot app icon. Preserve the exact robot, all its geometry, eye expression, antenna, ears, proportions, placement, black/white/amber palette and white rounded-square tile. Change ONLY the tile boundary and surrounding transparency: remove the ragged white halo, stray white flecks, uneven border, specks and paper-like texture. Make the tile one perfectly clean smooth geometric rounded square, and make everything outside it genuinely transparent with only a single antialiased boundary. Preserve 8% transparent padding on the square canvas. Do not alter or redesign the robot. No outlines, shadows, new details, texture, text, other colors or extra icons. A clean final production icon, not a concept board.",
+  "assets": {
+    "white": "popular-link-agent-white.png",
+    "black": "popular-link-agent-black.png",
+    "mark": "popular-link-agent-mark.png"
+  },
+  "regeneratePlatformAssets": "pnpm --filter @movie-hub/helper-agent icons:generate"
+}

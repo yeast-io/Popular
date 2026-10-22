@@ -74,9 +74,11 @@ for (const intent of ['recommend', 'resources', 'download', 'unclear'] as const)
       return {
         generate: async (request) => {
           calls++;
-          return { content: request.operation === 'assistant.intent' ? JSON.stringify(
-            { intent }
-          ) : 'Capability-aware answer', inputTokens: 1, outputTokens: 1 };
+          return {
+            content: request.operation === 'assistant.intent' ? JSON.stringify({ intent }) : 'Capability-aware answer',
+            inputTokens: 1,
+            outputTokens: 1,
+          };
         },
       };
     }, options);
@@ -123,7 +125,7 @@ test('oversized context is rejected and pre-aborted runs never call the model', 
         },
       };
     },
-    { ...options, maxContextTokens: 1_024 },
+    { ...options, maxContextTokens: 1_024 }
   );
   await assert.rejects(runner.run({ ...input, text: '电影'.repeat(1_000) }), /context budget/);
   await assert.rejects(runner.run(input, [], AbortSignal.abort()));
@@ -172,7 +174,7 @@ test('long-term evidence is independent of primary intent and maintenance failur
       report: () => {
         reported = true;
       },
-    },
+    }
   );
   assert.equal((await agent.run(routingInput)).replyText, 'Reply still works');
   assert.ok(scheduled && reported);
@@ -187,7 +189,7 @@ test('personal assistant detects intent using the latest message and conversatio
         return { content: '{"intent":"download"}', inputTokens: 1, outputTokens: 1 };
       },
     },
-    routingOptions,
+    routingOptions
   );
   const history = [{ role: 'assistant' as const, content: 'Which release would you like to download?' }];
   assert.equal((await agent.run(routingInput, history)).intent, 'download');
@@ -209,7 +211,7 @@ test('only the five supported intents are accepted, including explicit unclear r
           return { content: JSON.stringify({ intent }), inputTokens: 1, outputTokens: 1 };
         },
       },
-      routingOptions,
+      routingOptions
     );
     assert.equal((await agent.run(routingInput)).intent, intent);
   }
@@ -219,7 +221,7 @@ test('malformed, unknown, and extra model output fields fail instead of being ro
   for (const content of ['not json', '{"intent":"execute"}', '{"intent":"download","confirmed":true}', '{}']) {
     const agent = createWorkflow(
       { generate: async () => ({ content, inputTokens: 1, outputTokens: 1 }) },
-      routingOptions,
+      routingOptions
     );
     await assert.rejects(agent.run(routingInput));
   }
@@ -232,7 +234,7 @@ test('provider failures propagate and cancellation discards late classification 
         throw new Error('upstream failure');
       },
     },
-    routingOptions,
+    routingOptions
   );
   await assert.rejects(failed.run(routingInput), /upstream failure/);
   const controller = new AbortController();
@@ -245,7 +247,7 @@ test('provider failures propagate and cancellation discards late classification 
         return { content: '{"intent":"download"}', inputTokens: 1, outputTokens: 1 };
       },
     },
-    routingOptions,
+    routingOptions
   );
   await assert.rejects(agent.run(routingInput, [], controller.signal), { name: 'AbortError' });
 });
@@ -263,7 +265,7 @@ test('the same personal assistant detects an intent and handles the discussion r
         };
       },
     },
-    routingOptions,
+    routingOptions
   );
   assert.deepEqual(await agent.run(routingInput), { intent: 'discuss', replyText: 'A general conversation reply.' });
   assert.ok(requests[0]!.outputSchema);
@@ -278,12 +280,14 @@ test('unavailable capabilities generate an answer while ambiguous legacy request
       {
         generate: async (request) => {
           calls++;
-          return { content: request.operation === 'assistant.intent' ? JSON.stringify(
-            { intent }
-          ) : 'Capability-aware answer', inputTokens: 1, outputTokens: 1 };
+          return {
+            content: request.operation === 'assistant.intent' ? JSON.stringify({ intent }) : 'Capability-aware answer',
+            inputTokens: 1,
+            outputTokens: 1,
+          };
         },
       },
-      routingOptions,
+      routingOptions
     );
     const result = await agent.run(routingInput);
     assert.equal(calls, intent === 'unclear' ? 1 : 2);
@@ -303,7 +307,7 @@ test('discussion rejects empty responses and discards late results after cancell
         };
       },
     },
-    routingOptions,
+    routingOptions
   );
   await assert.rejects(empty.run(routingInput), /empty reply/);
   const controller = new AbortController();
@@ -315,7 +319,7 @@ test('discussion rejects empty responses and discards late results after cancell
         return { content: 'Late response', inputTokens: 1, outputTokens: 1 };
       },
     },
-    routingOptions,
+    routingOptions
   );
   await assert.rejects(agent.run(routingInput, [], controller.signal), { name: 'AbortError' });
 });
@@ -339,7 +343,7 @@ for (const channel of ['telegram', 'whatsapp', 'web'] as const) {
           },
         };
       },
-      { ...options, recommendations },
+      { ...options, recommendations }
     );
     const result = await workflow.run({ ...input, channel });
     assert.equal(result.replyText, replyText);
@@ -366,7 +370,7 @@ test('recommendation tools use the same owner assistant for intent, planning and
         0,
         [...history, { role: 'user', content: text }],
         signal!,
-        'zh-CN',
+        'zh-CN'
       );
       const ranked = await decisions.rank(
         emptyProfile(),
@@ -374,7 +378,7 @@ test('recommendation tools use the same owner assistant for intent, planning and
         [{ tmdbId: 1, title: 'Candidate', genreIds: [], genres: [], directors: [], cast: [] }],
         signal!,
         'zh-CN',
-        plan,
+        plan
       );
       return { replyText: `Candidate: ${ranked.movies[0]?.reason}` };
     },
@@ -391,8 +395,8 @@ test('recommendation tools use the same owner assistant for intent, planning and
       return {
         generate: async (request) => {
           operations.push(request.operation);
-          const content =
-            request.outputSchema?.name === 'assistant_intent'
+          const content
+            = request.outputSchema?.name === 'assistant_intent'
               ? { intent: 'recommend', preferenceSignal: 'explicit' }
               : request.outputSchema?.name === 'recommendation_plan'
                 ? {
@@ -412,7 +416,7 @@ test('recommendation tools use the same owner assistant for intent, planning and
         },
       };
     },
-    { ...options, recommendations, preferences },
+    { ...options, recommendations, preferences }
   );
   const result = await workflow.run({ ...input, channel: 'web' }, [], new AbortController().signal);
   assert.equal(result.replyText, 'Candidate: Matches the request');
@@ -431,24 +435,50 @@ for (const channel of ['web', 'telegram', 'whatsapp'] as const) {
         assert.equal(ownerId, 'alice');
         assert.equal(conversation, `${channel}:101`);
         assert.equal(eventId, `${channel}:101:1`);
-        const plan = await decisions.plan(text, history, {
-          candidates: [], movie: null, resolution: null, providers: [],
-          sources: [{ id: 'mteam', name: 'M-Team' }], releaseCount: 0, page: 1, pageCount: 0,
-        }, 'zh-CN', signal ?? new AbortController().signal
+        const plan = await decisions.plan(
+          text,
+          history,
+          {
+            candidates: [],
+            movie: null,
+            resolution: null,
+            providers: [],
+            sources: [{ id: 'mteam', name: 'M-Team' }],
+            releaseCount: 0,
+            page: 1,
+            pageCount: 0,
+          },
+          'zh-CN',
+          signal ?? new AbortController().signal
         );
         assert.equal(plan.title, 'Interstellar');
         assert.equal(plan.resolution, '2160p');
         return { replyText: 'M-Team: found a real release' };
       },
     };
-    const workflow = createWorkflow({ generate: async (request) => {
-      operations.push(request.operation);
-      const content = request.operation === 'assistant.intent'
-        ? { intent: 'resources', preferenceSignal: 'none' }
-        : { title: 'Interstellar', year: 2014, candidateId: null, resolution: '2160p',
-          providers: null, releaseIndex: null, page: null, refresh: false, question: null, unsupported: [] };
-      return { content: JSON.stringify(content), inputTokens: 1, outputTokens: 1 };
-    } }, { ...options, resources }
+    const workflow = createWorkflow(
+      {
+        generate: async (request) => {
+          operations.push(request.operation);
+          const content
+            = request.operation === 'assistant.intent'
+              ? { intent: 'resources', preferenceSignal: 'none' }
+              : {
+                  title: 'Interstellar',
+                  year: 2014,
+                  candidateId: null,
+                  resolution: '2160p',
+                  providers: null,
+                  releaseIndex: null,
+                  page: null,
+                  refresh: false,
+                  question: null,
+                  unsupported: [],
+                };
+          return { content: JSON.stringify(content), inputTokens: 1, outputTokens: 1 };
+        },
+      },
+      { ...options, resources }
     );
     const result = await workflow.run({ ...input, channel });
     assert.equal(invoked, true);
@@ -463,15 +493,25 @@ test('unclear resource follow-ups use persisted context, while download intent c
   let intent = 'unclear';
   const resources: import('../resource-query/resource-query.types.js').ResourceQueryCapability = {
     active: async () => true,
-    run: async () => { calls++; return { replyText: 'Filtered result' }; },
+    run: async () => {
+      calls++;
+      return { replyText: 'Filtered result' };
+    },
   };
-  const workflow = createWorkflow({ generate: async (request) => {
-    return ({
-      content: request.operation === 'assistant.intent' ? JSON.stringify(
-        { intent, preferenceSignal: 'none' }
-      ) : 'Cannot submit downloads here', inputTokens: 1, outputTokens: 1,
-    });
-  } }, { ...options, resources }
+  const workflow = createWorkflow(
+    {
+      generate: async (request) => {
+        return {
+          content:
+            request.operation === 'assistant.intent'
+              ? JSON.stringify({ intent, preferenceSignal: 'none' })
+              : 'Cannot submit downloads here',
+          inputTokens: 1,
+          outputTokens: 1,
+        };
+      },
+    },
+    { ...options, resources }
   );
   assert.equal((await workflow.run(input)).intent, 'resources');
   intent = 'download';
@@ -482,33 +522,48 @@ test('unclear resource follow-ups use persisted context, while download intent c
 });
 
 test('resource tool failure cannot masquerade as no resources or a successful query', async () => {
-  const workflow = createWorkflow({ generate: async () => {
-    return ({
-      content: '{"intent":"resources","preferenceSignal":"none"}', inputTokens: 1, outputTokens: 1,
-    });
-  } }, { ...options, resources: {
-    active: async () => false,
-    run: async () => { throw new Error('TMDB unreachable'); },
-  } }
+  const workflow = createWorkflow(
+    {
+      generate: async () => {
+        return {
+          content: '{"intent":"resources","preferenceSignal":"none"}',
+          inputTokens: 1,
+          outputTokens: 1,
+        };
+      },
+    },
+    {
+      ...options,
+      resources: {
+        active: async () => false,
+        run: async () => {
+          throw new Error('TMDB unreachable');
+        },
+      },
+    }
   );
   assert.match((await workflow.run(input)).replyText, /未完成.*无法判断/);
 });
 
 for (const channel of ['telegram', 'whatsapp'] as const) {
   test(`resource replies preserve all ten rows and long detail metadata on ${channel}`, async () => {
-    const replyText = Array.from(
-      { length: 10 },
-      (_, i) => `${i + 1}. 4K · ${'组'.repeat(40)} · 50.00 GiB · 做种 1069`
-    ).join(
-      '\n'
-    ) +
-      '\n' + '完整文件名'.repeat(300) + '\nID: last-release';
+    const replyText
+      = Array.from({ length: 10 }, (_, i) => `${i + 1}. 4K · ${'组'.repeat(40)} · 50.00 GiB · 做种 1069`).join('\n')
+        + '\n'
+        + '完整文件名'.repeat(300)
+        + '\nID: last-release';
     assert.ok(replyText.length > 1800 && replyText.length < 4000);
-    const workflow = createWorkflow({ generate: async () => {
-      return ({
-        content: '{"intent":"resources","preferenceSignal":"none"}', inputTokens: 1, outputTokens: 1,
-      });
-    } }, { ...options, resources: { active: async () => false, run: async () => ({ replyText }) } }
+    const workflow = createWorkflow(
+      {
+        generate: async () => {
+          return {
+            content: '{"intent":"resources","preferenceSignal":"none"}',
+            inputTokens: 1,
+            outputTokens: 1,
+          };
+        },
+      },
+      { ...options, resources: { active: async () => false, run: async () => ({ replyText }) } }
     );
     assert.equal((await workflow.run({ ...input, channel })).replyText, replyText);
   });

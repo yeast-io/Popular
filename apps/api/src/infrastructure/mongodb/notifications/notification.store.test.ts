@@ -39,7 +39,7 @@ test('scan writes require owner, task attempt, live lease and uncancelled state;
         return { exec: async () => ({ matchedCount: 1 }) };
       },
     } as never,
-    {} as never,
+    {} as never
   );
   const now = new Date();
   const claim: ClaimedDownload = {
@@ -106,7 +106,7 @@ test('claims exclude completed and cancelled records and use atomic expiry-based
         return { lean: () => ({ exec: async () => null }) };
       },
     } as never,
-    {} as never,
+    {} as never
   );
   await store.claimTask(new Date());
   assert.equal(filters[0]?.['notificationTask.notified'], false);

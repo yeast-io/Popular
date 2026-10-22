@@ -4,7 +4,7 @@ import { withAiTrace, type AiTrace } from '../../infrastructure/logging/ai-trace
 export function startTyping(
   send: (active: boolean, signal: AbortSignal) => Promise<void>,
   signal: AbortSignal,
-  trace: AiTrace,
+  trace: AiTrace
 ): () => Promise<void> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;

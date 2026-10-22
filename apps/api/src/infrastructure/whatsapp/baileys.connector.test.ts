@@ -21,7 +21,7 @@ test('self-chat replies cannot loop back into the receiver, even before send res
       sendMessage: async (
         jid: string,
         content: { text?: string; image?: Buffer; caption?: string },
-        options: { messageId: string },
+        options: { messageId: string }
       ) => {
         assert.equal(jid, self);
         payloads.push(content);
@@ -252,7 +252,7 @@ function fakeSockets() {
 
 test('incoming notify batches include text, wrapped media and phone self-chat; ignore history, groups, protocol and outgoing traffic', async () => {
   const f = fakeSockets();
-  const received: import("../../modules/incoming-message.types.js").IncomingMessage[] = [];
+  const received: import('../../modules/incoming-message.types.js').IncomingMessage[] = [];
   const connection = await createBaileysConnector(f.makeSocket)({
     load: async () => {
       return null;
@@ -301,7 +301,7 @@ test('incoming notify batches include text, wrapped media and phone self-chat; i
         ['7', 'audioMessage', undefined],
         ['8', 'conversation', 'from phone'],
         ['9', 'conversation', 'from phone LID'],
-      ],
+      ]
     );
     assert.ok(received.every((message) => message.channel === 'whatsapp'));
     assert.equal(received[0]!.senderId, peer);

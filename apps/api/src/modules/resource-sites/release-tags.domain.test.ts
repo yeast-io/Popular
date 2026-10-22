@@ -3,9 +3,11 @@ import test from 'node:test';
 import { releaseTags } from './release-tags.domain.js';
 
 test('recognizes and deduplicates explicit tags across title, subtitle and image labels', () => {
-  assert.deepEqual(
-    releaseTags('Movie.2160p.DoVi', '4K 简繁字幕', 'Dolby Vision', 'CHS'),
-    ['4K', 'DoVi', 'chinese-subtitles']
+  assert.deepEqual(releaseTags('Movie.2160p.DoVi', '4K 简繁字幕', 'Dolby Vision', 'CHS'), [
+    '4K',
+    'DoVi',
+    'chinese-subtitles',
+  ]
   );
   assert.deepEqual(releaseTags('Movie_4K_DV', '中英双字'), ['4K', 'DoVi', 'chinese-subtitles']);
   assert.deepEqual(releaseTags('Movie 1080p Dolby.Vision', '繁體中文字幕'), ['DoVi', 'chinese-subtitles']);

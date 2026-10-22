@@ -35,7 +35,7 @@ const movieLocalizationSchema = new Schema(
     // Operational pointer used to publish a complete credit snapshot atomically.
     activeCreditVersion: { type: String },
   },
-  { timestamps: true, collection: 'movie_localizations' },
+  { timestamps: true, collection: 'movie_localizations' }
 );
 
 movieLocalizationSchema.index({ movieTmdbId: 1, locale: 1 }, { unique: true });

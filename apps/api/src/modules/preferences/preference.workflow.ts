@@ -22,8 +22,8 @@ export class PreferenceWorkflow {
     const profile = await aiStep('preference.profile.read', () => this.store.read(job.ownerId));
     for (const entry of profile.entries) currentAiTrace()?.sensitive(entry.content);
     if (job.kind === 'chat' && !profile.autoMaintain) return true;
-    const evidenceJob =
-      this.enrich && job.kind === 'manual'
+    const evidenceJob
+      = this.enrich && job.kind === 'manual'
         ? await aiStep('preference.evidence.enrich', () => {
             return this.enrich!(job, signal);
           })
@@ -44,7 +44,7 @@ export class PreferenceWorkflow {
         proposal,
         job.evidence.map((item) => item.ref),
         job.kind,
-        job.id,
+        job.id
       );
     });
     if (job.kind === 'manual') {

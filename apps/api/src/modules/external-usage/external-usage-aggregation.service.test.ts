@@ -18,7 +18,7 @@ test('stop waits for an active database aggregation before connections may close
       error: () => {
         return undefined;
       },
-    },
+    }
   );
   service.start();
   let stopped = false;
@@ -52,7 +52,7 @@ test('routine aggregation scans follow the switch while errors remain visible', 
       logger,
       undefined,
       undefined,
-      enabled,
+      enabled
     );
     service.start();
     await service.stop();
@@ -69,7 +69,7 @@ test('routine aggregation scans follow the switch while errors remain visible', 
       error: () => {
         errors++;
       },
-    },
+    }
   );
   service.start();
   await service.stop();

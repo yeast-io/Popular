@@ -75,7 +75,7 @@ test('personal usage aggregation always scopes events by owner and date range', 
   await store.readUserUsage(
     '507f1f77bcf86cd799439011',
     new Date('2026-10-01T00:00:00.000Z'),
-    new Date('2026-10-14T00:00:00.000Z'),
+    new Date('2026-10-14T00:00:00.000Z')
   );
 
   const serialized = JSON.stringify(pipeline);

@@ -1,0 +1,30 @@
+{
+  "name": "@movie-hub/helper-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "dev:ui": "vite --host 127.0.0.1 --port 1421 --strictPort",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "tauri": "tauri",
+    "test:mock": "node tools/test-mock.mjs",
+    "package:macos": "node tools/package-macos.mjs",
+    "icons:generate": "node tools/generate-icons.mjs",
+    "test:tray:macos": "cargo run --offline --manifest-path src-tauri/Cargo.toml --example tray-status-check"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10",
+    "vue-tsc": "^3.1.1",
+    "ws": "^8.22.0"
+  }
+}

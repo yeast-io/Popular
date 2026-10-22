@@ -63,10 +63,10 @@ export const ApiErrorSchema = Type.Object(
         requestId: Type.String(),
         details: Type.Optional(Type.Unknown()),
       },
-      { additionalProperties: false },
+      { additionalProperties: false }
     ),
   },
-  { $id: 'ApiError', additionalProperties: false },
+  { $id: 'ApiError', additionalProperties: false }
 );
 
 export type ErrorCode = Static<typeof ErrorCodeSchema>;

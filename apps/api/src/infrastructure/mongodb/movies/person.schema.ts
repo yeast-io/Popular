@@ -10,7 +10,7 @@ const personSchema = new Schema(
     profilePath: { type: String },
     syncedAt: { type: Date, required: true },
   },
-  { timestamps: true, collection: 'people' },
+  { timestamps: true, collection: 'people' }
 );
 
 personSchema.index({ tmdbId: 1, locale: 1 }, { unique: true });

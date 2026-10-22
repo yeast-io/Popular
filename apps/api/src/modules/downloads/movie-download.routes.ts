@@ -1,5 +1,14 @@
 import { AiTrace, aiStep, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
-import { ApiErrorSchema, DownloadProviderListResponseSchema, CreateMovieDownloadRequestSchema, MovieDownloadListResponseSchema, MovieDownloadSchema, MovieIdParamsSchema, type CreateMovieDownloadRequest, type MovieIdParams } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  DownloadProviderListResponseSchema,
+  CreateMovieDownloadRequestSchema,
+  MovieDownloadListResponseSchema,
+  MovieDownloadSchema,
+  MovieIdParamsSchema,
+  type CreateMovieDownloadRequest,
+  type MovieIdParams,
+} from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
@@ -8,7 +17,7 @@ import type { MovieDownloadService } from './movie-download.service.js';
 export function registerMovieDownloadRoutes(
   app: FastifyInstance,
   service: MovieDownloadService,
-  config: AppConfig,
+  config: AppConfig
 ): void {
   const token = (request: FastifyRequest) => readSessionToken(request, config.SESSION_COOKIE_NAME);
 
@@ -17,7 +26,7 @@ export function registerMovieDownloadRoutes(
     {
       schema: { response: { 200: DownloadProviderListResponseSchema, 401: ApiErrorSchema } },
     },
-    async (request) => service.providers(token(request)),
+    async (request) => service.providers(token(request))
   );
 
   app.get<{ Params: MovieIdParams }>(
@@ -26,7 +35,13 @@ export function registerMovieDownloadRoutes(
       schema: { params: MovieIdParamsSchema, response: { 200: MovieDownloadListResponseSchema, 401: ApiErrorSchema } },
     },
     async (request) => {
-      const trace = new AiTrace(app.log, { requestId: request.id, tmdbId: request.params.tmdbId }, '', 'download.sync', config.VERBOSE === true);
+      const trace = new AiTrace(
+        app.log,
+        { requestId: request.id, tmdbId: request.params.tmdbId },
+        '',
+        'download.sync',
+        config.VERBOSE === true
+      );
       return withAiTrace(trace, async () => {
         try {
           return await aiStep('download.sync', () => service.listAndSync(token(request), request.params.tmdbId));
@@ -35,8 +50,7 @@ export function registerMovieDownloadRoutes(
           throw error;
         }
       });
-    },
-  );
+    });
 
   app.post<{ Params: MovieIdParams; Body: CreateMovieDownloadRequest }>(
     '/me/movies/:tmdbId/downloads',
@@ -57,19 +71,29 @@ export function registerMovieDownloadRoutes(
       },
     },
     async (request, reply) => {
-      const trace = new AiTrace(app.log, { requestId: request.id, tmdbId: request.params.tmdbId }, '', 'download.create', config.VERBOSE === true);
+      const trace = new AiTrace(
+        app.log,
+        { requestId: request.id, tmdbId: request.params.tmdbId },
+        '',
+        'download.create',
+        config.VERBOSE === true
+      );
       return withAiTrace(trace, async () => {
         try {
           const result = await aiStep('download.create', () => {
             return service.create(
-              token(
-                request
-              ), request.params.tmdbId, request.body.sourceReleaseId, request.body.provider, request.body.sourceProvider,
+              token(request),
+              request.params.tmdbId,
+              request.body.sourceReleaseId,
+              request.body.provider,
+              request.body.sourceProvider
             );
           });
-          trace.event(
-            'download.create.completed',
-            { taskId: result.id, provider: result.provider, outcome: result.status }
+          trace.event('download.create.completed', {
+            taskId: result.id,
+            provider: result.provider,
+            outcome: result.status,
+          }
           );
           return reply.status(201).send(result);
         } catch (error) {
@@ -77,6 +101,5 @@ export function registerMovieDownloadRoutes(
           throw error;
         }
       });
-    },
-  );
+    });
 }

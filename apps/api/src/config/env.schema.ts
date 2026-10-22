@@ -10,11 +10,21 @@ const optionalUrl = z
   .optional()
   .or(z.literal('').transform(() => undefined));
 
-const resourceSiteOrigin = z.url().refine((value) => {
-  const url = new URL(value);
-  return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash &&
-    (!url.port || url.port === '443') && url.pathname === '/';
-}, 'must be an HTTPS origin without credentials, path, query or fragment').transform((value) => new URL(value).origin);
+const resourceSiteOrigin = z
+  .url()
+  .refine((value) => {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:'
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash
+      && (!url.port || url.port === '443')
+      && url.pathname === '/'
+    );
+  }, 'must be an HTTPS origin without credentials, path, query or fragment')
+  .transform((value) => new URL(value).origin);
 
 const mongodbFields = {
   MONGODB_URI: z.url().refine((url) => {
@@ -55,7 +65,6 @@ export const EnvSchema = z
     ACCESS_LOG_ENABLED: booleanString.default(true),
     VERBOSE: booleanString.default(false),
     PAGE_AI_ASSISTANT_ENABLED: booleanString.default(true),
-    PAGE_DOCS_ENABLED: booleanString.default(false),
     ...mongodbFields,
     ...redisFields,
     SESSION_COOKIE_NAME: z
@@ -71,7 +80,7 @@ export const EnvSchema = z
       .min(1)
       .refine(
         (value) => !value.includes('://') && !value.includes('/'),
-        'must be a hostname or IP address without protocol, port, or path',
+        'must be a hostname or IP address without protocol, port, or path'
       ),
     MINIO_PORT: z.coerce.number().int().min(1).max(65_535).default(9000),
     MINIO_USE_SSL: booleanString.default(true),
@@ -87,6 +96,17 @@ export const EnvSchema = z
       .max(50 * 1024 * 1024)
       .default(50 * 1024 * 1024),
     AVATAR_MAX_PIXELS: z.coerce.number().int().min(1).max(100_000_000).default(16_777_216),
+    REMOTE_GATEWAY_BASE_URL: optionalUrl,
+    REMOTE_GATEWAY_POOL_SIZE: z.coerce.number().int().min(1).max(32).default(4),
+    REMOTE_GATEWAY_ALLOW_INSECURE_DEV: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    REMOTE_GATEWAY_SERVICE_TOKEN: z
+      .string()
+      .min(32)
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     INTEGRATION_SECRET_KEY: z.string().min(32),
     HDAREA_BASE_URL: resourceSiteOrigin.default('https://hdarea.club'),
     MTEAM_BASE_URL: resourceSiteOrigin.default('https://api.m-team.cc'),
@@ -100,10 +120,10 @@ export const EnvSchema = z
           .map((host) => host.trim().toLowerCase())
           .filter(Boolean);
         if (
-          hosts.length === 0 ||
-          hosts.some((host) => {
+          hosts.length === 0
+          || hosts.some((host) => {
             return !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/.test(
-              host,
+              host
             );
           })
         ) {
@@ -140,7 +160,7 @@ export const EnvSchema = z
             value
               .split(',')
               .map((model) => model.trim())
-              .filter(Boolean),
+              .filter(Boolean)
           ),
         ];
       })
@@ -156,6 +176,46 @@ export const EnvSchema = z
     ...trendingFields,
   })
   .superRefine((value, context) => {
+    if (Boolean(value.REMOTE_GATEWAY_BASE_URL) !== Boolean(value.REMOTE_GATEWAY_SERVICE_TOKEN)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['REMOTE_GATEWAY_BASE_URL'],
+        message: 'Gateway URL and service token must be configured together',
+      }
+      );
+    }
+    if (value.REMOTE_GATEWAY_BASE_URL) {
+      const url = new URL(value.REMOTE_GATEWAY_BASE_URL);
+      if (['http:', 'ws:'].includes(url.protocol) && !value.REMOTE_GATEWAY_ALLOW_INSECURE_DEV)
+        context.addIssue({
+          code: 'custom',
+          path: ['REMOTE_GATEWAY_BASE_URL'],
+          message: 'WSS requires HTTPS/ WSS Gateway origin unless insecure development transport is explicit',
+        }
+        );
+      if (
+        !['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)
+        || url.username
+        || url.password
+        || url.search
+        || url.hash
+        || url.pathname !== '/'
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['REMOTE_GATEWAY_BASE_URL'],
+          message: 'Gateway URL must be an HTTP(S)/WS(S) origin without credentials, path, query or fragment',
+        }
+        );
+      }
+    }
+    if (value.REMOTE_GATEWAY_ALLOW_INSECURE_DEV && value.NODE_ENV === 'production')
+      context.addIssue({
+        code: 'custom',
+        path: ['REMOTE_GATEWAY_ALLOW_INSECURE_DEV'],
+        message: 'Insecure Gateway transport requires development mode',
+      }
+      );
     if (value.OPENAI_MAX_OUTPUT_TOKENS >= value.OPENAI_MAX_CONTEXT_TOKENS) {
       context.addIssue({
         code: 'custom',

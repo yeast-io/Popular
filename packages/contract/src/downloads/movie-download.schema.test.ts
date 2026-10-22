@@ -18,7 +18,7 @@ test('download contracts accept only supported provider choices and preserve leg
         progress: 30,
       }
       ),
-      true,
+      true
     );
   }
   assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceReleaseId: '991', provider: 'unknown' }), false);

@@ -1,6 +1,6 @@
 # 资源站点适配
 
-The `resource-sites` backend module accesses supported resource sites directly. HDArea is the first implementation. Jackett is not required. The optional Passkey is encrypted separately and can be used by the backend to build a torrent URL. Torrent retrieval and download submission remain outside this version's scope.
+The `resource-sites` backend module accesses supported resource sites directly. HDArea is the first implementation. Jackett is not required. The optional Passkey is encrypted separately and can be used by the backend to build a torrent URL. Downloads submit the site's torrent URL directly to the configured downloader; Popular does not fetch torrent files.
 
 `resource-sites` 后端模块直接访问资源站点，首版支持 HDArea，无需部署 Jackett。可选 Passkey 单独加密保存，供后端拼接种子地址；本版仍不获取种子、不提交下载任务。
 
@@ -20,7 +20,7 @@ Saving verifies the login before replacing the encrypted credential. Leave the C
 
 保存前会验证登录态，成功后才替换加密凭据。Cookie 留空时验证已保存凭据。凭据失效或被拦截后，后续搜索停止外部请求，直到重新验证或更新。替换失败不会覆盖原凭据。
 
-The assistant's existing resource search also includes registered sites. Its movie lookup uses the catalog IMDb identity; missing IMDb identities return `unmatchable` instead of silently searching ambiguous keywords. HDArea download requests remain unsupported.
+The assistant's existing resource search also includes registered sites. Its movie lookup uses the catalog IMDb identity; missing IMDb identities return `unmatchable` instead of silently searching ambiguous keywords. HDArea download requests use the same download service as M-Team.
 
 助手资源查询也包含已注册站点，按电影目录中的 IMDb ID 搜索；缺少 IMDb ID 时返回无法可靠匹配。HDArea 下载仍不支持。
 
@@ -92,3 +92,10 @@ Structured diagnostic traces use the existing `VERBOSE=false` switch and `LOG_LE
 Automated parser tests use synthetic fixtures based on the public definition. They do not prove live layout compatibility. Live HDArea Cookie search was reported successful by the user during initial integration. M-Team pagination, details and challenge variants still require live acceptance testing; automated tests use substitutes for upstream HTTP responses.
 
 解析测试使用依据公开定义构造的合成页面，不能证明真实页面兼容。初次接入时用户已反馈真实 Cookie 搜索成功；分页、基础详情和验证码变体仍需真实验收。
+
+
+## Torrent URL submission / 种子链接提交
+
+Page and assistant downloads share the backend download service. M-Team obtains a fresh URL through `torrent/genDlToken`; HDArea builds an owner-specific URL from the saved Passkey. qBittorrent receives `urls` at `torrents/add`; Transmission receives `filename` at `torrent-add` (or `torrent_add`). Popular neither fetches torrent bytes nor uploads torrent files. The downloader must reach the source URL and fetch the torrent itself. URLs remain transient backend values: never return them to the page, persist them with download records, or log them. A successful URL submission may precede torrent retrieval; tasks remain `submitting` until a downloader task is observed.
+
+页面与助手共用后端下载服务。M-Team 通过 `torrent/genDlToken` 获取新链接，HDArea 使用对应用户保存的 Passkey 生成链接。qBittorrent 使用 `urls` 参数，Transmission 使用 `filename` 参数。Popular 不获取或上传种子文件，由下载器自行访问链接获取种子。链接仅在后端临时传递，不返回页面、不存入下载记录、不写入日志。链接提交成功时种子可能尚未获取完成，未观察到下载器任务前保持 `submitting` 状态。

@@ -1,5 +1,10 @@
 import type { Model } from 'mongoose';
-import type { MovieResourceCheckKey, MovieResourceCheckCompletion, MovieResourceCheckRecord, MovieResourceCheckStore } from '../../../modules/integrations/movie-resource-check.types.js';
+import type {
+  MovieResourceCheckKey,
+  MovieResourceCheckCompletion,
+  MovieResourceCheckRecord,
+  MovieResourceCheckStore,
+} from '../../../modules/integrations/movie-resource-check.types.js';
 import type { MovieResourceCheckDocument } from './movie-resource-check.schema.js';
 import type { MovieResourceCheckTaskDocument } from './movie-resource-check-task.schema.js';
 
@@ -41,7 +46,13 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     const resultIds = new Set(results.map((result) => `${result.tmdbId}:${result.provider}`));
     for (const task of tasks) {
       if (!resultIds.has(`${task.tmdbId}:${task.provider}`)) {
-        results.push({ ownerId, tmdbId: task.tmdbId, provider: task.provider, checking: true, availability: 'unchecked' });
+        results.push({
+          ownerId,
+          tmdbId: task.tmdbId,
+          provider: task.provider,
+          checking: true,
+          availability: 'unchecked',
+        });
       }
     }
     return results;
@@ -81,7 +92,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     failedAttemptBefore: Date,
     identityFingerprint: string | undefined,
     credentialsVerifiedAt: Date | undefined,
-    force: boolean,
+    force: boolean
   ): Promise<boolean> {
     if (!(await this.isDue(key, attemptedAt, failedAttemptBefore, identityFingerprint, credentialsVerifiedAt, force)))
       return false;
@@ -97,7 +108,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
             $setOnInsert: { ...key },
             $set: { status: 'checking', attemptedAt, leaseExpiresAt },
           },
-          { upsert: true, returnDocument: 'after' },
+          { upsert: true, returnDocument: 'after' }
         )
         .lean()
         .exec();
@@ -140,7 +151,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
                 ...(!('identityFingerprint' in result) ? { identityFingerprint: 1 } : {}),
               },
             }
-          : { $set: { ...result, lastAttemptAt: attemptedAt } },
+          : { $set: { ...result, lastAttemptAt: attemptedAt } }
       )
       .exec();
     if (result.lastAttemptStatus === 'error') await this.backfillMissingAvailability(key);
@@ -149,10 +160,10 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
   async recordAttempt(
     key: MovieResourceCheckKey,
     attemptedAt: Date,
-    result: MovieResourceCheckCompletion,
+    result: MovieResourceCheckCompletion
   ): Promise<void> {
-    const update =
-      result.lastAttemptStatus === 'success'
+    const update
+      = result.lastAttemptStatus === 'success'
         ? {
             $set: { ...result, lastAttemptAt: attemptedAt },
             $unset: {
@@ -175,7 +186,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
             $or: [{ lastAttemptAt: { $exists: false } }, { lastAttemptAt: { $lte: attemptedAt } }],
           },
           update,
-          { upsert: true },
+          { upsert: true }
         )
         .exec();
       if (result.lastAttemptStatus === 'error') await this.backfillMissingAvailability(key);
@@ -191,7 +202,7 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     failedAttemptBefore: Date,
     identityFingerprint: string | undefined,
     credentialsVerifiedAt: Date | undefined,
-    force: boolean,
+    force: boolean
   ): Promise<boolean> {
     const state = await this.checks.findOne(key).lean().exec();
     if (!state || !state.lastAttemptAt) return true;
@@ -201,8 +212,8 @@ export class MongoMovieResourceCheckStore implements MovieResourceCheckStore {
     if (force) return true;
     if (state.lastAttemptStatus === 'error') {
       return (
-        ['network', 'timeout', 'rate_limited', 'remote_error', 'internal_error'].includes(state.lastErrorCode ?? '') &&
-        state.lastAttemptAt <= failedAttemptBefore
+        ['network', 'timeout', 'rate_limited', 'remote_error', 'internal_error'].includes(state.lastErrorCode ?? '')
+        && state.lastAttemptAt <= failedAttemptBefore
       );
     }
     if (state.availability === 'unmatchable') {

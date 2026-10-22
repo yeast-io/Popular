@@ -1,15 +1,23 @@
 import { MISSING_DOWNLOAD_RETENTION_MS } from '../../../modules/downloads/movie-download.policy.js';
 import { Types, type Model, type UpdateWithAggregationPipeline } from 'mongoose';
 import type { DownloadProvider, DownloadSource, MovieDownloadStatus } from '@movie-hub/contract';
-import type { DownloadClaim, MovieDownloadProgress, MovieDownloadRecord, MovieDownloadStore } from '../../../modules/downloads/movie-download.types.js';
+import type {
+  DownloadClaim,
+  MovieDownloadProgress,
+  MovieDownloadRecord,
+  MovieDownloadStore,
+} from '../../../modules/downloads/movie-download.types.js';
 import type { MovieDownloadDocument } from './movie-download.schema.js';
 
 export class MongoMovieDownloadStore implements MovieDownloadStore {
-  constructor(
-    private readonly downloads: Model<MovieDownloadDocument>
-  ) {}
+  constructor(private readonly downloads: Model<MovieDownloadDocument>) {}
 
-  async findByRelease(ownerId: string, tmdbId: number, releaseId: string, sourceProvider: DownloadSource = 'mteam'): Promise<MovieDownloadRecord | null> {
+  async findByRelease(
+    ownerId: string,
+    tmdbId: number,
+    releaseId: string,
+    sourceProvider: DownloadSource = 'mteam'
+  ): Promise<MovieDownloadRecord | null> {
     const row = await this.downloads
       .findOne({ ownerId, tmdbId, sourceProvider, sourceReleaseId: releaseId })
       .lean()
@@ -22,7 +30,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
     tmdbId: number,
     releaseId: string,
     provider: DownloadProvider,
-    sourceProvider: DownloadSource = 'mteam',
+    sourceProvider: DownloadSource = 'mteam'
   ): Promise<DownloadClaim> {
     const id = new Types.ObjectId();
     try {
@@ -69,7 +77,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
             notificationTask: 1,
           },
         },
-        { new: true },
+        { new: true }
       )
       .lean()
       .exec();
@@ -100,18 +108,25 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
 
   async markMissing(id: string, attemptedAt: Date): Promise<MovieDownloadRecord> {
     // Atomic initialization: repeated polls must retain the first missing timestamp.
-    return this.update(id, [{
-      $set: {
-        status: 'missing', lastErrorCode: 'DOWNLOAD_TORRENT_MISSING', lastSyncedAt: attemptedAt,
-        missingSince: { $ifNull: ['$missingSince', attemptedAt] },
-        expiresAt: { $add: [{ $ifNull: ['$missingSince', attemptedAt] }, MISSING_DOWNLOAD_RETENTION_MS] },
-        downloadSpeed: 0,
-        etaSeconds: '$$REMOVE',
+    return this.update(id, [
+      {
+        $set: {
+          status: 'missing',
+          lastErrorCode: 'DOWNLOAD_TORRENT_MISSING',
+          lastSyncedAt: attemptedAt,
+          missingSince: { $ifNull: ['$missingSince', attemptedAt] },
+          expiresAt: { $add: [{ $ifNull: ['$missingSince', attemptedAt] }, MISSING_DOWNLOAD_RETENTION_MS] },
+          downloadSpeed: 0,
+          etaSeconds: '$$REMOVE',
+        },
       },
-    }]);
+    ]);
   }
 
-  private async update(id: string, update: Record<string, unknown> | UpdateWithAggregationPipeline): Promise<MovieDownloadRecord> {
+  private async update(
+    id: string,
+    update: Record<string, unknown> | UpdateWithAggregationPipeline
+  ): Promise<MovieDownloadRecord> {
     const row = await this.downloads.findByIdAndUpdate(id, update, { new: true }).lean().exec();
     if (!row) throw new Error('Movie download disappeared during update');
     return toMovieDownloadRecord(row);
@@ -127,6 +142,7 @@ export function toMovieDownloadRecord(row: MovieDownloadDocument & { _id: unknow
     sourceReleaseId: row.sourceReleaseId,
     provider: row.provider as DownloadProvider,
     lookupTag: row.lookupTag,
+    ...(row.executionMode ? { executionMode: row.executionMode as 'local' | 'remote' } : {}),
     status: row.status as MovieDownloadStatus,
     progress: row.progress,
     ...(row.torrentHash ? { torrentHash: row.torrentHash } : {}),

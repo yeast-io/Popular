@@ -6,10 +6,7 @@ export class RedisConnector implements HealthDependency {
   readonly name = 'redis' as const;
   private client: Redis | undefined;
 
-  constructor(
-    private readonly url: string,
-    private readonly keyPrefix: string
-  ) {}
+  constructor(private readonly url: string, private readonly keyPrefix: string) {}
 
   async connect(): Promise<Redis> {
     if (this.client?.status === 'ready') return this.client;

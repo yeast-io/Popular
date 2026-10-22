@@ -8,9 +8,11 @@ test('resource query schema enforces owner/conversation uniqueness', async () =>
   const model = createResourceQueryModel(connection);
   assert.equal(model.collection.name, 'assistantresourcequeries');
   assert.ok(
-    model.schema.indexes().some(
-      ([fields, options]) => fields.ownerId === 1 && fields.conversation === 1 && options.unique
-    )
+    model.schema
+      .indexes()
+      .some(
+        ([fields, options]) => fields.ownerId === 1 && fields.conversation === 1 && options.unique
+      )
   );
   assert.equal(model.schema.path('expiresAt').instance, 'Date');
   assert.ok(

@@ -41,7 +41,7 @@ async function loadConfiguration() {
     const response = await timedFetch(
       `${apiBaseUrl}/me/integrations/mteam`,
       { credentials: 'include' },
-      ACTION_TIMEOUT_MS,
+      ACTION_TIMEOUT_MS
     );
     if (!response.ok) throw localizedApiError((await response.json()) as ApiError, 'errors.requestFailed');
     applyConfiguration((await response.json()) as MTeamConfiguration);
@@ -68,7 +68,7 @@ async function testAndSave() {
           ...(replacementSecret(apiKey.value, config.value.apiKeyMasked) ? { apiKey: replacementSecret(apiKey.value, config.value.apiKeyMasked) } : {}),
         }),
       },
-      ACTION_TIMEOUT_MS,
+      ACTION_TIMEOUT_MS
     );
     const result = (await response.json()) as MTeamConfiguration | ApiError;
     if (!response.ok) {
@@ -96,7 +96,7 @@ async function retest() {
         method: 'POST',
         credentials: 'include',
       },
-      ACTION_TIMEOUT_MS,
+      ACTION_TIMEOUT_MS
     );
     const result = (await response.json()) as MTeamConfiguration | ApiError;
     if (!response.ok) {
@@ -124,7 +124,7 @@ async function deleteConfiguration() {
         method: 'DELETE',
         credentials: 'include',
       },
-      ACTION_TIMEOUT_MS,
+      ACTION_TIMEOUT_MS
     );
     if (!response.ok) throw localizedApiError((await response.json()) as ApiError, 'errors.requestFailed');
     applyConfiguration({ provider: 'mteam', status: 'unconfigured' });
@@ -144,7 +144,7 @@ async function refreshAfterFailure() {
     const response = await timedFetch(
       `${apiBaseUrl}/me/integrations/mteam`,
       { credentials: 'include' },
-      STATUS_REFRESH_TIMEOUT_MS,
+      STATUS_REFRESH_TIMEOUT_MS
     );
     if (response.ok) applyConfiguration((await response.json()) as MTeamConfiguration);
   } catch {

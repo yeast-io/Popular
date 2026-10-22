@@ -28,18 +28,22 @@ const config = loadConfig({
 
 class MemoryUsers implements AuthUserStore {
   readonly users = new Map<string, StoredUser>();
+
   async countUsers() {
     return this.users.size;
   }
+
   async createPasswordUser(input: Omit<StoredUser, 'id'>) {
     if (this.users.has(input.email)) throw new DuplicateEmailError();
     const user = { ...input, id: String(this.users.size + 1) };
     this.users.set(user.email, user);
     return user;
   }
+
   async findByEmailWithPassword(email: string) {
     return this.users.get(email) ?? null;
   }
+
   async findById(id: string) {
     return (
       [...this.users.values()].find((user) => {
@@ -47,12 +51,14 @@ class MemoryUsers implements AuthUserStore {
       }) ?? null
     );
   }
+
   async updateDisplayName(id: string, displayName: string) {
     const user = await this.findById(id);
     if (!user) return null;
     user.displayName = displayName;
     return user;
   }
+
   async updateAvatarObjectKey(id: string, avatarObjectKey: string | undefined) {
     const user = await this.findById(id);
     if (!user) return null;
@@ -64,14 +70,17 @@ class MemoryUsers implements AuthUserStore {
 
 class MemorySessions implements SessionStore {
   readonly sessions = new Map<string, string>();
+
   async create(ownerId: string) {
     const token = `session-${ownerId}`;
     this.sessions.set(token, ownerId);
     return token;
   }
+
   async getOwnerId(token: string) {
     return this.sessions.get(token) ?? null;
   }
+
   async delete(token: string) {
     this.sessions.delete(token);
   }
@@ -79,16 +88,19 @@ class MemorySessions implements SessionStore {
 
 class MemoryAvatars implements AvatarStore {
   readonly objects = new Map<string, { bytes: Buffer; contentType: string }>();
+
   async put(ownerId: string, bytes: Buffer, contentType: string) {
     const key = `users/${ownerId}/avatars/test.png`;
     this.objects.set(key, { bytes, contentType });
     return key;
   }
+
   async get(objectKey: string) {
     const object = this.objects.get(objectKey);
     if (!object) throw new Error('missing object');
     return { stream: Readable.from(object.bytes), contentType: object.contentType };
   }
+
   async delete(objectKey: string) {
     this.objects.delete(objectKey);
   }

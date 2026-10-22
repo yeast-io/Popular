@@ -13,35 +13,68 @@ class Sessions implements AssistantSessionStore {
   rows = new Map<string, AssistantSession>();
   locks = new Map<string, string>();
   failFinalSave = false;
-  key(owner: string, chat: string) { return JSON.stringify([owner, chat]); }
-  async ensure(owner: string, chat: string) { const key = this.key(owner, chat); if (!this.rows.has(key)) this.rows.set(key, emptyAssistantSession()); }
-  async read(owner: string, chat: string) { return structuredClone(this.rows.get(this.key(owner, chat)) ?? null); }
+
+  key(owner: string, chat: string) {
+    return JSON.stringify([owner, chat]);
+  }
+
+  async ensure(owner: string, chat: string) {
+    const key = this.key(owner, chat);
+    if (!this.rows.has(key)) this.rows.set(key, emptyAssistantSession());
+  }
+
+  async read(owner: string, chat: string) {
+    return structuredClone(this.rows.get(this.key(owner, chat)) ?? null);
+  }
+
   async acquire(owner: string, chat: string, lease: string) {
     const key = this.key(owner, chat);
     if (this.locks.has(key)) return false;
     this.locks.set(key, lease);
     return true;
   }
+
   async save(owner: string, chat: string, lease: string, state: AssistantSession) {
-    if (this.failFinalSave && state.stage === 'idle' && state.events.length > 0) { this.failFinalSave = false; throw new Error('save crashed'); }
+    if (this.failFinalSave && state.stage === 'idle' && state.events.length > 0) {
+      this.failFinalSave = false;
+      throw new Error('save crashed');
+    }
     const key = this.key(owner, chat);
     if (this.locks.get(key) !== lease) return false;
     this.rows.set(key, structuredClone(state));
     return true;
   }
+
   async release(owner: string, chat: string, lease: string) {
     const key = this.key(owner, chat);
     if (this.locks.get(key) === lease) this.locks.delete(key);
   }
 }
 const input: AssistantInputWorkflowMessage = {
-  ownerId: 'alice', channel: 'telegram', chatId: 'chat', messageId: '1', text: '下载星际穿越', receivedAt: new Date().toISOString(),
+  ownerId: 'alice',
+  channel: 'telegram',
+  chatId: 'chat',
+  messageId: '1',
+  text: '下载星际穿越',
+  receivedAt: new Date().toISOString(),
 };
 const basePlan: ResourcePlan = {
-  title: null, year: null, candidateId: null, resolution: null, providers: null,
-  releaseIndex: null, page: null, refresh: false, question: null, unsupported: [],
+  title: null,
+  year: null,
+  candidateId: null,
+  resolution: null,
+  providers: null,
+  releaseIndex: null,
+  page: null,
+  refresh: false,
+  question: null,
+  unsupported: [],
 };
-function fixture(providers: DownloadProvider[] = ['qbittorrent', 'transmission'], locale: Locale = 'zh-CN', defaultProvider?: DownloadProvider) {
+function fixture(
+  providers: DownloadProvider[] = ['qbittorrent', 'transmission'],
+  locale: Locale = 'zh-CN',
+  defaultProvider?: DownloadProvider
+) {
   let handling: AssistantRequestClassification['handling'];
   const requests: LlmGenerateInput[] = [];
   let detectedLocale: Locale | null = null;
@@ -59,73 +92,135 @@ function fixture(providers: DownloadProvider[] = ['qbittorrent', 'transmission']
   const submissions: Array<{ owner: string; movie: number; release: string; provider: DownloadProvider }> = [];
   const logs: unknown[] = [];
   const create = () => {
-    return new AssistantWorkflow(async () => {
-      return ({ generate: async (request) => {
-        calls++;
-        requests.push(request);
-        if (request.operation === 'assistant.download.plan') {
-          const payload = JSON.parse(request.messages.at(-1)!.content) as { context: AssistantDownloadContext };
-          planningContexts.push(payload.context);
-        }
-        const content = request.operation === 'assistant.intent' ? { intent, handling, preferenceSignal: 'none', locale: detectedLocale }
-          : request.operation === 'assistant.download.plan' ? action : request.operation === 'assistant.resources.plan' ? plan : 'Discussion reply';
-        return { content: typeof content === 'string' ? content : JSON.stringify(
-          content
-        ), inputTokens: 1, outputTokens: 1 };
-      } });
-    }, {
-      locale, systemPrompt: 'Brief', maxContextTokens: 8_000, maxOutputTokens: 500, sessions,
-      diagnostics: { verbose: false, logger: { error: (...args: unknown[]) => logs.push(args) } },
-      resources: {
-        active: async () => Boolean(context),
-        context: async (owner) => owner === 'alice' ? structuredClone(context) : null,
-        run: async (_owner, _conversation, _event, text, history, decisions, signal, replyLocale = 'zh-CN') => {
-          resourceLocales.push(replyLocale);
-          resourceCalls++;
-          await decisions.plan(
-            text, history,
-            { ...emptyResourceState(), sources: [], releaseCount: 0, page: 1, pageCount: 0 },
-            replyLocale,
-            signal!
-          );
-          context = {
-            ...emptyResourceState(), updatedAt: new Date().toISOString(),
-            movie: movieCandidates ? null : { tmdbId: 157336, title: '星际穿越' },
-            candidates: movieCandidates ? [{ tmdbId: 157336, title: '星际穿越' }] : [],
-            releases: movieCandidates ? [] : [{ provider: 'mteam', id: 'release-1', title: 'secret-release-title.1080p' }, { provider: 'mteam', id: 'release-2', title: 'secret-release-title.2160p' }],
-            snapshot: { createdAt: new Date().toISOString(), results: [] },
-          };
-          return { replyText: movieCandidates ? (replyLocale === 'zh-CN' ? '请选择电影' : 'Choose a film') : '1. 1080p\n2. 4K' };
-        },
+    return new AssistantWorkflow(
+      async () => {
+        return {
+          generate: async (request) => {
+            calls++;
+            requests.push(request);
+            if (request.operation === 'assistant.download.plan') {
+              const payload = JSON.parse(request.messages.at(-1)!.content) as { context: AssistantDownloadContext };
+              planningContexts.push(payload.context);
+            }
+            const content
+              = request.operation === 'assistant.intent'
+                ? { intent, handling, preferenceSignal: 'none', locale: detectedLocale }
+                : request.operation === 'assistant.download.plan'
+                  ? action
+                  : request.operation === 'assistant.resources.plan'
+                    ? plan
+                    : 'Discussion reply';
+            return {
+              content: typeof content === 'string' ? content : JSON.stringify(content),
+              inputTokens: 1,
+              outputTokens: 1,
+            };
+          },
+        };
       },
-      downloads: {
-        providersFor: async () => [...providers],
-        defaultProviderFor: async () => defaultProvider,
-        createForOwner: async (owner, movie, release, provider) => {
-          const persisted = await sessions.read(owner, 'telegram:chat');
-          assert.equal(persisted?.stage, 'submitting', 'checkpoint must precede external submission');
-          assert.equal(persisted?.selection?.releaseId, release);
-          submissions.push({ owner, movie, release, provider });
-          if (failSubmit) throw new Error('upstream secret-release-title.2160p failed');
-          return { id: 'task-1', tmdbId: movie, sourceProvider: 'mteam', sourceReleaseId: release, provider, status: 'downloading', progress: 12 } satisfies MovieDownload;
+      {
+        locale,
+        systemPrompt: 'Brief',
+        maxContextTokens: 8_000,
+        maxOutputTokens: 500,
+        sessions,
+        diagnostics: { verbose: false, logger: { error: (...args: unknown[]) => logs.push(args) } },
+        resources: {
+          active: async () => Boolean(context),
+          context: async (owner) => (owner === 'alice' ? structuredClone(context) : null),
+          run: async (_owner, _conversation, _event, text, history, decisions, signal, replyLocale = 'zh-CN') => {
+            resourceLocales.push(replyLocale);
+            resourceCalls++;
+            await decisions.plan(
+              text,
+              history,
+              { ...emptyResourceState(), sources: [], releaseCount: 0, page: 1, pageCount: 0 },
+              replyLocale,
+              signal!
+            );
+            context = {
+              ...emptyResourceState(),
+              updatedAt: new Date().toISOString(),
+              movie: movieCandidates ? null : { tmdbId: 157336, title: '星际穿越' },
+              candidates: movieCandidates ? [{ tmdbId: 157336, title: '星际穿越' }] : [],
+              releases: movieCandidates
+                ? []
+                : [
+                    { provider: 'mteam', id: 'release-1', title: 'secret-release-title.1080p' },
+                    { provider: 'mteam', id: 'release-2', title: 'secret-release-title.2160p' },
+                  ],
+              snapshot: { createdAt: new Date().toISOString(), results: [] },
+            };
+            return {
+              replyText: movieCandidates
+                ? replyLocale === 'zh-CN'
+                  ? '请选择电影'
+                  : 'Choose a film'
+                : '1. 1080p\n2. 4K',
+            };
+          },
         },
-      },
-    });
+        downloads: {
+          providersFor: async () => [...providers],
+          defaultProviderFor: async () => defaultProvider,
+          createForOwner: async (owner, movie, release, provider) => {
+            const persisted = await sessions.read(owner, 'telegram:chat');
+            assert.equal(persisted?.stage, 'submitting', 'checkpoint must precede external submission');
+            assert.equal(persisted?.selection?.releaseId, release);
+            submissions.push({ owner, movie, release, provider });
+            if (failSubmit) throw new Error('upstream secret-release-title.2160p failed');
+            return {
+              id: 'task-1',
+              tmdbId: movie,
+              sourceProvider: 'mteam',
+              sourceReleaseId: release,
+              provider,
+              status: 'downloading',
+              progress: 12,
+            } satisfies MovieDownload;
+          },
+        },
+      }
+    );
   };
   let message = 0;
   const send = (text: string, overrides: Partial<AssistantInputWorkflowMessage> = {}, history: LlmMessage[] = []) => {
     return create().run({ ...input, messageId: String(++message), text, ...overrides }, history);
   };
   return {
-    sessions, create, send, submissions, logs, providers, resourceLocales, planningContexts, requests,
-    handling(value: AssistantRequestClassification['handling']) { handling = value; },
-    language(value: Locale | null) { detectedLocale = value; },
-    action(value: string, index: number | null = null, provider: DownloadProvider | null = null) { action = { action: value, releaseIndex: index, provider }; },
-    intent(value: string) { intent = value; },
-    plan(value: Partial<ResourcePlan>) { plan = { ...basePlan, title: null, ...value }; },
-    candidates(value: boolean) { movieCandidates = value; },
-    fail(value: boolean) { failSubmit = value; },
-    context() { return context!; },
+    sessions,
+    create,
+    send,
+    submissions,
+    logs,
+    providers,
+    resourceLocales,
+    planningContexts,
+    requests,
+    handling(value: AssistantRequestClassification['handling']) {
+      handling = value;
+    },
+    language(value: Locale | null) {
+      detectedLocale = value;
+    },
+    action(value: string, index: number | null = null, provider: DownloadProvider | null = null) {
+      action = { action: value, releaseIndex: index, provider };
+    },
+    intent(value: string) {
+      intent = value;
+    },
+    plan(value: Partial<ResourcePlan>) {
+      plan = { ...basePlan, title: null, ...value };
+    },
+    candidates(value: boolean) {
+      movieCandidates = value;
+    },
+    fail(value: boolean) {
+      failSubmit = value;
+    },
+    context() {
+      return context!;
+    },
     state: () => sessions.read('alice', 'telegram:chat'),
     counts: () => ({ calls, resourceCalls }),
   };
@@ -307,9 +402,9 @@ test('cancellation before a turn never reaches model or download operations', as
   await f.send('下载星际穿越');
   f.action('select_resource', 2);
   const calls = f.counts().calls;
-  await assert.rejects(
-    f.create().run({ ...input, messageId: 'aborted', text: '2' }, [], AbortSignal.abort()),
-    { name: 'AbortError' }
+  await assert.rejects(f.create().run({ ...input, messageId: 'aborted', text: '2' }, [], AbortSignal.abort()), {
+    name: 'AbortError',
+  }
   );
   assert.equal(f.counts().calls, calls);
   assert.equal(f.submissions.length, 0);
@@ -329,10 +424,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     f.action('select_provider', null, 'transmission');
     const submitted = await f.send('Transmission');
     assert.match(submitted.replyText, locale === 'en-US' ? /Status: Downloading/ : /状态：正在下载/);
-    if (locale === 'en-US') assert.doesNotMatch(
-      queried.replyText + selected.replyText + submitted.replyText,
-      /\p{Script=Han}/u
-    );
+    if (locale === 'en-US')
+      assert.doesNotMatch(queried.replyText + selected.replyText + submitted.replyText, /\p{Script=Han}/u);
     assert.equal((await f.state())?.locale, locale);
     const calls = f.counts().calls;
     assert.deepEqual(await f.send('Transmission', { messageId: '3' }), submitted);
@@ -384,16 +477,20 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     // Resource state persists separately from the idle download session, including off-page releases.
     f.context().page = 2;
     f.context().releases = Array.from({ length: 64 }, (_, index) => {
-      return ({
-        provider: 'mteam', id: `global-${index + 1}`, title: `Movie.2160p-${index + 1}`,
-      });
+      return {
+        provider: 'mteam',
+        id: `global-${index + 1}`,
+        title: `Movie.2160p-${index + 1}`,
+      };
     });
     assert.equal((await f.state())?.stage, 'idle');
     f.intent('download');
     f.action('select_resource', 3);
     const reply = await f.send(locale === 'zh-CN' ? '下载 3' : 'download 3');
     assert.deepEqual(f.planningContexts.at(-1), {
-      stage: 'idle', providers: [], hasSelection: false,
+      stage: 'idle',
+      providers: [],
+      hasSelection: false,
       resources: { hasSnapshot: true, releaseCount: 64, page: 2, pageCount: 7 },
     }
     );
@@ -422,7 +519,6 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
   });
 }
 
-
 test('information handling preserves download intent, historical evidence and live capability limits in both languages', async () => {
   for (const locale of ['zh-CN', 'en-US'] as const) {
     for (const channel of ['telegram', 'whatsapp', 'web'] as const) {
@@ -434,7 +530,9 @@ test('information handling preserves download intent, historical evidence and li
       const before = f.counts();
       f.handling('answer');
       const question = locale === 'zh-CN' ? '刚才的电影用了哪个下载器？' : 'Which downloader did that film use?';
-      const history: LlmMessage[] = [{ role: 'assistant', content: 'Download submitted to qbittorrent; progress at submission: 12%' }];
+      const history: LlmMessage[] = [
+        { role: 'assistant', content: 'Download submitted to qbittorrent; progress at submission: 12%' },
+      ];
       const result = await f.send(question, { channel }, history);
       assert.equal(result.intent, 'download');
       assert.equal(result.replyText, 'Discussion reply');
@@ -447,7 +545,10 @@ test('information handling preserves download intent, historical evidence and li
       assert.ok(system.includes(`"responseLocale":"${locale}"`));
       assert.match(system, /"liveDownloadStatus":false/);
       assert.match(system, /Historical progress\/status is a past observation/);
-      assert.equal(f.requests.slice(-2).some((item) => item.operation === 'assistant.download.plan'), false);
+      assert.equal(
+        f.requests.slice(-2).some((item) => item.operation === 'assistant.download.plan'),
+        false
+      );
     }
   }
 });
@@ -491,7 +592,6 @@ test('status and unsupported-operation answer actions generate a grounded reply 
   }
 });
 
-
 test('web download answers stay complete and replayable when streaming was requested', async () => {
   const f = fixture();
   f.handling('answer');
@@ -505,7 +605,6 @@ test('web download answers stay complete and replayable when streaming was reque
   assert.equal(f.counts().calls, calls);
   assert.equal(f.submissions.length, 0);
 });
-
 
 test('the configured default downloader is used after resource selection; explicit downloader choices still win', async () => {
   for (const explicit of [null, 'qbittorrent'] as const) {

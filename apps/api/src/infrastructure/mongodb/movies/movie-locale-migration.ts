@@ -18,7 +18,7 @@ export const migratedLocale = 'zh-CN' as const;
 
 export async function migrateMovieLocales(
   connection: Connection,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean } = {}
 ): Promise<MovieLocaleMigrationReport> {
   const database = connection.db;
   if (!database) throw new Error('MongoDB database handle is unavailable');
@@ -36,8 +36,8 @@ export async function migrateMovieLocales(
   // Include already-cleaned rows for affected IDs. This closes the retry window where a
   // canonical row was cleaned but the older duplicate row had not yet been deleted.
   const affectedTmdbIds = [...localizationSourceByTmdbId.keys()];
-  const affectedMovies: LegacyMovie[] =
-    affectedTmdbIds.length === 0
+  const affectedMovies: LegacyMovie[]
+    = affectedTmdbIds.length === 0
       ? []
       : await movies
           .find({ tmdbId: { $in: affectedTmdbIds } })
@@ -47,8 +47,8 @@ export async function migrateMovieLocales(
   const duplicateIds = affectedMovies
     .filter((movie) => canonicalByTmdbId.get(movie.tmdbId as number)?._id !== movie._id)
     .map(({ _id }) => _id);
-  const existingLocalizationCount =
-    legacyMovies.length === 0
+  const existingLocalizationCount
+    = legacyMovies.length === 0
       ? 0
       : await localizations.countDocuments({
           locale: migratedLocale,
@@ -86,13 +86,13 @@ export async function migrateMovieLocales(
           },
         };
       }),
-      { ordered: false },
+      { ordered: false }
     );
 
     for (const movie of canonicalByTmdbId.values()) {
       await movies.updateOne(
         { _id: movie._id as never },
-        { $set: toBaseMovieUpdate(movie), $unset: localizedMovieFields },
+        { $set: toBaseMovieUpdate(movie), $unset: localizedMovieFields }
       );
     }
   }
@@ -159,15 +159,15 @@ export function toBaseMovieUpdate(movie: LegacyMovie): Record<string, unknown> {
 
 export function assertStateAssociationsPreserved(
   before: MovieLocaleMigrationReport['stateAssociations'],
-  after: MovieLocaleMigrationReport['stateAssociations'],
+  after: MovieLocaleMigrationReport['stateAssociations']
 ): void {
   if (
-    before.total !== after.total ||
-    before.resolvedTmdbIds !== after.resolvedTmdbIds ||
-    before.danglingTmdbIds !== after.danglingTmdbIds
+    before.total !== after.total
+    || before.resolvedTmdbIds !== after.resolvedTmdbIds
+    || before.danglingTmdbIds !== after.danglingTmdbIds
   ) {
     throw new Error(
-      `Movie-state associations changed during migration: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+      `Movie-state associations changed during migration: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`
     );
   }
 }
@@ -188,37 +188,37 @@ const localizedMovieFields = {
 function validateLegacyMovies(movies: readonly LegacyMovie[]): void {
   const invalid = movies.filter((movie) => {
     return (
-      typeof movie.tmdbId !== 'number' ||
-      !Number.isInteger(movie.tmdbId) ||
-      movie.tmdbId < 1 ||
-      typeof movie.title !== 'string' ||
-      movie.title.trim().length === 0
+      typeof movie.tmdbId !== 'number'
+      || !Number.isInteger(movie.tmdbId)
+      || movie.tmdbId < 1
+      || typeof movie.title !== 'string'
+      || movie.title.trim().length === 0
     );
   });
   if (invalid.length > 0) {
     throw new Error(
-      `Migration aborted before writes: ${invalid.length} legacy movie row(s) have an invalid tmdbId or title`,
+      `Migration aborted before writes: ${invalid.length} legacy movie row(s) have an invalid tmdbId or title`
     );
   }
 }
 
 async function stateAssociationSnapshot(
   states: ReturnType<NonNullable<Connection['db']>['collection']>,
-  movies: ReturnType<NonNullable<Connection['db']>['collection']>,
+  movies: ReturnType<NonNullable<Connection['db']>['collection']>
 ): Promise<MovieLocaleMigrationReport['stateAssociations']> {
   const [total, stateTmdbIds] = await Promise.all([
     states.countDocuments({}),
     states.distinct('tmdbId') as Promise<unknown[]>,
   ]);
   const validIds = stateTmdbIds.filter((value): value is number => typeof value === 'number');
-  const resolvedTmdbIds =
-    validIds.length === 0 ? 0 : (await movies.distinct('tmdbId', { tmdbId: { $in: validIds } })).length;
+  const resolvedTmdbIds
+    = validIds.length === 0 ? 0 : (await movies.distinct('tmdbId', { tmdbId: { $in: validIds } })).length;
   return { total, resolvedTmdbIds, danglingTmdbIds: validIds.length - resolvedTmdbIds };
 }
 
 async function dropIndexByShape(
   collection: ReturnType<NonNullable<Connection['db']>['collection']>,
-  expectedKey: Record<string, number>,
+  expectedKey: Record<string, number>
 ): Promise<void> {
   const indexes = await collection.indexes();
   const match = indexes.find(({ key }) => JSON.stringify(key) === JSON.stringify(expectedKey));

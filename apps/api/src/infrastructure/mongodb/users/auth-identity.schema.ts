@@ -7,7 +7,7 @@ const authIdentitySchema = new Schema(
     providerSubject: { type: String, required: true },
     providerEmail: { type: String, trim: true, lowercase: true },
   },
-  { timestamps: true, collection: 'auth_identities' },
+  { timestamps: true, collection: 'auth_identities' }
 );
 
 authIdentitySchema.index({ provider: 1, providerSubject: 1 }, { unique: true });

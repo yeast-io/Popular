@@ -3,7 +3,12 @@ import test from 'node:test';
 import { PreferenceService } from './preference.service.js';
 import { emptyProfile } from './preference.domain.js';
 import type { MongoPreferenceStore } from '../../infrastructure/mongodb/preferences/preference.store.js';
-import type { MovieCatalogStore, MovieSearchProvider, MovieStatusRecord, MovieStatusStore } from '../movies/movie.types.js';
+import type {
+  MovieCatalogStore,
+  MovieSearchProvider,
+  MovieStatusRecord,
+  MovieStatusStore,
+} from '../movies/movie.types.js';
 
 function setup(count: number) {
   let profile = emptyProfile();
@@ -39,7 +44,7 @@ function setup(count: number) {
     'zh-CN',
     async () => {
       modelCalls++;
-    },
+    }
   );
   return { service, queued, rows, profile: () => profile, modelCalls: () => modelCalls };
 }
@@ -67,16 +72,14 @@ test('chat updates obey the automatic maintenance toggle, and stale user edits c
 });
 test('manual corrections become protected explicit entries; deletion preserves withdrawal evidence', async () => {
   const state = setup(5);
-  state
-    .profile()
-    .entries.push({
-      id: 'p1',
-      content: '可能喜欢诺兰',
-      section: 'inferred',
-      evidenceRefs: ['movie:1:liked'],
-      protected: false,
-      updatedAt: new Date().toISOString(),
-    }
+  state.profile().entries.push({
+    id: 'p1',
+    content: '可能喜欢诺兰',
+    section: 'inferred',
+    evidenceRefs: ['movie:1:liked'],
+    protected: false,
+    updatedAt: new Date().toISOString(),
+  }
   );
   await state.service.edit('alice', 0, { entryId: 'p1', content: '我更喜欢历史题材' });
   assert.equal(state.profile().entries[0]?.section, 'explicit');
@@ -134,7 +137,7 @@ test('manual generation fits 35 multilingual movie samples within the context bu
     } as unknown as MovieCatalogStore,
     {} as MovieSearchProvider,
     'zh-CN',
-    async () => {},
+    async () => {}
   );
   const job = {
     id: 'manual-job',
@@ -149,7 +152,7 @@ test('manual generation fits 35 multilingual movie samples within the context bu
   assert.equal(enriched.evidence.length, 35);
   assert.deepEqual(
     enriched.evidence.map((item) => item.ref),
-    evidence.map((item) => item.ref),
+    evidence.map((item) => item.ref)
   );
   for (const item of enriched.evidence) {
     const record = JSON.parse(item.text);
@@ -172,8 +175,11 @@ test('manual generation fits 35 multilingual movie samples within the context bu
   await agent.run(enriched, emptyProfile(), new AbortController().signal);
   assert.ok(request);
   const counter = new Utf8ByteTokenCounter();
-  const total =
-    request.messages.reduce((sum, message) => sum + counter.count(message.content) + 4, 256) + request.maxOutputTokens;
+  const total
+    = request.messages.reduce(
+      (sum, message) => sum + counter.count(message.content) + 4,
+      256
+    ) + request.maxOutputTokens;
   assert.ok(total <= 32_000, `Context including reserved output must fit: ${total}`);
   assert.ok(!JSON.stringify(request).includes('UNNECESSARY_IMAGE'));
 });

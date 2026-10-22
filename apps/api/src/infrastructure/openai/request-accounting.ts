@@ -6,14 +6,11 @@ import type { LlmGenerateInput } from '../../modules/llm/llm.types.js';
 
 /** Own retries at the SDK boundary so each physical request is recorded exactly once locally. */
 export class OpenAIRequestAccounting {
-  constructor(
-    private readonly model: string,
-    private readonly options?: OpenAIAccountingOptions
-  ) {}
+  constructor(private readonly model: string, private readonly options?: OpenAIAccountingOptions) {}
 
   async request<T>(
     input: LlmGenerateInput,
-    send: () => Promise<T>,
+    send: () => Promise<T>
   ): Promise<{ response: T; attempt: OpenAIRequestAttempt }> {
     const operationId = randomUUID();
     for (let index = 0; ; index++) {
@@ -57,7 +54,7 @@ export class OpenAIRequestAccounting {
         await delay(
           retryDelay(error, (this.options?.retryDelayMs ?? 250) * 2 ** index),
           undefined,
-          input.signal ? { signal: input.signal } : undefined,
+          input.signal ? { signal: input.signal } : undefined
         );
       }
     }
@@ -88,10 +85,10 @@ function retryable(error: unknown): boolean {
   const value = error as { status?: number; name?: string; code?: string } | null;
   if (value?.code === 'insufficient_quota') return false;
   return (
-    [408, 409, 429].includes(value?.status ?? 0) ||
-    (value?.status ?? 0) >= 500 ||
-    value?.name === 'APIConnectionError' ||
-    value?.name === 'APIConnectionTimeoutError'
+    [408, 409, 429].includes(value?.status ?? 0)
+    || (value?.status ?? 0) >= 500
+    || value?.name === 'APIConnectionError'
+    || value?.name === 'APIConnectionTimeoutError'
   );
 }
 
@@ -100,8 +97,8 @@ function retryDelay(error: unknown, fallback: number): number {
   if (!headers?.get) return fallback;
   const milliseconds = headers.get('retry-after-ms');
   const seconds = headers.get('retry-after');
-  const value =
-    milliseconds !== null
+  const value
+    = milliseconds !== null
       ? Number(milliseconds)
       : seconds !== null
         ? Number.isFinite(Number(seconds))

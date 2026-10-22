@@ -1,11 +1,13 @@
 import type { Model } from 'mongoose';
-import type { MovieResourceSyncBatchStore, StoredMovieResourceSyncBatch, SyncCounter } from '../../../modules/integrations/movie-resource-sync.types.js';
+import type {
+  MovieResourceSyncBatchStore,
+  StoredMovieResourceSyncBatch,
+  SyncCounter,
+} from '../../../modules/integrations/movie-resource-sync.types.js';
 import type { MovieResourceSyncBatchDocument } from './movie-resource-sync-batch.schema.js';
 
 export class MongoMovieResourceSyncBatchStore implements MovieResourceSyncBatchStore {
-  constructor(
-    private readonly batches: Model<MovieResourceSyncBatchDocument>
-  ) {}
+  constructor(private readonly batches: Model<MovieResourceSyncBatchDocument>) {}
 
   async createOrGetActive(ownerId: string, movieIds: number[], force: boolean, now: Date, sites?: string[]) {
     const existing = await this.batches.findOne({ ownerId, active: true }).lean().exec();
@@ -79,7 +81,7 @@ export class MongoMovieResourceSyncBatchStore implements MovieResourceSyncBatchS
         {
           $set: { status, active: false, ...(needsAction ? { needsAction } : {}) },
           $unset: { resumeAt: 1 },
-        },
+        }
       )
       .exec();
   }

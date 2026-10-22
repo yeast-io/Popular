@@ -1,12 +1,13 @@
 import type { Model } from 'mongoose';
 import type { IntegrationFailureType } from '@movie-hub/contract';
-import type { TransmissionConfigRecord, TransmissionConfigStore } from '../../../modules/integrations/transmission.types.js';
+import type {
+  TransmissionConfigRecord,
+  TransmissionConfigStore,
+} from '../../../modules/integrations/transmission.types.js';
 import type { TransmissionConfigDocument } from './transmission-config.schema.js';
 
 export class MongoTransmissionConfigStore implements TransmissionConfigStore {
-  constructor(
-    private readonly configs: Model<TransmissionConfigDocument>
-  ) {}
+  constructor(private readonly configs: Model<TransmissionConfigDocument>) {}
 
   async find(ownerId: string): Promise<TransmissionConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId }).select('+encryptedCredential').lean().exec();
@@ -14,7 +15,7 @@ export class MongoTransmissionConfigStore implements TransmissionConfigStore {
   }
 
   async saveVerified(
-    input: TransmissionConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
+    input: TransmissionConfigRecord & { verifiedAt: Date; lastValidationAt: Date }
   ): Promise<TransmissionConfigRecord> {
     const row = await this.configs
       .findOneAndUpdate(
@@ -32,7 +33,7 @@ export class MongoTransmissionConfigStore implements TransmissionConfigStore {
             lastFailureType: 1,
           },
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
       )
       .select('+encryptedCredential')
       .lean()

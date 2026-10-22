@@ -68,7 +68,7 @@ function fixture(lockTraceEnabled = true, pollTraceEnabled = true) {
     () => {},
     logger,
     lockTraceEnabled,
-    pollTraceEnabled,
+    pollTraceEnabled
   );
   return {
     worker,
@@ -111,7 +111,7 @@ test('shared lease prevents competing pollers; offset survives worker restart', 
           assert.fail('acknowledged update replayed');
         },
       } as unknown as TelegramService,
-      () => {},
+      () => {}
     );
     restarted.start();
     await restarted.tick();
@@ -134,7 +134,7 @@ test('storage failure retains update for retry; lost lease cannot consume or che
     assert.deepEqual(f.accepted, []);
     assert.equal(
       [...f.values.keys()].some((key) => key.endsWith(':offset')),
-      false,
+      false
     );
     assert.equal([...f.values.values()][0], 'other-process');
   } finally {
@@ -158,7 +158,7 @@ test('diagnostics identify startup, busy lease, poll results and saved checkpoin
     assert.ok(
       f.logs.some((line) => {
         return line.stage === 'redis.lock.acquire.busy' && (line.ttlSeconds as number[])?.[0] === 60;
-      }),
+      })
     );
     assert.ok(f.logs.some((line) => line.stage === 'redis.lock.acquire.acquired'));
     assert.ok(f.logs.some((line) => line.stage === 'redis.lock.release.released'));
@@ -229,7 +229,7 @@ test('disabling lock tracing suppresses lock logs and TTL queries but retains bu
     assert.ok(
       !f.logs.some((line) => {
         return String(line.stage).startsWith('redis.lock.') || String(line.stage).startsWith('telegram.lock.');
-      }),
+      })
     );
   } finally {
     await f.worker.stop();

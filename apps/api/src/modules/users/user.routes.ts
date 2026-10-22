@@ -1,4 +1,9 @@
-import { ApiErrorSchema, AuthResponseSchema, UpdateProfileRequestSchema, type UpdateProfileRequest } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  AuthResponseSchema,
+  UpdateProfileRequestSchema,
+  type UpdateProfileRequest,
+} from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
@@ -12,7 +17,7 @@ export function registerUserRoutes(app: FastifyInstance, service: UserService, c
     { parseAs: 'buffer', bodyLimit: config.AVATAR_MAX_BYTES },
     (_request, body, done) => {
       done(null, body);
-    },
+    }
   );
 
   app.patch<{ Body: UpdateProfileRequest }>(
@@ -25,7 +30,7 @@ export function registerUserRoutes(app: FastifyInstance, service: UserService, c
     },
     async (request) => {
       return { user: await service.updateProfile(token(request, config), request.body) };
-    },
+    }
   );
 
   app.put<{ Body: Buffer }>(
@@ -35,7 +40,7 @@ export function registerUserRoutes(app: FastifyInstance, service: UserService, c
     },
     async (request) => {
       return { user: await service.uploadAvatar(token(request, config), request.body) };
-    },
+    }
   );
 
   app.get(
@@ -48,8 +53,7 @@ export function registerUserRoutes(app: FastifyInstance, service: UserService, c
       reply.header('content-type', avatar.contentType);
       reply.header('cache-control', 'private, max-age=31536000, immutable');
       return reply.send(avatar.stream);
-    },
-  );
+    });
 
   app.delete(
     '/users/me/avatar',
@@ -59,7 +63,7 @@ export function registerUserRoutes(app: FastifyInstance, service: UserService, c
     async (request, reply) => {
       await service.deleteAvatar(token(request, config));
       return reply.status(204).send();
-    },
+    }
   );
 }
 

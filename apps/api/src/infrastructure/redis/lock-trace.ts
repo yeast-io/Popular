@@ -2,6 +2,7 @@ import type { LockAction, Fields } from './lock-trace.types.js';
 import { randomUUID } from 'node:crypto';
 import type { AiLogger } from '../logging/ai-trace.types.js';
 import { serializeDiagnosticError } from '../logging/diagnostic-error.js';
+
 const instanceId = randomUUID();
 
 /** Trace lock commands without changing their result or logging ownership tokens. */
@@ -20,8 +21,8 @@ export class RedisLockTrace {
     try {
       const result = await execute();
       const success = result === 'OK' || result === 1;
-      const outcome =
-        action === 'acquire'
+      const outcome
+        = action === 'acquire'
           ? success
             ? 'acquired'
             : 'busy'
@@ -43,7 +44,7 @@ export class RedisLockTrace {
         } catch (error) {
           this.logger?.error(
             { ...bindings, stage: 'redis.lock.ttl.failed', error: serializeDiagnosticError(error) },
-            'Redis lock TTL inspection failed',
+            'Redis lock TTL inspection failed'
           );
         }
       }
@@ -55,7 +56,7 @@ export class RedisLockTrace {
           ttlSeconds,
           durationMs: Date.now() - started,
         },
-        'Redis lock operation completed',
+        'Redis lock operation completed'
       );
       return result;
     } catch (error) {
@@ -66,7 +67,7 @@ export class RedisLockTrace {
           durationMs: Date.now() - started,
           error: serializeDiagnosticError(error),
         },
-        'Redis lock operation failed',
+        'Redis lock operation failed'
       );
       throw error;
     }

@@ -5,6 +5,7 @@ import MTeamSettings from './MTeamSettings.vue';
 import QBittorrentSettings from './QBittorrentSettings.vue';
 import TransmissionSettings from './TransmissionSettings.vue';
 import { setLocale } from '../../i18n';
+
 const mask = 'abcdef••••••uvwxyz';
 afterEach(() => vi.unstubAllGlobals());
 for (const locale of ['zh-CN', 'en-US'] as const) {
@@ -21,15 +22,18 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         return Response.json(config);
       })
       );
-      const wrapper = mount(component); await flushPromises();
+      const wrapper = mount(component);
+      await flushPromises();
       expect((wrapper.get(selector).element as HTMLInputElement).value).toBe(mask);
       expect(wrapper.get(selector).attributes('type')).toBe('text');
       expect(wrapper.text()).toContain('18');
-      await wrapper.get('form').trigger('submit'); await flushPromises();
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
       expect(JSON.parse(String(requests.at(-1)!.body))[field]).toBeUndefined();
       await wrapper.get(selector).setValue('replacement-secret');
       expect(wrapper.get(selector).attributes('type')).toBe('password');
-      await wrapper.get('form').trigger('submit'); await flushPromises();
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
       expect(JSON.parse(String(requests.at(-1)!.body))[field]).toBe('replacement-secret');
       expect((wrapper.get(selector).element as HTMLInputElement).value).toBe(mask);
       expect(wrapper.get(selector).attributes('type')).toBe('text');

@@ -7,6 +7,7 @@ import type { MovieDownloadRecord } from '../downloads/movie-download.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { buildApp } from '../../app.js';
 import { loadConfig } from '../../config/env.js';
+
 const id = '507f1f77bcf86cd799439011';
 function fixture() {
   const sent: string[] = [];
@@ -53,7 +54,7 @@ function fixture() {
           return { messageId: 'accepted' };
         },
       };
-    }),
+    })
   );
   let now = Date.now();
   const service = new NotificationTestService(
@@ -91,7 +92,7 @@ function fixture() {
     },
     () => {
       return new Date(now);
-    },
+    }
   );
   return {
     service,
@@ -126,7 +127,7 @@ test('only the four allowed server environments expose test routes; production h
       const production = NODE_ENV === 'production';
       assert.equal(
         (await app.inject({ method: 'GET', url: '/api/v1/config' })).json().notificationTestEnabled,
-        !production,
+        !production
       );
       assert.equal((await app.inject({ method: 'GET', url: base })).statusCode, production ? 404 : 401);
       const result = await app.inject({ method: 'POST', url: `${base}/${id}/send`, payload: { channel: 'whatsapp' } });
@@ -149,7 +150,7 @@ test('lists only owned saved completed downloads with localized movie metadata',
       ['telegram', true],
       ['future', true],
       ['unlinked', false],
-    ],
+    ]
   );
   assert.deepEqual((await f.service.list('bob', 1)).items, []);
   assert.deepEqual(f.reads, ['alice', 'bob']);
@@ -182,12 +183,12 @@ test('invalid download identifiers and pages are rejected before querying MongoD
     const headers = { cookie: 'movie_hub_session=alice' };
     assert.equal(
       (await app.inject({ method: 'GET', url: '/api/v1/me/notification-tests/downloads?page=0', headers })).statusCode,
-      400,
+      400
     );
     assert.equal(
       (await app.inject({ method: 'POST', url: '/api/v1/me/notification-tests/downloads/invalid/send', headers }))
         .statusCode,
-      400,
+      400
     );
     assert.equal(f.reads.length, 0);
     assert.equal(f.sent.length, 0);
@@ -211,7 +212,7 @@ test('HTTP sends only the explicitly selected registered channel and rejects mis
     assert.equal((await app.inject({ method: 'POST', url, headers, payload: { channel: 'unknown' } })).statusCode, 400);
     assert.equal(
       (await app.inject({ method: 'POST', url, headers, payload: { channel: 'unlinked' } })).statusCode,
-      409,
+      409
     );
     assert.equal(f.sent.length, 0);
     const result = await app.inject({

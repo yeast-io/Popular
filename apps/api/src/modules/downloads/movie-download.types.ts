@@ -8,6 +8,7 @@ export interface MovieDownloadRecord {
   sourceReleaseId: string;
   provider: DownloadProvider;
   lookupTag: string;
+  executionMode?: 'local' | 'remote';
   torrentHash?: string;
   name?: string;
   status: MovieDownloadStatus;
@@ -35,7 +36,12 @@ export interface MovieDownloadProgress {
 }
 
 export interface MovieDownloadStore {
-  findByRelease(ownerId: string, tmdbId: number, releaseId: string, sourceProvider?: DownloadSource): Promise<MovieDownloadRecord | null>;
+  findByRelease(
+    ownerId: string,
+    tmdbId: number,
+    releaseId: string,
+    sourceProvider?: DownloadSource,
+  ): Promise<MovieDownloadRecord | null>;
   createSubmitting(
     ownerId: string,
     tmdbId: number,

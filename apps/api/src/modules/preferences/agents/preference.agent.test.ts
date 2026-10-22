@@ -45,9 +45,9 @@ test('maintenance uses the owner model with bounded data, strict output and no r
         fingerprint: null,
       },
       profile,
-      new AbortController().signal,
+      new AbortController().signal
     ),
-    { changes: [] },
+    { changes: [] }
   );
   assert.equal(request?.operation, 'preference.update');
   assert.equal(request?.messages[1]?.role, 'user');

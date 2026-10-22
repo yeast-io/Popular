@@ -54,7 +54,7 @@ test('sanitizes provider failures and empty output', async () => {
         },
       },
     } as unknown as Pick<OpenAI, 'responses'>,
-    'test-model',
+    'test-model'
   );
   await assert.rejects(failed.generate({ messages: [], maxOutputTokens: 10 }), LlmProviderError);
 
@@ -66,7 +66,7 @@ test('sanitizes provider failures and empty output', async () => {
         },
       },
     } as unknown as Pick<OpenAI, 'responses'>,
-    'test-model',
+    'test-model'
   );
   await assert.rejects(empty.generate({ messages: [], maxOutputTokens: 10 }), LlmProviderError);
 });
@@ -83,7 +83,7 @@ test('classification uses a strict JSON schema and rejects incomplete output', a
         },
       },
     } as unknown as Pick<OpenAI, 'responses'>,
-    'test-model',
+    'test-model'
   );
   const input = { messages: [], maxOutputTokens: 256, outputSchema: { name: 'intent', schema: { type: 'object' } } };
   await client.generate(input);
@@ -175,7 +175,7 @@ test('returns sanitized actionable errors for authentication, quota and rate lim
           },
         },
       } as unknown as Pick<OpenAI, 'responses'>,
-      'test-model',
+      'test-model'
     );
     const check = (error: unknown) => {
       assert.equal((error as { code: string }).code, expected);
@@ -247,7 +247,7 @@ test('retains only safe diagnostic metadata for each stream failure', async () =
           },
         },
       } as unknown as Pick<OpenAI, 'responses'>,
-      'test-model',
+      'test-model'
     );
     await assert.rejects(
       async () => {
@@ -266,8 +266,7 @@ test('retains only safe diagnostic metadata for each stream failure', async () =
         assert.ok(!serialized.includes('secret'));
         assert.ok(!serialized.includes('private chat'));
         return true;
-      },
-    );
+      });
   }
 });
 
@@ -285,7 +284,7 @@ test('records safe HTTP status and upstream request id without raw exception det
         },
       },
     } as unknown as Pick<OpenAI, 'responses'>,
-    'test-model',
+    'test-model'
   );
   await assert.rejects(
     async () => {
@@ -306,6 +305,5 @@ test('records safe HTTP status and upstream request id without raw exception det
       assert.ok(error.cause instanceof Error);
       assert.equal(error.cause.message, 'secret key and private chat text');
       return true;
-    },
-  );
+    });
 });

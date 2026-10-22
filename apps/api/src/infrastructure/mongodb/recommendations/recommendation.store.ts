@@ -1,11 +1,12 @@
-import type { RecommendationState, RecommendationStore } from '../../../modules/recommendations/recommendation.types.js';
+import type {
+  RecommendationState,
+  RecommendationStore,
+} from '../../../modules/recommendations/recommendation.types.js';
 import { emptyRecommendationState } from '../../../modules/recommendations/recommendation.domain.js';
 import type { createRecommendationModel } from './recommendation.schema.js';
 
 export class MongoRecommendationStore implements RecommendationStore {
-  constructor(
-    private readonly model: ReturnType<typeof createRecommendationModel>
-  ) {}
+  constructor(private readonly model: ReturnType<typeof createRecommendationModel>) {}
 
   async ensure(ownerId: string, conversation: string): Promise<void> {
     const state = emptyRecommendationState();
@@ -26,7 +27,7 @@ export class MongoRecommendationStore implements RecommendationStore {
       .findOneAndUpdate(
         { ownerId, conversation, $or: [{ leaseUntil: null }, { leaseUntil: { $lte: new Date() } }] },
         { $set: { leaseId, leaseUntil: new Date(Date.now() + 240_000) } },
-        { returnDocument: 'after' },
+        { returnDocument: 'after' }
       )
       .lean()
       .exec();

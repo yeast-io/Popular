@@ -29,7 +29,7 @@ export class AuthService {
   private async createRegisteredUser(
     input: RegisterRequest,
     email: string,
-    passwordHash: string,
+    passwordHash: string
   ): Promise<{ user: AuthUser; token: string }> {
     try {
       const user = await this.users.createPasswordUser({

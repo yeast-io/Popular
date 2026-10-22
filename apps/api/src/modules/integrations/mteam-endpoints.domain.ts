@@ -7,7 +7,9 @@ export function withMTeamEndpoints(store: IntegrationConfigStore, endpoints: MTe
       const record = await store.find(ownerId, provider);
       return record ? { ...record, ...endpoints } : null;
     },
-    async saveVerified(input) { return { ...await store.saveVerified({ ...input, ...endpoints }), ...endpoints }; },
+    async saveVerified(input) {
+      return { ...(await store.saveVerified({ ...input, ...endpoints })), ...endpoints };
+    },
     recordFailure: (ownerId, provider, attemptedAt, failureType) => {
       return store.recordFailure(ownerId, provider, attemptedAt, failureType);
     },

@@ -1,12 +1,13 @@
 import type { Model } from 'mongoose';
 import type { IntegrationFailureType, QBittorrentAuthMethod } from '@movie-hub/contract';
-import type { QBittorrentConfigRecord, QBittorrentConfigStore } from '../../../modules/integrations/qbittorrent.types.js';
+import type {
+  QBittorrentConfigRecord,
+  QBittorrentConfigStore,
+} from '../../../modules/integrations/qbittorrent.types.js';
 import type { QBittorrentConfigDocument } from './qbittorrent-config.schema.js';
 
 export class MongoQBittorrentConfigStore implements QBittorrentConfigStore {
-  constructor(
-    private readonly configs: Model<QBittorrentConfigDocument>
-  ) {}
+  constructor(private readonly configs: Model<QBittorrentConfigDocument>) {}
 
   async find(ownerId: string): Promise<QBittorrentConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId }).select('+encryptedCredential').lean().exec();
@@ -14,7 +15,7 @@ export class MongoQBittorrentConfigStore implements QBittorrentConfigStore {
   }
 
   async saveVerified(
-    input: QBittorrentConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
+    input: QBittorrentConfigRecord & { verifiedAt: Date; lastValidationAt: Date }
   ): Promise<QBittorrentConfigRecord> {
     const row = await this.configs
       .findOneAndUpdate(
@@ -34,7 +35,7 @@ export class MongoQBittorrentConfigStore implements QBittorrentConfigStore {
             ...(!input.username ? { username: 1 } : {}),
           },
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
       )
       .select('+encryptedCredential')
       .lean()

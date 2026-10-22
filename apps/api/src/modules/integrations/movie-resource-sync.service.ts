@@ -5,8 +5,16 @@ import type { MovieResourceSyncBatch } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieStatusStore } from '../movies/movie.types.js';
 import type { MovieResourceBatchChecker } from './movie-site-resources.types.js';
-import type { MovieResourceCheckCompletion, MovieResourceCheckRecord, MovieResourceCheckStore } from './movie-resource-check.types.js';
-import type { MovieResourceSyncBatchStore, StoredMovieResourceSyncBatch, SyncCounter } from './movie-resource-sync.types.js';
+import type {
+  MovieResourceCheckCompletion,
+  MovieResourceCheckRecord,
+  MovieResourceCheckStore,
+} from './movie-resource-check.types.js';
+import type {
+  MovieResourceSyncBatchStore,
+  StoredMovieResourceSyncBatch,
+  SyncCounter,
+} from './movie-resource-sync.types.js';
 
 export class MovieResourceSyncService {
   verbose = false;
@@ -41,25 +49,34 @@ export class MovieResourceSyncService {
     if (sites && !sites.length) throw new ResourceSiteError('notConfigured');
     const interestedIds = await this.readAllInterestedIds(ownerId);
     const checks = await this.checks.readForMovies(ownerId, interestedIds);
-    const checkById = new Map(checks.filter((check) => {
-      return check.provider === (sites?.[0] ?? 'mteam');
-    }).map((check) => {
-      return [check.tmdbId, check];
-    }));
+    const checkById = new Map(
+      checks
+        .filter((check) => {
+          return check.provider === (sites?.[0] ?? 'mteam');
+        })
+        .map((check) => {
+          return [check.tmdbId, check];
+        })
+    );
     const now = this.now();
     const staleBefore = new Date(now.getTime() - MovieResourceSyncService.STALE_CHECK_AGE_MS);
     const prioritized = interestedIds
       .map((tmdbId) => {
-        return ({ tmdbId, priority: sites ? (sites.some(
-          (site) => {
-            return priority(
-              checks.find((check) => check.tmdbId === tmdbId && check.provider === site),
-              staleBefore
-            ) !== null;
-          }) ? 0 : null) : priority(
-          checkById.get(tmdbId),
-          staleBefore
-        ) });
+        return {
+          tmdbId,
+          priority: sites
+            ? sites.some((site) => {
+              return (
+                priority(
+                  checks.find((check) => check.tmdbId === tmdbId && check.provider === site),
+                  staleBefore
+                ) !== null
+              );
+            })
+              ? 0
+              : null
+            : priority(checkById.get(tmdbId), staleBefore),
+        };
       })
       .filter((item): item is { tmdbId: number; priority: number } => item.priority !== null)
       .sort((left, right) => left.priority - right.priority)
@@ -88,26 +105,32 @@ export class MovieResourceSyncService {
 
   private run(batch: StoredMovieResourceSyncBatch): void {
     if (this.stopped || !['queued', 'running', 'paused'].includes(batch.status) || this.running.has(batch.id)) return;
-    const delay =
-      batch.status === 'paused' && batch.resumeAt
+    const delay
+      = batch.status === 'paused' && batch.resumeAt
         ? Math.max(0, new Date(batch.resumeAt).getTime() - this.now().getTime())
         : 0;
     this.running.add(batch.id);
     this.schedule(() => {
-      const trace = new AiTrace({
-        error: (bindings: unknown, message?: string) => {
-          return this.logger.error(bindings as Record<string, unknown>, message ?? 'Movie resource sync failed');
+      const trace = new AiTrace(
+        {
+          error: (bindings: unknown, message?: string) => {
+            return this.logger.error(bindings as Record<string, unknown>, message ?? 'Movie resource sync failed');
+          },
+          info: (bindings: unknown, message?: string) => {
+            return this.logger.info(bindings as Record<string, unknown>, message ?? 'Movie resource sync progress');
+          },
         },
-        info: (bindings: unknown, message?: string) => {
-          return this.logger.info(bindings as Record<string, unknown>, message ?? 'Movie resource sync progress');
-        },
-      }, { ownerId: batch.ownerId, batchId: batch.id, correlationId: currentAiTrace()?.correlationId }, '', 'movie-resources.batch', this.verbose);
+        { ownerId: batch.ownerId, batchId: batch.id, correlationId: currentAiTrace()?.correlationId },
+        '',
+        'movie-resources.batch',
+        this.verbose
+      );
       const task = withAiTrace(trace, () => aiStep('movie-resources.batch.process', () => this.process(batch)))
         .catch((error) => {
           trace.fail(error, { stage: 'movie-resources.batch.process' });
           this.logger.error(
             { err: error, batchId: batch.id, ownerId: batch.ownerId },
-            'Movie resource sync batch crashed',
+            'Movie resource sync batch crashed'
           );
           return this.batches.finish(batch.id, 'failed');
         })
@@ -140,13 +163,18 @@ export class MovieResourceSyncService {
     await this.batches.setRunning(batch.id);
     this.logger.info(
       { batchId: batch.id, ownerId: batch.ownerId, total: batch.total },
-      'Movie resource sync batch started',
+      'Movie resource sync batch started'
     );
     for (let index = batch.cursor; index < batch.movieIds.length; index += 1) {
       if (this.stopped) return;
       const tmdbId = batch.movieIds[index];
       if (!tmdbId) continue;
-      const execution = await this.checker.checkNowDetailed(batch.ownerId, tmdbId, batch.force, batch.sites ?? (this.checker.selectedSites ? ['mteam'] : undefined));
+      const execution = await this.checker.checkNowDetailed(
+        batch.ownerId,
+        tmdbId,
+        batch.force,
+        batch.sites ?? (this.checker.selectedSites ? ['mteam'] : undefined)
+      );
       const result = execution.started ? execution.result : await this.waitForExistingCheck(batch.ownerId, tmdbId);
       if (this.stopped && !execution.started) return;
       if (!batch.sites && result.lastAttemptStatus === 'error' && result.lastErrorCode === 'authentication') {
@@ -180,7 +208,7 @@ export class MovieResourceSyncService {
     await this.batches.finish(batch.id, 'completed');
     this.logger.info(
       { batchId: batch.id, ownerId: batch.ownerId, total: batch.total },
-      'Movie resource sync batch completed',
+      'Movie resource sync batch completed'
     );
   }
 

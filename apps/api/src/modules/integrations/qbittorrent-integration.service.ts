@@ -1,15 +1,25 @@
 import type { IntegrationPreferencesService } from './integration-preferences.service.js';
 import { maskIntegrationSecret } from '@movie-hub/contract';
 import { replacementSecret } from './integration-secret.domain.js';
-import type { IntegrationFailureType, QBittorrentConfiguration, SaveQBittorrentConfigurationRequest } from '@movie-hub/contract';
+import type {
+  IntegrationFailureType,
+  QBittorrentConfiguration,
+  SaveQBittorrentConfigurationRequest,
+} from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import { IntegrationValidationError } from './integration.service.js';
 import { SecretCrypto } from './secret-crypto.js';
-import type { QBittorrentClientPort, QBittorrentConfigRecord, QBittorrentConfigStore, QBittorrentCredential } from './qbittorrent.types.js';
+import type {
+  QBittorrentClientPort,
+  QBittorrentConfigRecord,
+  QBittorrentConfigStore,
+  QBittorrentCredential,
+} from './qbittorrent.types.js';
 
 export class QBittorrentIntegrationService {
   preferences?: IntegrationPreferencesService;
+
   constructor(
     private readonly auth: AuthService,
     private readonly configs: QBittorrentConfigStore,
@@ -63,7 +73,8 @@ export class QBittorrentIntegrationService {
           version,
           verifiedAt: attemptedAt,
           lastValidationAt: attemptedAt,
-        }), this.secrets,
+        }),
+        this.secrets
       );
     } catch (error) {
       await this.configs.recordFailure(ownerId, attemptedAt, failureTypeOf(error));
@@ -100,7 +111,7 @@ export function credentialContext(ownerId: string): string {
 export function decryptCredential(record: QBittorrentConfigRecord, secrets: SecretCrypto): QBittorrentCredential {
   try {
     const value = JSON.parse(
-      secrets.decrypt(record.encryptedCredential, credentialContext(record.ownerId)),
+      secrets.decrypt(record.encryptedCredential, credentialContext(record.ownerId))
     ) as QBittorrentCredential;
     if (value.authMethod === 'api_key' && value.apiKey) return value;
     if (value.authMethod === 'username_password' && value.username && value.password) return value;
@@ -114,17 +125,20 @@ function credentialFromInput(
   input: SaveQBittorrentConfigurationRequest,
   existing: QBittorrentConfigRecord | null,
   secrets: SecretCrypto,
-  _ownerId: string,
+  _ownerId: string
 ): QBittorrentCredential {
   const prior = existing?.authMethod === input.authMethod ? decryptCredential(existing, secrets) : null;
   if (input.authMethod === 'api_key') {
-    const apiKey = replacementSecret(input.apiKey, prior?.authMethod === 'api_key' ? prior.apiKey : undefined)?.trim() || (prior?.authMethod === 'api_key' ? prior.apiKey : '');
+    const apiKey
+      = replacementSecret(input.apiKey, prior?.authMethod === 'api_key' ? prior.apiKey : undefined)?.trim()
+        || (prior?.authMethod === 'api_key' ? prior.apiKey : '');
     if (!apiKey) throw new AppError(400, 'VALIDATION_ERROR', 'API key is required');
     return { authMethod: 'api_key', apiKey };
   }
   const username = input.username.trim();
-  const password =
-    replacementSecret(input.password, prior?.authMethod === 'username_password' ? prior.password : undefined) || (prior?.authMethod === 'username_password' && prior.username === username ? prior.password : '');
+  const password
+    = replacementSecret(input.password, prior?.authMethod === 'username_password' ? prior.password : undefined)
+      || (prior?.authMethod === 'username_password' && prior.username === username ? prior.password : '');
   if (!password) throw new AppError(400, 'VALIDATION_ERROR', 'Password is required');
   return { authMethod: 'username_password', username, password };
 }
@@ -149,7 +163,9 @@ function toResponse(record: QBittorrentConfigRecord | null, secrets: SecretCrypt
   const credential = decryptCredential(record, secrets);
   return {
     provider: 'qbittorrent',
-    ...(credential.authMethod === 'api_key' ? { apiKeyMasked: maskIntegrationSecret(credential.apiKey) } : { passwordMasked: maskIntegrationSecret(credential.password) }),
+    ...(credential.authMethod === 'api_key'
+      ? { apiKeyMasked: maskIntegrationSecret(credential.apiKey) }
+      : { passwordMasked: maskIntegrationSecret(credential.password) }),
     status: record.lastFailureType
       ? 'configured_invalid'
       : record.verifiedAt

@@ -10,7 +10,7 @@ export function registerAccessLog(app: FastifyInstance, enabled: boolean): void 
     const referer = sanitize(request.headers.referer);
     const userAgent = sanitize(request.headers['user-agent']);
     const line = `${sanitize(request.ip)} - - [${timestamp}] "${request.method} ${sanitize(
-      request.raw.url,
+      request.raw.url
     )} HTTP/${request.raw.httpVersion}" ${reply.statusCode} ${length} "${referer}" "${userAgent}"`;
     process.stdout.write(`${line}\n`);
     done();

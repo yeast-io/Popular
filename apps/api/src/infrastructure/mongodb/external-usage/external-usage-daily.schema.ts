@@ -1,5 +1,8 @@
 import { Schema, type Connection, type InferSchemaType, type Types } from 'mongoose';
-import { EXTERNAL_PROVIDER_ID_MAX_LENGTH, EXTERNAL_PROVIDER_ID_PATTERN } from '../../../modules/external-usage/external-usage.policy.js';
+import {
+  EXTERNAL_PROVIDER_ID_MAX_LENGTH,
+  EXTERNAL_PROVIDER_ID_PATTERN,
+} from '../../../modules/external-usage/external-usage.policy.js';
 
 const externalUsageDailySchema = new Schema(
   {
@@ -29,14 +32,14 @@ const externalUsageDailySchema = new Schema(
           unknownRequests: { type: Number, required: true, min: 0 },
           unknownCachedRequests: { type: Number, required: true, min: 0 },
         },
-        { _id: false },
+        { _id: false }
       ),
       required: false,
     },
     expiresAt: { type: Date, required: true },
     updatedAt: { type: Date, required: true },
   },
-  { collection: 'external_usage_daily', versionKey: false },
+  { collection: 'external_usage_daily', versionKey: false }
 );
 
 externalUsageDailySchema.index({ bucketDate: 1, scopeKey: 1, provider: 1, operation: 1 }, { unique: true });

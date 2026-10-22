@@ -44,7 +44,7 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
         authMethod: 'api_key' as const,
         encryptedCredential: secrets.encrypt(
           JSON.stringify({ authMethod: 'api_key', apiKey: 'secret' }),
-          `movie-hub:integration:qbittorrent:owner:${ownerId}`,
+          `movie-hub:integration:qbittorrent:owner:${ownerId}`
         ),
       };
     },
@@ -92,12 +92,12 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
     secrets,
     qbittorrent,
     {
-      downloadTorrent: async () => {
+      torrentUrl: async () => {
         throw new Error('recovery should not download the torrent again');
       },
     },
     resources,
-    () => now,
+    () => now
   );
 
   const result = await service.create('session', 123, 'release-1');
@@ -143,7 +143,7 @@ test('recovers a failed download while syncing an open release dialog', async ()
         authMethod: 'api_key' as const,
         encryptedCredential: secrets.encrypt(
           JSON.stringify({ authMethod: 'api_key', apiKey: 'secret' }),
-          `movie-hub:integration:qbittorrent:owner:${ownerId}`,
+          `movie-hub:integration:qbittorrent:owner:${ownerId}`
         ),
       };
     },
@@ -170,13 +170,13 @@ test('recovers a failed download while syncing an open release dialog', async ()
     { find: async () => null } as unknown as IntegrationConfigStore,
     secrets,
     qbittorrent,
-    { downloadTorrent: async () => new Uint8Array() },
+    { torrentUrl: async () => 'https://tracker.example/download.php?id=991' },
     {
       listReleases: async () => {
         throw new Error('not used');
       },
     } as unknown as Pick<MovieResourceCheckService, 'listReleases'>,
-    () => now,
+    () => now
   );
 
   const result = await service.listAndSync('session', 123);

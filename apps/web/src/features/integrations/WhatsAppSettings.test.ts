@@ -34,7 +34,7 @@ it('starts QR binding, polls connection, sends self-test and confirms unlink', a
         };
       if (input.endsWith('/test')) return Response.json({ messageId: 'accepted-id' });
       return Response.json(status);
-    }),
+    })
   );
   const wrapper = mount(WhatsAppSettings);
   await flushPromises();
@@ -69,18 +69,18 @@ it('removes the QR when status refresh fails and does not leak it into another m
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(
-    Response.json({
+      Response.json({
         status: 'qr',
         qrDataUrl: 'private-qr',
         qrExpiresAt: new Date(Date.now() + 60_000).toISOString(),
-      }),
-  )
+      })
+    )
     .mockRejectedValueOnce(
-    new Error('offline')
-  )
+      new Error('offline')
+    )
     .mockResolvedValue(
-    Response.json({ status: 'unbound' })
-  );
+      Response.json({ status: 'unbound' })
+    );
   vi.stubGlobal('fetch', fetchMock);
   const first = mount(WhatsAppSettings);
   await flushPromises();
@@ -105,7 +105,7 @@ it('starts binding from the collapsed card action and reveals the returned QR', 
             qrDataUrl: 'data:image/png;base64,owner-qr',
             qrExpiresAt: new Date(Date.now() + 20_000).toISOString(),
           }
-        : { status: 'unbound' },
+        : { status: 'unbound' }
     );
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -128,7 +128,7 @@ it('explains QR disappearance during pairing and shows sanitized terminal connec
   };
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => Response.json(state)),
+    vi.fn(async () => Response.json(state))
   );
   const wrapper = mount(WhatsAppSettings);
   await flushPromises();

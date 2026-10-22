@@ -11,7 +11,7 @@ const transmissionConfigSchema = new Schema(
     lastValidationAt: { type: Date },
     lastFailureType: { type: String },
   },
-  { timestamps: true, collection: 'transmission_configs' },
+  { timestamps: true, collection: 'transmission_configs' }
 );
 
 export type TransmissionConfigDocument = InferSchemaType<typeof transmissionConfigSchema> & { ownerId: Types.ObjectId };

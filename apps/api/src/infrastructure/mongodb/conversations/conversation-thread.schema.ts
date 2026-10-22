@@ -6,7 +6,7 @@ const conversationSummarySchema = new Schema(
     throughSequence: { type: Number, min: 1, required: true },
     updatedAt: { type: Date, required: true },
   },
-  { _id: false },
+  { _id: false }
 );
 
 const conversationThreadSchema = new Schema(
@@ -25,7 +25,7 @@ const conversationThreadSchema = new Schema(
     lastMessageAt: { type: Date, required: false },
     summary: { type: conversationSummarySchema, required: false },
   },
-  { timestamps: true, collection: 'conversation_threads' },
+  { timestamps: true, collection: 'conversation_threads' }
 );
 
 conversationThreadSchema.index({ ownerId: 1, updatedAt: -1 });

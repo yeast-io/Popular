@@ -11,7 +11,7 @@ const { apiBaseUrl } = loadWebConfig();
 const state = ref<WhatsAppConfiguration>({ status: 'unbound' });
 watch(
   () => state.value.status,
-  () => emit('bindingChange'),
+  () => emit('bindingChange')
 );
 const loading = ref(true);
 const busy = ref(false);

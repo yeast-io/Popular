@@ -25,7 +25,7 @@ export function registerWhatsAppRoutes(app: FastifyInstance, service: WhatsAppSe
     },
     (request) => {
       return service.test(readSessionToken(request, config.SESSION_COOKIE_NAME));
-    },
+    }
   );
   app.delete(
     '/me/integrations/whatsapp',
@@ -33,6 +33,5 @@ export function registerWhatsAppRoutes(app: FastifyInstance, service: WhatsAppSe
     async (request, reply) => {
       await service.remove(readSessionToken(request, config.SESSION_COOKIE_NAME));
       return reply.status(204).send();
-    },
-  );
+    });
 }

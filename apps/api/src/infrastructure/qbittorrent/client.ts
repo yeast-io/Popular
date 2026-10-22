@@ -1,12 +1,13 @@
 import type { FetchLike } from './qbittorrent-client.types.js';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
-import type { QBittorrentClientPort, QBittorrentCredential, QBittorrentTorrent } from '../../modules/integrations/qbittorrent.types.js';
+import type {
+  QBittorrentClientPort,
+  QBittorrentCredential,
+  QBittorrentTorrent,
+} from '../../modules/integrations/qbittorrent.types.js';
 
 export class QBittorrentClient implements QBittorrentClientPort {
-  constructor(
-    private readonly timeoutMs: number,
-    private readonly fetchImpl: FetchLike = fetch
-  ) {}
+  constructor(private readonly timeoutMs: number, private readonly fetchImpl: FetchLike = fetch) {}
 
   async verify(baseUrl: string, credential: QBittorrentCredential): Promise<{ version: string }> {
     const response = await this.request(baseUrl, credential, 'app/version');
@@ -15,14 +16,9 @@ export class QBittorrentClient implements QBittorrentClientPort {
     return { version };
   }
 
-  async addTorrent(
-    baseUrl: string,
-    credential: QBittorrentCredential,
-    torrent: Uint8Array,
-    tag: string,
-  ): Promise<void> {
+  async addTorrent(baseUrl: string, credential: QBittorrentCredential, torrentUrl: string, tag: string): Promise<void> {
     const body = new FormData();
-    body.append('torrents', new Blob([torrent], { type: 'application/x-bittorrent' }), 'movie.torrent');
+    body.append('urls', torrentUrl);
     body.append('category', 'movie-hub');
     body.append('tags', tag);
     const response = await this.request(baseUrl, credential, 'torrents/add', { method: 'POST', body });
@@ -33,7 +29,7 @@ export class QBittorrentClient implements QBittorrentClientPort {
   async listTorrents(
     baseUrl: string,
     credential: QBittorrentCredential,
-    hashes: string[] = [],
+    hashes: string[] = []
   ): Promise<QBittorrentTorrent[]> {
     const query = hashes.length ? `?hashes=${encodeURIComponent(hashes.join('|'))}` : '';
     return this.readTorrents(await this.request(baseUrl, credential, `torrents/info${query}`));
@@ -41,7 +37,7 @@ export class QBittorrentClient implements QBittorrentClientPort {
 
   async findByTag(baseUrl: string, credential: QBittorrentCredential, tag: string): Promise<QBittorrentTorrent | null> {
     const rows = await this.readTorrents(
-      await this.request(baseUrl, credential, `torrents/info?tag=${encodeURIComponent(tag)}`),
+      await this.request(baseUrl, credential, `torrents/info?tag=${encodeURIComponent(tag)}`)
     );
     return rows[0] ?? null;
   }
@@ -61,7 +57,7 @@ export class QBittorrentClient implements QBittorrentClientPort {
     baseUrl: string,
     credential: QBittorrentCredential,
     path: string,
-    init: RequestInit = {},
+    init: RequestInit = {}
   ): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set('accept', 'application/json, text/plain');
@@ -77,7 +73,7 @@ export class QBittorrentClient implements QBittorrentClientPort {
 
   private async login(
     baseUrl: string,
-    credential: Extract<QBittorrentCredential, { authMethod: 'username_password' }>,
+    credential: Extract<QBittorrentCredential, { authMethod: 'username_password' }>
   ): Promise<string> {
     const body = new URLSearchParams({ username: credential.username, password: credential.password });
     const response = await this.fetchChecked(
@@ -85,13 +81,13 @@ export class QBittorrentClient implements QBittorrentClientPort {
       {
         method: 'POST',
         headers: {
-          accept: 'text/plain',
+          'accept': 'text/plain',
           'content-type': 'application/x-www-form-urlencoded',
-          origin: new URL(baseUrl).origin,
+          'origin': new URL(baseUrl).origin,
         },
         body,
       },
-      true,
+      true
     );
     const result = (await response.text()).trim();
     const sid = response.headers.get('set-cookie')?.match(/(?:^|;\s*)SID=([^;]+)/)?.[1];

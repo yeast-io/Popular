@@ -18,9 +18,11 @@ const versionDialog = ref<HTMLDialogElement | null>(null);
 const selectedRevision = ref<TasteRevision | null>(null);
 let versionTrigger: HTMLElement | null = null;
 function entryNumber(section: 'explicit' | 'inferred', index: number) {
-  const offset = section === 'inferred' ? profile.value?.entries.filter((entry) => {
-    return entry.section === 'explicit';
-  }).length ?? 0 : 0;
+  const offset = section === 'inferred'
+    ? profile.value?.entries.filter((entry) => {
+      return entry.section === 'explicit';
+    }).length ?? 0
+    : 0;
   return offset + index + 1;
 }
 function toggleEntry(id: string) {
@@ -66,7 +68,7 @@ async function request(method = 'GET', action?: Record<string, unknown>, generat
       throw new Error(
         result.error?.code === 'PREFERENCE_VERSION_CONFLICT' || response.status === 409
           ? t('preferences.conflict')
-          : t('preferences.failed'),
+          : t('preferences.failed')
       );
     }
     const result = (await response.json()) as TasteProfileResponse;

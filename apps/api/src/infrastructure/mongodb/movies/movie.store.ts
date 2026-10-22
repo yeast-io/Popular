@@ -7,7 +7,14 @@ import type { MovieResultSetDocument } from './movie-result-set.schema.js';
 import type { MovieDocument } from './movie.schema.js';
 import type { PersonDocument } from './person.schema.js';
 import type { TrendingStateDocument } from '../sync/trending-state.schema.js';
-import type { MovieCatalogStore, MovieDetailRecord, MovieRecord, TrendingPageRecord, TrendingSnapshotRecord, TrendingStore } from '../../../modules/movies/movie.types.js';
+import type {
+  MovieCatalogStore,
+  MovieDetailRecord,
+  MovieRecord,
+  TrendingPageRecord,
+  TrendingSnapshotRecord,
+  TrendingStore,
+} from '../../../modules/movies/movie.types.js';
 
 export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
   constructor(
@@ -24,7 +31,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     await this.upsertMovies(
       record.pages.flatMap(({ movies }) => movies),
       record.fetchedAt,
-      locale,
+      locale
     );
     await this.resultSets.bulkWrite(
       record.pages.map((page) => {
@@ -53,21 +60,21 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
           },
         };
       }),
-      { ordered: true },
+      { ordered: true }
     );
     await states.updateOne(
       { locale },
       { $set: { activeGeneration: record.generation, publishedAt: record.fetchedAt } },
-      { upsert: true },
+      { upsert: true }
     );
     await this.resultSets.updateMany(
       {
-        type: 'trending',
-        generation: { $ne: record.generation },
+        'type': 'trending',
+        'generation': { $ne: record.generation },
         'params.language': locale,
-        deleteAt: { $exists: false },
+        'deleteAt': { $exists: false },
       },
-      { $set: { deleteAt: new Date(record.fetchedAt.getTime() + 24 * 60 * 60 * 1_000) } },
+      { $set: { deleteAt: new Date(record.fetchedAt.getTime() + 24 * 60 * 60 * 1_000) } }
     );
   }
 
@@ -76,7 +83,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     locale: Locale,
     generation: string,
     sourcePage: number,
-    pageSize: number,
+    pageSize: number
   ): Promise<void> {
     this.requireTrendingStates();
     await this.upsertMovies(record.movies, record.fetchedAt, locale);
@@ -94,7 +101,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
           generation,
         },
       },
-      { upsert: true },
+      { upsert: true }
     );
   }
 
@@ -113,7 +120,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
           fetchedAt: record.fetchedAt,
         },
       },
-      { upsert: true },
+      { upsert: true }
     );
   }
 
@@ -145,7 +152,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
           },
         };
       }),
-      { ordered: false },
+      { ordered: false }
     );
     await this.localizations.bulkWrite(
       records.map((movie) => {
@@ -160,7 +167,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
           },
         };
       }),
-      { ordered: false },
+      { ordered: false }
     );
   }
 
@@ -183,7 +190,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     const localizationByKey = new Map(
       localizations.map((row) => {
         return [`${row.movieTmdbId}:${row.locale}`, row];
-      }),
+      })
     );
     return tmdbIds.flatMap((tmdbId) => {
       const movie = movieById.get(tmdbId);
@@ -216,7 +223,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
       ...new Map(
         allCredits.map(({ person }) => {
           return [person.tmdbId, person];
-        }),
+        })
       ).values(),
     ];
     if (uniquePeople.length > 0) {
@@ -230,7 +237,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
             },
           };
         }),
-        { ordered: false },
+        { ordered: false }
       );
     }
 
@@ -249,7 +256,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
             syncVersion,
           };
         }),
-        { ordered: false },
+        { ordered: false }
       );
     }
 
@@ -263,7 +270,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
         },
         $setOnInsert: { tmdbId: movie.tmdbId },
       },
-      { upsert: true },
+      { upsert: true }
     );
     const localizationSet = {
       ...toSummaryLocalizationUpdate(movie, syncedAt),
@@ -281,7 +288,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
         ...(!movie.trailer ? { $unset: { trailer: 1 } } : {}),
         $setOnInsert: { movieTmdbId: movie.tmdbId, locale },
       },
-      { upsert: true },
+      { upsert: true }
     );
     await this.credits.deleteMany({ movieTmdbId: movie.tmdbId, locale, syncVersion: { $ne: syncVersion } });
   }
@@ -373,7 +380,7 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
     this.requireTrendingStates();
     const resultSets = await this.resultSets
       .find({
-        type: 'trending',
+        'type': 'trending',
         generation,
         'params.language': locale,
       })
@@ -390,12 +397,12 @@ export class MongoTrendingStore implements TrendingStore, MovieCatalogStore {
           totalResults: resultSet.totalResults,
           fetchedAt: resultSet.fetchedAt,
         };
-      }),
+      })
     );
     const params = resultSets.at(-1)?.params as { sourcePage?: unknown; pageSize?: unknown } | undefined;
     const sourcePage = typeof params?.sourcePage === 'number' ? params.sourcePage : pages.length;
-    const pageSize =
-      typeof params?.pageSize === 'number' ? params.pageSize : Math.max(1, pages[0]?.movies.length ?? 20);
+    const pageSize
+      = typeof params?.pageSize === 'number' ? params.pageSize : Math.max(1, pages[0]?.movies.length ?? 20);
     return { generation, pages, sourcePage, pageSize, fetchedAt: pages[0]!.fetchedAt };
   }
 
@@ -441,7 +448,7 @@ function toSummaryLocalizationUpdate(movie: MovieRecord, syncedAt: Date): Record
 
 function resolveLocalization(
   localization: MovieLocalizationDocument | null | undefined,
-  originalTitle: string | undefined,
+  originalTitle: string | undefined
 ): ResolvedLocalization | undefined {
   const title = localization?.title || originalTitle;
   if (!title || !localization) return undefined;

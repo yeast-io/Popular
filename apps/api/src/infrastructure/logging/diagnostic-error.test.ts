@@ -11,7 +11,7 @@ test('preserves full error stack and causes but redacts keys, prompts and databa
       code: 11000,
       keyValue: { content: 'private answer' },
       keyPattern: { threadId: 1, clientRequestId: 1 },
-    },
+    }
   );
   const error = new Error('Failed to save private answer with sk-test-secret and Bearer abc123', { cause });
   const result = serializeDiagnosticError(error, ['private answer']);
@@ -84,7 +84,7 @@ test('concurrent requests keep trace context and sensitive values isolated', asy
           await Promise.resolve();
         });
       });
-    }),
+    })
   );
   assert.ok(logs.every((line) => String(line.stage).startsWith(String(line.requestId))));
 });

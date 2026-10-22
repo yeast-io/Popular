@@ -24,7 +24,7 @@ function fixture(enabled: boolean, fail = false) {
     },
     undefined,
     undefined,
-    enabled,
+    enabled
   );
   return { worker, events };
 }

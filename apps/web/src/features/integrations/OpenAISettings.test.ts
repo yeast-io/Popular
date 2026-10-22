@@ -19,7 +19,7 @@ it('saves and replaces the key, clears the input, then confirms deletion', async
       requests.push({ method, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
       if (method === 'DELETE') return new Response(null, { status: 204 });
       return Response.json(method === 'GET' ? { configured: false } : { configured: true, maskedApiKey: '••••1234' });
-    }),
+    })
   );
   const wrapper = mount(OpenAISettings);
   await flushPromises();
@@ -47,7 +47,7 @@ it('saves and replaces the key, clears the input, then confirms deletion', async
 it('keeps connection load failures visible while the configuration form is collapsed', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => Response.json({ error: { code: 'SERVICE_UNAVAILABLE' } }, { status: 503 })),
+    vi.fn(async () => Response.json({ error: { code: 'SERVICE_UNAVAILABLE' } }, { status: 503 }))
   );
   const wrapper = mount(OpenAISettings, { attachTo: document.body });
   await flushPromises();
@@ -108,7 +108,7 @@ it('shows a persisted failure while collapsed instead of pretending the key is s
         },
       }
       );
-    }),
+    })
   );
   const wrapper = mount(OpenAISettings, { attachTo: document.body });
   await flushPromises();
@@ -153,7 +153,7 @@ it('displays fetched models and persists selection without sending the key', asy
       method: 'PUT',
       credentials: 'include',
       body: JSON.stringify({ model: 'model-b' }),
-    }),
+    })
   );
   expect(wrapper.text()).toContain('Current model: model-b');
   expect(wrapper.text()).toContain('Model saved.');
@@ -179,7 +179,7 @@ it('handles an authenticated empty model list without offering a selection', asy
         },
       }
       );
-    }),
+    })
   );
   const wrapper = mount(OpenAISettings);
   await flushPromises();

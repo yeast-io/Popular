@@ -1,12 +1,13 @@
 import type { Model } from 'mongoose';
 import type { IntegrationFailureType } from '@movie-hub/contract';
-import type { IntegrationConfigRecord, IntegrationConfigStore } from '../../../modules/integrations/integration.types.js';
+import type {
+  IntegrationConfigRecord,
+  IntegrationConfigStore,
+} from '../../../modules/integrations/integration.types.js';
 import type { IntegrationConfigDocument } from './integration-config.schema.js';
 
 export class MongoIntegrationConfigStore implements IntegrationConfigStore {
-  constructor(
-    private readonly configs: Model<IntegrationConfigDocument>
-  ) {}
+  constructor(private readonly configs: Model<IntegrationConfigDocument>) {}
 
   async find(ownerId: string, provider: 'mteam'): Promise<IntegrationConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId, provider }).select('+encryptedApiKey').lean().exec();
@@ -14,7 +15,7 @@ export class MongoIntegrationConfigStore implements IntegrationConfigStore {
   }
 
   async saveVerified(
-    input: IntegrationConfigRecord & { verifiedAt: Date; lastValidationAt: Date },
+    input: IntegrationConfigRecord & { verifiedAt: Date; lastValidationAt: Date }
   ): Promise<IntegrationConfigRecord> {
     const row = await this.configs
       .findOneAndUpdate(
@@ -29,7 +30,7 @@ export class MongoIntegrationConfigStore implements IntegrationConfigStore {
           },
           $unset: { lastFailureType: 1 },
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
       )
       .select('+encryptedApiKey')
       .lean()
@@ -42,7 +43,7 @@ export class MongoIntegrationConfigStore implements IntegrationConfigStore {
     ownerId: string,
     provider: 'mteam',
     attemptedAt: Date,
-    failureType: IntegrationFailureType,
+    failureType: IntegrationFailureType
   ): Promise<void> {
     await this.configs
       .updateOne({ ownerId, provider }, { $set: { lastValidationAt: attemptedAt, lastFailureType: failureType } })

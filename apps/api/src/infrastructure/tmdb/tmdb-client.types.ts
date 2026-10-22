@@ -1,5 +1,3 @@
-
-
 export interface TmdbMovie {
   id: number;
   title?: string;

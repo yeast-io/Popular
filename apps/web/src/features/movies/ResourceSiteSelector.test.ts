@@ -4,7 +4,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { setLocale } from '../../i18n';
 import ResourceSiteSelector from './ResourceSiteSelector.vue';
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 it.each(['en-US', 'zh-CN'] as const)('keeps status in tooltips and blocks unconfigured sites in %s', async (locale) => {
   setLocale(locale);

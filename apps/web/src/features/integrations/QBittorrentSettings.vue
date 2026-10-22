@@ -44,8 +44,8 @@ async function testAndSave() {
   errorMessage.value = '';
   successMessage.value = '';
   submitting.value = true;
-  const body =
-    authMethod.value === 'api_key'
+  const body
+    = authMethod.value === 'api_key'
       ? { baseUrl: baseUrl.value.trim(), authMethod: 'api_key', ...(replacementSecret(apiKey.value, config.value.apiKeyMasked) ? { apiKey: replacementSecret(apiKey.value, config.value.apiKeyMasked) } : {}) }
       : {
           baseUrl: baseUrl.value.trim(),
@@ -125,10 +125,10 @@ function canSubmit(): boolean {
   if (authMethod.value === 'api_key') {
     return Boolean(replacementSecret(apiKey.value, config.value.apiKeyMasked)) || (configured.value && config.value.authMethod === 'api_key');
   }
-  const canRetainPassword =
-    configured.value &&
-    config.value.authMethod === 'username_password' &&
-    config.value.username === username.value.trim();
+  const canRetainPassword
+    = configured.value
+      && config.value.authMethod === 'username_password'
+      && config.value.username === username.value.trim();
   return Boolean(username.value.trim()) && (Boolean(replacementSecret(password.value, config.value.passwordMasked)) || canRetainPassword);
 }
 </script>

@@ -1,6 +1,20 @@
-import type { Locale, MovieDetail, MoviePreference, MovieStatus, MovieSummary, SearchMoviesResponse, TrendingMoviesResponse } from '@movie-hub/contract';
+import type {
+  Locale,
+  MovieDetail,
+  MoviePreference,
+  MovieStatus,
+  MovieSummary,
+  SearchMoviesResponse,
+  TrendingMoviesResponse,
+} from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import type { MovieCatalogStore, MovieRecord, MovieSearchProvider, MovieStatusStore, TrendingStore } from './movie.types.js';
+import type {
+  MovieCatalogStore,
+  MovieRecord,
+  MovieSearchProvider,
+  MovieStatusStore,
+  TrendingStore,
+} from './movie.types.js';
 import type { TrendingSyncService } from './trending-sync.service.js';
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
@@ -17,7 +31,7 @@ export class MovieService {
     page: number,
     locale: Locale,
     ownerId: string | null,
-    generation?: string,
+    generation?: string
   ): Promise<TrendingMoviesResponse> {
     let result = await this.store.readPage(page, locale, generation);
     if (!result && page === 1) {
@@ -28,7 +42,7 @@ export class MovieService {
           throw new AppError(
             409,
             'TRENDING_SYNC_IN_PROGRESS',
-            'This page is already being refreshed. Please retry shortly.',
+            'This page is already being refreshed. Please retry shortly.'
           );
       } else {
         result = await this.store.readPage(page, locale);
@@ -37,14 +51,14 @@ export class MovieService {
     if (!result) throw new AppError(503, 'TRENDING_NOT_SYNCED', 'Trending movies are not available yet.');
     const stateByMovie = await this.stateMap(
       ownerId,
-      result.movies.map(({ tmdbId }) => tmdbId),
+      result.movies.map(({ tmdbId }) => tmdbId)
     );
     return {
       items: result.movies.map((movie) => {
         return toMovieSummary(
           movie,
           stateByMovie.get(movie.tmdbId)?.status,
-          stateByMovie.get(movie.tmdbId)?.preference,
+          stateByMovie.get(movie.tmdbId)?.preference
         );
       }),
       page: result.page,
@@ -64,23 +78,23 @@ export class MovieService {
     if (!normalized) throw new AppError(400, 'BAD_REQUEST', 'Search query is required.');
     const cached = await this.catalog.readSearch(normalized, page, locale);
     const summaryTtlMs = 24 * 60 * 60 * 1_000;
-    const cacheMatchesLocale =
-      cached !== null &&
-      cached.movies.every((movie) => {
-        return movie.localizationLocale === locale;
-      });
+    const cacheMatchesLocale
+      = cached !== null
+        && cached.movies.every((movie) => {
+          return movie.localizationLocale === locale;
+        });
     const localeCache = cacheMatchesLocale ? cached : null;
     const expectedMovieCount = localeCache?.expectedMovieCount ?? localeCache?.movies.length;
     const cachedIsFresh = localeCache !== null && localeCache.movies.length === expectedMovieCount;
-    const allSummariesFresh =
-      cachedIsFresh &&
-      localeCache.movies.every((movie) => {
-        return (
-          movie.localizationLocale === locale &&
-          movie.summarySyncedAt &&
-          Date.now() - movie.summarySyncedAt.getTime() < summaryTtlMs
-        );
-      });
+    const allSummariesFresh
+      = cachedIsFresh
+        && localeCache.movies.every((movie) => {
+          return (
+            movie.localizationLocale === locale
+            && movie.summarySyncedAt
+            && Date.now() - movie.summarySyncedAt.getTime() < summaryTtlMs
+          );
+        });
     let result = localeCache;
     let source: SearchMoviesResponse['source'] = 'cache';
     let resultCompleteness: SearchMoviesResponse['resultCompleteness'] = 'complete';
@@ -90,7 +104,7 @@ export class MovieService {
           normalized,
           page,
           locale,
-          userExternalRequestContext(ownerId, 'api_request'),
+          userExternalRequestContext(ownerId, 'api_request')
         );
         result = { ...fetched, fetchedAt: new Date() };
         await this.catalog.publishSearch(normalized, result, locale);
@@ -105,14 +119,14 @@ export class MovieService {
     if (!result) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Movie search is not available.');
     const stateByMovie = await this.stateMap(
       ownerId,
-      result.movies.map(({ tmdbId }) => tmdbId),
+      result.movies.map(({ tmdbId }) => tmdbId)
     );
     return {
       items: result.movies.map((movie) => {
         return toMovieSummary(
           movie,
           stateByMovie.get(movie.tmdbId)?.status,
-          stateByMovie.get(movie.tmdbId)?.preference,
+          stateByMovie.get(movie.tmdbId)?.preference
         );
       }),
       page: result.page,
@@ -128,11 +142,11 @@ export class MovieService {
       throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Movie details are not available.');
     const cached = await this.catalog.readMovieDetail(tmdbId, locale);
     const localeCache = cached?.localizationLocale === locale ? cached : null;
-    const fresh =
-      localeCache?.detailSyncedAt &&
-      localeCache.trailerSyncedAt &&
-      Date.now() - Math.min(localeCache.detailSyncedAt.getTime(), localeCache.trailerSyncedAt.getTime()) <
-        7 * 24 * 60 * 60 * 1_000;
+    const fresh
+      = localeCache?.detailSyncedAt
+        && localeCache.trailerSyncedAt
+        && Date.now() - Math.min(localeCache.detailSyncedAt.getTime(), localeCache.trailerSyncedAt.getTime())
+        < 7 * 24 * 60 * 60 * 1_000;
     let movie = localeCache;
     let stale = false;
     if (!fresh) {
@@ -164,7 +178,7 @@ export class MovieService {
     currentPage: number,
     generation: string,
     locale: Locale,
-    ownerId: string | null,
+    ownerId: string | null
   ): Promise<TrendingMoviesResponse> {
     const current = await this.store.readPage(currentPage, locale, generation);
     if (!current) throw new AppError(400, 'BAD_REQUEST', 'The current trending page is not available.');
@@ -177,7 +191,7 @@ export class MovieService {
         throw new AppError(
           409,
           'TRENDING_SYNC_IN_PROGRESS',
-          'This page is already being refreshed. Please retry shortly.',
+          'This page is already being refreshed. Please retry shortly.'
         );
     }
     return this.trending(nextPage, locale, ownerId, generation);
@@ -193,7 +207,7 @@ function toMovieDetail(
   userStatus: MovieStatus,
   userPreference: MoviePreference,
   stale: boolean,
-  locale: Locale,
+  locale: Locale
 ): MovieDetail {
   return {
     ...toMovieSummary(movie, userStatus, userPreference),
@@ -241,7 +255,7 @@ function toMovieDetail(
 export function toMovieSummary(
   movie: MovieRecord,
   userStatus: MovieStatus = 'unwatched',
-  userPreference: MoviePreference = 'neutral',
+  userPreference: MoviePreference = 'neutral'
 ): MovieSummary {
   return {
     tmdbId: movie.tmdbId,

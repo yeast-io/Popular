@@ -28,28 +28,53 @@ export const messages = {
     noRetry: 'There is no selected download to retry. Please select a release first.',
     cancelled: 'The pending download selection has been cancelled. Already submitted download tasks are unchanged.',
     clarify: 'Please clarify the download action; to choose a release, provide its number.',
-    selectRelease: 'Choose a release to download, for example “download release 2”. You can also view details, change pages or filter releases.',
+    selectRelease:
+      'Choose a release to download, for example “download release 2”. You can also view details, change pages or filter releases.',
     selectMovie: 'Please choose a film first, then select a release from its resource list.',
     expired: 'The resource list is missing or expired. Search again or say “refresh resources”, then select a release.',
     invalidIndex: 'Invalid release number. Choose from 1–{count} in the current list.',
     unsupportedSource: 'Downloads from this source are not supported yet. Please choose an M-Team release.',
     selectFirst: 'Please select a release number to download first.',
-    failed: 'Download submission could not be confirmed ({code}). I will not switch downloaders automatically. Reply “retry”; if a task was already created, retry will first attempt to recover it.',
-    noProvider: 'No downloader is configured. Configure qBittorrent or Transmission on the website, then reply with the downloader name.',
+    failed:
+      'Download submission could not be confirmed ({code}). I will not switch downloaders automatically. Reply “retry”; if a task was already created, retry will first attempt to recover it.',
+    noProvider:
+      'No downloader is configured. Configure qBittorrent or Transmission on the website, then reply with the downloader name.',
     providers: 'Selected release: {title}\nChoose a downloader:\n{providers}',
     submitted: 'Download task: {id}\nDownloader: {provider}\nStatus: {status}\nProgress: {progress}%',
-    recommendationFailed: 'The movie recommendation query did not complete. Please try again later. No matching recommendations have been confirmed.',
+    recommendationFailed:
+      'The movie recommendation query did not complete. Please try again later. No matching recommendations have been confirmed.',
     resourcesFailed: 'The resource query did not complete. Resource availability is unknown; please try again later.',
-    recommendUnavailable: 'This is a movie recommendation request. Personalized recommendations are not connected yet; we can still discuss films or other topics.',
-    resourcesUnavailable: 'This is a movie resource query. Resource lookup is not connected yet; I cannot check actual releases or download availability.',
-    downloadUnavailable: 'This is a download request. Remote downloads are not connected yet. No download task was created, changed or cancelled.',
-    ambiguousTasks: 'Both a resource query and a movie recommendation session are active. Would you like to continue finding releases or getting recommendations?',
-    unclear: 'Would you like to discuss this, get movie recommendations, find releases or handle a download? Please clarify your request.',
+    recommendUnavailable:
+      'This is a movie recommendation request. Personalized recommendations are not connected yet; we can still discuss films or other topics.',
+    resourcesUnavailable:
+      'This is a movie resource query. Resource lookup is not connected yet; I cannot check actual releases or download availability.',
+    downloadUnavailable:
+      'This is a download request. Remote downloads are not connected yet. No download task was created, changed or cancelled.',
+    ambiguousTasks:
+      'Both a resource query and a movie recommendation session are active. Would you like to continue finding releases or getting recommendations?',
+    unclear:
+      'Would you like to discuss this, get movie recommendations, find releases or handle a download? Please clarify your request.',
   },
 } satisfies Record<Locale, Record<string, string>>;
 const statuses: Record<Locale, Record<MovieDownloadStatus, string>> = {
-  'zh-CN': { submitting: '正在提交', downloading: '正在下载', paused: '已暂停', seeding: '做种中', completed: '已完成', failed: '失败', missing: '任务不存在' },
-  'en-US': { submitting: 'Submitting', downloading: 'Downloading', paused: 'Paused', seeding: 'Seeding', completed: 'Completed', failed: 'Failed', missing: 'Missing' },
+  'zh-CN': {
+    submitting: '正在提交',
+    downloading: '正在下载',
+    paused: '已暂停',
+    seeding: '做种中',
+    completed: '已完成',
+    failed: '失败',
+    missing: '任务不存在',
+  },
+  'en-US': {
+    submitting: 'Submitting',
+    downloading: 'Downloading',
+    paused: 'Paused',
+    seeding: 'Seeding',
+    completed: 'Completed',
+    failed: 'Failed',
+    missing: 'Missing',
+  },
 };
 export function assistantText(locale: Locale, key: MessageKey, values: Record<string, string | number> = {}): string {
   return messages[locale][key].replace(/\{(\w+)\}/g, (match, name: string) => String(values[name] ?? match));
@@ -63,6 +88,9 @@ export function downloadProvidersText(locale: Locale, title: string, providers: 
 }
 export function downloadSubmittedText(locale: Locale, result: MovieDownload): string {
   return assistantText(locale, 'submitted', {
-    id: result.id, provider: result.provider, status: statuses[locale][result.status], progress: result.progress,
+    id: result.id,
+    provider: result.provider,
+    status: statuses[locale][result.status],
+    progress: result.progress,
   });
 }

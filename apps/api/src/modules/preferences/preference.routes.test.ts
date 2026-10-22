@@ -44,7 +44,7 @@ test('preference endpoints resolve owner from the session and reject client iden
       }
       )
     ).statusCode,
-    400,
+    400
   );
   assert.equal(
     (
@@ -56,7 +56,7 @@ test('preference endpoints resolve owner from the session and reject client iden
       }
       )
     ).statusCode,
-    400,
+    400
   );
   assert.equal(
     (
@@ -68,7 +68,7 @@ test('preference endpoints resolve owner from the session and reject client iden
       }
       )
     ).statusCode,
-    200,
+    200
   );
   assert.deepEqual(owners, ['alice', 'alice', 'alice']);
   await app.close();

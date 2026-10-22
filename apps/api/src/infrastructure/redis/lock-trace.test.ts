@@ -24,7 +24,7 @@ test('disabled tracing preserves command results and errors without logs or TTL 
     trace.run('release', ['lock'], async () => {
       throw error;
     }),
-    (candidate) => candidate === error,
+    (candidate) => candidate === error
   );
   assert.deepEqual(logs, []);
 });
@@ -53,7 +53,7 @@ test('trending sync traces acquire and release, while hiding ownership tokens', 
   assert.ok(
     logs.some((line) => {
       return line.outcome === 'acquired' && line.leaseSeconds === 300 && line.lockType === 'trending_sync';
-    }),
+    })
   );
   assert.ok(logs.some((line) => line.outcome === 'released'));
   assert.ok(!JSON.stringify(logs).includes(owner));
@@ -71,7 +71,7 @@ test('command failures retain safe error causes and do not consume the original 
     trace.run('renew', ['lock'], async () => {
       throw error;
     }),
-    (candidate) => candidate === error,
+    (candidate) => candidate === error
   );
   assert.match(JSON.stringify(logs), /ECONNREFUSED/);
   assert.ok(!JSON.stringify(logs).includes('private-password'));

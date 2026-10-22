@@ -62,7 +62,7 @@ describe('Transmission settings', () => {
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(
-      JSON.parse(String((fetchMock.mock.calls as unknown as [unknown, RequestInit?][]).at(-1)?.[1]?.body)),
+      JSON.parse(String((fetchMock.mock.calls as unknown as [unknown, RequestInit?][]).at(-1)?.[1]?.body))
     ).toEqual(
       { baseUrl: saved.baseUrl, username: saved.username }
     );
@@ -79,7 +79,7 @@ describe('Transmission settings', () => {
         return init?.method === 'PUT'
           ? Response.json({ error: { code: 'TRANSMISSION_AUTH_FAILED' } }, { status: 502 })
           : Response.json(saved);
-      }),
+      })
     );
     const wrapper = mount(TransmissionSettings);
     await flushPromises();

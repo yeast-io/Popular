@@ -6,7 +6,7 @@ export const systemExternalRequestContext = (trigger: ExternalRequestTrigger): E
 
 export const userExternalRequestContext = (
   ownerId: string | null,
-  trigger: ExternalRequestTrigger,
+  trigger: ExternalRequestTrigger
 ): ExternalRequestContext => {
   return ownerId ? { actorType: 'user', ownerId, trigger } : { actorType: 'anonymous', trigger };
 };

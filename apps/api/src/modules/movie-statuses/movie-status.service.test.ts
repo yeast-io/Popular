@@ -38,7 +38,7 @@ const store = {
   setPreference: async (
     _ownerId: string,
     tmdbId: number,
-    preference: Exclude<MovieStatusRecord['preference'], 'neutral'>,
+    preference: Exclude<MovieStatusRecord['preference'], 'neutral'>
   ) => {
     const existing = rows.find((row) => row.tmdbId === tmdbId);
     const previous = existing?.preference ?? 'neutral';
@@ -102,7 +102,7 @@ test('My Movies requests localized movie records without changing saved states',
     'interested',
     1,
     20,
-    'en-US',
+    'en-US'
   );
 
   assert.equal(requestedLocale, 'en-US');
@@ -178,7 +178,7 @@ test('liked movies expose an existing resource result without scheduling a new c
           },
         ];
       },
-    },
+    }
   );
 
   const result = await service.list('owner-a', 'liked', 1, 20);

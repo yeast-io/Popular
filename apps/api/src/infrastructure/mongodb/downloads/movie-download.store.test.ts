@@ -43,11 +43,21 @@ test('persists the selected provider and returns a lost unique release claim wit
 test('retry claims require a failed or missing record; a losing retry returns the current task', async () => {
   let winner = true;
   const store = new MongoMovieDownloadStore({
-    findOneAndUpdate(filter: Record<string, unknown>, update: { $set: Record<string, unknown>; $unset: Record<string, unknown> }) {
+    findOneAndUpdate(
+      filter: Record<string, unknown>,
+      update: { $set: Record<string, unknown>; $unset: Record<string, unknown> }
+    ) {
       assert.deepEqual(filter, { _id: 'download-one', status: { $in: ['failed', 'missing'] } });
       assert.equal(update.$set.status, 'submitting');
       assert.equal('provider' in update.$set, false);
-      for (const field of ['missingSince', 'expiresAt', 'downloadedBytes', 'totalBytes', 'downloadSpeed', 'etaSeconds']) {
+      for (const field of [
+        'missingSince',
+        'expiresAt',
+        'downloadedBytes',
+        'totalBytes',
+        'downloadSpeed',
+        'etaSeconds',
+      ]) {
         assert.equal(update.$unset[field], 1);
       }
       return query(winner ? row : null);
@@ -78,12 +88,19 @@ test('missing updates initialize a fixed seven-day deadline atomically instead o
   for (const time of [first, later]) {
     const result = await store.markMissing('download-one', time);
     assert.equal(result.progress, 2);
-    assert.deepEqual(writes.at(-1), [{ $set: {
-      status: 'missing', lastErrorCode: 'DOWNLOAD_TORRENT_MISSING', lastSyncedAt: time,
-      missingSince: { $ifNull: ['$missingSince', time] },
-      expiresAt: { $add: [{ $ifNull: ['$missingSince', time] }, 604800000] },
-      downloadSpeed: 0, etaSeconds: '$$REMOVE',
-    } }]
+    assert.deepEqual(writes.at(-1), [
+      {
+        $set: {
+          status: 'missing',
+          lastErrorCode: 'DOWNLOAD_TORRENT_MISSING',
+          lastSyncedAt: time,
+          missingSince: { $ifNull: ['$missingSince', time] },
+          expiresAt: { $add: [{ $ifNull: ['$missingSince', time] }, 604800000] },
+          downloadSpeed: 0,
+          etaSeconds: '$$REMOVE',
+        },
+      },
+    ]
     );
   }
   assert.equal(MISSING_DOWNLOAD_RETENTION_MS, 604800000);
@@ -98,8 +115,15 @@ test('restored downloader progress and failed retries cancel the missing-record 
     },
   } as never);
   await store.updateProgress('download-one', {
-    torrentHash: 'hash', name: 'Movie', status: 'downloading', progress: 2,
-    downloadedBytes: 2, totalBytes: 100, downloadSpeed: 1, etaSeconds: 98, lastSyncedAt: new Date(),
+    torrentHash: 'hash',
+    name: 'Movie',
+    status: 'downloading',
+    progress: 2,
+    downloadedBytes: 2,
+    totalBytes: 100,
+    downloadSpeed: 1,
+    etaSeconds: 98,
+    lastSyncedAt: new Date(),
   }
   );
   await store.markFailed('download-one', 'REMOTE_ERROR', new Date());
@@ -122,6 +146,7 @@ test('HDArea persistence uses source in both lookup and unique creation and pres
   } as never);
   assert.equal((await store.findByRelease('owner-one', 603, '991', 'hdarea'))?.sourceProvider, 'hdarea');
   assert.equal(
-    (await store.createSubmitting('owner-one', 603, '991', 'transmission', 'hdarea')).record.sourceProvider, 'hdarea'
+    (await store.createSubmitting('owner-one', 603, '991', 'transmission', 'hdarea')).record.sourceProvider,
+    'hdarea'
   );
 });

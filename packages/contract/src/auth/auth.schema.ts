@@ -9,7 +9,7 @@ export const RegisterRequestSchema = Type.Object(
     password: PasswordSchema,
     displayName: Type.String({ minLength: 1, maxLength: 80 }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const LoginRequestSchema = Type.Object(
@@ -17,7 +17,7 @@ export const LoginRequestSchema = Type.Object(
     email: EmailSchema,
     password: PasswordSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const AuthUserSchema = Type.Object(
@@ -27,7 +27,7 @@ export const AuthUserSchema = Type.Object(
     displayName: Type.String(),
     avatarUrl: Type.Optional(Type.String({ minLength: 1 })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const AuthResponseSchema = Type.Object({ user: AuthUserSchema }, { additionalProperties: false });

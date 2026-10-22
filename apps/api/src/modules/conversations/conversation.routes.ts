@@ -1,5 +1,21 @@
 import { streamErrorDiagnostics } from './stream-error-diagnostics.js';
-import { ApiErrorSchema, AppendConversationMessageRequestSchema, ConversationMessageSchema, ConversationMessagesQuerySchema, ConversationMessagesResponseSchema, ConversationParamsSchema, ConversationThreadSchema, ConversationThreadsResponseSchema, ConversationTurnResponseSchema, RunConversationTurnRequestSchema, type AppendConversationMessageRequest, type ConversationMessagesQuery, type ConversationParams, type ConversationTurnResponse, type RunConversationTurnRequest } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  AppendConversationMessageRequestSchema,
+  ConversationMessageSchema,
+  ConversationMessagesQuerySchema,
+  ConversationMessagesResponseSchema,
+  ConversationParamsSchema,
+  ConversationThreadSchema,
+  ConversationThreadsResponseSchema,
+  ConversationTurnResponseSchema,
+  RunConversationTurnRequestSchema,
+  type AppendConversationMessageRequest,
+  type ConversationMessagesQuery,
+  type ConversationParams,
+  type ConversationTurnResponse,
+  type RunConversationTurnRequest,
+} from '@movie-hub/contract';
 import { AiTrace, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import { LlmProviderError } from '../llm/llm.errors.js';
@@ -19,14 +35,14 @@ export function registerConversationRoutes(
   config: AppConfig,
   turnService?: ConversationTurnService,
   auth?: Pick<AuthService, 'requireOwnerId'>,
-  logger?: AiLogger,
+  logger?: AiLogger
 ): void {
   app.get(
     '/conversations',
     {
       schema: { response: { 200: ConversationThreadsResponseSchema, 401: ApiErrorSchema } },
     },
-    async (request) => service.listThreads(token(request, config)),
+    async (request) => service.listThreads(token(request, config))
   );
 
   app.post(
@@ -36,7 +52,7 @@ export function registerConversationRoutes(
     },
     async (request, reply) => {
       return reply.status(201).send(await service.createThread(token(request, config)));
-    },
+    }
   );
 
   app.get<{ Params: ConversationParams; Querystring: ConversationMessagesQuery }>(
@@ -50,8 +66,7 @@ export function registerConversationRoutes(
     },
     async (request) => {
       return service.listMessages(token(request, config), request.params.threadId, request.query.limit ?? 50);
-    },
-  );
+    });
 
   app.post<{ Params: ConversationParams; Body: AppendConversationMessageRequest }>(
     '/conversations/:threadId/messages',
@@ -66,15 +81,14 @@ export function registerConversationRoutes(
       return reply
         .status(201)
         .send(
-        await service.appendUserMessage(
-          token(request, config),
-          request.params.threadId,
-          request.body.content,
-          request.body.clientRequestId,
-        ),
-      );
-    },
-  );
+          await service.appendUserMessage(
+            token(request, config),
+            request.params.threadId,
+            request.body.content,
+            request.body.clientRequestId
+          )
+        );
+    });
 
   if (turnService && auth) {
     app.post<{ Params: ConversationParams; Body: RunConversationTurnRequest }>(
@@ -106,7 +120,7 @@ export function registerConversationRoutes(
             },
             request.body.content,
             'conversation.turn',
-            config.VERBOSE,
+            config.VERBOSE
           ),
           async () => {
             const trace = currentAiTrace()!;
@@ -128,10 +142,8 @@ export function registerConversationRoutes(
             }
             trace.event('request.completed', { ...result.usage });
             return reply.header('x-request-id', request.id).status(201).send(toTurnResponse(result));
-          },
-        );
-      },
-    );
+          });
+      });
 
     app.post<{ Params: ConversationParams; Body: RunConversationTurnRequest }>(
       '/conversations/:threadId/turns/stream',
@@ -162,7 +174,7 @@ export function registerConversationRoutes(
             },
             request.body.content,
             'conversation.stream',
-            config.VERBOSE,
+            config.VERBOSE
           ),
           async () => {
             const trace = currentAiTrace()!;
@@ -180,7 +192,7 @@ export function registerConversationRoutes(
                 clientRequestId: request.body.clientRequestId,
                 signal: abortController.signal,
               }
-            )[Symbol.asyncIterator]();
+              )[Symbol.asyncIterator]();
 
             // Pull once before committing SSE headers so validation/auth/not-found errors
             // still use the normal JSON error contract and HTTP status.
@@ -207,7 +219,7 @@ export function registerConversationRoutes(
             reply.raw.writeHead(200, {
               'content-type': 'text/event-stream; charset=utf-8',
               'cache-control': 'no-cache, no-transform',
-              connection: 'keep-alive',
+              'connection': 'keep-alive',
               'x-accel-buffering': 'no',
               'x-request-id': request.id,
             }
@@ -245,8 +257,8 @@ export function registerConversationRoutes(
                 );
               }
               if (!abortController.signal.aborted && !reply.raw.writableEnded) {
-                const appError =
-                  error instanceof AppError
+                const appError
+                  = error instanceof AppError
                     ? error
                     : new AppError(503, 'SERVICE_UNAVAILABLE', 'AI service is temporarily unavailable');
                 await writeSse(reply.raw, 'error', {
@@ -262,7 +274,7 @@ export function registerConversationRoutes(
                   : completed && !failed
                     ? 'request.completed'
                     : 'request.failed',
-                { deltaCount, outputCharacters },
+                { deltaCount, outputCharacters }
               );
               reply.raw.off('close', onClose);
               request.raw.off('aborted', onRequestAborted);
@@ -276,10 +288,8 @@ export function registerConversationRoutes(
               }
             }
             return reply;
-          },
-        );
-      },
-    );
+          });
+      });
   }
 }
 
@@ -307,7 +317,7 @@ function toMessageResponse(message: ConversationMessage): ConversationTurnRespon
   };
 }
 
-function toStreamPayload(event: import("./conversation-turn.types.js").ConversationTurnStreamEvent) {
+function toStreamPayload(event: import('./conversation-turn.types.js').ConversationTurnStreamEvent) {
   if (event.type === 'user_message') {
     return { type: event.type, message: toMessageResponse(event.message) };
   }

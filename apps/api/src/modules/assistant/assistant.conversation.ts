@@ -5,7 +5,7 @@ import { AssistantWorkflow } from './assistant.workflow.js';
 
 /** Adapt the shared assistant to conversation storage/SSE without a second discussion implementation. */
 export function createAssistantConversationReply(
-  options: AssistantWorkflowOptions,
+  options: AssistantWorkflowOptions
 ): NonNullable<ConversationTurnOptions['reply']> {
   return async (input, messages, llm, streaming) => {
     let inputTokens = 0,
@@ -36,7 +36,7 @@ export function createAssistantConversationReply(
         },
         messages.slice(0, -1),
         input.signal,
-        streaming,
+        streaming
       );
     });
     return {

@@ -5,11 +5,12 @@ import { readSessionToken } from '../auth/auth.routes.js';
 import type { AppConfig } from '../../config/env.schema.js';
 import type { PreferenceService } from './preference.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
+
 export function registerPreferenceRoutes(
   app: FastifyInstance,
   service: PreferenceService,
   auth: Pick<AuthService, 'requireOwnerId'>,
-  config: AppConfig,
+  config: AppConfig
 ) {
   const owner = (request: Parameters<typeof readSessionToken>[0]) => {
     return auth.requireOwnerId(readSessionToken(request, config.SESSION_COOKIE_NAME));

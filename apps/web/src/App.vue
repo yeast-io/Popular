@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ApiError, AuthResponse, AuthUser, LoginRequest, PublicConfig, RegisterRequest } from '@movie-hub/contract';
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { loadWebConfig } from './config/env';
 import MovieBrowser from './features/movies/MovieBrowser.vue';
 import MyMovies from './features/movies/MyMovies.vue';
@@ -17,13 +17,13 @@ import NotificationTestPage from './features/notifications/NotificationTestPage.
 import OpenAISettings from './features/integrations/OpenAISettings.vue';
 import ResourceSiteSettings from './features/integrations/ResourceSiteSettings.vue';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
+import RemoteClientSettings from './features/remote-clients/RemoteClientSettings.vue';
 import TransmissionSettings from './features/integrations/TransmissionSettings.vue';
 import QBittorrentSettings from './features/integrations/QBittorrentSettings.vue';
 import UsageStatistics from './features/usage/UsageStatistics.vue';
 import AiChat from './features/ai/AiChat.vue';
 import type { AuthField, Page, SettingsSection } from './app.types.js';
 
-const DocsPage = defineAsyncComponent(() => import('./features/docs/DocsPage.vue'));
 const { apiBaseUrl } = loadWebConfig();
 const { locale, setLocale, t } = useI18n();
 const localeMenu = ref<HTMLDetailsElement | null>(null);
@@ -46,12 +46,11 @@ const authFieldErrors = ref<Partial<Record<AuthField, string>>>({});
 const profileNameError = ref('');
 const notificationTestEnabled = ref(false);
 const aiAssistantEnabled = ref(false);
-const docsEnabled = ref(false);
 const currentPage = ref<Page>(pageFromPath());
 const notificationSettings = ref<InstanceType<typeof NotificationSettings>>();
 const settingsSection = ref<SettingsSection>('profile');
 const settingsVisited = ref(new Set<SettingsSection>(['profile']));
-const settingsSections = ['profile', 'ai', 'preferences', 'resources', 'downloads', 'notifications'] as const;
+const settingsSections = ['profile', 'ai', 'preferences', 'resources', 'downloads', 'keys', 'notifications'] as const;
 function selectSettingsSection(section: SettingsSection) {
   settingsSection.value = section;
   settingsVisited.value.add(section);
@@ -83,10 +82,10 @@ const avatarHint = computed(() => {
 });
 const profileDirty = computed(() => {
   return (
-    Boolean(user.value) &&
-    (profileName.value.trim() !== user.value?.displayName ||
-      Boolean(avatarFile.value) ||
-      (avatarRemoved.value && Boolean(user.value?.avatarUrl)))
+    Boolean(user.value)
+    && (profileName.value.trim() !== user.value?.displayName
+      || Boolean(avatarFile.value)
+      || (avatarRemoved.value && Boolean(user.value?.avatarUrl)))
   );
 });
 
@@ -112,8 +111,8 @@ onMounted(async () => {
   } finally {
     loading.value = false;
     if (
-      !user.value &&
-      ['settings', 'usage', 'my-movies', 'ai', 'docs', 'notification-tests'].includes(currentPage.value)
+      !user.value
+      && ['settings', 'usage', 'my-movies', 'ai', 'notification-tests'].includes(currentPage.value)
     ) {
       openAuth('login', true);
     }
@@ -128,16 +127,11 @@ async function loadPublicConfig() {
       avatarLimits.value = config.avatar;
       notificationTestEnabled.value = config.notificationTestEnabled === true;
       aiAssistantEnabled.value = config.aiAssistantEnabled === true;
-      docsEnabled.value = config.docsEnabled === true;
     }
   } catch {
     // Features stay hidden when public configuration is unavailable.
   } finally {
-    if (
-      (!aiAssistantEnabled.value && currentPage.value === 'ai') ||
-      (!docsEnabled.value && currentPage.value === 'docs')
-    )
-      navigateToPath('/', true);
+    if (!aiAssistantEnabled.value && currentPage.value === 'ai') navigateToPath('/', true);
     if (!notificationTestEnabled.value && currentPage.value === 'notification-tests') navigateToPath('/', true);
   }
 }
@@ -147,8 +141,8 @@ async function submit() {
   successMessage.value = '';
   if (!validateAuthForm()) return;
   submitting.value = true;
-  const body: LoginRequest | RegisterRequest =
-    mode.value === 'register'
+  const body: LoginRequest | RegisterRequest
+    = mode.value === 'register'
       ? { email: email.value.trim(), password: password.value, displayName: displayName.value.trim() }
       : { email: email.value.trim(), password: password.value };
   try {
@@ -341,7 +335,6 @@ function pageFromPath(): Page {
   if (window.location.pathname === '/login') return 'login';
   if (window.location.pathname === '/register') return 'register';
   if (window.location.pathname === '/my-movies') return 'my-movies';
-  if (window.location.pathname === '/docs') return 'docs';
   if (window.location.pathname === '/ai') return 'ai';
   if (window.location.pathname === '/dev/notification-tests') return 'notification-tests';
   if (window.location.pathname === '/settings') return 'settings';
@@ -355,7 +348,7 @@ function movieIdFromPath(): number | null {
 
 function syncPageFromLocation() {
   const nextPage = pageFromPath();
-  if ((nextPage === 'ai' && !aiAssistantEnabled.value) || (nextPage === 'docs' && !docsEnabled.value)) {
+  if (nextPage === 'ai' && !aiAssistantEnabled.value) {
     navigateToPath('/', true);
     return;
   }
@@ -387,21 +380,19 @@ function backFromMovieDetail() {
 }
 
 function navigate(page: Page) {
-  if ((page === 'ai' && !aiAssistantEnabled.value) || (page === 'docs' && !docsEnabled.value)) return;
-  const path =
-    page === 'docs'
-      ? '/docs'
-      : page === 'notification-tests'
-        ? '/dev/notification-tests'
-        : page === 'settings'
-          ? '/settings'
-          : page === 'usage'
-            ? '/usage'
-            : page === 'my-movies'
-              ? '/my-movies'
-              : page === 'ai'
-                ? '/ai'
-                : '/';
+  if (page === 'ai' && !aiAssistantEnabled.value) return;
+  const path
+    = page === 'notification-tests'
+      ? '/dev/notification-tests'
+      : page === 'settings'
+        ? '/settings'
+        : page === 'usage'
+          ? '/usage'
+          : page === 'my-movies'
+            ? '/my-movies'
+            : page === 'ai'
+              ? '/ai'
+              : '/';
   if (window.location.pathname !== path) window.history.pushState({}, '', path);
   currentPage.value = page;
   errorMessage.value = '';
@@ -440,8 +431,8 @@ function historyState(): Record<string, unknown> {
 
 function restoreListScroll(page: 'home' | 'my-movies') {
   const state = historyState();
-  const savedScrollY =
-    state.listPage === page && typeof state.scrollY === 'number' && Number.isFinite(state.scrollY)
+  const savedScrollY
+    = state.listPage === page && typeof state.scrollY === 'number' && Number.isFinite(state.scrollY)
       ? Math.max(0, state.scrollY)
       : 0;
   void nextTick(() => {
@@ -518,14 +509,6 @@ function closeAccountMenu() {
           @click="navigate('ai')"
         >
           {{ t('nav.ai') }}
-        </button>
-        <button
-          v-if="user && docsEnabled"
-          type="button"
-          :class="{ active: currentPage === 'docs' }"
-          @click="navigate('docs')"
-        >
-          {{ t('nav.docs') }}
         </button>
         <details ref="localeMenu" class="locale-switcher">
           <summary :aria-label="`${t('language.label')}: ${t(`language.${locale}`)}`" :title="t('language.label')">
@@ -653,7 +636,6 @@ function closeAccountMenu() {
       v-if="currentPage === 'notification-tests' && user && notificationTestEnabled"
       :key="user.id"
     />
-    <DocsPage v-if="currentPage === 'docs' && user && docsEnabled" />
     <UsageStatistics v-if="currentPage === 'usage' && user" />
     <AiChat v-if="currentPage === 'ai' && user && aiAssistantEnabled" :key="user.id" @open-settings="openAISettings" />
 
@@ -883,6 +865,9 @@ function closeAccountMenu() {
             <div v-if="settingsVisited.has('downloads')" v-show="settingsSection === 'downloads'" class="settings-form">
               <QBittorrentSettings :key="user.id" />
               <TransmissionSettings :key="user.id" />
+            </div>
+            <div v-if="settingsVisited.has('keys')" v-show="settingsSection === 'keys'" class="settings-form">
+              <RemoteClientSettings :key="user.id" />
             </div>
             <div
               v-if="settingsVisited.has('preferences')"

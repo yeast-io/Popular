@@ -57,7 +57,7 @@ async function load() {
       {
         credentials: 'include',
         signal: controller.signal,
-      },
+      }
     );
     const body = (await response.json()) as MyMoviesResponse | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.loadMyMovies');

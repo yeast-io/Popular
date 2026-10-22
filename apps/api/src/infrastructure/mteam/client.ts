@@ -1,3 +1,4 @@
+import { parseTorrentUrl } from './torrent-url.schema.js';
 import { releaseTitleMetadata } from '../../modules/resource-sites/release-metadata.domain.js';
 import type { MTeamSearchPage, MTeamSearchOptions } from '../../modules/integrations/movie-resource-check.types.js';
 import { AiTrace, currentAiTrace, withAiTrace } from '../logging/ai-trace.js';
@@ -9,18 +10,28 @@ import { lookup } from 'node:dns/promises';
 import { request } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
-import type { MTeamRelease, MTeamResourceSearcher, MTeamTorrentDownloader } from '../../modules/integrations/movie-resource-check.types.js';
+import type {
+  MTeamRelease,
+  MTeamResourceSearcher,
+  MTeamTorrentUrlProvider,
+} from '../../modules/integrations/movie-resource-check.types.js';
 import type { MTeamVerifier } from '../../modules/integrations/integration.types.js';
-import type { ExternalRequestContext, ExternalRequestErrorCode, ExternalRequestRecorder } from '../../modules/external-usage/external-usage.types.js';
+import type {
+  ExternalRequestContext,
+  ExternalRequestErrorCode,
+  ExternalRequestRecorder,
+} from '../../modules/external-usage/external-usage.types.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_SEARCH_RESPONSE_BYTES = 2 * 1024 * 1024;
 
-export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamTorrentDownloader {
+export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamTorrentUrlProvider {
   constructor(
     private readonly timeoutMs: number,
     private readonly usage?: ExternalRequestRecorder,
-    private readonly searchOptions: { minimumIntervalMs: number; logger?: AiLogger; verbose?: boolean } = { minimumIntervalMs: 2500 }
+    private readonly searchOptions: { minimumIntervalMs: number; logger?: AiLogger; verbose?: boolean } = {
+      minimumIntervalMs: 2500,
+    }
   ) {}
 
   async verify(baseUrl: string, apiKey: string, context?: ExternalRequestContext): Promise<void> {
@@ -43,72 +54,110 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     if (!isSuccessPayload(payload)) {
       throw new IntegrationValidationError(
         isAuthenticationFailure(payload) ? 'authentication' : 'remote_error',
-        'M-Team rejected the validation request',
+        'M-Team rejected the validation request'
       );
     }
   }
 
   async searchMovies(
-    baseUrl: string, apiKey: string, query: { imdbId: string } | { title: string }, context?: ExternalRequestContext,
+    baseUrl: string,
+    apiKey: string,
+    query: { imdbId: string } | { title: string },
+    context?: ExternalRequestContext
   ): Promise<MTeamRelease[]> {
     return (await this.searchMoviePage(baseUrl, apiKey, query, context)).releases;
   }
 
   async searchMoviePage(
-    baseUrl: string, apiKey: string, query: { imdbId: string } | { title: string },
-    context?: ExternalRequestContext, options: MTeamSearchOptions = {},
+    baseUrl: string,
+    apiKey: string,
+    query: { imdbId: string } | { title: string },
+    context?: ExternalRequestContext,
+    options: MTeamSearchOptions = {}
   ): Promise<MTeamSearchPage> {
     const page = options.page ?? 1;
     if (!Number.isInteger(page) || page < 1 || page > 100) throw invalidSearchResponse();
     const execute = async () => {
       currentAiTrace()?.sensitive(apiKey);
-      return retryMTeamSearch(async (attempt, operationId, parentSignal, remainingMs) => {
-        return this.observe('release.search', context, async () => {
-          const body = await withAbsoluteTimeout(Math.min(this.timeoutMs, remainingMs), async (signal) => {
-            const url = apiUrl(baseUrl, 'torrent/search');
-            const addresses = await resolvePublicAddresses(url.hostname);
-            const address = addresses[0];
-            if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
-            return postJson(url, apiKey, address, {
-              pageNumber: page, pageSize: 100, mode: 'movie', visible: 1,
-              sortField: 'SEEDERS', sortDirection: 'DESC',
-              ...('imdbId' in query
-                ? { imdb: `https://www.imdb.com/title/${normalizeImdbId(query.imdbId)}/` }
-                : { keyword: query.title }),
-            }, signal, MAX_SEARCH_RESPONSE_BYTES
-            );
-          }, { signal: parentSignal, message: 'M-Team resource query timed out' }
+      return retryMTeamSearch(
+        async (attempt, operationId, parentSignal, remainingMs) => {
+          return this.observe(
+            'release.search',
+            context,
+            async () => {
+              const body = await withAbsoluteTimeout(
+                Math.min(this.timeoutMs, remainingMs),
+                async (signal) => {
+                  const url = apiUrl(baseUrl, 'torrent/search');
+                  const addresses = await resolvePublicAddresses(url.hostname);
+                  const address = addresses[0];
+                  if (!address) throw new IntegrationValidationError('network', 'M-Team hostname did not resolve');
+                  return postJson(
+                    url,
+                    apiKey,
+                    address,
+                    {
+                      pageNumber: page,
+                      pageSize: 100,
+                      mode: 'movie',
+                      visible: 1,
+                      sortField: 'SEEDERS',
+                      sortDirection: 'DESC',
+                      ...('imdbId' in query
+                        ? { imdb: `https://www.imdb.com/title/${normalizeImdbId(query.imdbId)}/` }
+                        : { keyword: query.title }),
+                    },
+                    signal,
+                    MAX_SEARCH_RESPONSE_BYTES
+                  );
+                },
+                { signal: parentSignal, message: 'M-Team resource query timed out' }
+              );
+              let payload: unknown;
+              try {
+                payload = JSON.parse(body);
+              } catch (error) {
+                throw new IntegrationValidationError('invalid_response', 'M-Team returned invalid JSON', {
+                  cause: error,
+                });
+              }
+              if (!isSuccessPayload(payload)) {
+                const failureType = isAuthenticationFailure(payload)
+                  ? 'authentication'
+                  : isPermissionFailure(payload)
+                    ? 'permission'
+                    : 'remote_error';
+                throw new IntegrationValidationError(failureType, 'M-Team rejected the search request');
+              }
+              return parseSearchPage(payload, page);
+            },
+            { attempt, operationId }
           );
-          let payload: unknown;
-          try {
-            payload = JSON.parse(body);
-          } catch (error) {
-            throw new IntegrationValidationError('invalid_response', 'M-Team returned invalid JSON', { cause: error });
-          }
-          if (!isSuccessPayload(payload)) {
-            const failureType = isAuthenticationFailure(payload) ? 'authentication'
-              : isPermissionFailure(payload) ? 'permission' : 'remote_error';
-            throw new IntegrationValidationError(failureType, 'M-Team rejected the search request');
-          }
-          return parseSearchPage(payload, page);
-        }, { attempt, operationId }
-        );
-      }, { ...this.searchOptions, ...(options.signal ? { signal: options.signal } : {}) }
+        },
+        { ...this.searchOptions, ...(options.signal ? { signal: options.signal } : {}) }
       );
     };
     if (currentAiTrace()) return execute();
-    const trace = new AiTrace(this.searchOptions.logger, {
-      provider: 'mteam', ...(context?.ownerId ? { ownerId: context.ownerId } : {}),
-    }, apiKey, 'mteam.search', this.searchOptions.verbose ?? false);
+    const trace = new AiTrace(
+      this.searchOptions.logger,
+      {
+        provider: 'mteam',
+        ...(context?.ownerId ? { ownerId: context.ownerId } : {}),
+      },
+      apiKey,
+      'mteam.search',
+      this.searchOptions.verbose ?? false
+    );
     return withAiTrace(trace, execute);
   }
 
-  async downloadTorrent(
+  async torrentUrl(
     baseUrl: string,
     apiKey: string,
     releaseId: string,
-    context?: ExternalRequestContext,
-  ): Promise<Uint8Array> {
+    context?: ExternalRequestContext
+  ): Promise<string> {
+    currentAiTrace()?.sensitive(apiKey);
     const tokenBody = await withAbsoluteTimeout(this.timeoutMs, async (signal) => {
       const url = apiUrl(baseUrl, 'torrent/genDlToken');
       const addresses = await resolvePublicAddresses(url.hostname);
@@ -121,7 +170,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
           address,
           new URLSearchParams({ id: releaseId }).toString(),
           signal,
-          MAX_RESPONSE_BYTES,
+          MAX_RESPONSE_BYTES
         );
       });
     });
@@ -135,23 +184,18 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
     }
     if (!isSuccessPayload(payload))
       throw new IntegrationValidationError('remote_error', 'M-Team rejected the torrent download request');
-    const downloadUrl =
-      typeof (payload as { data?: unknown }).data === 'string' ? new URL((payload as { data: string }).data) : null;
-    if (!downloadUrl || downloadUrl.protocol !== 'https:' || downloadUrl.username || downloadUrl.password) {
-      throw new IntegrationValidationError('invalid_response', 'M-Team returned an invalid torrent URL');
-    }
-    return withAbsoluteTimeout(this.timeoutMs, async (signal) => {
-      return this.observe('torrent.download', context, () => {
-        return downloadPublicBytes(downloadUrl, signal, 10 * 1024 * 1024, 3);
-      });
-    });
+    const tokenUrl = (payload as { data?: unknown }).data;
+    if (typeof tokenUrl === 'string') currentAiTrace()?.sensitive(tokenUrl);
+    const downloadUrl = parseTorrentUrl(payload);
+    currentAiTrace()?.sensitive(downloadUrl);
+    return downloadUrl;
   }
 
   private async observe<T>(
     operation: string,
     context: ExternalRequestContext | undefined,
     requestOperation: () => Promise<T>,
-    metadata?: { attempt: number; operationId: string },
+    metadata?: { attempt: number; operationId: string }
   ): Promise<T> {
     const startedAt = Date.now();
     const operationId = metadata?.operationId ?? randomUUID();
@@ -187,7 +231,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
       outcome: 'success' | 'failure';
       durationMs: number;
       errorCode?: ExternalRequestErrorCode;
-    },
+    }
   ): Promise<void> {
     if (!context || !this.usage) return;
     try {
@@ -211,7 +255,7 @@ function mteamErrorCode(error: unknown): ExternalRequestErrorCode {
 export async function withAbsoluteTimeout<T>(
   timeoutMs: number,
   operation: (signal: AbortSignal) => Promise<T>,
-  options: { signal?: AbortSignal; message?: string } = {},
+  options: { signal?: AbortSignal; message?: string } = {}
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutError = new IntegrationValidationError('timeout', options.message ?? 'M-Team request timed out');
@@ -255,19 +299,19 @@ export function isPublicAddress(address: string): boolean {
     const octets = address.split('.').map(Number);
     const [a = 0, b = 0, c = 0] = octets;
     return !(
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 0 && c === 0) ||
-      (a === 192 && b === 0 && c === 2) ||
-      (a === 192 && b === 168) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      (a === 198 && b === 51 && c === 100) ||
-      (a === 203 && b === 0 && c === 113) ||
-      a >= 224
+      a === 0
+      || a === 10
+      || a === 127
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 0 && c === 0)
+      || (a === 192 && b === 0 && c === 2)
+      || (a === 192 && b === 168)
+      || (a === 198 && (b === 18 || b === 19))
+      || (a === 198 && b === 51 && c === 100)
+      || (a === 203 && b === 0 && c === 113)
+      || a >= 224
     );
   }
   if (version === 6) {
@@ -302,7 +346,7 @@ function postJson(
   address: LookupAddress,
   body: Record<string, unknown> | undefined,
   signal: AbortSignal,
-  maxResponseBytes: number,
+  maxResponseBytes: number
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const options = {
@@ -310,7 +354,7 @@ function postJson(
       signal,
       family: address.family,
       headers: {
-        accept: 'application/json',
+        'accept': 'application/json',
         ...(body ? { 'content-type': 'application/json' } : {}),
         'user-agent': 'MovieHub/1.0',
         'x-api-key': apiKey,
@@ -322,13 +366,14 @@ function postJson(
         response.resume();
         reject(
           new MTeamHttpError(
-            classifyMTeamHttpFailure(response.statusCode), response.statusCode ?? 0,
+            classifyMTeamHttpFailure(response.statusCode),
+            response.statusCode ?? 0,
             parseRetryAfter(
-              Array.isArray(
-                response.headers['retry-after']
-              ) ? response.headers['retry-after'][0] : response.headers['retry-after']
-            ),
-          ),
+              Array.isArray(response.headers['retry-after'])
+                ? response.headers['retry-after'][0]
+                : response.headers['retry-after']
+            )
+          )
         );
         return;
       }
@@ -343,13 +388,15 @@ function postJson(
       response.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
       response.on('error', (error) => {
         return reject(
-          error instanceof IntegrationValidationError ? error : new IntegrationValidationError('network', 'Could not read M-Team response', { cause: error }),
+          error instanceof IntegrationValidationError
+            ? error
+            : new IntegrationValidationError('network', 'Could not read M-Team response', { cause: error })
         );
       });
     });
     req.on('error', (error) => {
-      const reason =
-        signal.aborted && signal.reason instanceof IntegrationValidationError
+      const reason
+        = signal.aborted && signal.reason instanceof IntegrationValidationError
           ? signal.reason
           : error instanceof IntegrationValidationError
             ? error
@@ -366,7 +413,7 @@ function postForm(
   address: LookupAddress,
   body: string,
   signal: AbortSignal,
-  maxResponseBytes: number,
+  maxResponseBytes: number
 ): Promise<string> {
   return requestBytes(
     url,
@@ -376,103 +423,15 @@ function postForm(
     {
       method: 'POST',
       headers: {
-        accept: 'application/json',
+        'accept': 'application/json',
         'content-type': 'application/x-www-form-urlencoded',
         'content-length': Buffer.byteLength(body),
         'user-agent': 'MovieHub/1.0',
         'x-api-key': apiKey,
       },
     },
-    body,
+    body
   ).then((value) => value.toString('utf8'));
-}
-
-async function downloadPublicBytes(
-  url: URL,
-  signal: AbortSignal,
-  maxResponseBytes: number,
-  redirectsRemaining: number,
-): Promise<Uint8Array> {
-  if (url.protocol !== 'https:' || url.username || url.password) {
-    throw new IntegrationValidationError('invalid_response', 'M-Team redirected to an invalid torrent URL');
-  }
-  const addresses = await resolvePublicAddresses(url.hostname);
-  const address = addresses[0];
-  if (!address) throw new IntegrationValidationError('network', 'M-Team torrent hostname did not resolve');
-  return new Promise((resolve, reject) => {
-    const req = request(
-      url,
-      {
-        method: 'GET',
-        signal,
-        family: address.family,
-        lookup: createPinnedLookup(address),
-        headers: { accept: 'application/x-bittorrent', 'user-agent': 'MovieHub/1.0' },
-      },
-      (response) => {
-        if (
-          response.statusCode &&
-          [301, 302, 303, 307, 308].includes(response.statusCode) &&
-          response.headers.location
-        ) {
-          response.resume();
-          if (redirectsRemaining <= 0) {
-            reject(
-              new IntegrationValidationError('invalid_response', 'M-Team torrent download redirected too many times'),
-            );
-            return;
-          }
-          let next: URL;
-          try {
-            next = new URL(response.headers.location, url);
-          } catch (error) {
-            reject(
-              new IntegrationValidationError('invalid_response', 'M-Team returned an invalid torrent redirect', {
-                cause: error,
-              }),
-            );
-            return;
-          }
-          downloadPublicBytes(next, signal, maxResponseBytes, redirectsRemaining - 1).then(resolve, reject);
-          return;
-        }
-        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-          response.resume();
-          reject(
-            new IntegrationValidationError(
-              classifyMTeamHttpFailure(response.statusCode),
-              `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`,
-            ),
-          );
-          return;
-        }
-        const chunks: Buffer[] = [];
-        let length = 0;
-        response.on('data', (chunk: Buffer) => {
-          length += chunk.length;
-          if (length > maxResponseBytes)
-            response.destroy(new IntegrationValidationError('invalid_response', 'M-Team torrent is too large'));
-          else chunks.push(chunk);
-        });
-        response.on('end', () => resolve(Buffer.concat(chunks)));
-        response.on('error', (error) => {
-          return reject(
-            new IntegrationValidationError('invalid_response', 'Could not read M-Team torrent', { cause: error }),
-          );
-        });
-      },
-    );
-    req.on('error', (error) => {
-      return reject(
-        signal.aborted && signal.reason instanceof IntegrationValidationError
-          ? signal.reason
-          : error instanceof IntegrationValidationError
-            ? error
-            : new IntegrationValidationError('network', 'Could not download M-Team torrent', { cause: error }),
-      );
-    });
-    req.end();
-  });
 }
 
 function requestBytes(
@@ -481,7 +440,7 @@ function requestBytes(
   signal: AbortSignal,
   maxResponseBytes: number,
   options: { method: string; headers: Record<string, string | number> },
-  body?: string,
+  body?: string
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const req = request(
@@ -493,8 +452,8 @@ function requestBytes(
           reject(
             new IntegrationValidationError(
               classifyMTeamHttpFailure(response.statusCode),
-              `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`,
-            ),
+              `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`
+            )
           );
           return;
         }
@@ -509,18 +468,17 @@ function requestBytes(
         response.on('end', () => resolve(Buffer.concat(chunks)));
         response.on('error', (error) => {
           return reject(
-            new IntegrationValidationError('invalid_response', 'Could not read M-Team response', { cause: error }),
+            new IntegrationValidationError('invalid_response', 'Could not read M-Team response', { cause: error })
           );
         });
-      },
-    );
+      });
     req.on('error', (error) => {
       return reject(
         signal.aborted && signal.reason instanceof IntegrationValidationError
           ? signal.reason
           : error instanceof IntegrationValidationError
             ? error
-            : new IntegrationValidationError('network', 'Could not connect to M-Team', { cause: error }),
+            : new IntegrationValidationError('network', 'Could not connect to M-Team', { cause: error })
       );
     });
     req.end(body);
@@ -550,8 +508,8 @@ function isAuthenticationFailure(payload: unknown): boolean {
 
 function isPermissionFailure(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return false;
-  const message =
-    typeof (payload as { message?: unknown }).message === 'string'
+  const message
+    = typeof (payload as { message?: unknown }).message === 'string'
       ? (payload as { message: string }).message.toLowerCase()
       : '';
   return /permission|forbidden|權限|权限/.test(message);
@@ -560,9 +518,14 @@ function isPermissionFailure(payload: unknown): boolean {
 export function parseSearchPage(payload: unknown, page: number): MTeamSearchPage {
   const releases = parseSearchReleases(payload);
   const data = (payload as { data?: unknown }).data;
-  const rawTotal = data && !Array.isArray(data) && typeof data === 'object' ? (data as { total?: unknown }).total : undefined;
-  const total = typeof rawTotal === 'number' || (typeof rawTotal === 'string' && /^\d+$/.test(rawTotal)) ? Number(rawTotal) : undefined;
-  const hasNext = total !== undefined && Number.isSafeInteger(total) && total >= 0 ? page * 100 < total : releases.length === 100;
+  const rawTotal
+    = data && !Array.isArray(data) && typeof data === 'object' ? (data as { total?: unknown }).total : undefined;
+  const total
+    = typeof rawTotal === 'number' || (typeof rawTotal === 'string' && /^\d+$/.test(rawTotal))
+      ? Number(rawTotal)
+      : undefined;
+  const hasNext
+    = total !== undefined && Number.isSafeInteger(total) && total >= 0 ? page * 100 < total : releases.length === 100;
   return { releases, ...(hasNext && page < 100 ? { nextPage: page + 1 } : {}) };
 }
 
@@ -633,50 +596,50 @@ function parseRelease(value: unknown): MTeamRelease {
 }
 
 const resolutionNames: Readonly<Record<string, string>> = {
-  '1': '1080p',
-  '2': '1080i',
-  '3': '720p',
-  '5': 'SD',
-  '6': '4K',
-  '7': '8K',
+  1: '1080p',
+  2: '1080i',
+  3: '720p',
+  5: 'SD',
+  6: '4K',
+  7: '8K',
 };
 const mediumNames: Readonly<Record<string, string>> = {
-  '1': 'Blu-ray',
-  '2': 'HD DVD',
-  '3': 'Remux',
-  '4': 'Blu-ray',
-  '5': 'HDTV',
-  '6': 'DVD',
-  '7': 'Encode',
-  '8': 'CD',
-  '10': 'WEB',
+  1: 'Blu-ray',
+  2: 'HD DVD',
+  3: 'Remux',
+  4: 'Blu-ray',
+  5: 'HDTV',
+  6: 'DVD',
+  7: 'Encode',
+  8: 'CD',
+  10: 'WEB',
 };
 const videoCodecNames: Readonly<Record<string, string>> = {
-  '1': 'H.264',
-  '2': 'VC-1',
-  '3': 'Xvid',
-  '4': 'MPEG-2',
-  '16': 'H.265',
-  '19': 'AV1',
-  '21': 'VP8/9',
-  '22': 'AVS',
+  1: 'H.264',
+  2: 'VC-1',
+  3: 'Xvid',
+  4: 'MPEG-2',
+  16: 'H.265',
+  19: 'AV1',
+  21: 'VP8/9',
+  22: 'AVS',
 };
 const audioCodecNames: Readonly<Record<string, string>> = {
-  '1': 'FLAC',
-  '2': 'APE',
-  '3': 'DTS',
-  '4': 'MP2/3',
-  '5': 'OGG',
-  '6': 'AAC',
-  '7': 'Other',
-  '8': 'AC3',
-  '9': 'TrueHD',
-  '10': 'TrueHD Atmos',
-  '11': 'DTS-HD MA',
-  '12': 'E-AC3',
-  '13': 'E-AC3 Atmos',
-  '14': 'LPCM/PCM',
-  '15': 'WAV',
+  1: 'FLAC',
+  2: 'APE',
+  3: 'DTS',
+  4: 'MP2/3',
+  5: 'OGG',
+  6: 'AAC',
+  7: 'Other',
+  8: 'AC3',
+  9: 'TrueHD',
+  10: 'TrueHD Atmos',
+  11: 'DTS-HD MA',
+  12: 'E-AC3',
+  13: 'E-AC3 Atmos',
+  14: 'LPCM/PCM',
+  15: 'WAV',
 };
 
 function readString(value: unknown): string | undefined {
@@ -690,8 +653,8 @@ function describeCode(value: string | undefined, names: Readonly<Record<string, 
 }
 
 function parseNonNegativeInteger(value: unknown): number | null {
-  const number =
-    typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
+  const number
+    = typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
   return Number.isSafeInteger(number) && number >= 0 ? number : null;
 }
 

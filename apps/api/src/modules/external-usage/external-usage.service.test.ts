@@ -28,7 +28,7 @@ test('returns only the authenticated owner usage and fills missing UTC days', as
   const service = new ExternalUsageService(
     { requireOwnerId: async () => '507f1f77bcf86cd799439011' },
     reader,
-    () => new Date('2026-10-13T22:30:00.000Z'),
+    () => new Date('2026-10-13T22:30:00.000Z')
   );
 
   const result = await service.readMine('session', 7);
@@ -73,7 +73,7 @@ test('token totals, unknown counts, and per-model operations reach the user resp
         };
       },
     },
-    () => new Date('2026-10-18T01:00:00Z'),
+    () => new Date('2026-10-18T01:00:00Z')
   );
   const result = await service.readMine('session', 7);
   assert.deepEqual(result.totals.tokenUsage, tokenUsage);

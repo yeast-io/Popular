@@ -34,7 +34,7 @@ test('usage contracts reject unsafe provider ids', () => {
       providers: [{ ...response.providers[0], provider: 'unsafe provider' }],
     }
     ),
-    false,
+    false
   );
 });
 
@@ -59,6 +59,6 @@ test('LLM metrics accept known and unknown usage but reject negative counters', 
       providers: [{ ...value.providers[0], tokenUsage: { ...tokenUsage, unknownRequests: -1 } }],
     }
     ),
-    false,
+    false
   );
 });

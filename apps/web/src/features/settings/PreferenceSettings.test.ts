@@ -33,7 +33,7 @@ it('requires five ratings before generation and never starts analysis on page lo
     vi.fn(async (_url, init?: RequestInit) => {
       requests.push(init?.method ?? 'GET');
       return Response.json(profile());
-    }),
+    })
   );
   const wrapper = mount(PreferenceSettings);
   await flushPromises();
@@ -53,7 +53,7 @@ it('manual generation is explicit and sends no client-selected user identity', a
       }
       );
       return Response.json({ ...profile(), ratedCount: 5 });
-    }),
+    })
   );
   const wrapper = mount(PreferenceSettings);
   await flushPromises();
@@ -84,7 +84,7 @@ it('corrections submit the current version and deletion requires a separate conf
         ],
       }
       );
-    }),
+    })
   );
   const wrapper = mount(PreferenceSettings);
   await flushPromises();
@@ -126,7 +126,7 @@ it('keeps revision content out of the list and restores focus after closing or c
         ],
       }
       );
-    }),
+    })
   );
   const wrapper = mount(PreferenceSettings, { attachTo: document.body });
   try {
@@ -162,7 +162,7 @@ it('shows empty revision content without incorrectly treating it as a generation
         revisions: [{ version: 0, at: '2026-10-18T12:00:00Z', source: 'user-edit', entries: [] }],
       }
       );
-    }),
+    })
   );
   const wrapper = mount(PreferenceSettings, { attachTo: document.body });
   try {
@@ -179,7 +179,6 @@ it('shows empty revision content without incorrectly treating it as a generation
     if (wrapper.exists()) wrapper.unmount();
   }
 });
-
 
 it.each(['en-US', 'zh-CN'] as const)('expands only the first visible entry and preserves disclosure choices and drafts in %s', async (locale) => {
   setLocale(locale);

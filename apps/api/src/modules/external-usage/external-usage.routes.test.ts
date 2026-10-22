@@ -38,7 +38,7 @@ test('external usage route requires its owner and validates the requested range'
         };
       },
     },
-    () => new Date('2026-10-13T22:30:00.000Z'),
+    () => new Date('2026-10-13T22:30:00.000Z')
   );
   const app = await buildApp({ config, healthDependencies: [], externalUsageService: service });
 
@@ -99,7 +99,7 @@ test('HTTP response preserves provider token metrics and model details', async (
           models: [{ provider: 'openai', model: 'test-model', operation: 'conversation.summary', ...metric }],
         };
       },
-    },
+    }
   );
   const app = await buildApp({ config, healthDependencies: [], externalUsageService: service });
   try {

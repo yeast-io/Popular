@@ -5,10 +5,15 @@ import type { ResourceProvider, ResourceSourceResult } from './resource-query.ty
 export class MTeamResourceProvider implements ResourceProvider {
   readonly id = 'mteam';
   readonly name = 'M-Team';
-  constructor(
-    private readonly resources: Pick<MovieResourceCheckService, 'listReleases'>
-  ) {}
-  async query(ownerId: string, tmdbId: number, signal: AbortSignal, options?: { refresh: boolean }): Promise<ResourceSourceResult> {
+
+  constructor(private readonly resources: Pick<MovieResourceCheckService, 'listReleases'>) {}
+
+  async query(
+    ownerId: string,
+    tmdbId: number,
+    signal: AbortSignal,
+    options?: { refresh: boolean }
+  ): Promise<ResourceSourceResult> {
     signal.throwIfAborted();
     const result = await this.resources.listReleases(ownerId, tmdbId, { force: options?.refresh ?? false });
     signal.throwIfAborted();
@@ -18,12 +23,14 @@ export class MTeamResourceProvider implements ResourceProvider {
       queriedAt: result.queriedAt,
       cached: result.cached,
       releases: result.releases.map(({ id, title, sizeBytes, resolution, seeders }) => {
-        return ({
-          provider: this.id, id, title,
+        return {
+          provider: this.id,
+          id,
+          title,
           ...(sizeBytes !== undefined ? { sizeBytes } : {}),
           ...(resolution ? { resolution } : {}),
           seeders,
-        });
+        };
       }),
     };
   }

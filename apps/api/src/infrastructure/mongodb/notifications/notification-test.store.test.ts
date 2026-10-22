@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MongoNotificationTestStore } from './notification-test.store.js';
+
 test('list and manual send lookups always scope completion filters to the authenticated owner', async () => {
   const filters: Array<Record<string, unknown>> = [];
   const store = new MongoNotificationTestStore({

@@ -5,11 +5,13 @@ import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { WhatsAppConnector, WhatsAppDiagnostic, WhatsAppStore } from './whatsapp.types.js';
 import type { IncomingMessage } from '../incoming-message.types.js';
+
 export class WhatsAppService {
   private readonly sessions = new Map<string, Session>();
   private readonly queues = new Map<string, Promise<unknown>>();
   private closed = false;
   private readonly lastStates = new Map<string, WhatsAppConfiguration>();
+
   constructor(
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly store: WhatsAppStore,
@@ -27,6 +29,7 @@ export class WhatsAppService {
       return work(ownerId);
     });
   }
+
   private async serial<T>(ownerId: string, work: () => Promise<T>): Promise<T> {
     const previous = this.queues.get(ownerId) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(work);
@@ -37,6 +40,7 @@ export class WhatsAppService {
       if (this.queues.get(ownerId) === next) this.queues.delete(ownerId);
     }
   }
+
   get(token: string | undefined): Promise<WhatsAppConfiguration> {
     return this.owned(token, async (ownerId) => {
       const session = this.sessions.get(ownerId);
@@ -46,9 +50,11 @@ export class WhatsAppService {
       return { status: (await this.store.exists(ownerId)) ? 'disconnected' : 'unbound' };
     });
   }
+
   start(token: string | undefined): Promise<WhatsAppConfiguration> {
     return this.owned(token, (ownerId) => this.startOwner(ownerId));
   }
+
   private async startOwner(ownerId: string): Promise<WhatsAppConfiguration> {
     const existing = this.sessions.get(ownerId);
     if (existing && ['connecting', 'qr', 'pairing', 'connected'].includes(existing.state.status))
@@ -59,7 +65,7 @@ export class WhatsAppService {
       throw new AppError(
         409,
         'CONFLICT',
-        'WhatsApp session is active on another server. Retry on that server or after it stops.',
+        'WhatsApp session is active on another server. Retry on that server or after it stops.'
       );
     this.lastStates.delete(ownerId);
     this.sessions.set(ownerId, session);
@@ -121,9 +127,11 @@ export class WhatsAppService {
       throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Could not start WhatsApp binding');
     }
   }
+
   async isConfigured(ownerId: string): Promise<boolean> {
     return this.store.exists(ownerId);
   }
+
   /** Restore saved linked accounts on startup without exposing an unauthenticated HTTP endpoint. */
   async resume(ownerIds: string[]): Promise<void> {
     for (const ownerId of ownerIds) {
@@ -134,45 +142,49 @@ export class WhatsAppService {
       }
     }
   }
+
   async canReply(ownerId: string, chatId: string): Promise<boolean> {
     if (!(await this.store.exists(ownerId))) return false;
     const session = this.sessions.get(ownerId);
     if (!session?.connection || session.state.status !== 'connected') throw new Error('WhatsApp unavailable');
     return session.connection.ownsChat?.(chatId) === true;
   }
+
   async setTyping(ownerId: string, chatId: string, active: boolean, signal?: AbortSignal): Promise<void> {
     return this.serial(ownerId, async () => {
       signal?.throwIfAborted();
       const session = this.sessions.get(ownerId);
       if (
-        this.closed ||
-        !session?.connection?.setTyping ||
-        session.state.status !== 'connected' ||
-        session.connection.ownsChat?.(chatId) !== true ||
-        !(await this.store.renew(ownerId, session.leaseId))
+        this.closed
+        || !session?.connection?.setTyping
+        || session.state.status !== 'connected'
+        || session.connection.ownsChat?.(chatId) !== true
+        || !(await this.store.renew(ownerId, session.leaseId))
       )
         throw new Error('WhatsApp unavailable');
       signal?.throwIfAborted();
       await session.connection.setTyping(active);
     });
   }
+
   async reply(ownerId: string, chatId: string, text: string, poster?: Buffer): Promise<string> {
     return this.serial(ownerId, async () => {
       const session = this.sessions.get(ownerId);
       if (
-        this.closed ||
-        !session?.connection?.sendReply ||
-        session.state.status !== 'connected' ||
-        session.connection.ownsChat?.(chatId) !== true ||
-        !(await this.store.renew(ownerId, session.leaseId))
+        this.closed
+        || !session?.connection?.sendReply
+        || session.state.status !== 'connected'
+        || session.connection.ownsChat?.(chatId) !== true
+        || !(await this.store.renew(ownerId, session.leaseId))
       )
         throw new Error('WhatsApp unavailable');
       return session.connection.sendReply(text, poster);
     });
   }
+
   async sendNotification(
     ownerId: string,
-    notification: import('../notifications/notification.types.js').DownloadNotification,
+    notification: import('../notifications/notification.types.js').DownloadNotification
   ): Promise<{ messageId: string }> {
     return this.serial(ownerId, async () => {
       if (this.closed || !(await this.store.exists(ownerId))) throw new Error('WhatsApp not linked');
@@ -208,6 +220,7 @@ export class WhatsAppService {
       return { messageId: await session.connection.sendNotification(notification) };
     });
   }
+
   test(token: string | undefined): Promise<{ messageId: string }> {
     return this.owned(token, async (ownerId) => {
       const session = this.sessions.get(ownerId);
@@ -226,11 +239,12 @@ export class WhatsAppService {
         throw new AppError(
           502,
           'SERVICE_UNAVAILABLE',
-          'Test delivery could not be confirmed. Check WhatsApp before retrying.',
+          'Test delivery could not be confirmed. Check WhatsApp before retrying.'
         );
       }
     });
   }
+
   remove(token: string | undefined): Promise<void> {
     return this.owned(token, async (ownerId) => {
       let session = this.sessions.get(ownerId);
@@ -246,11 +260,13 @@ export class WhatsAppService {
       await this.stop(ownerId, session, true);
     });
   }
+
   private visible(state: WhatsAppConfiguration): WhatsAppConfiguration {
     if (state.status === 'qr' && (!state.qrExpiresAt || Date.parse(state.qrExpiresAt) <= Date.now()))
       return { status: 'connecting' };
     return { ...state };
   }
+
   private async stop(ownerId: string, session: Session, logout: boolean): Promise<void> {
     this.sessions.delete(ownerId);
     if (logout) this.lastStates.delete(ownerId);
@@ -265,13 +281,14 @@ export class WhatsAppService {
       await this.store.release(ownerId, session.leaseId);
     }
   }
+
   async close(): Promise<void> {
     this.closed = true;
     await Promise.allSettled([...this.queues.values()]);
     await Promise.allSettled(
       [...this.sessions].map(([ownerId, session]) => {
         return this.stop(ownerId, session, false);
-      }),
+      })
     );
     this.lastStates.clear();
   }

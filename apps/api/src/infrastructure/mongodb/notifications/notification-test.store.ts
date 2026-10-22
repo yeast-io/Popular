@@ -2,6 +2,7 @@ import type { Model } from 'mongoose';
 import type { NotificationTestStore } from '../../../modules/notifications/notification-test.types.js';
 import type { MovieDownloadDocument } from '../downloads/movie-download.schema.js';
 import { toMovieDownloadRecord } from '../downloads/movie-download.store.js';
+
 const completed = {
   $or: [
     { 'notificationTask.downloaded': true },
@@ -9,9 +10,8 @@ const completed = {
   ],
 };
 export class MongoNotificationTestStore implements NotificationTestStore {
-  constructor(
-    private readonly downloads: Model<MovieDownloadDocument>
-  ) {}
+  constructor(private readonly downloads: Model<MovieDownloadDocument>) {}
+
   async listCompleted(ownerId: string, skip: number, limit: number) {
     const rows = await this.downloads
       .find({ ownerId, ...completed })
@@ -22,6 +22,7 @@ export class MongoNotificationTestStore implements NotificationTestStore {
       .exec();
     return rows.map(toMovieDownloadRecord);
   }
+
   async findCompleted(ownerId: string, id: string) {
     const row = await this.downloads
       .findOne({ ownerId, _id: id, ...completed })

@@ -1,5 +1,6 @@
 import type { SaveNotificationPreferences } from '@movie-hub/contract';
 import type { MovieDownloadProgress, MovieDownloadRecord } from '../downloads/movie-download.types.js';
+
 export interface NotificationPreferenceRecord extends SaveNotificationPreferences {
   epoch: number;
 }

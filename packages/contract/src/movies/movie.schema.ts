@@ -14,7 +14,7 @@ export const MovieSummarySchema = Type.Object(
     userStatus: MovieStatusSchema,
     userPreference: MoviePreferenceSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MoviePersonSchema = Type.Object(
@@ -24,7 +24,7 @@ export const MoviePersonSchema = Type.Object(
     character: Type.Optional(Type.String()),
     profileUrl: Type.Optional(Type.String({ format: 'uri' })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieTrailerSchema = Type.Object(
@@ -38,7 +38,7 @@ export const MovieTrailerSchema = Type.Object(
     official: Type.Boolean(),
     publishedAt: Type.Optional(Type.String({ format: 'date-time' })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieDetailSchema = Type.Object(
@@ -53,8 +53,8 @@ export const MovieDetailSchema = Type.Object(
     genres: Type.Array(
       Type.Object(
         { tmdbId: Type.Integer({ minimum: 1 }), name: Type.String({ minLength: 1 }) },
-        { additionalProperties: false },
-      ),
+        { additionalProperties: false }
+      )
     ),
     releaseDate: Type.Optional(Type.String({ format: 'date' })),
     posterUrl: Type.Optional(Type.String({ format: 'uri' })),
@@ -70,18 +70,18 @@ export const MovieDetailSchema = Type.Object(
     stale: Type.Boolean(),
     locale: LocaleSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieDetailParamsSchema = Type.Object(
   { tmdbId: Type.Integer({ minimum: 1 }) },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 export const MovieDetailQuerySchema = Type.Object(
   {
     locale: Type.Optional(LocaleSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const TrendingQuerySchema = Type.Object(
@@ -89,7 +89,7 @@ export const TrendingQuerySchema = Type.Object(
     page: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, default: 1 })),
     locale: Type.Optional(LocaleSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 const TrendingGenerationSchema = Type.String({
@@ -102,7 +102,7 @@ export const LoadMoreTrendingRequestSchema = Type.Object(
     generation: TrendingGenerationSchema,
     locale: Type.Optional(LocaleSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const TrendingMoviesResponseSchema = Type.Object(
@@ -116,7 +116,7 @@ export const TrendingMoviesResponseSchema = Type.Object(
     generation: TrendingGenerationSchema,
     locale: LocaleSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const SearchMoviesQuerySchema = Type.Object(
@@ -125,7 +125,7 @@ export const SearchMoviesQuerySchema = Type.Object(
     page: Type.Optional(Type.Integer({ minimum: 1, maximum: 500, default: 1 })),
     locale: Type.Optional(LocaleSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const SearchMoviesResponseSchema = Type.Object(
@@ -137,7 +137,7 @@ export const SearchMoviesResponseSchema = Type.Object(
     resultCompleteness: Type.Union([Type.Literal('complete'), Type.Literal('partial')]),
     locale: LocaleSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export type MovieSummary = Static<typeof MovieSummarySchema>;

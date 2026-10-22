@@ -19,6 +19,7 @@ export class ApplicationShutdown {
   get requested(): boolean {
     return this.closing;
   }
+
   get exitCode(): number {
     return this.failed ? 1 : 0;
   }
@@ -36,14 +37,14 @@ export class ApplicationShutdown {
       this.failed = true;
       this.logger.error(
         { event: 'shutdown_fatal_error', reason, error: serializeDiagnosticError(error) },
-        'Application fatal error',
+        'Application fatal error'
       );
     }
     if (this.running) return this.running;
     this.closing = true;
     this.logger.info?.(
       { event: 'shutdown_started', reason, timeoutMs: this.timeoutMs },
-      'Application shutdown started',
+      'Application shutdown started'
     );
     this.running = this.run();
     return this.running;
@@ -56,7 +57,7 @@ export class ApplicationShutdown {
         this.failed = true;
         this.logger.error(
           { event: 'shutdown_timeout', resource: this.currentResource, timeoutMs: this.timeoutMs },
-          'Shutdown deadline exceeded; remaining leases must expire',
+          'Shutdown deadline exceeded; remaining leases must expire'
         );
         resolve();
       }, this.timeoutMs
@@ -81,13 +82,13 @@ export class ApplicationShutdown {
         await resource.close();
         this.logger.info?.(
           { event: 'resource_closed', resource: resource.name, durationMs: Date.now() - started },
-          'Application resource closed',
+          'Application resource closed'
         );
       } catch (error) {
         this.failed = true;
         this.logger.error(
           { event: 'resource_close_failed', resource: resource.name, error: serializeDiagnosticError(error) },
-          'Application resource close failed',
+          'Application resource close failed'
         );
       }
     }
@@ -99,7 +100,7 @@ export function installShutdownHandlers(
   host: NodeJS.Process = process,
   flush: () => Promise<void> = async () => {
     return undefined;
-  },
+  }
 ): { request: (reason: string, error?: unknown) => void; dispose: () => void } {
   let exiting = false;
   const request = (reason: string, error?: unknown) => {
@@ -125,8 +126,7 @@ export function installShutdownHandlers(
       },
       () => {
         host.exit(1);
-      },
-    );
+      });
   };
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT', 'SIGUSR2'] as const;
   const listeners = signals.map((signal) => {

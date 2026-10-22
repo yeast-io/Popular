@@ -14,8 +14,8 @@ test('recommendation schema retains existing model identity and owner/conversati
     model.schema
       .indexes()
       .some(
-      ([fields, options]) => fields.ownerId === 1 && fields.conversation === 1 && options.unique
-    ),
+        ([fields, options]) => fields.ownerId === 1 && fields.conversation === 1 && options.unique
+      )
   );
   await connection.close();
 });

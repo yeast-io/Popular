@@ -31,10 +31,14 @@ async function setDefault() {
     if (!response.ok) throw await localizedResponseError(response);
     preferences.value = await response.json();
     window.dispatchEvent(new Event('integration-preferences-changed'));
-  } catch (cause) { error.value = localizedErrorMessage(cause, 'errors.requestFailed'); }
-  finally { busy.value = false; }
+  } catch (cause) { error.value = localizedErrorMessage(cause, 'errors.requestFailed'); } finally {
+    busy.value = false;
+  }
 }
-onMounted(() => { void load(); window.addEventListener('integration-preferences-changed', load); });
+onMounted(() => {
+  void load();
+  window.addEventListener('integration-preferences-changed', load);
+});
 onBeforeUnmount(() => window.removeEventListener('integration-preferences-changed', load));
 watch(() => props.status, () => window.dispatchEvent(new Event('integration-preferences-changed')));
 </script>

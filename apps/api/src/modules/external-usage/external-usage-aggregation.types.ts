@@ -1,5 +1,3 @@
-
-
 export interface ExternalUsageAggregator {
   rebuildDaily(since: Date): Promise<void>;
 }

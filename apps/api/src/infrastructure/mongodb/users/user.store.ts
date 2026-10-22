@@ -7,10 +7,7 @@ import type { AuthUserStore, StoredUser } from '../../../modules/auth/auth.types
 export class MongoAuthUserStore implements AuthUserStore {
   private transactionsSupported: boolean | undefined;
 
-  constructor(
-    private readonly users: UserModel,
-    private readonly identities: IdentityModel
-  ) {}
+  constructor(private readonly users: UserModel, private readonly identities: IdentityModel) {}
 
   async countUsers(): Promise<number> {
     return this.users.countDocuments({}).exec();
@@ -113,12 +110,12 @@ function isDuplicateKey(error: unknown): boolean {
 
 function isTransactionUnsupported(error: unknown): boolean {
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    (('code' in error && error.code === 20) ||
-      ('message' in error &&
-        typeof error.message === 'string' &&
-        error.message.includes('Transaction numbers are only allowed')))
+    typeof error === 'object'
+    && error !== null
+    && (('code' in error && error.code === 20)
+      || ('message' in error
+        && typeof error.message === 'string'
+        && error.message.includes('Transaction numbers are only allowed')))
   );
 }
 

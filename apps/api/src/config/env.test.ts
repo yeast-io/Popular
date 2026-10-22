@@ -42,7 +42,7 @@ test('requires a dedicated integration encryption key', () => {
   assert.throws(() => loadConfig(withoutIntegrationKey), /INTEGRATION_SECRET_KEY/);
   assert.throws(
     () => loadConfig({ ...withoutIntegrationKey, INTEGRATION_SECRET_KEY: 'too-short' }),
-    /INTEGRATION_SECRET_KEY/,
+    /INTEGRATION_SECRET_KEY/
   );
 });
 
@@ -53,7 +53,7 @@ test('fails fast without infrastructure credentials', () => {
 test('rejects a URL in MINIO_ENDPOINT before constructing the SDK client', () => {
   assert.throws(
     () => loadConfig({ ...valid, MINIO_ENDPOINT: 'http://minio.example:9000' }),
-    /without protocol, port, or path/,
+    /without protocol, port, or path/
   );
 });
 
@@ -77,7 +77,7 @@ test('movie locale migration requires only MongoDB settings', () => {
     {
       MONGODB_URI: 'mongodb://localhost:27017',
       MONGODB_DB_NAME: 'movie_hub',
-    },
+    }
   );
 });
 
@@ -139,7 +139,7 @@ test('Telegram bot is optional; malformed tokens fail without exposing their val
   assert.equal(loadConfig(valid).TELEGRAM_BOT_TOKEN, undefined);
   assert.equal(
     loadConfig({ ...valid, TELEGRAM_BOT_TOKEN: '123456:valid_token-1' }).TELEGRAM_BOT_TOKEN,
-    '123456:valid_token-1',
+    '123456:valid_token-1'
   );
   const secret = 'invalid-sensitive-token';
   assert.throws(
@@ -149,8 +149,7 @@ test('Telegram bot is optional; malformed tokens fail without exposing their val
       assert.ok(error.message.includes('TELEGRAM_BOT_TOKEN'));
       assert.ok(!error.message.includes(secret));
       return true;
-    },
-  );
+    });
 });
 
 test('validates assistant worker concurrency and recovery scan interval', () => {
@@ -194,37 +193,67 @@ test('parses curated model IDs in display order and validates environment overri
   assert.deepEqual(
     loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: ' gpt-6.1-sol, gpt-5.4-mini,gpt-6.1-sol,, ' })
       .OPENAI_RECOMMENDED_MODELS,
-    ['gpt-6.1-sol', 'gpt-5.4-mini'],
+    ['gpt-6.1-sol', 'gpt-5.4-mini']
   );
   assert.deepEqual(loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: '' }).OPENAI_RECOMMENDED_MODELS, []);
   assert.throws(
     () => loadConfig({ ...valid, OPENAI_RECOMMENDED_MODELS: 'gpt-6-luna,invalid model' }),
-    /OPENAI_RECOMMENDED_MODELS/,
+    /OPENAI_RECOMMENDED_MODELS/
   );
 });
 
 test('validates experimental page switches as explicit booleans', () => {
   const config = loadConfig(valid);
   assert.equal(config.PAGE_AI_ASSISTANT_ENABLED, true);
-  assert.equal(config.PAGE_DOCS_ENABLED, false);
   assert.equal(config.VERBOSE, false);
-  assert.equal(
-    loadConfig({ ...valid, PAGE_AI_ASSISTANT_ENABLED: 'false', PAGE_DOCS_ENABLED: 'true' }).PAGE_DOCS_ENABLED,
-    true,
-  );
-  for (const field of ['PAGE_AI_ASSISTANT_ENABLED', 'PAGE_DOCS_ENABLED', 'VERBOSE']) {
+  for (const field of ['PAGE_AI_ASSISTANT_ENABLED', 'VERBOSE']) {
     assert.throws(() => loadConfig({ ...valid, [field]: 'yes' }), new RegExp(field));
   }
 });
 
 test('resource site domains are configurable HTTPS origins with no embedded secrets or paths', () => {
-  const config = loadConfig(
-    { ...valid, HDAREA_BASE_URL: 'https://new-hdarea.example/', MTEAM_BASE_URL: 'https://api.new-mteam.example', MTEAM_WEB_BASE_URL: 'https://new-mteam.example/' }
+  const config = loadConfig({
+    ...valid,
+    HDAREA_BASE_URL: 'https://new-hdarea.example/',
+    MTEAM_BASE_URL: 'https://api.new-mteam.example',
+    MTEAM_WEB_BASE_URL: 'https://new-mteam.example/',
+  }
   );
   assert.equal(config.HDAREA_BASE_URL, 'https://new-hdarea.example');
   assert.equal(config.MTEAM_BASE_URL, 'https://api.new-mteam.example');
   assert.equal(config.MTEAM_WEB_BASE_URL, 'https://new-mteam.example');
-  for (const value of ['http://site.example', 'https://user:secret@site.example', 'https://site.example?passkey=secret', 'https://site.example/download.php', 'https://site.example:8443']) {
+  for (const value of [
+    'http://site.example',
+    'https://user:secret@site.example',
+    'https://site.example?passkey=secret',
+    'https://site.example/download.php',
+    'https://site.example:8443',
+  ]) {
     assert.throws(() => loadConfig({ ...valid, HDAREA_BASE_URL: value }), InvalidEnvironmentError);
   }
+});
+
+test('Gateway pool config requires paired service credentials and explicit local transport without production downgrade', () => {
+  const gateway = { REMOTE_GATEWAY_BASE_URL: 'https://gateway.example', REMOTE_GATEWAY_SERVICE_TOKEN: 'x'.repeat(32) };
+  assert.equal(loadConfig({ ...valid, ...gateway }).REMOTE_GATEWAY_POOL_SIZE, 4);
+  for (const changes of [
+    { REMOTE_GATEWAY_SERVICE_TOKEN: '' },
+    { REMOTE_GATEWAY_BASE_URL: 'http://localhost:4310' },
+    { REMOTE_GATEWAY_POOL_SIZE: '0' },
+    { REMOTE_GATEWAY_BASE_URL: 'https://user:secret@gateway.example' },
+    { REMOTE_GATEWAY_BASE_URL: 'https://gateway.example/path' },
+    { REMOTE_GATEWAY_ALLOW_INSECURE_DEV: 'true', NODE_ENV: 'production' },
+  ])
+    assert.throws(() => loadConfig({ ...valid, ...gateway, ...changes }), InvalidEnvironmentError);
+  assert.equal(
+    loadConfig({
+      ...valid,
+      ...gateway,
+      NODE_ENV: 'development',
+      REMOTE_GATEWAY_BASE_URL: 'ws://127.0.0.1:4310',
+      REMOTE_GATEWAY_ALLOW_INSECURE_DEV: 'true',
+    }
+    ).REMOTE_GATEWAY_ALLOW_INSECURE_DEV,
+    true
+  );
 });

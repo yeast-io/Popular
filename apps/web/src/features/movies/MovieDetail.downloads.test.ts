@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { DownloadProvider, MovieDownload } from '@movie-hub/contract';
+import type { DownloadProvider, DownloadSource, MovieDownload } from '@movie-hub/contract';
 import { setLocale } from '../../i18n';
 import MovieDetail from './MovieDetail.vue';
 
@@ -16,13 +16,14 @@ async function setup(
     retry?: DownloadProvider;
     status?: MovieDownload['status'];
     extraRelease?: boolean;
+    hdarea?: boolean;
     postResponse?: Promise<Response>;
-  } = {},
+  } = {}
 ) {
   setLocale(options.locale ?? 'en-US');
   const posts: { sourceReleaseId: string; provider: DownloadProvider }[] = [];
-  const existing =
-    options.retry || options.status
+  const existing
+    = options.retry || options.status
       ? [
           {
             id: 'old',
@@ -39,17 +40,18 @@ async function setup(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-        if (url.endsWith('/me/integration-preferences')) return Response.json({
-          defaults: { resource: 'mteam', ...(options.defaultProvider ? { downloader: options.defaultProvider } : {}) }, selectedSites: [], effectiveSites: ['mteam'],
-          choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
-        }
-        );
+      if (url.endsWith('/me/integration-preferences')) return Response.json({
+        defaults: { resource: 'mteam', ...(options.defaultProvider ? { downloader: options.defaultProvider } : {}) }, selectedSites: [], effectiveSites: options.hdarea ? ['mteam', 'hdarea'] : ['mteam'],
+        choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
+      }
+      );
 
       if (url.endsWith('/download-providers'))
         return options.providersFail ? new Response(null, { status: 503 }) : Response.json({ providers });
-      if (url.endsWith('/resources/mteam/releases'))
+      if (url.endsWith('/resources/mteam/releases') || url.endsWith('/resources/hdarea/releases'))
         return Response.json({
-          provider: 'mteam',
+          provider: url.includes('/hdarea/') ? 'hdarea' : 'mteam',
+          supportsDownload: true,
           availability: 'available',
           queriedAt: '2026-10-17T00:00:00Z',
           cached: false,
@@ -70,17 +72,17 @@ async function setup(
         return options.fail
           ? Response.json({ error: { code: 'TRANSMISSION_UNREACHABLE' } }, { status: 503 })
           : Response.json(
-            {
+              {
                 id: 'new',
                 tmdbId: 603,
-                sourceProvider: 'mteam',
+                sourceProvider: body.sourceProvider ?? 'mteam',
                 sourceReleaseId: '991',
                 provider: body.provider,
                 status: 'downloading',
                 progress: 35,
               },
-            { status: 201 },
-          );
+              { status: 201 }
+            );
       }
       if (url.endsWith('/downloads')) return Response.json({ items: existing });
       return Response.json({
@@ -95,7 +97,7 @@ async function setup(
         locale: 'en-US',
       }
       );
-    }),
+    })
   );
   const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
   await flushPromises();
@@ -117,9 +119,10 @@ describe('download provider selection', () => {
     const f = await setup(['transmission'], { extraRelease: true, postResponse });
     const panel = document.body.querySelector<HTMLElement>('.release-panel-content')!;
     panel.scrollTop = 500;
+    const scrollTo = vi.spyOn(panel, 'scrollTo').mockImplementation(() => {});
     document.body.querySelector<HTMLButtonElement>('.release-card:last-child .release-download-button')!.click();
     await flushPromises();
-    expect(panel.scrollTop).toBe(0);
+    expect(scrollTo).toHaveBeenCalledWith({ top: 500, behavior: 'smooth' });
     const first = panel.querySelector<HTMLElement>('.release-card')!;
     expect(first.querySelector('h3')?.textContent).toBe('Movie.Release');
     expect(first.classList.contains('is-download-active')).toBe(true);
@@ -129,6 +132,48 @@ describe('download provider selection', () => {
     await flushPromises();
     expect(first.classList.contains('is-download-active')).toBe(false);
     expect(first.classList.contains('is-download-failed')).toBe(true);
+    f.wrapper.unmount();
+  });
+
+  it.each([
+    ['mteam', 'en-US'], ['hdarea', 'en-US'], ['mteam', 'zh-CN'], ['hdarea', 'zh-CN'],
+  ] as const)('scrolls only the panel to the reordered %s card in %s', async (site: DownloadSource, locale) => {
+    let respond!: (response: Response) => void;
+    const postResponse = new Promise<Response>((resolve) => {
+      respond = resolve;
+    });
+    const f = await setup(['transmission'], { extraRelease: true, hdarea: true, locale, postResponse });
+    const panel = document.body.querySelector<HTMLElement>('.release-panel-content')!;
+    const card = panel.querySelector<HTMLElement>(`[data-release-key="${site}:991"]`)!;
+    const group = card.closest('details')!;
+    group.open = true;
+    group.dispatchEvent(new Event('toggle'));
+    await flushPromises();
+    panel.scrollTop = 500;
+    vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({ top: 100 } as DOMRect);
+    vi.spyOn(card, 'getBoundingClientRect').mockImplementation(() => {
+      // Read its position after Vue has moved the clicked card to the site's first row.
+      expect(group.querySelector('.release-card')).toBe(card);
+      return { top: site === 'hdarea' ? 330 : 130 } as DOMRect;
+    });
+    const scrollTo = vi.spyOn(panel, 'scrollTo').mockImplementation(() => {});
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: locale === 'zh-CN' } as MediaQueryList);
+    card.querySelector<HTMLButtonElement>('.release-download-button')!.click();
+    await flushPromises();
+    expect(scrollTo).toHaveBeenCalledExactlyOnceWith({
+      top: site === 'hdarea' ? 730 : 530,
+      behavior: locale === 'zh-CN' ? 'instant' : 'smooth',
+    }
+    );
+    expect(card.querySelector('[role="status"]')?.textContent).toContain(locale === 'zh-CN' ? '正在提交' : 'Submitting');
+    respond(Response.json({
+      id: 'new', tmdbId: 603, sourceProvider: site, sourceReleaseId: '991',
+      provider: 'transmission', status: 'downloading', progress: 35,
+    }, { status: 201 }
+    )
+    );
+    await flushPromises();
+    expect(scrollTo).toHaveBeenCalledTimes(1);
     f.wrapper.unmount();
   });
 
@@ -163,11 +208,10 @@ describe('download provider selection', () => {
       expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
       expect(f.posts).toEqual([{ sourceReleaseId: '991', provider }]);
       expect(document.body.querySelector('.release-download-progress')?.textContent).toContain(
-        provider === 'transmission' ? 'Transmission' : 'qBittorrent',
+        provider === 'transmission' ? 'Transmission' : 'qBittorrent'
       );
       f.wrapper.unmount();
-    },
-  );
+    });
 
   it('waits for an explicit choice with multiple downloaders, then submits only to the selected one', async () => {
     const f = await setup(['qbittorrent', 'transmission']);
@@ -226,7 +270,7 @@ describe('download provider selection', () => {
     await f.clickDownload();
     expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission' }]);
     expect(document.body.querySelector('.release-card [role="alert"]')?.textContent).toContain(
-      'Transmission could not be reached',
+      'Transmission could not be reached'
     );
     f.wrapper.unmount();
   });
@@ -240,7 +284,12 @@ describe('download provider selection', () => {
   });
 });
 
-afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; document.body.style.overflow = ''; });
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  document.body.innerHTML = '';
+  document.body.style.overflow = '';
+});
 
 it.each(['en-US', 'zh-CN'] as const)('shows a neutral missing task without stale progress and permits explicit redownload in %s', async (locale) => {
   const f = await setup(['qbittorrent'], { locale, retry: 'qbittorrent', status: 'missing', progress: 2 });

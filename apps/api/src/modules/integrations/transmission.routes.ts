@@ -1,4 +1,9 @@
-import { ApiErrorSchema, TransmissionConfigurationSchema, SaveTransmissionConfigurationRequestSchema, type SaveTransmissionConfigurationRequest } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  TransmissionConfigurationSchema,
+  SaveTransmissionConfigurationRequestSchema,
+  type SaveTransmissionConfigurationRequest,
+} from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
@@ -7,7 +12,7 @@ import type { TransmissionIntegrationService } from './transmission-integration.
 export function registerTransmissionRoutes(
   app: FastifyInstance,
   transmission: TransmissionIntegrationService,
-  config: AppConfig,
+  config: AppConfig
 ): void {
   const token = (request: FastifyRequest) => readSessionToken(request, config.SESSION_COOKIE_NAME);
   const errorResponses = {
@@ -24,7 +29,7 @@ export function registerTransmissionRoutes(
     {
       schema: { response: { 200: TransmissionConfigurationSchema, 401: ApiErrorSchema } },
     },
-    async (request) => transmission.get(token(request)),
+    async (request) => transmission.get(token(request))
   );
 
   app.put<{ Body: SaveTransmissionConfigurationRequest }>(
@@ -35,7 +40,7 @@ export function registerTransmissionRoutes(
         response: { 200: TransmissionConfigurationSchema, ...errorResponses },
       },
     },
-    async (request) => transmission.save(token(request), request.body),
+    async (request) => transmission.save(token(request), request.body)
   );
 
   app.post(
@@ -43,7 +48,7 @@ export function registerTransmissionRoutes(
     {
       schema: { response: { 200: TransmissionConfigurationSchema, ...errorResponses } },
     },
-    async (request) => transmission.retest(token(request)),
+    async (request) => transmission.retest(token(request))
   );
 
   app.delete(
@@ -54,6 +59,6 @@ export function registerTransmissionRoutes(
     async (request, reply) => {
       await transmission.delete(token(request));
       return reply.status(204).send();
-    },
+    }
   );
 }

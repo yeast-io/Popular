@@ -1,14 +1,20 @@
 import { ASSISTANT_MESSAGE_RETENTION_MS } from '../assistant-retention.js';
 import { Types } from 'mongoose';
-import type { AssistantQueue, AssistantJob, AssistantConversation } from '../../../modules/assistant/assistant.types.js';
-import type { AssistantInputWorkflowMessage, AssistantIntent, AssistantWorkflowResult } from '../../../modules/assistant/assistant.types.js';
+import type {
+  AssistantQueue,
+  AssistantJob,
+  AssistantConversation,
+} from '../../../modules/assistant/assistant.types.js';
+import type {
+  AssistantInputWorkflowMessage,
+  AssistantIntent,
+  AssistantWorkflowResult,
+} from '../../../modules/assistant/assistant.types.js';
 import type { LlmMessage } from '../../../modules/llm/llm.types.js';
 import type { AssistantMessageModel } from './assistant-message.schema.js';
 
 export class MongoAssistantQueue implements AssistantQueue {
-  constructor(
-    private readonly model: AssistantMessageModel
-  ) {}
+  constructor(private readonly model: AssistantMessageModel) {}
 
   async enqueue(input: AssistantInputWorkflowMessage): Promise<void> {
     const { ownerId, channel, chatId, messageId } = input;
@@ -25,7 +31,7 @@ export class MongoAssistantQueue implements AssistantQueue {
             nextAttemptAt: new Date(),
           },
         },
-        { upsert: true },
+        { upsert: true }
       );
     } catch (error) {
       if ((error as { code?: number }).code !== 11000) throw error;
@@ -85,7 +91,7 @@ export class MongoAssistantQueue implements AssistantQueue {
           $inc: { attempts: 1 },
           $unset: { completedAt: 1, expiresAt: 1 },
         },
-        { new: true },
+        { new: true }
       )
       .lean();
     if (!row) return null;
@@ -169,7 +175,11 @@ export class MongoAssistantQueue implements AssistantQueue {
   async delivered(id: string, leaseId: string): Promise<void> {
     const completedAt = new Date();
     await this.model.updateOne(this.owned(id, leaseId), {
-      $set: { status: 'delivered', completedAt, expiresAt: new Date(completedAt.getTime() + ASSISTANT_MESSAGE_RETENTION_MS) },
+      $set: {
+        status: 'delivered',
+        completedAt,
+        expiresAt: new Date(completedAt.getTime() + ASSISTANT_MESSAGE_RETENTION_MS),
+      },
       $unset: { leaseId: 1, leaseUntil: 1 },
     });
   }
@@ -178,7 +188,8 @@ export class MongoAssistantQueue implements AssistantQueue {
     const now = new Date();
     await this.model.updateOne(this.owned(id, leaseId), {
       $set: {
-        status: exhausted ? 'failed' : 'pending', nextAttemptAt: new Date(now.getTime() + 15_000),
+        status: exhausted ? 'failed' : 'pending',
+        nextAttemptAt: new Date(now.getTime() + 15_000),
         ...(exhausted ? { completedAt: now, expiresAt: new Date(now.getTime() + ASSISTANT_MESSAGE_RETENTION_MS) } : {}),
       },
       $unset: { leaseId: 1, leaseUntil: 1, ...(!exhausted ? { completedAt: 1, expiresAt: 1 } : {}) },

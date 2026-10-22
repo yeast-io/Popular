@@ -9,7 +9,7 @@ const movieResourceCheckTaskSchema = new Schema(
     attemptedAt: { type: Date, required: true },
     leaseExpiresAt: { type: Date, required: true },
   },
-  { collection: 'movie_resource_check_tasks', versionKey: false },
+  { collection: 'movie_resource_check_tasks', versionKey: false }
 );
 
 movieResourceCheckTaskSchema.index({ ownerId: 1, tmdbId: 1, provider: 1 }, { unique: true });

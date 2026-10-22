@@ -2,8 +2,17 @@ import type { TmdbMovie, TmdbTrendingResponse, TmdbDetail, TmdbVideo } from './t
 import { aiStep, currentAiTrace } from '../logging/ai-trace.js';
 import type { Locale } from '@movie-hub/contract';
 import { randomUUID } from 'node:crypto';
-import type { CreditRecord, MovieDetailRecord, MovieRecord, TrendingProvider } from '../../modules/movies/movie.types.js';
-import type { ExternalRequestContext, ExternalRequestErrorCode, ExternalRequestRecorder } from '../../modules/external-usage/external-usage.types.js';
+import type {
+  CreditRecord,
+  MovieDetailRecord,
+  MovieRecord,
+  TrendingProvider,
+} from '../../modules/movies/movie.types.js';
+import type {
+  ExternalRequestContext,
+  ExternalRequestErrorCode,
+  ExternalRequestRecorder,
+} from '../../modules/external-usage/external-usage.types.js';
 
 export class TmdbClient implements TrendingProvider {
   constructor(
@@ -98,7 +107,7 @@ export class TmdbClient implements TrendingProvider {
     filters: { genres: number[]; excludeGenres: number[]; maxRuntime: number | null; language: string | null },
     page: number,
     locale: Locale,
-    ownerId: string,
+    ownerId: string
   ): Promise<MovieRecord[]> {
     const url = new URL(`${this.baseUrl}/discover/movie`);
     url.searchParams.set('language', locale);
@@ -136,16 +145,20 @@ export class TmdbClient implements TrendingProvider {
       const startedAt = Date.now();
       let response: Response;
       try {
-        response = await aiStep('external.tmdb.request', () => {
-          return this.fetcher(url, {
-            headers: {
-              accept: 'application/json',
-              ...(isV3ApiKey ? {} : { authorization: `Bearer ${this.credential}` }),
-            },
-            signal: AbortSignal.timeout(this.timeoutMs),
-          }
-          );
-        }, { provider: 'tmdb', operation, operationId, attempt: attempt + 1 });
+        response = await aiStep(
+          'external.tmdb.request',
+          () => {
+            return this.fetcher(url, {
+              headers: {
+                accept: 'application/json',
+                ...(isV3ApiKey ? {} : { authorization: `Bearer ${this.credential}` }),
+              },
+              signal: AbortSignal.timeout(this.timeoutMs),
+            }
+            );
+          },
+          { provider: 'tmdb', operation, operationId, attempt: attempt + 1 }
+        );
       } catch (error) {
         await this.record(context, {
           operation,
@@ -167,18 +180,29 @@ export class TmdbClient implements TrendingProvider {
         durationMs: Date.now() - startedAt,
       });
       currentAiTrace()?.event('external.tmdb.response', {
-        provider: 'tmdb', operation, operationId, attempt: attempt + 1, httpStatus: response.status,
-        durationMs: Date.now() - startedAt, outcome: response.ok ? 'success' : 'failure',
+        provider: 'tmdb',
+        operation,
+        operationId,
+        attempt: attempt + 1,
+        httpStatus: response.status,
+        durationMs: Date.now() - startedAt,
+        outcome: response.ok ? 'success' : 'failure',
       });
       if (response.ok) return response;
       if (response.status !== 429 || attempt === 2)
         throw new Error(`TMDB request failed with status ${response.status}`);
       const retryAfter = Number(response.headers.get('retry-after'));
-      const delayMs =
-        Number.isFinite(retryAfter) && retryAfter >= 0
+      const delayMs
+        = Number.isFinite(retryAfter) && retryAfter >= 0
           ? retryAfter * 1_000
           : 250 * 2 ** attempt + Math.floor(Math.random() * 150);
-      currentAiTrace()?.event('external.tmdb.retry', { provider: 'tmdb', operation, operationId, attempt: attempt + 1, delayMs });
+      currentAiTrace()?.event('external.tmdb.retry', {
+        provider: 'tmdb',
+        operation,
+        operationId,
+        attempt: attempt + 1,
+        delayMs,
+      });
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
     throw new Error('TMDB retry loop ended unexpectedly');
@@ -194,7 +218,7 @@ export class TmdbClient implements TrendingProvider {
       durationMs: number;
       httpStatus?: number;
       errorCode?: ExternalRequestErrorCode;
-    },
+    }
   ): Promise<void> {
     if (!context || !this.usage) return;
     try {
@@ -220,12 +244,12 @@ function selectTrailer(videos: TmdbVideo[] | undefined, locale: Locale): Pick<Mo
   const [language, region] = locale.split('-');
   const candidates = (videos ?? []).filter((video) => {
     return (
-      video.site === 'YouTube' &&
-      video.type === 'Trailer' &&
-      Boolean(video.id?.trim()) &&
-      Boolean(video.key?.trim()) &&
-      Boolean(video.name?.trim()) &&
-      /^[A-Za-z0-9_-]+$/.test(video.key!.trim())
+      video.site === 'YouTube'
+      && video.type === 'Trailer'
+      && Boolean(video.id?.trim())
+      && Boolean(video.key?.trim())
+      && Boolean(video.name?.trim())
+      && /^[A-Za-z0-9_-]+$/.test(video.key!.trim())
     );
   });
   candidates.sort((left, right) => {
@@ -264,7 +288,7 @@ function isTimeoutError(error: unknown): boolean {
 
 function selectRequestedTranslation(
   payload: TmdbDetail,
-  locale: Locale,
+  locale: Locale
 ): { title?: string; overview?: string; tagline?: string } {
   const [language, region] = locale.split('-');
   const translation = payload.translations?.translations?.find((candidate) => {
@@ -313,9 +337,9 @@ function isTrendingResponse(value: unknown): value is TmdbTrendingResponse {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Partial<TmdbTrendingResponse>;
   return (
-    Number.isInteger(candidate.page) &&
-    Array.isArray(candidate.results) &&
-    Number.isInteger(candidate.total_pages) &&
-    Number.isInteger(candidate.total_results)
+    Number.isInteger(candidate.page)
+    && Array.isArray(candidate.results)
+    && Number.isInteger(candidate.total_pages)
+    && Number.isInteger(candidate.total_results)
   );
 }

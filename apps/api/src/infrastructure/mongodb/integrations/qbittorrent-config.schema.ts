@@ -12,7 +12,7 @@ const qbittorrentConfigSchema = new Schema(
     lastValidationAt: { type: Date },
     lastFailureType: { type: String },
   },
-  { timestamps: true, collection: 'qbittorrent_configs' },
+  { timestamps: true, collection: 'qbittorrent_configs' }
 );
 
 export type QBittorrentConfigDocument = InferSchemaType<typeof qbittorrentConfigSchema> & { ownerId: Types.ObjectId };

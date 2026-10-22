@@ -11,7 +11,7 @@ const attemptedAt = new Date('2026-10-13T00:00:00.000Z');
 
 function harness(
   state: Partial<MovieResourceCheckDocument> | null = null,
-  taskRows: Array<Partial<MovieResourceCheckTaskDocument>> = [],
+  taskRows: Array<Partial<MovieResourceCheckTaskDocument>> = []
 ) {
   const calls: Array<{ operation: 'read' | 'state' | 'task' | 'release'; filter: unknown; update?: unknown }> = [];
   const checks = {
@@ -73,8 +73,7 @@ test('reads only display-safe resource check state for the requested owner and m
   assert.deepEqual(calls[0], {
     operation: 'read',
     filter: { ownerId: key.ownerId, tmdbId: { $in: [key.tmdbId] } },
-  }
-  );
+  });
 });
 
 test('reads legacy resource checks without availability as unchecked', async () => {
@@ -133,7 +132,7 @@ test('acquiring a check puts checking in task state and preserves the previous r
     new Date('2026-10-12T23:55:00.000Z'),
     '["The Matrix","tt0133093"]',
     new Date('2026-10-12T00:00:00.000Z'),
-    false,
+    false
   );
 
   assert.deepEqual(calls[0]?.update, {
@@ -265,9 +264,9 @@ test('an unmatchable result is due only after matching metadata changes', async 
       new Date('2026-10-12T23:45:00.000Z'),
       '["Old title",null]',
       undefined,
-      false,
+      false
     ),
-    false,
+    false
   );
   assert.equal(
     await changed.store.tryAcquire(
@@ -277,9 +276,9 @@ test('an unmatchable result is due only after matching metadata changes', async 
       new Date('2026-10-12T23:45:00.000Z'),
       '["New title","tt1234567"]',
       undefined,
-      false,
+      false
     ),
-    true,
+    true
   );
 });
 
@@ -302,9 +301,9 @@ test('a transient failure observes its retry delay even when the previous cache 
       new Date('2026-10-12T23:45:00.000Z'),
       '["The Matrix","tt0133093"]',
       undefined,
-      false,
+      false
     ),
-    false,
+    false
   );
 });
 
@@ -326,9 +325,9 @@ test('authentication failure remains blocked until newer credentials are verifie
       new Date('2026-10-12T23:45:00.000Z'),
       undefined,
       new Date('2026-10-12T23:40:00.000Z'),
-      true,
+      true
     ),
-    false,
+    false
   );
   assert.equal(
     await updated.store.tryAcquire(
@@ -338,8 +337,8 @@ test('authentication failure remains blocked until newer credentials are verifie
       new Date('2026-10-12T23:45:00.000Z'),
       undefined,
       new Date('2026-10-12T23:55:00.000Z'),
-      false,
+      false
     ),
-    true,
+    true
   );
 });

@@ -1,4 +1,7 @@
-import type { ExternalRequestEventInput, ExternalRequestRecorder } from '../../modules/external-usage/external-usage.types.js';
+import type {
+  ExternalRequestEventInput,
+  ExternalRequestRecorder,
+} from '../../modules/external-usage/external-usage.types.js';
 
 export interface OpenAIAccountingOptions {
   ownerId: string;

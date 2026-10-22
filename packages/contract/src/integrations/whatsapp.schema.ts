@@ -5,7 +5,7 @@ export const WhatsAppConfigurationSchema = Type.Object(
     status: Type.Union(
       (['unbound', 'connecting', 'qr', 'pairing', 'connected', 'disconnected', 'error'] as const).map((s) => {
         return Type.Literal(s);
-      }),
+      })
     ),
     failureReason: Type.Optional(
       Type.Union(
@@ -23,15 +23,15 @@ export const WhatsAppConfigurationSchema = Type.Object(
           ] as const
         ).map((s) => {
           return Type.Literal(s);
-        }),
-      ),
+        })
+      )
     ),
     disconnectCode: Type.Optional(Type.Integer({ minimum: 0, maximum: 9999 })),
     account: Type.Optional(Type.String()),
     qrDataUrl: Type.Optional(Type.String()),
     qrExpiresAt: Type.Optional(Type.String({ format: 'date-time' })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 export type WhatsAppConfiguration = Static<typeof WhatsAppConfigurationSchema>;
 export const WhatsAppTestResultSchema = Type.Object({ messageId: Type.String() }, { additionalProperties: false });

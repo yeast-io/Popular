@@ -1,11 +1,12 @@
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
-import type { TransmissionClientPort, TransmissionCredential, TransmissionTorrent } from '../../modules/integrations/transmission.types.js';
+import type {
+  TransmissionClientPort,
+  TransmissionCredential,
+  TransmissionTorrent,
+} from '../../modules/integrations/transmission.types.js';
 
 export class TransmissionClient implements TransmissionClientPort {
-  constructor(
-    private readonly timeoutMs: number,
-    private readonly fetchImpl: typeof fetch = fetch
-  ) {}
+  constructor(private readonly timeoutMs: number, private readonly fetchImpl: typeof fetch = fetch) {}
 
   async verify(baseUrl: string, credential: TransmissionCredential): Promise<{ version: string }> {
     const args = await this.rpc(baseUrl, credential, 'session-get', { fields: ['version'] });
@@ -17,11 +18,11 @@ export class TransmissionClient implements TransmissionClientPort {
   async addTorrent(
     baseUrl: string,
     credential: TransmissionCredential,
-    torrent: Uint8Array,
-    tag: string,
+    torrentUrl: string,
+    tag: string
   ): Promise<string> {
     const args = await this.rpc(baseUrl, credential, 'torrent-add', {
-      metainfo: Buffer.from(torrent).toString('base64'),
+      filename: torrentUrl,
       labels: [tag],
       paused: false,
     });
@@ -36,7 +37,7 @@ export class TransmissionClient implements TransmissionClientPort {
   async listTorrents(
     baseUrl: string,
     credential: TransmissionCredential,
-    hashes: string[] = [],
+    hashes: string[] = []
   ): Promise<TransmissionTorrent[]> {
     const args = await this.rpc(baseUrl, credential, 'torrent-get', {
       fields: [
@@ -60,7 +61,7 @@ export class TransmissionClient implements TransmissionClientPort {
   async findByTag(
     baseUrl: string,
     credential: TransmissionCredential,
-    tag: string,
+    tag: string
   ): Promise<TransmissionTorrent | null> {
     return (
       (await this.listTorrents(baseUrl, credential)).find((torrent) => {
@@ -73,13 +74,13 @@ export class TransmissionClient implements TransmissionClientPort {
     baseUrl: string,
     credential: TransmissionCredential,
     method: string,
-    args: Record<string, unknown>,
+    args: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     const signal = AbortSignal.timeout(this.timeoutMs);
     const headers = new Headers({
-      accept: 'application/json',
+      'accept': 'application/json',
       'content-type': 'application/json',
-      authorization: `Basic ${Buffer.from(`${credential.username}:${credential.password}`, 'utf8').toString('base64')}`,
+      'authorization': `Basic ${Buffer.from(`${credential.username}:${credential.password}`, 'utf8').toString('base64')}`,
     });
     let modern = false;
     try {
@@ -176,21 +177,21 @@ function parseTorrent(value: unknown): TransmissionTorrent {
   const hash = value.hashString ?? value.hash_string;
   const progress = value.percentDone ?? value.percent_done;
   if (
-    typeof hash !== 'string' ||
-    !hash ||
-    typeof value.name !== 'string' ||
-    !value.name ||
-    typeof value.status !== 'number' ||
-    !Number.isInteger(value.status) ||
-    value.status < 0 ||
-    value.status > 6 ||
-    typeof progress !== 'number' ||
-    !Number.isFinite(progress) ||
-    progress < 0 ||
-    progress > 1 ||
-    typeof value.error !== 'number' ||
-    !Number.isInteger(value.error) ||
-    value.error < 0
+    typeof hash !== 'string'
+    || !hash
+    || typeof value.name !== 'string'
+    || !value.name
+    || typeof value.status !== 'number'
+    || !Number.isInteger(value.status)
+    || value.status < 0
+    || value.status > 6
+    || typeof progress !== 'number'
+    || !Number.isFinite(progress)
+    || progress < 0
+    || progress > 1
+    || typeof value.error !== 'number'
+    || !Number.isInteger(value.error)
+    || value.error < 0
   )
     throw invalidResponse();
   return {

@@ -44,10 +44,20 @@ export const ResourcePlanSchema = z.strictObject({
 });
 
 export const DownloadActionSchema = z.strictObject({
-      action: z.enum(['query', 'select_resource', 'select_provider', 'cancel', 'retry', 'status', 'answer', 'other', 'clarify']),
-      releaseIndex: z.number().int().positive().nullable(),
-      provider: z.enum(['qbittorrent', 'transmission']).nullable(),
-    });
+  action: z.enum([
+    'query',
+    'select_resource',
+    'select_provider',
+    'cancel',
+    'retry',
+    'status',
+    'answer',
+    'other',
+    'clarify',
+  ]),
+  releaseIndex: z.number().int().positive().nullable(),
+  provider: z.enum(['qbittorrent', 'transmission']).nullable(),
+});
 
 export function createRecommendationRankSchema(requestedCount: number) {
   return RankSchema.extend({ movies: RankSchema.shape.movies.max(requestedCount) });

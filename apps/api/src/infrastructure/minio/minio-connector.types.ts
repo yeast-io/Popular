@@ -1,5 +1,3 @@
-
-
 export interface MinioOptions {
   endpoint: string;
   port: number;

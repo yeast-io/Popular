@@ -75,7 +75,7 @@ function fixture() {
     },
     () => {
       return now;
-    },
+    }
   );
   const update = (url: string, id = 101, type = 'private'): TelegramUpdate => {
     return {
@@ -184,7 +184,7 @@ test('test and download notifications always use authenticated owner binding; un
   );
   assert.deepEqual(
     f.sent.map((row) => row.chatId),
-    ['101', '202'],
+    ['101', '202']
   );
   f.advance(30_000);
   await f.service.test('alice');
@@ -196,7 +196,7 @@ test('test and download notifications always use authenticated owner binding; un
 
 test('incoming messages resolve the linked owner, log text/media only, and exclude binding secrets and unlinked chats', async () => {
   const f = fixture();
-  const received: Array<{ ownerId: string; message: import("../incoming-message.types.js").IncomingMessage }> = [];
+  const received: Array<{ ownerId: string; message: import('../incoming-message.types.js').IncomingMessage }> = [];
   const service = new TelegramService(f.auth, f.store, f.transport, undefined, (ownerId, message) => {
     received.push({ ownerId, message });
   });
@@ -333,8 +333,7 @@ test('transport uses POST and strips token-bearing fetch errors and Telegram res
         assert.ok(!String(error).includes(token));
         assert.equal(error.cause, undefined);
         return true;
-      },
-    );
+      });
   }
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const client = new TelegramClient(token, (async (url: string, init: RequestInit) => {
@@ -435,8 +434,7 @@ test('photo upload sends actual poster bytes as multipart with HTML caption, wit
       assert.ok(!String(error).includes('123:secret'));
       assert.equal(error.cause, undefined);
       return true;
-    },
-  );
+    });
   const invalid = new TelegramClient('123:secret', (async () => {
     return Response.json({ ok: true, result: {} });
   }) as typeof fetch);
@@ -462,7 +460,7 @@ test('receive diagnostics explain filtering and binding matches without logging 
     () => {
       return undefined;
     },
-    logger,
+    logger
   );
   const update: TelegramUpdate = {
     update_id: 10,

@@ -32,7 +32,7 @@ test('uses bearer API-key authentication and parses torrent progress', async () 
   const torrents = await client.listTorrents(
     'http://qbittorrent:8080',
     { authMethod: 'api_key', apiKey: 'qbt_secret' },
-    ['ABC123'],
+    ['ABC123']
   );
 
   assert.equal(requests[0]?.authorization, 'Bearer qbt_secret');
@@ -81,13 +81,31 @@ test('accepts legacy and qBittorrent 5.2 torrent-add success responses', async (
   const requestHeaders: Headers[] = [];
   const fetchStub: typeof fetch = async (_input, init) => {
     requestHeaders.push(new Headers(init?.headers));
+    assert.ok(init?.body instanceof FormData);
+    assert.equal(init.body.has('torrents'), false);
+    assert.equal(
+      init.body.get('urls'),
+      `https://tracker.example/download.php?id=${requestHeaders.length === 1 ? '991' : '992'}&passkey=private-key`
+    );
+    assert.equal(init.body.get('category'), 'movie-hub');
+    assert.equal(init.body.get('tags'), requestHeaders.length === 1 ? 'movie-hub-one' : 'movie-hub-two');
     return responses.shift() ?? new Response('Fails.');
   };
   const client = new QBittorrentClient(1_000, fetchStub);
   const credential = { authMethod: 'api_key' as const, apiKey: 'qbt_secret' };
 
-  await client.addTorrent('http://qbittorrent:8080', credential, new Uint8Array([1, 2, 3]), 'movie-hub-one');
-  await client.addTorrent('http://qbittorrent:8080', credential, new Uint8Array([4, 5, 6]), 'movie-hub-two');
+  await client.addTorrent(
+    'http://qbittorrent:8080',
+    credential,
+    'https://tracker.example/download.php?id=991&passkey=private-key',
+    'movie-hub-one'
+  );
+  await client.addTorrent(
+    'http://qbittorrent:8080',
+    credential,
+    'https://tracker.example/download.php?id=992&passkey=private-key',
+    'movie-hub-two'
+  );
 
   assert.equal(requestHeaders[0]?.get('referer'), 'http://qbittorrent:8080/');
 });
@@ -106,9 +124,9 @@ test('rejects an unsuccessful structured torrent-add response', async () => {
     client.addTorrent(
       'http://qbittorrent:8080',
       { authMethod: 'api_key', apiKey: 'qbt_secret' },
-      new Uint8Array([1, 2, 3]),
-      'movie-hub-failed',
+      'https://tracker.example/download.php?id=991&passkey=private-key',
+      'movie-hub-failed'
     ),
-    /qBittorrent rejected the torrent/,
+    /qBittorrent rejected the torrent/
   );
 });

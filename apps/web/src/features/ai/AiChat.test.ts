@@ -86,7 +86,7 @@ describe('AI chat', () => {
           );
         }
         throw new Error(`Unexpected request: ${method} ${url}`);
-      }),
+      })
     );
 
     const wrapper = mount(AiChat);
@@ -125,11 +125,11 @@ describe('AI chat', () => {
               createdAt,
               updatedAt: createdAt,
             },
-            { status: 201 },
+            { status: 201 }
           );
         }
         throw new Error(`Unexpected request: ${method} ${url}`);
-      }),
+      })
     );
 
     const wrapper = mount(AiChat);
@@ -154,7 +154,7 @@ function sseResponse(events: unknown[]): Response {
       .join(''),
     {
       headers: { 'content-type': 'text/event-stream; charset=utf-8' },
-    },
+    }
   );
 }
 

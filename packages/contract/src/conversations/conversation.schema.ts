@@ -7,14 +7,14 @@ export const ConversationParamsSchema = Type.Object(
   {
     threadId: Type.String({ pattern: objectIdPattern }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const ConversationMessagesQuerySchema = Type.Object(
   {
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 50 })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const AppendConversationMessageRequestSchema = Type.Object(
@@ -22,7 +22,7 @@ export const AppendConversationMessageRequestSchema = Type.Object(
     content: Type.String({ minLength: 1, maxLength: 20_000 }),
     clientRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const RunConversationTurnRequestSchema = Type.Object(
@@ -30,7 +30,7 @@ export const RunConversationTurnRequestSchema = Type.Object(
     content: Type.String({ minLength: 1, maxLength: 20_000 }),
     clientRequestId: Type.String({ minLength: 1, maxLength: 128 }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const ConversationThreadSchema = Type.Object(
@@ -43,7 +43,7 @@ export const ConversationThreadSchema = Type.Object(
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const ConversationMessageSchema = Type.Object(
@@ -56,21 +56,21 @@ export const ConversationMessageSchema = Type.Object(
     clientRequestId: Type.Optional(Type.String()),
     createdAt: Type.String({ format: 'date-time' }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const ConversationMessagesResponseSchema = Type.Object(
   {
     items: Type.Array(ConversationMessageSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const ConversationThreadsResponseSchema = Type.Object(
   {
     items: Type.Array(ConversationThreadSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const ConversationTurnResponseSchema = Type.Object(
@@ -82,10 +82,10 @@ export const ConversationTurnResponseSchema = Type.Object(
         inputTokens: Type.Integer({ minimum: 0 }),
         outputTokens: Type.Integer({ minimum: 0 }),
       },
-      { additionalProperties: false },
+      { additionalProperties: false }
     ),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const ConversationTurnStreamEventSchema = Type.Union([
@@ -94,14 +94,14 @@ export const ConversationTurnStreamEventSchema = Type.Union([
       type: Type.Literal('user_message'),
       message: ConversationMessageSchema,
     },
-    { additionalProperties: false },
+    { additionalProperties: false }
   ),
   Type.Object(
     {
       type: Type.Literal('delta'),
       delta: Type.String(),
     },
-    { additionalProperties: false },
+    { additionalProperties: false }
   ),
   Type.Object(
     {
@@ -112,10 +112,10 @@ export const ConversationTurnStreamEventSchema = Type.Union([
           inputTokens: Type.Integer({ minimum: 0 }),
           outputTokens: Type.Integer({ minimum: 0 }),
         },
-        { additionalProperties: false },
+        { additionalProperties: false }
       ),
     },
-    { additionalProperties: false },
+    { additionalProperties: false }
   ),
   Type.Object(
     {
@@ -125,10 +125,10 @@ export const ConversationTurnStreamEventSchema = Type.Union([
           code: ErrorCodeSchema,
           message: Type.String(),
         },
-        { additionalProperties: false },
+        { additionalProperties: false }
       ),
     },
-    { additionalProperties: false },
+    { additionalProperties: false }
   ),
 ]);
 

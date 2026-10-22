@@ -22,9 +22,13 @@ const emit = defineEmits<{ open: [] }>();
 const defaultCategory = computed(() => {
   return ['mteam', 'hdarea'].includes(
     props.id
-  ) ? 'resource' as const : ['qbittorrent', 'transmission'].includes(
-    props.id
-  ) ? 'downloader' as const : props.id === 'openai' ? 'ai' as const : undefined;
+  )
+    ? 'resource' as const
+    : ['qbittorrent', 'transmission'].includes(
+        props.id
+      )
+        ? 'downloader' as const
+        : props.id === 'openai' ? 'ai' as const : undefined;
 });
 const expanded = ref(false);
 const logoFailed = ref(false);
@@ -37,7 +41,7 @@ watch(
   (value) => {
     if (value) expanded.value = true;
   },
-  { immediate: true },
+  { immediate: true }
 );
 function toggle() {
   expanded.value = !expanded.value;

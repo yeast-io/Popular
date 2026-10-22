@@ -17,7 +17,7 @@ test('typing refreshes every four seconds, never overlaps and stops idempotently
       if (calls.length === 1) await gate;
     },
     new AbortController().signal,
-    new AiTrace(undefined, {}, '', 'typing', false),
+    new AiTrace(undefined, {}, '', 'typing', false)
   );
   t.mock.timers.tick(12_000);
   assert.deepEqual(calls, [true]);
@@ -44,7 +44,7 @@ test('abort cancels an in-flight typing update before sending paused', async () 
         });
     },
     controller.signal,
-    new AiTrace(undefined, {}, '', 'typing', false),
+    new AiTrace(undefined, {}, '', 'typing', false)
   );
   controller.abort();
   await stop();
@@ -62,14 +62,14 @@ test('presence errors preserve diagnostics even with verbose disabled and do not
     { correlationId: 'job-1' },
     '',
     'typing',
-    false,
+    false
   );
   const stop = startTyping(
     async () => {
       throw new Error('presence unavailable', { cause: new Error('socket closed') });
     },
     new AbortController().signal,
-    trace,
+    trace
   );
   await setImmediate();
   await stop();

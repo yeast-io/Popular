@@ -1,18 +1,16 @@
-
-
 export type ExternalProviderId = string;
 export type ExternalActorType = 'user' | 'anonymous' | 'system';
 export type ExternalRequestTrigger = 'api_request' | 'scheduled_sync' | 'background_check' | 'manual_refresh' | 'retry';
 
-export type ExternalRequestErrorCode =
-  | 'authentication'
-  | 'permission'
-  | 'network'
-  | 'timeout'
-  | 'rate_limited'
-  | 'invalid_response'
-  | 'remote_error'
-  | 'internal_error';
+export type ExternalRequestErrorCode
+  = | 'authentication'
+    | 'permission'
+    | 'network'
+    | 'timeout'
+    | 'rate_limited'
+    | 'invalid_response'
+    | 'remote_error'
+    | 'internal_error';
 
 export interface ExternalRequestContext {
   actorType: ExternalActorType;

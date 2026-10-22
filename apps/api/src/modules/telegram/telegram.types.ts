@@ -1,5 +1,3 @@
-
-
 export interface TelegramRecord {
   chatId?: string;
   account?: string;

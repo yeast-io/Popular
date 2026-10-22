@@ -57,7 +57,7 @@ test('M-Team routes require authentication and never serialize the API key', asy
     verifier,
     new SecretCrypto('test-integration-secret-key-that-is-long-enough'),
     new Set(['api.m-team.cc']),
-    () => new Date('2026-10-12T05:00:00.000Z'),
+    () => new Date('2026-10-12T05:00:00.000Z')
   );
   const app = await buildApp({ config, healthDependencies: [], integrationService: service });
 

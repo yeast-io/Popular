@@ -1,4 +1,11 @@
-import { ApiErrorSchema, AuthResponseSchema, LoginRequestSchema, RegisterRequestSchema, type LoginRequest, type RegisterRequest } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  AuthResponseSchema,
+  LoginRequestSchema,
+  RegisterRequestSchema,
+  type LoginRequest,
+  type RegisterRequest,
+} from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { AuthService } from './auth.service.js';
@@ -16,8 +23,7 @@ export function registerAuthRoutes(app: FastifyInstance, service: AuthService, c
       const result = await service.register(request.body);
       reply.header('set-cookie', sessionCookie(config, result.token));
       return reply.status(201).send({ user: result.user });
-    },
-  );
+    });
 
   app.post<{ Body: LoginRequest }>(
     '/auth/login',
@@ -31,8 +37,7 @@ export function registerAuthRoutes(app: FastifyInstance, service: AuthService, c
       const result = await service.login(request.body);
       reply.header('set-cookie', sessionCookie(config, result.token));
       return { user: result.user };
-    },
-  );
+    });
 
   app.get(
     '/auth/me',
@@ -41,8 +46,7 @@ export function registerAuthRoutes(app: FastifyInstance, service: AuthService, c
     },
     async (request) => {
       return { user: await service.currentUser(readSessionToken(request, config.SESSION_COOKIE_NAME)) };
-    },
-  );
+    });
 
   app.post('/auth/logout', { schema: { response: { 204: { type: 'null' } } } }, async (request, reply) => {
     await service.logout(readSessionToken(request, config.SESSION_COOKIE_NAME));

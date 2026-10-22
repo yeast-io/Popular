@@ -7,7 +7,7 @@ const trendingStateSchema = new Schema(
     activeGeneration: { type: String, required: true },
     publishedAt: { type: Date, required: true },
   },
-  { timestamps: true, collection: 'trending_states' },
+  { timestamps: true, collection: 'trending_states' }
 );
 
 trendingStateSchema.index({ locale: 1 }, { unique: true });

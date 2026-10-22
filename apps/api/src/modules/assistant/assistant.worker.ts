@@ -77,7 +77,7 @@ export class AssistantWorker {
           runningCount: this.running.size,
           pendingCount: this.pending.size,
         },
-        'Assistant wake received',
+        'Assistant wake received'
       );
     this.pump();
   }
@@ -92,7 +92,7 @@ export class AssistantWorker {
         .catch((error) => {
           this.logger?.error(
             { event: 'assistant_worker_failed', ...conversation, error: serializeDiagnosticError(error) },
-            'Assistant worker failed',
+            'Assistant worker failed'
           );
           this.report('assistant_worker_failed');
         })
@@ -109,7 +109,7 @@ export class AssistantWorker {
       .catch((error) => {
         this.logger?.error(
           { event: 'assistant_scan_failed', error: serializeDiagnosticError(error) },
-          'Assistant recovery scan failed',
+          'Assistant recovery scan failed'
         );
         this.report('assistant_scan_failed');
       })
@@ -127,7 +127,7 @@ export class AssistantWorker {
     if (this.options.scanTraceEnabled)
       this.logger?.info?.(
         { event: 'assistant_scan_completed', readyConversations: conversations.length },
-        'Assistant recovery scan completed',
+        'Assistant recovery scan completed'
       );
     for (const conversation of conversations) {
       if (this.stopped) return;
@@ -174,7 +174,7 @@ export class AssistantWorker {
                 jobId: job?.id,
                 error: serializeDiagnosticError(error),
               },
-              'Assistant lease renewal failed',
+              'Assistant lease renewal failed'
             );
             controller.abort();
           })
@@ -193,7 +193,7 @@ export class AssistantWorker {
           () => {
             return this.redis.set(lock, leaseId, 'EX', 60, 'NX');
           },
-          { lockType: 'assistant_conversation', ...conversation, leaseSeconds: 60 },
+          { lockType: 'assistant_conversation', ...conversation, leaseSeconds: 60 }
         )) !== 'OK'
       ) {
         return;
@@ -207,7 +207,7 @@ export class AssistantWorker {
             () => {
               return this.redis.set(candidate, leaseId, 'EX', 60, 'NX');
             },
-            { lockType: 'assistant_capacity', ...conversation, slot: index, leaseSeconds: 60 },
+            { lockType: 'assistant_capacity', ...conversation, slot: index, leaseSeconds: 60 }
           )) === 'OK'
         ) {
           slot = candidate;
@@ -218,7 +218,7 @@ export class AssistantWorker {
         if (this.lockTraceEnabled)
           this.logger?.info?.(
             { event: 'assistant_capacity_busy', ...conversation },
-            'Assistant shared concurrency limit reached',
+            'Assistant shared concurrency limit reached'
           );
         return;
       }
@@ -230,7 +230,7 @@ export class AssistantWorker {
           if (this.options.scanTraceEnabled)
             this.logger?.info?.(
               { event: 'assistant_claim_empty', ...conversation },
-              'No due conversation head to claim',
+              'No due conversation head to claim'
             );
           return;
         }
@@ -246,7 +246,7 @@ export class AssistantWorker {
           },
           job.input.text,
           'assistant.job',
-          this.options.verbose ?? false,
+          this.options.verbose ?? false
         );
         trace.event('assistant.job.claimed', { reusedReply: Boolean(job.result) });
         const finishRenewal = async (): Promise<void> => {
@@ -292,7 +292,7 @@ export class AssistantWorker {
           () => {
             return this.redis.eval(RELEASE, 1, lock, leaseId);
           },
-          { lockType: 'assistant_conversation', ...conversation },
+          { lockType: 'assistant_conversation', ...conversation }
         ),
         ...(slot
           ? [
@@ -302,7 +302,7 @@ export class AssistantWorker {
                 () => {
                   return this.redis.eval(RELEASE, 1, slot!, leaseId);
                 },
-                { lockType: 'assistant_capacity', ...conversation },
+                { lockType: 'assistant_capacity', ...conversation }
               ),
             ]
           : []),
@@ -315,7 +315,7 @@ export class AssistantWorker {
               ...conversation,
               error: serializeDiagnosticError(result.reason),
             },
-            'Assistant lease release failed',
+            'Assistant lease release failed'
           );
           this.report('assistant_lease_release_failed');
         }
@@ -328,7 +328,7 @@ export class AssistantWorker {
     leaseId: string,
     signal: AbortSignal,
     renew: () => Promise<void>,
-    finishRenewal: () => Promise<void>,
+    finishRenewal: () => Promise<void>
   ): Promise<void> {
     signal.throwIfAborted();
     if (!(await aiStep('assistant.binding.check', () => this.isBound(job.input)))) {
@@ -357,8 +357,8 @@ export class AssistantWorker {
             },
             job.input.text,
             'assistant.typing',
-            this.options.verbose ?? false,
-          ),
+            this.options.verbose ?? false
+          )
         )
       : async () => undefined;
     try {
@@ -373,7 +373,7 @@ export class AssistantWorker {
     leaseId: string,
     signal: AbortSignal,
     renew: () => Promise<void>,
-    finishRenewal: () => Promise<void>,
+    finishRenewal: () => Promise<void>
   ): Promise<void> {
     let result = job.result;
     if (!result) {
@@ -419,7 +419,7 @@ export class AssistantWorker {
             if (!(await this.queue.markMovieDelivered(job.id, leaseId, index + 1)))
               throw new Error('Assistant movie delivery lease lost');
           },
-          { movieIndex: index, tmdbId: result.movies[index]!.tmdbId },
+          { movieIndex: index, tmdbId: result.movies[index]!.tmdbId }
         );
       }
     } else {
@@ -434,7 +434,7 @@ export class AssistantWorker {
     movie: RecommendationMovie,
     index: number,
     signal: AbortSignal,
-    renew: () => Promise<void>,
+    renew: () => Promise<void>
   ): Promise<void> {
     const fields = { tmdbId: movie.tmdbId, movieIndex: index, attempt: job.attempts };
     // At most 800 UTF-16 units for the title/reason, leaving room for the index and link in a Telegram caption.
@@ -456,7 +456,7 @@ export class AssistantWorker {
           () => {
             return this.poster(movie.posterPath!, signal);
           },
-          fields,
+          fields
         );
       } catch (error) {
         currentAiTrace()?.fail(error, { ...fields, outcome: 'text_fallback' });
@@ -472,7 +472,7 @@ export class AssistantWorker {
           () => {
             return this.send(job.input, caption, poster);
           },
-          fields,
+          fields
         );
         return;
       } catch (error) {
@@ -498,8 +498,8 @@ export class AssistantWorker {
 
 function errorReply(error: unknown): string {
   if (
-    error instanceof AppError &&
-    ['OPENAI_NOT_CONFIGURED', 'OPENAI_AUTH_FAILED', 'OPENAI_QUOTA_EXCEEDED', 'OPENAI_RATE_LIMITED'].includes(error.code)
+    error instanceof AppError
+    && ['OPENAI_NOT_CONFIGURED', 'OPENAI_AUTH_FAILED', 'OPENAI_QUOTA_EXCEEDED', 'OPENAI_RATE_LIMITED'].includes(error.code)
   ) {
     return 'AI 暂时不可用，请在系统设置中检查你自己的 OpenAI API Key、额度和调用限制。';
   }

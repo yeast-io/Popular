@@ -1,11 +1,23 @@
-import type { ConversationTurnOptions, RunConversationTurnInput, ConversationTurnStreamEvent, ConversationTurnResult } from './conversation-turn.types.js';
+import type {
+  ConversationTurnOptions,
+  RunConversationTurnInput,
+  ConversationTurnStreamEvent,
+  ConversationTurnResult,
+} from './conversation-turn.types.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { LlmProviderError } from '../llm/llm.errors.js';
 import type { LlmClient, LlmStreamEvent, LlmGenerateResult } from '../llm/llm.types.js';
 import { buildConversationContext } from './context-builder.js';
 import { buildSummaryRequest, systemPromptWithSummary } from './conversation-summary.js';
-import type { ContextBuilderResult, ConversationMessage, ConversationStore, ConversationSummary, ConversationThread, TokenCounter } from './conversation.types.js';
+import type {
+  ContextBuilderResult,
+  ConversationMessage,
+  ConversationStore,
+  ConversationSummary,
+  ConversationThread,
+  TokenCounter,
+} from './conversation.types.js';
 
 export class ConversationTurnService {
   private readonly inFlight = new Map<string, Promise<ConversationTurnResult>>();
@@ -30,7 +42,7 @@ export class ConversationTurnService {
     return operation;
   }
 
-  async *stream(input: RunConversationTurnInput): AsyncIterable<ConversationTurnStreamEvent> {
+  async* stream(input: RunConversationTurnInput): AsyncIterable<ConversationTurnStreamEvent> {
     const key = this.turnKey(input);
     if (this.streaming.has(key) || this.inFlight.has(key)) {
       throw new AppError(409, 'CONFLICT', 'This conversation turn is already in progress');
@@ -75,8 +87,8 @@ export class ConversationTurnService {
       let content = '';
       let usage: ConversationTurnResult['usage'] | undefined;
       try {
-        for await (const event of assistantStream ??
-          llm.stream({
+        for await (const event of assistantStream
+          ?? llm.stream({
             messages: prepared.context.messages,
             maxOutputTokens: this.options.maxOutputTokens,
             ...(input.signal ? { signal: input.signal } : {}),
@@ -115,13 +127,13 @@ export class ConversationTurnService {
     if (prepared.completed) return prepared.completed;
 
     const routed = this.options.reply ? await this.options.reply(input, prepared.context.messages, llm) : undefined;
-    const generated =
-      routed ??
-      (await this.generate(llm, {
-        messages: prepared.context.messages,
-        maxOutputTokens: this.options.maxOutputTokens,
-        ...(input.signal ? { signal: input.signal } : {}),
-      }));
+    const generated
+      = routed
+        ?? (await this.generate(llm, {
+          messages: prepared.context.messages,
+          maxOutputTokens: this.options.maxOutputTokens,
+          ...(input.signal ? { signal: input.signal } : {}),
+        }));
     if (!generated.content.trim()) {
       throw new AppError(503, 'SERVICE_UNAVAILABLE', 'AI service returned no response');
     }
@@ -133,7 +145,7 @@ export class ConversationTurnService {
 
   private async prepareTurn(
     input: RunConversationTurnInput,
-    llm: LlmClient,
+    llm: LlmClient
   ): Promise<{
     userMessage: ConversationMessage;
     completed?: ConversationTurnResult;
@@ -160,7 +172,7 @@ export class ConversationTurnService {
         input.ownerId,
         input.threadId,
         'assistant',
-        input.clientRequestId,
+        input.clientRequestId
       );
     });
     if (completed) {
@@ -185,7 +197,7 @@ export class ConversationTurnService {
   private async appendAssistant(
     input: RunConversationTurnInput,
     content: string,
-    usage: ConversationTurnResult['usage'],
+    usage: ConversationTurnResult['usage']
   ): Promise<ConversationMessage> {
     const assistantMessage = await aiStep('message.assistant.save', () => {
       return this.conversations.appendMessage({
@@ -207,7 +219,7 @@ export class ConversationTurnService {
   private async buildContext(
     thread: ConversationThread,
     llm: LlmClient,
-    signal?: AbortSignal,
+    signal?: AbortSignal
   ): Promise<ContextBuilderResult> {
     currentAiTrace()?.event('context.build.started');
     let summary = thread.summary;
@@ -221,7 +233,7 @@ export class ConversationTurnService {
           thread.ownerId,
           thread.id,
           summary?.throughSequence ?? 0,
-          historyLimit + 1,
+          historyLimit + 1
         );
       });
       for (const message of freshMessages) currentAiTrace()?.sensitive(message.content);
@@ -282,11 +294,11 @@ export class ConversationTurnService {
 
   private selectSummaryBatch(
     summary: ConversationSummary | undefined,
-    candidates: ConversationMessage[],
+    candidates: ConversationMessage[]
   ): ConversationMessage[] {
     const selected: ConversationMessage[] = [];
-    const maxInputTokens =
-      this.options.maxContextTokens - this.options.summaryMaxOutputTokens - (this.options.safetyMarginTokens ?? 0);
+    const maxInputTokens
+      = this.options.maxContextTokens - this.options.summaryMaxOutputTokens - (this.options.safetyMarginTokens ?? 0);
     const messageOverhead = this.options.messageOverheadTokens ?? 4;
 
     for (const candidate of candidates) {
@@ -294,7 +306,7 @@ export class ConversationTurnService {
       const request = buildSummaryRequest(summary, next, this.options.summaryMaxOutputTokens);
       const tokens = request.messages.reduce(
         (total, message) => total + this.tokenCounter.count(message.content) + messageOverhead,
-        0,
+        0
       );
       if (tokens > maxInputTokens) break;
       selected.push(candidate);
@@ -305,7 +317,7 @@ export class ConversationTurnService {
   private selectContext(
     messages: ConversationMessage[],
     summary: ConversationSummary | undefined,
-    userContext = '',
+    userContext = ''
   ): ContextBuilderResult {
     return buildConversationContext(
       {
@@ -321,7 +333,7 @@ export class ConversationTurnService {
           ? {}
           : { messageOverheadTokens: this.options.messageOverheadTokens }),
       },
-      this.tokenCounter,
+      this.tokenCounter
     );
   }
 
@@ -332,7 +344,7 @@ export class ConversationTurnService {
         () => {
           return llm.generate(input);
         },
-        { maxOutputTokens: input.maxOutputTokens },
+        { maxOutputTokens: input.maxOutputTokens }
       );
       currentAiTrace()?.sensitive(result.content);
       currentAiTrace()?.event('model.usage', { inputTokens: result.inputTokens, outputTokens: result.outputTokens });
@@ -380,7 +392,7 @@ export class ConversationTurnService {
           ? {}
           : { messageOverheadTokens: this.options.messageOverheadTokens }),
       },
-      this.tokenCounter,
+      this.tokenCounter
     );
   }
 }

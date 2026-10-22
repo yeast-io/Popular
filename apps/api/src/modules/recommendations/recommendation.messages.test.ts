@@ -9,7 +9,7 @@ test('Chinese restriction labels do not duplicate sentence punctuation from mode
   ]);
   assert.equal(
     reply,
-    '目前的电影资料无法可靠核实这些硬性限制：必须完全没有血腥、不得包含任何惊吓。本次不返回未经核实的推荐。',
+    '目前的电影资料无法可靠核实这些硬性限制：必须完全没有血腥、不得包含任何惊吓。本次不返回未经核实的推荐。'
   );
 });
 
@@ -17,6 +17,6 @@ test('English restriction labels have one final period and retain punctuation in
   const reply = recommendationMessages('en-US').unverifiableRestrictions([' No gore... ', 'No jump-scares!']);
   assert.equal(
     reply,
-    'The available movie data cannot reliably verify these strict requirements: No gore, No jump-scares. No unverified recommendations will be returned.',
+    'The available movie data cannot reliably verify these strict requirements: No gore, No jump-scares. No unverified recommendations will be returned.'
   );
 });

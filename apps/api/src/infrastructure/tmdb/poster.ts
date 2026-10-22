@@ -5,9 +5,9 @@ export async function loadTmdbPoster(path: string, signal?: AbortSignal): Promis
     redirect: 'error',
   });
   if (
-    !response.ok ||
-    !/^image\/(jpeg|png|webp)(;|$)/i.test(response.headers.get('content-type') ?? '') ||
-    !response.body
+    !response.ok
+    || !/^image\/(jpeg|png|webp)(;|$)/i.test(response.headers.get('content-type') ?? '')
+    || !response.body
   ) {
     await response.body?.cancel();
     return;

@@ -14,7 +14,7 @@ const movieResultSetSchema = new Schema(
     freshUntil: { type: Date },
     deleteAt: { type: Date },
   },
-  { timestamps: true, collection: 'movie_result_sets' },
+  { timestamps: true, collection: 'movie_result_sets' }
 );
 
 movieResultSetSchema.index({ key: 1 }, { unique: true });

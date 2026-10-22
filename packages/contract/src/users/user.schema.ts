@@ -4,7 +4,7 @@ export const UpdateProfileRequestSchema = Type.Object(
   {
     displayName: Type.String({ minLength: 1, maxLength: 80 }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export type UpdateProfileRequest = Static<typeof UpdateProfileRequestSchema>;

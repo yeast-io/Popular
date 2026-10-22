@@ -5,7 +5,11 @@ import type { IntegrationPreferences, MovieDownload } from '@movie-hub/contract'
 import { setLocale } from '../../i18n';
 import MovieDetail from './MovieDetail.vue';
 
-afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; document.body.style.overflow = ''; });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  document.body.innerHTML = '';
+  document.body.style.overflow = '';
+});
 
 function fixture(primary = 'mteam', sites = ['hdarea', 'mteam']) {
   let preferences: IntegrationPreferences = {
@@ -132,7 +136,6 @@ it('changing the account selection refreshes status without issuing resource sea
   wrapper.unmount();
 });
 
-
 it('keeps successful releases when another site fails and retries that site independently', async () => {
   setLocale('en-US');
   const f = fixture();
@@ -159,7 +162,6 @@ it('keeps successful releases when another site fails and retries that site inde
   wrapper.unmount();
 });
 
-
 it('ignores an earlier summary that arrives after the user changes the selected sites', async () => {
   setLocale('en-US');
   fixture();
@@ -169,7 +171,9 @@ it('ignores an earlier summary that arrives after the user changes the selected 
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     if (String(input).endsWith('/resources') && first) {
       first = false;
-      return new Promise<Response>((resolve) => { resolveOld = resolve; });
+      return new Promise<Response>((resolve) => {
+        resolveOld = resolve;
+      });
     }
     return baseFetch(input, init);
   })
@@ -184,7 +188,6 @@ it('ignores an earlier summary that arrives after the user changes the selected 
   expect(wrapper.find('.resource-status-button').exists()).toBe(true);
   wrapper.unmount();
 });
-
 
 it.each(['en-US', 'zh-CN'] as const)('keeps icon clicks for selection and opens resources through the separate action in %s', async (locale) => {
   setLocale(locale);
@@ -226,7 +229,6 @@ it.each(['en-US', 'zh-CN'] as const)('keeps icon clicks for selection and opens 
   expect(document.body.querySelector('.release-site-group summary')?.textContent).toContain('HDArea');
   wrapper.unmount();
 });
-
 
 it.each(['en-US', 'zh-CN'] as const)('queries unavailable resources without opening a dialog in %s', async (locale) => {
   setLocale(locale);

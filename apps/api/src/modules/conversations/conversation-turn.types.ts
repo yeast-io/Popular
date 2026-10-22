@@ -13,7 +13,7 @@ export interface ConversationTurnOptions {
     input: RunConversationTurnInput,
     messages: LlmMessage[],
     llm: LlmClient,
-    streaming?: boolean,
+    streaming?: boolean
   ) => Promise<LlmGenerateResult & { stream?: AsyncIterable<LlmStreamEvent> }>;
   profileContext?: (ownerId: string) => Promise<string>;
 }
@@ -26,10 +26,10 @@ export interface RunConversationTurnInput {
   signal?: AbortSignal;
 }
 
-export type ConversationTurnStreamEvent =
-  | { type: 'user_message'; message: ConversationMessage }
-  | { type: 'delta'; delta: string }
-  | { type: 'completed'; assistantMessage: ConversationMessage; usage: ConversationTurnResult['usage'] };
+export type ConversationTurnStreamEvent
+  = | { type: 'user_message'; message: ConversationMessage }
+    | { type: 'delta'; delta: string }
+    | { type: 'completed'; assistantMessage: ConversationMessage; usage: ConversationTurnResult['usage'] };
 
 export interface ConversationTurnResult {
   userMessage: ConversationMessage;

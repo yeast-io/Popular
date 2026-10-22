@@ -1,4 +1,9 @@
-import type { ConversationMessageResponse, ConversationMessagesResponse, ConversationThreadResponse, ConversationThreadsResponse } from '@movie-hub/contract';
+import type {
+  ConversationMessageResponse,
+  ConversationMessagesResponse,
+  ConversationThreadResponse,
+  ConversationThreadsResponse,
+} from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import type { ConversationMessage, ConversationStore, ConversationThread } from './conversation.types.js';
@@ -31,7 +36,7 @@ export class ConversationService {
     token: string | undefined,
     threadId: string,
     content: string,
-    clientRequestId?: string,
+    clientRequestId?: string
   ): Promise<ConversationMessageResponse> {
     const ownerId = await this.auth.requireOwnerId(token);
     if (!content.trim()) throw new AppError(400, 'VALIDATION_ERROR', 'Message content cannot be blank');

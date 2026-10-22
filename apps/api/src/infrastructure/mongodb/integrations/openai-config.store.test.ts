@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MongoOpenAIConfigStore } from './openai-config.store.js';
+
 test('replacing credentials always removes old validation; verification uses owner and ciphertext compare-and-set without upsert', async () => {
   const calls: Array<{ filter: unknown; update: Record<string, unknown>; options: Record<string, unknown> }> = [];
   let matchedCount = 1;
@@ -37,8 +38,8 @@ test('model selection atomically checks account, key, successful validation and 
   assert.equal(await store.selectModel('alice', 'ciphertext', 'selected-model'), true);
   assert.deepEqual(captured, {
     filter: {
-      ownerId: 'alice',
-      encryptedApiKey: 'ciphertext',
+      'ownerId': 'alice',
+      'encryptedApiKey': 'ciphertext',
       'validation.method': 'model_list',
       'validation.status': 'valid',
       'validation.models': 'selected-model',

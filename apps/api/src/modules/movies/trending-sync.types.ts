@@ -1,5 +1,3 @@
-
-
 export interface TrendingSyncResult {
   status: 'completed' | 'skipped';
   pages: number;

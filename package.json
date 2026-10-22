@@ -8,15 +8,20 @@
     "lint:test": "node --test tools/eslint/*.test.mjs",
     "check": "pnpm lint:test && pnpm lint && pnpm typecheck",
     "build": "pnpm lint && pnpm -r build",
-    "dev": "pnpm --parallel --filter @movie-hub/api --filter @movie-hub/web dev",
-    "test": "pnpm -r test",
-    "typecheck": "pnpm --filter @movie-hub/contract build && pnpm -r typecheck"
+    "dev": "pnpm --parallel --filter @movie-hub/helper-gateway --filter @movie-hub/api --filter @movie-hub/web dev",
+    "test": "pnpm -r test && pnpm test:remote-gateway",
+    "typecheck": "pnpm --filter @movie-hub/contract build && pnpm -r typecheck",
+    "test:remote-gateway": "node --import ./apps/api/node_modules/tsx/dist/loader.mjs --test 'tools/remote-gateway/*.test.mjs'",
+    "docs:build": "node apps/docs/build.mjs",
+    "docs:dev": "pnpm docs:build && pnpm --filter @movie-hub/web exec vite preview --outDir ../docs/dist --port 5175 --host 127.0.0.1 --strictPort"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "eslint": "^10.13.0",
     "eslint-plugin-vue": "^10.11.1",
     "globals": "^17.13.0",
+    "prettier": "^3.9.10",
     "typescript-eslint": "^8.71.2"
   }
 }

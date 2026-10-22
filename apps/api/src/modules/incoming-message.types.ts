@@ -1,5 +1,3 @@
-
-
 // Only selected message fields reach application logs; never log transport payloads.
 export interface IncomingMessage {
   channel: 'telegram' | 'whatsapp';

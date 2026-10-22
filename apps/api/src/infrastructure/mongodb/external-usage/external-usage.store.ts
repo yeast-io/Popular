@@ -1,6 +1,11 @@
 import type { ExternalUsageLogger } from './external-usage-store.types.js';
 import { Types, type Model, type PipelineStage } from 'mongoose';
-import type { ExternalRequestRecorder, ExternalRequestEventInput, ExternalUsageQueryResult, ExternalUsageReader } from '../../../modules/external-usage/external-usage.types.js';
+import type {
+  ExternalRequestRecorder,
+  ExternalRequestEventInput,
+  ExternalUsageQueryResult,
+  ExternalUsageReader,
+} from '../../../modules/external-usage/external-usage.types.js';
 import { EXTERNAL_USAGE_RETENTION_DAYS, type ExternalRequestEventDocument } from './external-request-event.schema.js';
 import type { ExternalUsageDailyDocument } from './external-usage-daily.schema.js';
 
@@ -15,7 +20,7 @@ export class MongoExternalUsageStore implements ExternalRequestRecorder, Externa
     if ((input.actorType === 'user') !== Boolean(input.ownerId)) {
       this.logger.error(
         { provider: input.provider, operation: input.operation },
-        'Rejected invalid external request attribution',
+        'Rejected invalid external request attribution'
       );
       return;
     }
@@ -27,7 +32,7 @@ export class MongoExternalUsageStore implements ExternalRequestRecorder, Externa
       if (isDuplicateKey(error)) return;
       this.logger.error(
         { err: error, provider: input.provider, operation: input.operation },
-        'Could not record external request usage',
+        'Could not record external request usage'
       );
     }
   }

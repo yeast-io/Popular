@@ -27,20 +27,20 @@ test('unified assistant plans and ranks using only supplied context and candidat
                   language: null,
                   unverifiableRestrictions: [],
                 }
-              : { movies: [{ tmdbId: 1, reason: 'Matches the requested genre' }] },
+              : { movies: [{ tmdbId: 1, reason: 'Matches the requested genre' }] }
           ),
           inputTokens: 1,
           outputTokens: 1,
         };
       },
     },
-    options,
+    options
   );
   const signal = new AbortController().signal;
   const profile = emptyProfile();
   assert.deepEqual(
     (await agent.planRecommendation(profile, 3, [{ role: 'user', content: '先推荐战争片' }], signal, 'en-US')).genres,
-    [10752],
+    [10752]
   );
   assert.equal(
     (
@@ -50,10 +50,10 @@ test('unified assistant plans and ranks using only supplied context and candidat
         [{ tmdbId: 1, title: 'Candidate', genreIds: [10752], genres: [], directors: [], cast: [] }],
         signal,
         'en-US',
-        { requestedCount: 2, softPreferences: ['Bolder romance'] },
+        { requestedCount: 2, softPreferences: ['Bolder romance'] }
       )
     ).movies[0]?.tmdbId,
-    1,
+    1
   );
   assert.equal(requests.length, 2);
   const rankingInput = JSON.parse(requests[1]!.messages[1]!.content);
@@ -76,14 +76,14 @@ test('malformed ranking output fails at the model boundary', async () => {
         return { content: '{"movies":[{"tmdbId":"invented"}]}', inputTokens: 1, outputTokens: 1 };
       },
     },
-    options,
+    options
   );
   await assert.rejects(
     agent.rankRecommendations(emptyProfile(), [], [], new AbortController().signal, 'zh-CN', {
       requestedCount: 5,
       softPreferences: [],
     }
-    ),
+    )
   );
 });
 
@@ -111,7 +111,7 @@ test('missing or non-boolean immediate intent fails at the model boundary', asyn
           };
         },
       },
-      options,
+      options
     );
     await assert.rejects(agent.planRecommendation(emptyProfile(), 0, [], new AbortController().signal, 'en-US'));
   }
@@ -141,7 +141,7 @@ test('invalid recommendation counts fail at the planning boundary', async () => 
           };
         },
       },
-      options,
+      options
     );
     await assert.rejects(agent.planRecommendation(emptyProfile(), 0, [], new AbortController().signal, 'zh-CN'));
   }

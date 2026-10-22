@@ -1,5 +1,3 @@
-
-
 import type { LlmMessage } from '../llm/llm.types.js';
 
 import type { messages } from './assistant.presentation.js';
@@ -96,12 +94,17 @@ export interface AssistantWorkflowOptions extends AssistantAgentOptions {
   downloads?: {
     providersFor(ownerId: string): Promise<DownloadProvider[]>;
     defaultProviderFor?(ownerId: string): Promise<DownloadProvider | undefined>;
-    createForOwner(ownerId: string, tmdbId: number, releaseId: string, provider: DownloadProvider): Promise<MovieDownload>;
+    createForOwner(
+      ownerId: string,
+      tmdbId: number,
+      releaseId: string,
+      provider: DownloadProvider,
+    ): Promise<MovieDownload>;
   };
   report?: (event: string) => void;
 }
 
-export type MessageKey = keyof typeof messages['zh-CN'];
+export type MessageKey = keyof (typeof messages)['zh-CN'];
 
 export type AssistantConversation = Pick<AssistantInputWorkflowMessage, 'ownerId' | 'channel' | 'chatId'>;
 

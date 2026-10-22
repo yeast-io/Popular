@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from '../../i18n';
+
 defineProps<{
   configured: boolean;
   busy: boolean;
@@ -8,7 +9,7 @@ defineProps<{
   deletePrompt: string;
   canSave: boolean;
 }>();
-const emit = defineEmits<{ 'update:confirmDelete': [value: boolean]; delete: []; retest: [] }>();
+const emit = defineEmits<{ 'update:confirmDelete': [value: boolean]; 'delete': []; 'retest': [] }>();
 </script>
 
 <template>

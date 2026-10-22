@@ -11,6 +11,7 @@ export class ResourceSiteResourceProvider implements ResourceProvider {
     private readonly movies: Pick<MovieCatalogStore, 'readMovieIdentity'>,
     private readonly locale: Locale
   ) {}
+
   async query(ownerId: string, tmdbId: number, signal: AbortSignal): Promise<ResourceSourceResult> {
     signal.throwIfAborted();
     const identity = await this.movies.readMovieIdentity?.(tmdbId, this.locale);
@@ -18,9 +19,14 @@ export class ResourceSiteResourceProvider implements ResourceProvider {
     if (!identity?.imdbId) return { provider: this.id, status: 'unmatchable', releases: [] };
     const result = await this.sites.search(ownerId, this.id, { imdbId: identity.imdbId }, signal);
     signal.throwIfAborted();
-    return { provider: this.id, status: result.releases.length ? 'available' : 'unavailable',
+    return {
+      provider: this.id,
+      status: result.releases.length ? 'available' : 'unavailable',
       releases: result.releases.map((release) => {
-        return ({ ...release, provider: this.id });
-      }), queriedAt: new Date().toISOString(), cached: false };
+        return { ...release, provider: this.id };
+      }),
+      queriedAt: new Date().toISOString(),
+      cached: false,
+    };
   }
 }

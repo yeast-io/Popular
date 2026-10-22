@@ -26,14 +26,26 @@ export interface ResourceSiteAdapter {
   detailsUrl?(id: string): string;
   torrentUrl?(id: string, passkey: string): string;
   verify(session: ResourceSiteSession, signal?: AbortSignal): Promise<void>;
-  search(session: ResourceSiteSession, input: ResourceSiteSearch, signal?: AbortSignal): Promise<{ releases: ResourceSiteRelease[]; nextPage?: number }>;
+  search(
+    session: ResourceSiteSession,
+    input: ResourceSiteSearch,
+    signal?: AbortSignal,
+  ): Promise<{ releases: ResourceSiteRelease[]; nextPage?: number }>;
   detail(session: ResourceSiteSession, id: string, signal?: AbortSignal): Promise<ResourceSiteRelease>;
 }
-export interface ResourceSiteDiagnostics { logger: AiLogger; verbose: boolean }
+export interface ResourceSiteDiagnostics {
+  logger: AiLogger;
+  verbose: boolean;
+}
 export interface ResourceSiteHttpOptions {
   fetch?: typeof fetch;
   intervalMs?: number;
   timeoutMs?: number;
   maxBytes?: number;
 }
-export interface ResourceSiteHttpLane { tail: Promise<void>; pending: number; nextAt: number; blockedUntil: number }
+export interface ResourceSiteHttpLane {
+  tail: Promise<void>;
+  pending: number;
+  nextAt: number;
+  blockedUntil: number;
+}

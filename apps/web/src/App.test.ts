@@ -18,7 +18,7 @@ describe('movie detail navigation', () => {
       'scrollTo',
       vi.fn((options?: ScrollToOptions | number) => {
         if (typeof options === 'object' && typeof options.top === 'number') scrollY = options.top;
-      }),
+      })
     );
     vi.stubGlobal(
       'fetch',
@@ -61,7 +61,7 @@ describe('movie detail navigation', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
   });
 
@@ -124,7 +124,7 @@ describe('account routes', () => {
         if (url.endsWith('/auth/me')) return new Response(null, { status: 401 });
         if (url.endsWith('/auth/login')) return Response.json({ user: authenticatedUser });
         throw new Error(`Unexpected request: ${url}`);
-      }),
+      })
     );
 
     const wrapper = mount(App);
@@ -150,7 +150,7 @@ describe('account routes', () => {
         const url = String(input);
         if (url.endsWith('/auth/me')) return Response.json({ user: authenticatedUser });
         throw new Error(`Unexpected request: ${url}`);
-      }),
+      })
     );
 
     const wrapper = mount(App);
@@ -175,7 +175,7 @@ describe('account routes', () => {
         if (url.endsWith('/config'))
           return Response.json({ avatar: { maxBytes: 50 * 1024 * 1024, maxPixels: 16_777_216 } });
         throw new Error(`Unexpected request: ${url}`);
-      }),
+      })
     );
 
     const wrapper = mount(App);
@@ -228,7 +228,7 @@ describe('account routes', () => {
           );
         }
         throw new Error(`Unexpected request: ${url}`);
-      }),
+      })
     );
 
     const wrapper = mount(App);
@@ -277,7 +277,7 @@ describe('language menu', () => {
           locale: String(input).includes('locale=en-US') ? 'en-US' : 'zh-CN',
         }
         );
-      }),
+      })
     );
   });
 
@@ -320,6 +320,11 @@ describe('settings workspace', () => {
         if (url.endsWith('/config')) return Response.json({ avatar: { maxBytes: 52428800, maxPixels: 16777216 } });
         if (url.endsWith('/resource-search/sources')) return Response.json({ sources: [] });
         if (url.endsWith('/resource-sites/hdarea')) return Response.json({ site: 'hdarea', status: 'unconfigured' });
+        if (url.endsWith(
+          '/remote-client'
+        )) return Response.json(
+          { hasKey: false, canReadKey: false, authVersion: 0, deviceLimit: 1, devices: [], gatewayNotificationPending: false }
+        );
         if (url.endsWith('/openai')) return Response.json({ configured: false });
         if (url.endsWith('/telegram')) return Response.json({ status: 'unbound' });
         if (url.endsWith('/whatsapp')) return Response.json({ status: 'unbound' });
@@ -333,7 +338,7 @@ describe('settings workspace', () => {
           );
         const provider = url.split('/').at(-1);
         return Response.json({ provider, status: 'unconfigured' });
-      }),
+      })
     );
   });
   afterEach(() => {
@@ -373,9 +378,9 @@ describe('settings workspace', () => {
   });
 
   it.each([
-    ['en-US', 'Sources', 'Downloads'],
-    ['zh-CN', '资源', '下载'],
-  ] as const)('separates sources and downloads in desktop and mobile navigation (%s)', async (locale, resources, downloads) => {
+    ['en-US', 'Sources', 'Downloads', 'Keys'],
+    ['zh-CN', '资源', '下载', '密钥'],
+  ] as const)('separates sources and downloads in desktop and mobile navigation (%s)', async (locale, resources, downloads, keys) => {
     setLocale(locale);
     const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
@@ -397,12 +402,58 @@ describe('settings workspace', () => {
       'qBittorrent', 'Transmission',
     ]
     );
+    expect(wrapper.find('#remote-client').exists()).toBe(false);
+    expect(wrapper.get('[data-settings-section="keys"]').text()).toContain(keys);
+    await wrapper.get('[data-settings-section="keys"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe(keys);
+    expect(wrapper.get('#remote-client').isVisible()).toBe(true);
+    await wrapper.get('#remote-client .integration-disclosure').trigger('click');
+    expect(wrapper.get('[data-action="generate"]').text()).toContain('RCCK');
+    await wrapper.get('#settings-category').setValue('downloads');
+    expect(wrapper.get('#remote-client').isVisible()).toBe(false);
+    await wrapper.get('#settings-category').setValue('keys');
+    await flushPromises();
+    expect(wrapper.get('#remote-client').isVisible()).toBe(true);
     await wrapper.get('#settings-category').setValue('resources');
     expect(
       wrapper.findAll('.connection-copy h3').filter((node) => node.isVisible()).map((node) => node.text())
     ).toEqual(
       ['M-Team', 'HDArea']
     );
+    wrapper.unmount();
+  });
+
+  it('preserves an unsaved generated key across collapse and settings category switches', async () => {
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/remote-client/generate')) return Response.json({
+        configuration: { hasKey: true, canReadKey: true, authVersion: 1, deviceLimit: 1, devices: [], gatewayNotificationPending: false }, apiKey: 'test-only-rcck',
+      }
+      );
+      return baseFetch(input, init);
+    })
+    );
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[data-settings-section="keys"]').trigger('click');
+    await flushPromises();
+    const disclosure = () => wrapper.get('#remote-client .integration-disclosure');
+    expect(disclosure().attributes('aria-expanded')).toBe('false');
+    await disclosure().trigger('click');
+    await wrapper.get('[data-action="generate"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('#remote-client-api-key').isVisible()).toBe(true);
+    await disclosure().trigger('click');
+    expect(wrapper.get('#remote-client-api-key').isVisible()).toBe(false);
+    await disclosure().trigger('click');
+    expect(wrapper.get('#remote-client-api-key').element).toHaveProperty('value', 'test-only-rcck');
+    await wrapper.get('[data-settings-section="downloads"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-settings-section="keys"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('#remote-client-api-key').isVisible()).toBe(true);
+    expect(wrapper.get('#remote-client-api-key').element).toHaveProperty('value', 'test-only-rcck');
     wrapper.unmount();
   });
 
@@ -475,7 +526,7 @@ describe('notification test page environment gate', () => {
         if (String(input).endsWith('/config'))
           return Response.json({ notificationTestEnabled: enabled, avatar: { maxBytes: 1000, maxPixels: 1000 } });
         throw new Error('Unexpected request');
-      }),
+      })
     );
     const wrapper = mount(App, {
       global: { stubs: { MovieBrowser: true, NotificationTestPage: { template: '<div data-notification-test />' } } },
@@ -484,7 +535,7 @@ describe('notification test page environment gate', () => {
     await flushPromises();
     expect(wrapper.find('[data-notification-test]').exists()).toBe(enabled);
     expect(wrapper.findAll('.account-options button').some((button) => button.text() === 'Notification tests')).toBe(
-      enabled,
+      enabled
     );
     expect(window.location.pathname).toBe(enabled ? '/dev/notification-tests' : '/');
     wrapper.unmount();
@@ -500,8 +551,6 @@ describe('experimental page switches', () => {
   it.each([
     { path: '/ai', enabled: true },
     { path: '/ai', enabled: false },
-    { path: '/docs', enabled: true },
-    { path: '/docs', enabled: false },
   ]
   )('gates navigation and direct access for $path when enabled=$enabled', async ({ path, enabled }) => {
     setLocale('en-US');
@@ -512,7 +561,6 @@ describe('experimental page switches', () => {
         if (String(input).endsWith('/config'))
           return Response.json({
             aiAssistantEnabled: enabled,
-            docsEnabled: enabled,
             notificationTestEnabled: false,
             avatar: { maxBytes: 1000, maxPixels: 1000 },
           }
@@ -523,24 +571,23 @@ describe('experimental page switches', () => {
           }
           );
         return Response.json({ items: [] });
-      }),
+      })
     );
     const wrapper = mount(App, {
       global: {
         stubs: {
           MovieBrowser: true,
           AiChat: { template: '<div data-ai-page />' },
-          DocsPage: { template: '<div data-docs-page />' },
         },
       },
     }
     );
     try {
       await flushPromises();
-      expect(wrapper.find(path === '/ai' ? '[data-ai-page]' : '[data-docs-page]').exists()).toBe(enabled);
+      expect(wrapper.find('[data-ai-page]').exists()).toBe(enabled);
       const labels = wrapper.findAll('.site-nav > button').map((button) => button.text());
       expect(labels.includes('AI Assistant')).toBe(enabled);
-      expect(labels.includes('Docs')).toBe(enabled);
+      expect(labels.includes('Docs')).toBe(false);
       expect(window.location.pathname).toBe(enabled ? path : '/');
     } finally {
       wrapper.unmount();

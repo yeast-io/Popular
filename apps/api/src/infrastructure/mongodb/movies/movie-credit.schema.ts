@@ -12,7 +12,7 @@ const movieCreditSchema = new Schema(
     castOrder: { type: Number, min: 0 },
     syncVersion: { type: String, required: true },
   },
-  { timestamps: true, collection: 'movie_credits' },
+  { timestamps: true, collection: 'movie_credits' }
 );
 
 movieCreditSchema.index({ movieTmdbId: 1, locale: 1, syncVersion: 1, tmdbCreditId: 1 }, { unique: true });

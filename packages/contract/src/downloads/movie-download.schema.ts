@@ -10,7 +10,7 @@ export const DownloadProviderListResponseSchema = Type.Object(
   {
     providers: Type.Array(DownloadProviderSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 export type DownloadProviderListResponse = Static<typeof DownloadProviderListResponseSchema>;
 
@@ -41,14 +41,14 @@ export const MovieDownloadSchema = Type.Object(
     addedAt: Type.Optional(Type.String({ format: 'date-time' })),
     lastSyncedAt: Type.Optional(Type.String({ format: 'date-time' })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieDownloadListResponseSchema = Type.Object(
   {
     items: Type.Array(MovieDownloadSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const CreateMovieDownloadRequestSchema = Type.Object(
@@ -57,7 +57,7 @@ export const CreateMovieDownloadRequestSchema = Type.Object(
     sourceProvider: Type.Optional(DownloadSourceSchema),
     sourceReleaseId: Type.String({ minLength: 1, maxLength: 128, pattern: '^\\d+$' }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export type MovieDownloadStatus = Static<typeof MovieDownloadStatusSchema>;

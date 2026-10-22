@@ -62,7 +62,7 @@ describe('My Movies resource check failures', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MyMovies);
@@ -92,7 +92,7 @@ describe('My Movies resource check failures', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MyMovies);
@@ -156,7 +156,7 @@ describe('My Movies resource check failures', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MyMovies);
@@ -198,7 +198,7 @@ describe('My Movies resource check failures', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MyMovies);
@@ -226,7 +226,7 @@ describe('My Movies resource check failures', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MyMovies);
@@ -265,7 +265,7 @@ describe('My Movies resource check failures', () => {
               createdAt: '2026-10-13T00:00:00.000Z',
               updatedAt: '2026-10-13T00:00:01.000Z',
             },
-            { status: 202 },
+            { status: 202 }
           );
         }
         return Response.json({
@@ -274,7 +274,7 @@ describe('My Movies resource check failures', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MyMovies);

@@ -31,7 +31,7 @@ const movieResourceCheckSchema = new Schema(
     },
     identityFingerprint: { type: String },
   },
-  { timestamps: true, collection: 'movie_resource_checks', versionKey: false },
+  { timestamps: true, collection: 'movie_resource_checks', versionKey: false }
 );
 
 movieResourceCheckSchema.index({ ownerId: 1, tmdbId: 1, provider: 1 }, { unique: true });

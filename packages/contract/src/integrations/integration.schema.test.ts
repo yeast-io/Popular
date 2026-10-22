@@ -22,7 +22,7 @@ test('M-Team response cannot expose an API key', () => {
       apiKey: 'secret',
     }
     ),
-    false,
+    false
   );
 });
 
@@ -34,7 +34,7 @@ test('qBittorrent configuration supports either credential mode without exposing
       apiKey: 'qbt_secret',
     }
     ),
-    true,
+    true
   );
   assert.equal(
     Value.Check(SaveQBittorrentConfigurationRequestSchema, {
@@ -44,7 +44,7 @@ test('qBittorrent configuration supports either credential mode without exposing
       password: 'secret',
     }
     ),
-    true,
+    true
   );
   assert.equal(
     Value.Check(SaveQBittorrentConfigurationRequestSchema, {
@@ -53,7 +53,7 @@ test('qBittorrent configuration supports either credential mode without exposing
       username: 'not-allowed',
     }
     ),
-    false,
+    false
   );
   assert.equal(
     Value.Check(QBittorrentConfigurationSchema, {
@@ -63,7 +63,7 @@ test('qBittorrent configuration supports either credential mode without exposing
       apiKey: 'must-not-leak',
     }
     ),
-    false,
+    false
   );
 });
 
@@ -75,12 +75,12 @@ test('M-Team save request supports retaining an existing key', () => {
       apiKey: 'secret',
     }
     ),
-    true,
+    true
   );
   assert.equal(Value.Check(SaveMTeamConfigurationRequestSchema, { baseUrl: 'https://api.m-team.cc' }), true);
   assert.equal(
     Value.Check(SaveMTeamConfigurationRequestSchema, { baseUrl: 'https://api.m-team.cc', apiKey: '' }),
-    false,
+    false
   );
 });
 
@@ -102,18 +102,18 @@ test('Transmission accepts username/password configuration and cannot expose cre
       password: 'secret',
     }
     ),
-    true,
+    true
   );
   assert.equal(
     Value.Check(SaveTransmissionConfigurationRequestSchema, { baseUrl: 'http://nas:9091', username: 'daniel' }),
-    true,
+    true
   );
   assert.equal(
     Value.Check(SaveTransmissionConfigurationRequestSchema, { baseUrl: 'http://nas:9091', username: '' }),
-    false,
+    false
   );
   assert.equal(
     Value.Check(SaveTransmissionConfigurationRequestSchema, { baseUrl: 'http://nas:9091', apiKey: 'secret' }),
-    false,
+    false
   );
 });

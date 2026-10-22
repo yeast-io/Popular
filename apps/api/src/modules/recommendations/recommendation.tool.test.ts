@@ -24,7 +24,7 @@ function setup(
     noCandidates?: boolean;
     releaseError?: Error;
     diagnostics?: { logger?: AiLogger; verbose: boolean };
-  } = {},
+  } = {}
 ) {
   let data: Record<string, unknown> | undefined;
   let leaseId: string | undefined;
@@ -54,7 +54,7 @@ function setup(
         $setOnInsert?: { data: Record<string, unknown> };
         $set?: { data: Record<string, unknown> };
         $unset?: unknown;
-      },
+      }
     ) => {
       return {
         exec: async () => {
@@ -72,7 +72,7 @@ function setup(
     },
   };
   const store = new MongoRecommendationStore(
-    model as unknown as ConstructorParameters<typeof MongoRecommendationStore>[0],
+    model as unknown as ConstructorParameters<typeof MongoRecommendationStore>[0]
   );
   const profiles = { read: async () => emptyProfile() };
   const provider = {
@@ -80,11 +80,11 @@ function setup(
       discoveryFilters.push(structuredClone(filters));
       queries++;
       return (options.noCandidates ? [] : (options.candidateIds ?? [1, 2, 3])).map((id) => {
-        return ({
+        return {
           tmdbId: id,
           title: `Movie ${id}`,
           genreIds: options.genres ?? [10752],
-        });
+        };
       });
     },
     fetchDetails: async (id: number) => {
@@ -118,7 +118,7 @@ function setup(
     catalog,
     statuses,
     options.locale ?? 'zh-CN',
-    options.diagnostics,
+    options.diagnostics
   );
   const llm = {
     generate: async (request: LlmGenerateInput) => {
@@ -141,7 +141,7 @@ function setup(
                 language: null,
                 unverifiableRestrictions: [],
               }
-            : { movies: options.rankedMovies ?? [{ tmdbId: 3, reason: '符合战争题材要求' }] },
+            : { movies: options.rankedMovies ?? [{ tmdbId: 3, reason: '符合战争题材要求' }] }
         ),
         inputTokens: 1,
         outputTokens: 1,
@@ -156,17 +156,25 @@ function setup(
     text: string,
     history: LlmMessage[],
     client: Pick<LlmClient, 'generate'>,
-    locale?: Locale,
+    locale?: Locale
   ) => {
     const agent = new AssistantAgent(client, {
       systemPrompt: 'Be concise.',
       maxContextTokens: 32_000,
       maxOutputTokens: 500,
     });
-    return tool.runResult(ownerId, conversation, eventId, text, history, {
-      plan: agent.planRecommendation.bind(agent),
-      rank: agent.rankRecommendations.bind(agent),
-    }, undefined, locale
+    return tool.runResult(
+      ownerId,
+      conversation,
+      eventId,
+      text,
+      history,
+      {
+        plan: agent.planRecommendation.bind(agent),
+        rank: agent.rankRecommendations.bind(agent),
+      },
+      undefined,
+      locale
     );
   };
   const service = {
@@ -201,7 +209,7 @@ test('recommendation tool enforces at most three clarification questions even if
   for (let i = 1; i <= 3; i++) {
     assert.equal(
       await state.service.run('alice', 'telegram:1', `msg${i}`, '推荐电影', [], state.llm),
-      '今天想看什么？',
+      '今天想看什么？'
     );
   }
   assert.equal(state.queries(), 0);
@@ -231,7 +239,7 @@ test('unknown candidate IDs cannot be delivered as recommendations', async () =>
   };
   await assert.rejects(
     state.service.run('alice', 'telegram:1', 'msg1', '立即推荐', [], llm),
-    /Unknown recommendation candidate/,
+    /Unknown recommendation candidate/
   );
 });
 test('a movie marked watched during ranking is removed before delivery', async () => {
@@ -285,7 +293,7 @@ test('structured immediate intent bypasses clarification without any trigger key
   const state = setup({ recommendNow: true });
   assert.match(
     await state.service.run('alice', 'web:thread1', 'msg1', 'Give me your picks, please', [], state.llm),
-    /Movie 3/,
+    /Movie 3/
   );
   assert.equal(state.calls(), 2);
 });
@@ -327,7 +335,7 @@ test('English restriction reply does not perform candidate retrieval', async () 
   };
   assert.match(
     await state.service.run('alice', 'web:thread1', 'msg1', 'Recommend', [], llm),
-    /cannot reliably verify.*no gore/,
+    /cannot reliably verify.*no gore/
   );
   assert.equal(state.queries(), 0);
 });
@@ -365,7 +373,7 @@ test('verbose=false keeps failure stage, original cause and stack while suppress
       },
     }
     ),
-    (failure) => failure === error,
+    (failure) => failure === error
   );
   assert.equal(logs.infos.length, 0);
   assert.equal(logs.errors.length, 1);
@@ -387,11 +395,11 @@ test('lease cleanup failure preserves the original model error and logs both fai
       },
     }
     ),
-    (error) => error === originalError,
+    (error) => error === originalError
   );
   assert.deepEqual(
     logs.errors.map((entry) => entry.stage),
-    ['recommendation.plan', 'recommendation.lease.release'],
+    ['recommendation.plan', 'recommendation.lease.release']
   );
 });
 
@@ -400,7 +408,7 @@ test('lease cleanup failure after successful execution is still propagated', asy
   const state = setup({ recommendNow: true, releaseError: cleanupError });
   await assert.rejects(
     state.service.run('alice', 'web:thread1', 'msg1', 'Recommend', [], state.llm),
-    (error) => error === cleanupError,
+    (error) => error === cleanupError
   );
 });
 
@@ -425,7 +433,7 @@ test('clarification expires at thirty minutes despite fresh Mongo updatedAt afte
   assert.equal(plan.questions, 0);
   assert.deepEqual(
     plan.conversation.map((message) => message.content),
-    ['New request'],
+    ['New request']
   );
   assert.equal(state.data()?.lastInteractionAt, '2026-10-19T00:30:00.000Z');
   assert.ok(logs.infos.some((entry) => entry.stage === 'recommendation.session.expired' && entry.outcome === 'reset'));
@@ -444,7 +452,7 @@ test('a new interaction within thirty minutes preserves progress and refreshes t
       .plans()
       .at(-1)
       ?.conversation.map((message) => message.content),
-    ['First request', '今天想看什么？', 'Second request'],
+    ['First request', '今天想看什么？', 'Second request']
   );
   assert.equal(state.data()?.lastInteractionAt, '2026-10-19T00:29:00.000Z');
   t.mock.timers.tick(29 * 60_000);
@@ -477,7 +485,7 @@ test('failed processing does not extend the continuation window or advance persi
       },
     }
     ),
-    /upstream unavailable/,
+    /upstream unavailable/
   );
   assert.equal(state.data()?.questions, 1);
   assert.equal(state.data()?.lastInteractionAt, '2026-10-19T00:00:00.000Z');
@@ -503,7 +511,7 @@ for (const timestamp of [undefined, null, 'invalid', '2026-10-20T00:00:00Z']) {
         .plans()
         .at(-1)
         ?.conversation.map((message) => message.content),
-      ['New request'],
+      ['New request']
     );
     assert.equal(state.data()?.questions, 1);
     assert.deepEqual(state.data()?.batches, batches);
@@ -542,12 +550,12 @@ test('romance style preferences reach ranking without blocking TMDB and requeste
     'romance',
     '推荐两部浪漫爱情电影且影片不能太保守',
     [],
-    state.llm,
+    state.llm
   );
   assert.equal(state.queries(), 2);
   assert.deepEqual(
     result.movies?.map((movie) => movie.tmdbId),
-    [3, 4],
+    [3, 4]
   );
   assert.equal(state.rankings()[0]?.requestedCount, 2);
   assert.deepEqual(state.rankings()[0]?.softPreferences, softPreferences);
@@ -561,9 +569,9 @@ test('romance style preferences reach ranking without blocking TMDB and requeste
       'romance',
       '推荐两部浪漫爱情电影且影片不能太保守',
       [],
-      state.llm,
+      state.llm
     ),
-    result,
+    result
   );
   assert.equal(state.calls(), calls);
 });
@@ -595,7 +603,7 @@ test('requested count is applied after deduplication and the latest watched-stat
   const result = await state.service.runResult('alice', 'telegram:1', 'count', 'Recommend two', [], state.llm);
   assert.deepEqual(
     result.movies?.map((movie) => movie.tmdbId),
-    [4, 5],
+    [4, 5]
   );
 });
 
@@ -613,12 +621,12 @@ test('too few eligible movies are returned without padding and the shortfall is 
   assert.ok(
     logs.infos.some((entry) => {
       return (
-        entry.stage === 'recommendation.selection.completed' &&
-        entry.requestedCount === 2 &&
-        entry.selectedCount === 1 &&
-        entry.outcome === 'shortfall'
+        entry.stage === 'recommendation.selection.completed'
+        && entry.requestedCount === 2
+        && entry.selectedCount === 1
+        && entry.outcome === 'shortfall'
       );
-    }),
+    })
   );
   assert.doesNotMatch(JSON.stringify(logs), /private subjective taste/);
 });

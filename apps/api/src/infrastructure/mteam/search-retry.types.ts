@@ -1,5 +1,3 @@
-
-
 export interface SearchRetryOptions {
   signal?: AbortSignal;
   minimumIntervalMs?: number;

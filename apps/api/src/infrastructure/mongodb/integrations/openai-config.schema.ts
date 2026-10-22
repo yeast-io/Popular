@@ -27,11 +27,11 @@ const openAIConfigSchema = new Schema(
             ],
           },
         },
-        { _id: false },
+        { _id: false }
       ),
     },
   },
-  { timestamps: true, collection: 'openai_configs' },
+  { timestamps: true, collection: 'openai_configs' }
 );
 openAIConfigSchema.index({ ownerId: 1 }, { unique: true });
 export const createOpenAIConfigModel = (connection: Connection) => {

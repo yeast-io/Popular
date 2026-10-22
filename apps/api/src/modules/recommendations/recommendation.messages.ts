@@ -21,7 +21,7 @@ const messages = {
     unverifiableRestrictions: (restrictions: string[]) => {
       return `The available movie data cannot reliably verify these strict requirements: ${restrictionLabels(
         restrictions,
-        ', ',
+        ', '
       )}. No unverified recommendations will be returned.`;
     },
     noCandidates:

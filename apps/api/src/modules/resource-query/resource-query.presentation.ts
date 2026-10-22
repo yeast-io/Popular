@@ -23,16 +23,21 @@ export function releaseGroup(release: ResourceRelease): string | undefined {
   // This known compound group must not be reduced to its final hyphen component.
   if (/(?:^|[\s.-])MNHD-FRDS$/i.test(title)) return 'MNHD-FRDS';
   const group = title.match(/-([a-z\d][a-z\d._]{1,31})$/i)?.[1];
-  if (!group || /^(?:dl|rip|ray|hdr\d*|sdr|hevc|avc|x26[45]|h26[45]|aac|dts|atmos|truehd|remux|proper|repack|extended)$/i.test(group))
+  if (
+    !group
+    || /^(?:dl|rip|ray|hdr\d*|sdr|hevc|avc|x26[45]|h26[45]|aac|dts|atmos|truehd|remux|proper|repack|extended)$/i.test(
+      group
+    )
+  )
     return undefined;
   return group;
 }
 
 export function compareReleases(left: ResourceRelease, right: ResourceRelease): number {
   const seeders = (release: ResourceRelease) => {
-    return release.seeders !== undefined && Number.isFinite(
-      release.seeders
-    ) && release.seeders >= 0 ? release.seeders : -1;
+    return release.seeders !== undefined && Number.isFinite(release.seeders) && release.seeders >= 0
+      ? release.seeders
+      : -1;
   };
   const difference = seeders(right) - seeders(left);
   if (difference) return difference;
@@ -49,9 +54,13 @@ export function matchesResolution(release: ResourceRelease, resolution: string |
 
 /** Single-line fields cannot smuggle extra numbered rows into a chat message. */
 export function compactField(value: string, maxLength: number): string {
-  const clean = [...value].map((character) => {
-    return character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127 ? ' ' : character;
-  }).join('').replace(/\s+/g, ' ').trim();
+  const clean = [...value]
+    .map((character) => {
+      return character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127 ? ' ' : character;
+    })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (clean.length <= maxLength) return clean;
   let shortened = clean.slice(0, maxLength - 1);
   if (/[\uD800-\uDBFF]$/.test(shortened)) shortened = shortened.slice(0, -1);

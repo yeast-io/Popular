@@ -11,13 +11,13 @@ async function boundaryMessages(code, filePath) {
 
 test('store and business modules reject schema construction and model registration', async () => {
   const cases = [
-    ['apps/api/src/infrastructure/mongodb/assistant/example.store.ts', "export const schema = new Schema({});"],
-    ['apps/api/src/infrastructure/mongodb/assistant/example.store.ts', "export const schema = new mongoose.Schema({});"],
+    ['apps/api/src/infrastructure/mongodb/assistant/example.store.ts', 'export const schema = new Schema({});'],
+    ['apps/api/src/infrastructure/mongodb/assistant/example.store.ts', 'export const schema = new mongoose.Schema({});'],
     ['apps/api/src/infrastructure/mongodb/assistant/example.store.ts', "export const model = connection.model('Example', schema);"],
-    ['apps/api/src/modules/assistant/example.workflow.ts', "export const schema = z.object({});"],
-    ['apps/api/src/modules/preferences/example.routes.ts', "export const schema = z.strictObject({});"],
-    ['apps/api/src/modules/assistant/agents/example.agent.ts', "export const schema = z.object({});"],
-    ['packages/contract/src/common/example.ts', "export const schema = Type.Object({});"],
+    ['apps/api/src/modules/assistant/example.workflow.ts', 'export const schema = z.object({});'],
+    ['apps/api/src/modules/preferences/example.routes.ts', 'export const schema = z.strictObject({});'],
+    ['apps/api/src/modules/assistant/agents/example.agent.ts', 'export const schema = z.object({});'],
+    ['packages/contract/src/common/example.ts', 'export const schema = Type.Object({});'],
   ];
   for (const [file, code] of cases) assert.ok((await boundaryMessages(code, file)).length > 0, file);
 });
@@ -25,9 +25,9 @@ test('store and business modules reject schema construction and model registrati
 test('schema modules can construct schemas while consumers can parse and export JSON schema', async () => {
   const cases = [
     ['apps/api/src/infrastructure/mongodb/assistant/example.schema.ts', "export const schema = new Schema({}); export const model = connection.model('Example', schema);"],
-    ['apps/api/src/modules/assistant/example.schema.ts', "export const schema = z.object({});"],
-    ['packages/contract/src/common/example.schema.ts', "export const schema = Type.Object({});"],
-    ['apps/api/src/modules/assistant/example.agent.ts', "export const schema = z.toJSONSchema(ExampleSchema); export const parsed = ExampleSchema.parse({});"],
+    ['apps/api/src/modules/assistant/example.schema.ts', 'export const schema = z.object({});'],
+    ['packages/contract/src/common/example.schema.ts', 'export const schema = Type.Object({});'],
+    ['apps/api/src/modules/assistant/example.agent.ts', 'export const schema = z.toJSONSchema(ExampleSchema); export const parsed = ExampleSchema.parse({});'],
   ];
   for (const [file, code] of cases) assert.deepEqual(await boundaryMessages(code, file), [], file);
 });
@@ -41,11 +41,10 @@ test('types modules reject executable definitions and accept interfaces and alia
   ]) assert.ok((await boundaryMessages(code, 'apps/api/src/modules/assistant/example.types.ts')).length > 0, code);
   assert.deepEqual(await boundaryMessages(
     'export interface State { id: string } export type StateReader = () => State;',
-    'apps/api/src/modules/assistant/example.types.ts',
+    'apps/api/src/modules/assistant/example.types.ts'
   ), []
   );
 });
-
 
 test('workflow modules reject named interfaces and type aliases', async () => {
   for (const code of ['interface Turn { id: string }', 'type Action = { kind: string };']) {
@@ -53,7 +52,6 @@ test('workflow modules reject named interfaces and type aliases', async () => {
     assert.deepEqual(await boundaryMessages(code, 'apps/api/src/modules/assistant/example.types.ts'), []);
   }
 });
-
 
 test('named type boundaries cover queue, worker, service, infrastructure, frontend and Vue implementations', async () => {
   for (const file of [
@@ -70,7 +68,7 @@ test('named type boundaries cover queue, worker, service, infrastructure, fronte
   }
   assert.ok((await boundaryMessages(
     '<script setup lang="ts">interface State { id: string }</script><template><div /></template>',
-    'apps/web/src/features/example/Example.vue',
+    'apps/web/src/features/example/Example.vue'
   )).length > 0
   );
 });

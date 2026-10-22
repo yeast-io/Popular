@@ -211,7 +211,7 @@ test('metadata enrichment failures are distinguishable from model errors', async
     },
     async () => {
       throw new Error('Movie feedback changed; generate again');
-    },
+    }
   );
   await new PreferenceWorker(store, workflow, {
     error: (fields: unknown) => {
@@ -280,7 +280,7 @@ for (const verbose of [false, true]) {
           errors.push(fields as Record<string, unknown>);
         },
       },
-      verbose,
+      verbose
     );
     await worker.tick();
     assert.equal(infos.length > 0, verbose);

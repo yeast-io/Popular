@@ -1,10 +1,19 @@
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { DownloadProvider, DownloadSource } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
-import type { QBittorrentClientPort, QBittorrentConfigStore, QBittorrentTorrent } from '../integrations/qbittorrent.types.js';
-import type { TransmissionClientPort, TransmissionConfigStore, TransmissionTorrent } from '../integrations/transmission.types.js';
+import type {
+  QBittorrentClientPort,
+  QBittorrentConfigStore,
+  QBittorrentTorrent,
+} from '../integrations/qbittorrent.types.js';
+import type {
+  TransmissionClientPort,
+  TransmissionConfigStore,
+  TransmissionTorrent,
+} from '../integrations/transmission.types.js';
 import type { IntegrationConfigStore } from '../integrations/integration.types.js';
 import { IntegrationValidationError, integrationSecretContext } from '../integrations/integration.service.js';
 import { SecretCrypto } from '../integrations/secret-crypto.js';
@@ -14,7 +23,7 @@ import type { MovieDownloadRecord, MovieDownloadStore } from './movie-download.t
 
 function fixture(
   providers: DownloadProvider[],
-  notifications?: Pick<import('../notifications/notification.service.js').NotificationService, 'reserve' | 'submitted'>,
+  notifications?: Pick<import('../notifications/notification.service.js').NotificationService, 'reserve' | 'submitted'>
 ) {
   const ownerId = '507f1f77bcf86cd799439011';
   const enabled = new Set(providers);
@@ -44,7 +53,7 @@ function fixture(
             authMethod: 'api_key',
             encryptedCredential: secrets.encrypt(
               JSON.stringify({ authMethod: 'api_key', apiKey: 'private-key' }),
-              `movie-hub:integration:qbittorrent:owner:${ownerId}`,
+              `movie-hub:integration:qbittorrent:owner:${ownerId}`
             ),
           }
         : null;
@@ -60,7 +69,7 @@ function fixture(
             lastFailureType: 'authentication',
             encryptedCredential: secrets.encrypt(
               JSON.stringify({ username: 'daniel', password: 'private-password' }),
-              `movie-hub:integration:transmission:owner:${ownerId}`,
+              `movie-hub:integration:transmission:owner:${ownerId}`
             ),
           }
         : null;
@@ -70,13 +79,23 @@ function fixture(
     async findByRelease(owner, tmdbId, releaseId, source: DownloadSource = 'mteam') {
       return (
         [...records.values()].find((record) => {
-          return record.ownerId === owner && record.tmdbId === tmdbId && record.sourceReleaseId === releaseId && record.sourceProvider === source;
+          return (
+            record.ownerId === owner
+            && record.tmdbId === tmdbId
+            && record.sourceReleaseId === releaseId
+            && record.sourceProvider === source
+          );
         }) ?? null
       );
     },
     async createSubmitting(owner, tmdbId, releaseId, provider, source: DownloadSource = 'mteam') {
       const existing = [...records.values()].find((record) => {
-        return record.ownerId === owner && record.tmdbId === tmdbId && record.sourceReleaseId === releaseId && record.sourceProvider === source;
+        return (
+          record.ownerId === owner
+          && record.tmdbId === tmdbId
+          && record.sourceReleaseId === releaseId
+          && record.sourceProvider === source
+        );
       });
       if (existing) return { record: existing, claimed: false };
       const record: MovieDownloadRecord = {
@@ -126,7 +145,8 @@ function fixture(
     async verify() {
       return { version: '5.2' };
     },
-    async addTorrent(_url, _credential, _torrent, tag) {
+    async addTorrent(_url, _credential, torrentUrl, tag) {
+      assert.match(torrentUrl, /^https:\/\/(tracker|hdarea)\.example\/download\.php\?id=991&passkey=private-key$/);
       adds.push('qbittorrent');
       qbTorrent = {
         hash: 'qb-hash',
@@ -155,7 +175,8 @@ function fixture(
     async verify() {
       return { version: '4.1' };
     },
-    async addTorrent(_url, credential, _torrent, tag) {
+    async addTorrent(_url, credential, torrentUrl, tag) {
+      assert.match(torrentUrl, /^https:\/\/(tracker|hdarea)\.example\/download\.php\?id=991&passkey=private-key$/);
       assert.equal(credential.password, 'private-password');
       adds.push('transmission');
       if (trFailure) throw new IntegrationValidationError('network', 'Offline');
@@ -201,8 +222,8 @@ function fixture(
     secrets,
     qb,
     {
-      async downloadTorrent() {
-        return new Uint8Array([1, 2, 3]);
+      async torrentUrl() {
+        return 'https://tracker.example/download.php?id=991&passkey=private-key';
       },
     },
     {
@@ -222,21 +243,34 @@ function fixture(
     { configs: trConfigs, client: tr },
     notifications,
     {
-      resources: { async releaseForDownload(owner, movie, site, id) {
-        if (owner !== ownerId || movie !== 603 || !['991', '992'].includes(id)) throw new AppError(404, 'NOT_FOUND', '');
-        return { id, title: 'HDArea Movie', seeders: 2, tags: [], detailsUrl: `https://hdarea.example/details.php?id=${id}` };
-      } },
-      sites: { async downloadTorrent(owner, site, id) {
-        if (siteError) throw siteError;
-        siteFetches.push({ owner, site, id });
-        return Buffer.from('d4:infod4:name4:testee');
-      } },
-    },
+      resources: {
+        async releaseForDownload(owner, movie, site, id) {
+          if (owner !== ownerId || movie !== 603 || !['991', '992'].includes(id))
+            throw new AppError(404, 'NOT_FOUND', '');
+          return {
+            id,
+            title: 'HDArea Movie',
+            seeders: 2,
+            tags: [],
+            detailsUrl: `https://hdarea.example/details.php?id=${id}`,
+          };
+        },
+      },
+      sites: {
+        async torrentUrl(owner, site, id) {
+          if (siteError) throw siteError;
+          siteFetches.push({ owner, site, id });
+          return 'https://hdarea.example/download.php?id=991&passkey=private-key';
+        },
+      },
+    }
   );
   return {
     service,
     siteFetches,
-    setSiteError(error: Error) { siteError = error; },
+    setSiteError(error: Error) {
+      siteError = error;
+    },
     records,
     adds,
     lookups,
@@ -253,8 +287,12 @@ function fixture(
     setTrTorrent(value: TransmissionTorrent | null) {
       trTorrent = value;
     },
-    setQbTorrent(value: QBittorrentTorrent | null) { qbTorrent = value; },
-    getQbTorrent() { return qbTorrent!; },
+    setQbTorrent(value: QBittorrentTorrent | null) {
+      qbTorrent = value;
+    },
+    getQbTorrent() {
+      return qbTorrent!;
+    },
     getTrTorrent() {
       return trTorrent!;
     },
@@ -418,8 +456,12 @@ test('download routes authenticate provider discovery, validate choices and seri
     assert.equal(created.statusCode, 201);
     assert.equal(created.json().provider, 'transmission');
     assert.equal(created.body.includes('private-'), false);
-    const hdarea = await app.inject({ method: 'POST', url, headers,
-      payload: { sourceReleaseId: '991', provider: 'qbittorrent', sourceProvider: 'hdarea' } }
+    const hdarea = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { sourceReleaseId: '991', provider: 'qbittorrent', sourceProvider: 'hdarea' },
+    }
     );
     assert.equal(hdarea.statusCode, 201);
     assert.equal(hdarea.json().sourceProvider, 'hdarea');
@@ -493,18 +535,22 @@ test('trusted owner download entry reuses the existing claim and does not requir
   assert.equal(first.id, replay.id);
   assert.deepEqual(adds, ['transmission']);
   await assert.rejects(service.create(undefined, 603, '991'), { code: 'UNAUTHORIZED' });
-  await assert.rejects(
-    service.createForOwner('507f1f77bcf86cd799439099', 603, '991', 'transmission'),
-    { code: 'TRANSMISSION_NOT_CONFIGURED' }
+  await assert.rejects(service.createForOwner('507f1f77bcf86cd799439099', 603, '991', 'transmission'), {
+    code: 'TRANSMISSION_NOT_CONFIGURED',
+  }
   );
 });
-
 
 test('the account default applies without a selection; explicit choice and pinned retries take precedence', async () => {
   const f = fixture(['qbittorrent', 'transmission']);
   let primary = 'transmission';
   let defaultReads = 0;
-  f.service.preferences = { async get() { defaultReads += 1; return { defaults: { downloader: primary }, selectedSites: [], effectiveSites: [], choices: [] }; } };
+  f.service.preferences = {
+    async get() {
+      defaultReads += 1;
+      return { defaults: { downloader: primary }, selectedSites: [], effectiveSites: [], choices: [] };
+    },
+  };
   assert.equal((await f.service.create('owner', 603, '991')).provider, 'transmission');
   primary = 'qbittorrent';
   assert.equal((await f.service.create('owner', 603, '991')).provider, 'transmission');
@@ -529,7 +575,7 @@ test('missing qBittorrent tasks recover without duplicates or re-add only after 
   assert.deepEqual(f.adds, ['qbittorrent', 'qbittorrent']);
 });
 
-test('HDArea downloads use server torrent bytes and isolate the same release ID from M-Team', async () => {
+test('HDArea downloads submit server-generated torrent URLs and isolate the same release ID from M-Team', async () => {
   const f = fixture(['qbittorrent', 'transmission']);
   const hd = await f.service.create('owner', 603, '991', 'transmission', 'hdarea');
   assert.equal(hd.sourceProvider, 'hdarea');
@@ -575,4 +621,80 @@ test('a missing HDArea Passkey does not submit to a downloader or fall back to M
   assert.deepEqual(f.adds, []);
   assert.equal([...f.records.values()][0]?.sourceProvider, 'hdarea');
   assert.equal([...f.records.values()][0]?.status, 'failed');
+});
+
+test('accepted URL submissions remain submitting until the downloader task can be inspected', async () => {
+  for (const provider of ['qbittorrent', 'transmission'] as const) {
+    const f = fixture([provider]);
+    if (provider === 'qbittorrent') f.setQbQueryFailure();
+    else f.setTrQueryFailure();
+    const result = await f.service.create('owner', 603, '991');
+    assert.equal(result.status, 'submitting');
+    await f.service.create('owner', 603, '991');
+    assert.deepEqual(f.adds, [provider]);
+  }
+});
+
+test('resolved torrent URLs are redacted from failure causes and never persisted', async () => {
+  for (const source of ['mteam', 'hdarea'] as const) {
+    const url = `https://${source === 'mteam' ? 'tracker' : 'hdarea'}.example/download.php?id=991&passkey=private-key`;
+    const logs: unknown[] = [];
+    const f = fixture(['transmission'], {
+      async reserve() {
+        throw new Error('Submission preparation failed', { cause: new Error(url) });
+      },
+      async submitted() {},
+    }
+    );
+    const trace = new AiTrace(
+      {
+        error: (...args: unknown[]) => {
+          logs.push(args);
+        },
+      },
+      {},
+      '',
+      'download.create',
+      false
+    );
+    await withAiTrace(trace, async () => {
+      try {
+        await f.service.create('owner', 603, '991', undefined, source);
+        assert.fail('expected submission preparation failure');
+      } catch (error) {
+        trace.fail(error);
+      }
+    });
+    assert.equal(logs.length, 1);
+    assert.equal(JSON.stringify(logs).includes(url), false);
+    assert.equal(JSON.stringify(logs).includes('private-key'), false);
+    assert.equal(JSON.stringify([...f.records.values()]).includes(url), false);
+    assert.equal(JSON.stringify([...f.records.values()]).includes('private-key'), false);
+    assert.deepEqual(f.adds, []);
+  }
+});
+
+test('remote original records never retry or query a local downloader, and notification inspection uses persisted progress', async () => {
+  const f = fixture(['qbittorrent', 'transmission']);
+  const remote: MovieDownloadRecord = {
+    id: 'remote-original',
+    ownerId: '507f1f77bcf86cd799439011',
+    tmdbId: 603,
+    sourceProvider: 'mteam',
+    sourceReleaseId: '991',
+    provider: 'qbittorrent',
+    lookupTag: 'remote',
+    executionMode: 'remote',
+    status: 'failed',
+    progress: 50,
+    torrentHash: 'a'.repeat(40),
+  };
+  f.records.set(remote.id, remote);
+  await f.service.create('owner', 603, '991', 'qbittorrent', 'mteam');
+  await f.service.listAndSync('owner', 603);
+  assert.equal(f.adds.length, 0);
+  assert.equal(f.lookups.length, 0);
+  const completed = { ...remote, status: 'completed' as const, progress: 100 };
+  assert.equal((await f.service.inspect(completed))!.progress, 100);
+  assert.equal(f.lookups.length, 0);
 });

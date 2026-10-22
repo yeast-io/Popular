@@ -29,7 +29,8 @@ function statusLabel(id: string) {
   const check = sourceCheck(id);
   if (check?.checking) return t('movie.resource.checking');
   if (check?.lastAttemptStatus === 'error') return t(available(id)
-    ? 'movie.resource.availableRefreshFailed' : 'movie.resource.checkFailed');
+    ? 'movie.resource.availableRefreshFailed'
+    : 'movie.resource.checkFailed');
   if (available(id)) return t('resourceSelection.available');
   if (check?.availability === 'unavailable') return t('movie.resource.unavailable');
   if (check?.availability === 'unmatchable') return t('movie.resource.unmatchable');
@@ -37,9 +38,11 @@ function statusLabel(id: string) {
 }
 function tooltip(id: string, name: string) {
   const checkedAt = sourceCheck(id)?.checkedAt;
-  return [name, statusLabel(id), checkedAt ? t('resourceSelection.queriedAt', {
-    date: formatDate(checkedAt, { dateStyle: 'short', timeStyle: 'short' }),
-  }) : ''].filter(Boolean).join(' · ');
+  return [name, statusLabel(id), checkedAt
+    ? t('resourceSelection.queriedAt', {
+        date: formatDate(checkedAt, { dateStyle: 'short', timeStyle: 'short' }),
+      })
+    : ''].filter(Boolean).join(' · ');
 }
 let generation = 0;
 async function load() {
@@ -66,16 +69,21 @@ async function select(sites: string[]) {
     if (!response.ok) throw await localizedResponseError(response);
     preferences.value = await response.json() as IntegrationPreferences;
     emit('changed', preferences.value);
-  } catch (cause) { error.value = localizedErrorMessage(cause, 'errors.requestFailed'); }
-  finally { saving.value = false; }
+  } catch (cause) { error.value = localizedErrorMessage(cause, 'errors.requestFailed'); } finally {
+    saving.value = false;
+  }
 }
 function toggle(id: string) {
   const checked = !preferences.value?.effectiveSites.includes(id);
   const sites = preferences.value?.effectiveSites ?? [];
   void select(checked ? [...new Set([...sites, id])] : sites.filter((site) => site !== id));
 }
-onMounted(() => { void load(); });
-onBeforeUnmount(() => { ++generation; });
+onMounted(() => {
+  void load();
+});
+onBeforeUnmount(() => {
+  ++generation;
+});
 </script>
 <template>
   <div class="resource-site-selector">

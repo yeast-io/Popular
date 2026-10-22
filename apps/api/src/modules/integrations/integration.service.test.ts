@@ -4,32 +4,42 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import { IntegrationService, IntegrationValidationError, normalizeMTeamBaseUrl, normalizeMTeamWebBaseUrl } from './integration.service.js';
+import {
+  IntegrationService,
+  IntegrationValidationError,
+  normalizeMTeamBaseUrl,
+  normalizeMTeamWebBaseUrl,
+} from './integration.service.js';
 import type { IntegrationConfigRecord, IntegrationConfigStore, MTeamVerifier } from './integration.types.js';
 import { SecretCrypto } from './secret-crypto.js';
 
 class MemoryConfigStore implements IntegrationConfigStore {
   readonly records = new Map<string, IntegrationConfigRecord>();
+
   get record() {
     return this.records.values().next().value ?? null;
   }
+
   private key(ownerId: string, provider: 'mteam') {
     return `${ownerId}:${provider}`;
   }
+
   async find(ownerId: string, provider: 'mteam') {
     return this.records.get(this.key(ownerId, provider)) ?? null;
   }
+
   async saveVerified(input: IntegrationConfigRecord & { verifiedAt: Date; lastValidationAt: Date }) {
     const record = { ...input };
     delete record.lastFailureType;
     this.records.set(this.key(input.ownerId, input.provider), record);
     return record;
   }
+
   async recordFailure(
     ownerId: string,
     provider: 'mteam',
     attemptedAt: Date,
-    failureType: IntegrationConfigRecord['lastFailureType'],
+    failureType: IntegrationConfigRecord['lastFailureType']
   ) {
     const record = this.records.get(this.key(ownerId, provider));
     if (record && failureType)
@@ -39,6 +49,7 @@ class MemoryConfigStore implements IntegrationConfigStore {
         lastFailureType: failureType,
       });
   }
+
   async delete(ownerId: string, provider: 'mteam') {
     this.records.delete(this.key(ownerId, provider));
   }
@@ -47,6 +58,7 @@ class MemoryConfigStore implements IntegrationConfigStore {
 class StubVerifier implements MTeamVerifier {
   error: Error | undefined;
   calls: Array<{ baseUrl: string; apiKey: string }> = [];
+
   async verify(baseUrl: string, apiKey: string) {
     this.calls.push({ baseUrl, apiKey });
     if (this.error) throw this.error;
@@ -104,7 +116,7 @@ test('validates before saving and never returns the API key', async () => {
   assert.notEqual(store.record?.encryptedApiKey, 'top-secret');
   assert.equal(
     crypto.decrypt(store.record?.encryptedApiKey ?? '', 'movie-hub:integration:mteam:owner:507f1f77bcf86cd799439011'),
-    'top-secret',
+    'top-secret'
   );
 });
 
@@ -116,7 +128,7 @@ test('failed replacement preserves the existing URL and secret while recording f
 
   await assert.rejects(
     service.saveMTeam('session', { baseUrl: 'https://api.m-team.io', apiKey: 'bad-key' }),
-    (error: unknown) => error instanceof AppError && error.code === 'MTEAM_AUTH_FAILED',
+    (error: unknown) => error instanceof AppError && error.code === 'MTEAM_AUTH_FAILED'
   );
   assert.equal(store.record?.baseUrl, 'https://api.m-team.cc');
   assert.equal(store.record?.encryptedApiKey, encryptedBefore);
@@ -136,7 +148,7 @@ test('requires an API key for the first configuration', async () => {
   const { service } = fixture();
   await assert.rejects(
     service.saveMTeam('session', { baseUrl: 'https://api.m-team.cc' }),
-    (error: unknown) => error instanceof AppError && error.code === 'VALIDATION_ERROR',
+    (error: unknown) => error instanceof AppError && error.code === 'VALIDATION_ERROR'
   );
 });
 
@@ -184,7 +196,8 @@ test('M-Team returns a fixed display mask and retains the real key when the mask
   const { service, verifier } = fixture();
   const saved = await service.saveMTeam('session', { baseUrl: 'https://api.m-team.cc', apiKey: 'actual-private-key' });
   assert.equal(saved.apiKeyMasked, maskIntegrationSecret('actual-private-key'));
-  const read = await service.getMTeam('session'); assert.equal(read.apiKeyMasked, saved.apiKeyMasked);
+  const read = await service.getMTeam('session');
+  assert.equal(read.apiKeyMasked, saved.apiKeyMasked);
   assert.equal(JSON.stringify(read).includes('actual-private-key'), false);
   await service.saveMTeam('session', { baseUrl: 'https://api.m-team.cc', apiKey: saved.apiKeyMasked });
   assert.equal(verifier.calls.at(-1)!.apiKey, 'actual-private-key');
@@ -195,21 +208,33 @@ test('environment endpoints override old stored domains and submitted domains wh
   const verifier = new StubVerifier();
   const endpoints = { baseUrl: 'https://api.new-mteam.example', webBaseUrl: 'https://new-mteam.example' };
   const configured = withMTeamEndpoints(store, endpoints);
-  const service = new IntegrationService(auth, configured, verifier, crypto, new Set(['api.new-mteam.example']), () => {
-    return now;
-  }, endpoints);
+  const service = new IntegrationService(
+    auth,
+    configured,
+    verifier,
+    crypto,
+    new Set(['api.new-mteam.example']),
+    () => {
+      return now;
+    },
+    endpoints
+  );
   const empty = await service.getMTeam('token');
   assert.equal(empty.baseUrl, endpoints.baseUrl);
-  await service.saveMTeam(
-    'token',
-    { baseUrl: 'https://old.example', webBaseUrl: 'https://old.example', apiKey: 'private-test-key' }
+  await service.saveMTeam('token', {
+    baseUrl: 'https://old.example',
+    webBaseUrl: 'https://old.example',
+    apiKey: 'private-test-key',
+  }
   );
   assert.equal(verifier.calls[0]?.baseUrl, endpoints.baseUrl);
   assert.equal((await service.getMTeam('token')).webBaseUrl, endpoints.webBaseUrl);
   const raw = store.record!;
-  store.records.set(
-    `${raw.ownerId}:mteam`,
-    { ...raw, baseUrl: 'https://retired.example', webBaseUrl: 'https://retired.example' }
+  store.records.set(`${raw.ownerId}:mteam`, {
+    ...raw,
+    baseUrl: 'https://retired.example',
+    webBaseUrl: 'https://retired.example',
+  }
   );
   const effective = await configured.find(raw.ownerId, 'mteam');
   assert.equal(effective?.baseUrl, endpoints.baseUrl);

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { IntegrationPreferencesService } from './integration-preferences.service.js';
-import type { IntegrationChoice, IntegrationPreferencesRecord, IntegrationPreferencesStore } from './integration-preferences.types.js';
+import type {
+  IntegrationChoice,
+  IntegrationPreferencesRecord,
+  IntegrationPreferencesStore,
+} from './integration-preferences.types.js';
 
 function harness() {
   const rows = new Map<string, IntegrationPreferencesRecord>();
@@ -19,7 +23,11 @@ function harness() {
       if (!onlyIfMissing || !row.defaults[category]) row.defaults[category] = id;
       rows.set(owner, row);
     },
-    async selectSites(owner, sites) { const row = await read(owner); row.selectedSites = sites; rows.set(owner, row); },
+    async selectSites(owner, sites) {
+      const row = await read(owner);
+      row.selectedSites = sites;
+      rows.set(owner, row);
+    },
     async remove(owner, category, id) {
       const row = await read(owner);
       if (row.defaults[category] === id) delete row.defaults[category];
@@ -31,9 +39,11 @@ function harness() {
 }
 test('defaults and explicit selections are owner scoped; clearing a selection restores the primary site', async () => {
   const { service } = harness();
-  assert.deepEqual(
-    (await service.get('alice')).defaults,
-    { resource: 'mteam', downloader: 'transmission', ai: 'openai' }
+  assert.deepEqual((await service.get('alice')).defaults, {
+    resource: 'mteam',
+    downloader: 'transmission',
+    ai: 'openai',
+  }
   );
   await service.setDefault('alice', 'resource', 'hdarea');
   assert.deepEqual((await service.get('alice')).effectiveSites, ['hdarea']);
@@ -56,9 +66,9 @@ test('a failed primary remains selected; invalid and unconfigured alternatives c
 test('deleting a primary requires an explicit replacement; deleting the last configuration clears its selection', async () => {
   const { service, choices } = harness();
   await service.get('alice');
-  await assert.rejects(
-    service.beforeDelete('alice', 'resource', 'mteam'),
-    { code: 'INTEGRATION_DEFAULT_REPLACEMENT_REQUIRED' }
+  await assert.rejects(service.beforeDelete('alice', 'resource', 'mteam'), {
+    code: 'INTEGRATION_DEFAULT_REPLACEMENT_REQUIRED',
+  }
   );
   await service.setDefault('alice', 'resource', 'hdarea');
   await service.beforeDelete('alice', 'resource', 'mteam');

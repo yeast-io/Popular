@@ -26,7 +26,7 @@ try {
     models.movieResultSets,
     models.people,
     models.movieCredits,
-    models.trendingStates,
+    models.trendingStates
   );
   const service = new TrendingSyncService(
     new TmdbClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS),
@@ -37,7 +37,7 @@ try {
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
       error: (bindings, message) => loggers.error.error(bindings, message),
-    },
+    }
   );
   syncInvoked = true;
   await service.syncConfiguredPages(config.TRENDING_SYNC_PAGES, config.TRENDING_SYNC_CONCURRENCY, 'manual');

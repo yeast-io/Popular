@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compactField, compareReleases, releaseGroup, releaseResolution } from './resource-query.presentation.js';
 import type { ResourceRelease } from './resource-query.types.js';
+
 const release = (title: string): ResourceRelease => ({ provider: 'mteam', id: '1', title });
 
 test('release groups preserve compound tags and recognize @ and terminal scene tags', () => {
@@ -34,9 +35,15 @@ test('sorting is descending by seeders, stable by source/id, and unknown follows
     { ...release('High'), id: 'a', seeders: 9 },
     { ...release('Other'), provider: 'archive', id: 'a', seeders: 9 },
   ];
-  assert.deepEqual(entries.sort(compareReleases).map(({ provider, id }) => [provider, id]), [
-    ['archive', 'a'], ['mteam', 'a'], ['mteam', 'b'], ['mteam', 'z'], ['mteam', 'u'],
-  ]
+  assert.deepEqual(
+    entries.sort(compareReleases).map(({ provider, id }) => [provider, id]),
+    [
+      ['archive', 'a'],
+      ['mteam', 'a'],
+      ['mteam', 'b'],
+      ['mteam', 'z'],
+      ['mteam', 'u'],
+    ]
   );
 });
 

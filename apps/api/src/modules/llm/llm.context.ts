@@ -8,7 +8,7 @@ export function buildLlmContext(
   history: LlmMessage[],
   maxContextTokens: number,
   reserve: number,
-  userContext = '',
+  userContext = ''
 ): LlmMessage[] {
   const counter = new Utf8ByteTokenCounter();
   const promptTokens = counter.count(prompt);
@@ -17,7 +17,7 @@ export function buildLlmContext(
   let remaining = maxContextTokens - reserve - 256 - promptTokens - textTokens - contextTokens - 8;
   if (remaining < 0)
     throw new Error(
-      `Assistant input exceeds the context budget (limit=${maxContextTokens}, prompt=${promptTokens}, input=${textTokens}, outputReserve=${reserve}, overhead=264)`,
+      `Assistant input exceeds the context budget (limit=${maxContextTokens}, prompt=${promptTokens}, input=${textTokens}, outputReserve=${reserve}, overhead=264)`
     );
   const selected: LlmMessage[] = [];
   for (const message of [...history].reverse()) {

@@ -3,8 +3,18 @@ import test from 'node:test';
 import { aggregateSiteChecks } from './movie-site-resources.domain.js';
 
 test('only all successful, current negative results can mean no resource is available', () => {
-  const empty = { provider: 'mteam', availability: 'unavailable' as const, checking: false, lastAttemptStatus: 'success' as const };
-  const failed = { provider: 'hdarea', availability: 'unchecked' as const, checking: false, lastAttemptStatus: 'error' as const };
+  const empty = {
+    provider: 'mteam',
+    availability: 'unavailable' as const,
+    checking: false,
+    lastAttemptStatus: 'success' as const,
+  };
+  const failed = {
+    provider: 'hdarea',
+    availability: 'unchecked' as const,
+    checking: false,
+    lastAttemptStatus: 'error' as const,
+  };
   assert.equal(aggregateSiteChecks([empty, failed]).availability, 'unchecked');
   assert.equal(aggregateSiteChecks([empty, failed]).incomplete, true);
   assert.equal(aggregateSiteChecks([empty, { ...empty, provider: 'hdarea' }]).availability, 'unavailable');

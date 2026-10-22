@@ -6,7 +6,7 @@ export const ExternalUsageQuerySchema = Type.Object(
   {
     days: Type.Optional(ExternalUsageDaysSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 const ExternalProviderIdSchema = Type.String({
@@ -25,7 +25,7 @@ const TokenUsageSchema = Type.Object(
     unknownRequests: Type.Integer({ minimum: 0 }),
     unknownCachedRequests: Type.Integer({ minimum: 0 }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 const usageMetricProperties = {
@@ -43,7 +43,7 @@ const ProviderUsageSchema = Type.Object(
     provider: ExternalProviderIdSchema,
     ...usageMetricProperties,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 const DailyProviderUsageSchema = Type.Object(
@@ -54,7 +54,7 @@ const DailyProviderUsageSchema = Type.Object(
     failures: Type.Integer({ minimum: 0 }),
     tokenUsage: Type.Optional(TokenUsageSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 const DailyUsageSchema = Type.Object(
@@ -62,7 +62,7 @@ const DailyUsageSchema = Type.Object(
     date: DateOnlySchema,
     providers: Type.Array(DailyProviderUsageSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 const OperationUsageSchema = Type.Object(
@@ -71,7 +71,7 @@ const OperationUsageSchema = Type.Object(
     operation: Type.String({ minLength: 1, maxLength: 80 }),
     ...usageMetricProperties,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 const ModelUsageSchema = Type.Object(
@@ -81,7 +81,7 @@ const ModelUsageSchema = Type.Object(
     operation: Type.String({ minLength: 1, maxLength: 80 }),
     ...usageMetricProperties,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const ExternalUsageResponseSchema = Type.Object(
@@ -94,7 +94,7 @@ export const ExternalUsageResponseSchema = Type.Object(
         timezone: Type.Literal('UTC'),
         retentionDays: Type.Literal(90),
       },
-      { additionalProperties: false },
+      { additionalProperties: false }
     ),
     totals: UsageMetricsSchema,
     providers: Type.Array(ProviderUsageSchema),
@@ -102,7 +102,7 @@ export const ExternalUsageResponseSchema = Type.Object(
     operations: Type.Array(OperationUsageSchema),
     models: Type.Optional(Type.Array(ModelUsageSchema)),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export type ExternalUsageDays = Static<typeof ExternalUsageDaysSchema>;

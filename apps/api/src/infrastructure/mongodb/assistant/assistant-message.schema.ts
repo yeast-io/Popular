@@ -36,7 +36,7 @@ const schema = new Schema(
     },
     deliveredMovieCount: { type: Number, default: 0, min: 0 },
   },
-  { timestamps: true, collection: 'assistant_messages' },
+  { timestamps: true, collection: 'assistant_messages' }
 );
 schema.index({ ownerId: 1, channel: 1, chatId: 1, messageId: 1 }, { unique: true });
 schema.index({ status: 1, nextAttemptAt: 1, receivedAt: 1 });

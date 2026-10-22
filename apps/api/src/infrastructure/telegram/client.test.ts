@@ -37,13 +37,13 @@ test('HTTP diagnostics expose conflict status and API code without token or resp
         status: 409,
       });
     }) as typeof fetch,
-    logger,
+    logger
   );
   await assert.rejects(client.updates(123), { code: 'SERVICE_UNAVAILABLE' });
   assert.ok(
     logs.some((line) => {
       return line.httpStatus === 409 && line.telegramErrorCode === 409 && line.method === 'getUpdates';
-    }),
+    })
   );
   assert.ok(!JSON.stringify(logs).includes(token));
   assert.ok(!JSON.stringify(logs).includes('private upstream description'));
@@ -77,12 +77,12 @@ test('routine getUpdates HTTP logs follow the poll switch, while sends remain vi
         return new Response(JSON.stringify({ ok: true, result: [] }));
       }) as typeof fetch,
       logger,
-      enabled,
+      enabled
     );
     await client.updates(0);
     assert.equal(
       logs.some((line) => line.method === 'getUpdates'),
-      enabled,
+      enabled
     );
     const sender = new TelegramClient(
       token,
@@ -90,7 +90,7 @@ test('routine getUpdates HTTP logs follow the poll switch, while sends remain vi
         return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }));
       }) as typeof fetch,
       logger,
-      enabled,
+      enabled
     );
     await sender.send('101', 'private reply');
     assert.ok(logs.some((line) => line.method === 'sendMessage'));

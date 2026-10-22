@@ -1,5 +1,11 @@
 import type { Model } from 'mongoose';
-import type { AppendMessageInput, ConversationMessage, ConversationStore, ConversationThread, SaveConversationSummaryInput } from '../../../modules/conversations/conversation.types.js';
+import type {
+  AppendMessageInput,
+  ConversationMessage,
+  ConversationStore,
+  ConversationThread,
+  SaveConversationSummaryInput,
+} from '../../../modules/conversations/conversation.types.js';
 import type { ConversationMessageDocument } from './conversation-message.schema.js';
 import type { ConversationThreadDocument } from './conversation-thread.schema.js';
 
@@ -42,7 +48,7 @@ export class MongoConversationStore implements ConversationStore {
       .findOneAndUpdate(
         { _id: input.threadId, ownerId: input.ownerId, status: 'active' },
         { $inc: { nextSequence: 1 }, $set: { lastMessageAt: now } },
-        { new: false },
+        { new: false }
       )
       .exec();
     if (!thread) return null;
@@ -63,7 +69,7 @@ export class MongoConversationStore implements ConversationStore {
         await this.threads
           .updateOne(
             { _id: input.threadId, ownerId: input.ownerId, title: { $exists: false } },
-            { $set: { title: titleFromFirstMessage(input.content) } },
+            { $set: { title: titleFromFirstMessage(input.content) } }
           )
           .exec();
       }
@@ -87,7 +93,7 @@ export class MongoConversationStore implements ConversationStore {
     ownerId: string,
     threadId: string,
     role: AppendMessageInput['role'],
-    clientRequestId: string,
+    clientRequestId: string
   ): Promise<ConversationMessage | null> {
     const row = await this.messages.findOne({ ownerId, threadId, role, clientRequestId }).exec();
     return row ? toMessage(row) : null;
@@ -102,7 +108,7 @@ export class MongoConversationStore implements ConversationStore {
     ownerId: string,
     threadId: string,
     afterSequence: number,
-    limit: number,
+    limit: number
   ): Promise<ConversationMessage[]> {
     const rows = await this.messages
       .find({
@@ -117,8 +123,8 @@ export class MongoConversationStore implements ConversationStore {
   }
 
   async saveSummary(input: SaveConversationSummaryInput): Promise<ConversationThread | null> {
-    const summaryGuard =
-      input.expectedThroughSequence === 0
+    const summaryGuard
+      = input.expectedThroughSequence === 0
         ? { 'summary.throughSequence': { $exists: false } }
         : { 'summary.throughSequence': input.expectedThroughSequence };
     const row = await this.threads
@@ -138,7 +144,7 @@ export class MongoConversationStore implements ConversationStore {
             },
           },
         },
-        { new: true },
+        { new: true }
       )
       .exec();
     return row ? toThread(row) : null;

@@ -7,8 +7,18 @@ import { isRetryableSearchError, MTeamHttpError, parseRetryAfter, retryMTeamSear
 function clock() {
   let time = 0;
   const waits: number[] = [];
-  return { now: () => time, advance: (ms: number) => { time += ms; }, waits,
-    wait: async (ms: number) => { waits.push(ms); time += ms; }, random: () => 0 };
+  return {
+    now: () => time,
+    advance: (ms: number) => {
+      time += ms;
+    },
+    waits,
+    wait: async (ms: number) => {
+      waits.push(ms);
+      time += ms;
+    },
+    random: () => 0,
+  };
 }
 const timeout = () => new IntegrationValidationError('timeout', 'query timed out');
 
@@ -33,7 +43,13 @@ test('transient timeouts recover with at most three attempts and exponential del
 test('retry exhaustion preserves the exact final error, stack and cause', async () => {
   const error = new IntegrationValidationError('timeout', 'timeout', { cause: new Error('socket timeout') });
   let calls = 0;
-  await assert.rejects(retryMTeamSearch(async () => { calls++; throw error; }, clock()), (actual) => actual === error);
+  await assert.rejects(
+    retryMTeamSearch(async () => {
+      calls++;
+      throw error;
+    }, clock()),
+    (actual) => actual === error
+  );
   assert.equal(calls, 3);
   assert.match(error.stack!, /timeout/);
   assert.equal((error.cause as Error).message, 'socket timeout');
@@ -46,16 +62,19 @@ test('authentication, permission, invalid payloads, unsafe addresses and busines
     new IntegrationValidationError('invalid_response', 'malformed data'),
     new IntegrationValidationError('network', 'Private network addresses are not allowed'),
     new IntegrationValidationError('remote_error', 'business rejection'),
-    new MTeamHttpError('remote_error', 400), new MTeamHttpError('remote_error', 501),
-    new IntegrationValidationError('network', 'TLS failed', { cause: Object.assign(
-      new Error('certificate'),
-      { code: 'CERT_HAS_EXPIRED' }
-    ) }),
+    new MTeamHttpError('remote_error', 400),
+    new MTeamHttpError('remote_error', 501),
+    new IntegrationValidationError('network', 'TLS failed', {
+      cause: Object.assign(new Error('certificate'), { code: 'CERT_HAS_EXPIRED' }),
+    }),
   ]) {
     let calls = 0;
     const runtime = clock();
     await assert.rejects(
-      retryMTeamSearch(async () => { calls++; throw error; }, runtime),
+      retryMTeamSearch(async () => {
+        calls++;
+        throw error;
+      }, runtime),
       (actual) => actual === error
     );
     assert.equal(calls, 1);
@@ -64,15 +83,16 @@ test('authentication, permission, invalid payloads, unsafe addresses and busines
 });
 
 test('selected HTTP failures and transient network causes are retryable', () => {
-  for (const status of [500, 502, 503, 504]) assert.equal(
-    isRetryableSearchError(new MTeamHttpError('remote_error', status)),
-    true
-  );
+  for (const status of [500, 502, 503, 504])
+    assert.equal(isRetryableSearchError(new MTeamHttpError('remote_error', status)), true);
   assert.equal(isRetryableSearchError(new MTeamHttpError('rate_limited', 429)), true);
-  assert.equal(isRetryableSearchError(new IntegrationValidationError('network', 'connection', {
-    cause: Object.assign(new Error('connection reset'), { code: 'ECONNRESET' }),
-  })
-  ), true
+  assert.equal(
+    isRetryableSearchError(
+      new IntegrationValidationError('network', 'connection', {
+        cause: Object.assign(new Error('connection reset'), { code: 'ECONNRESET' }),
+      })
+    ),
+    true
   );
 });
 
@@ -90,7 +110,10 @@ test('Retry-After supports seconds and HTTP dates, is respected, and never bypas
   let calls = 0;
   const tooLong = new MTeamHttpError('rate_limited', 429, 60_000);
   await assert.rejects(
-    retryMTeamSearch(async () => { calls++; throw tooLong; }, clock()),
+    retryMTeamSearch(async () => {
+      calls++;
+      throw tooLong;
+    }, clock()),
     (actual) => actual === tooLong
   );
   assert.equal(calls, 1);
@@ -99,12 +122,16 @@ test('Retry-After supports seconds and HTTP dates, is respected, and never bypas
 test('total budget includes attempts and waits; configured source interval and jitter are respected', async () => {
   const runtime = clock();
   let calls = 0;
-  await assert.rejects(retryMTeamSearch(async () => {
-    calls++;
-    runtime.advance(19_000);
-    throw timeout();
-  }, { ...runtime, minimumIntervalMs: 2500, random: () => 0.5 }
-  ), /query timed out/
+  await assert.rejects(
+    retryMTeamSearch(
+      async () => {
+        calls++;
+        runtime.advance(19_000);
+        throw timeout();
+      },
+      { ...runtime, minimumIntervalMs: 2500, random: () => 0.5 }
+    ),
+    /query timed out/
   );
   assert.equal(calls, 2);
   assert.deepEqual(runtime.waits, [2625]);
@@ -112,11 +139,15 @@ test('total budget includes attempts and waits; configured source interval and j
 
 test('total deadline aborts hung work rather than waiting indefinitely', async () => {
   let signal: AbortSignal | undefined;
-  await assert.rejects(retryMTeamSearch(async (_attempt, _operationId, current) => {
-    signal = current;
-    return new Promise<never>(() => undefined);
-  }, { budgetMs: 20 }
-  ), /total time budget/
+  await assert.rejects(
+    retryMTeamSearch(
+      async (_attempt, _operationId, current) => {
+        signal = current;
+        return new Promise<never>(() => undefined);
+      },
+      { budgetMs: 20 }
+    ),
+    /total time budget/
   );
   assert.equal(signal?.aborted, true);
 });
@@ -124,20 +155,35 @@ test('total deadline aborts hung work rather than waiting indefinitely', async (
 test('retry failures retain diagnostics and correlation even when verbose is disabled', async () => {
   const errors: Record<string, unknown>[] = [];
   const infos: Record<string, unknown>[] = [];
-  const trace = new AiTrace({ error: (value: Record<string, unknown>) => {
-    return errors.push(value);
-  }, info: (value: Record<string, unknown>) => {
-    return infos.push(value);
-  } }, { correlationId: 'query-123' }, 'private user text', 'query', false);
+  const trace = new AiTrace(
+    {
+      error: (value: Record<string, unknown>) => {
+        return errors.push(value);
+      },
+      info: (value: Record<string, unknown>) => {
+        return infos.push(value);
+      },
+    },
+    { correlationId: 'query-123' },
+    'private user text',
+    'query',
+    false
+  );
   await withAiTrace(trace, () => {
     return retryMTeamSearch(async (attempt) => {
-      if (attempt < 3) throw new IntegrationValidationError('timeout', 'private user text', { cause: new Error('Bearer secret-token') });
+      if (attempt < 3)
+        throw new IntegrationValidationError('timeout', 'private user text', {
+          cause: new Error('Bearer secret-token'),
+        });
       return 'ok';
     }, clock()
     );
   });
   assert.equal(infos.length, 0);
-  assert.deepEqual(errors.map((entry) => entry.attempt), [1, 2]);
+  assert.deepEqual(
+    errors.map((entry) => entry.attempt),
+    [1, 2]
+  );
   assert.ok(errors.every((entry) => entry.correlationId === 'query-123'));
   assert.doesNotMatch(JSON.stringify(errors), /private user text|secret-token/);
   assert.match(JSON.stringify(errors), /stack|cause/);
@@ -145,12 +191,24 @@ test('retry failures retain diagnostics and correlation even when verbose is dis
 
 test('caller cancellation prevents a search and aborts an in-flight search without retrying', async () => {
   let calls = 0;
-  await assert.rejects(retryMTeamSearch(async () => { calls++; }, { signal: AbortSignal.abort() }));
+  await assert.rejects(
+    retryMTeamSearch(
+      async () => {
+        calls++;
+      },
+      { signal: AbortSignal.abort() }
+    )
+  );
   assert.equal(calls, 0);
   const controller = new AbortController();
-  const operation = retryMTeamSearch(async (_attempt, _id, signal) => {
-    calls++; controller.abort(); signal.throwIfAborted();
-  }, { signal: controller.signal }
+  const operation = retryMTeamSearch(
+    async (_attempt, _id, signal) => {
+      calls++;
+      controller.abort();
+      signal.throwIfAborted();
+    },
+    { signal: controller.signal }
   );
-  await assert.rejects(operation); assert.equal(calls, 1);
+  await assert.rejects(operation);
+  assert.equal(calls, 1);
 });

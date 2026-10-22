@@ -5,7 +5,11 @@ import type { MovieResourceBatchChecker } from './movie-site-resources.types.js'
 import type { MovieResourceCheckExecution } from './movie-resource-check.types.js';
 import type { MovieResourceCheckRecord, MovieResourceCheckStore } from './movie-resource-check.types.js';
 import { MovieResourceSyncService } from './movie-resource-sync.service.js';
-import type { MovieResourceSyncBatchStore, StoredMovieResourceSyncBatch, SyncCounter } from './movie-resource-sync.types.js';
+import type {
+  MovieResourceSyncBatchStore,
+  StoredMovieResourceSyncBatch,
+  SyncCounter,
+} from './movie-resource-sync.types.js';
 
 const now = new Date('2026-10-13T00:00:00.000Z');
 
@@ -37,24 +41,30 @@ class MemoryBatchStore implements MovieResourceSyncBatchStore {
     };
     return this.batch;
   }
+
   async readCurrent() {
     return this.batch;
   }
+
   async read(ownerId: string, id: string) {
     return this.batch?.ownerId === ownerId && this.batch.id === id ? this.batch : null;
   }
+
   async readRecoverable() {
     return this.batch ? [this.batch] : [];
   }
+
   async setRunning() {
     if (this.batch) this.batch.status = 'running';
   }
+
   async advance(_id: string, counter: SyncCounter) {
     if (!this.batch) return;
     this.batch.cursor += 1;
     this.batch.completed += 1;
     this.batch[counter] += 1;
   }
+
   async pause(_id: string, resumeAt: Date) {
     if (!this.batch) return;
     this.pauses += 1;
@@ -62,6 +72,7 @@ class MemoryBatchStore implements MovieResourceSyncBatchStore {
     this.batch.status = 'paused';
     this.batch.resumeAt = resumeAt.toISOString();
   }
+
   async finish(_id: string, status: 'completed' | 'failed', needsAction?: 'update_api_key') {
     if (!this.batch) return;
     this.batch.status = status;
@@ -73,7 +84,7 @@ function harness(
   records: MovieResourceCheckRecord[],
   execute: (tmdbId: number, call: number) => MovieResourceCheckExecution,
   readOne: () => Promise<MovieResourceCheckRecord | null> = async () => null,
-  ids = [1, 2, 3, 4],
+  ids = [1, 2, 3, 4]
 ) {
   const statuses = {
     list: async (_ownerId: string, _status: string, page: number) => {
@@ -111,8 +122,7 @@ function harness(
     async (milliseconds) => {
       waits.push(milliseconds);
       await new Promise((resolve) => setTimeout(resolve, milliseconds));
-    },
-  );
+    });
   return { batches, calls, service, waits, checker };
 }
 
@@ -163,7 +173,7 @@ test('sync does not wait when no other check task exists for an incomplete legac
     [incomplete],
     () => ({ started: false }),
     async () => incomplete,
-    [1],
+    [1]
   );
 
   await service.start('owner-a');
@@ -267,7 +277,7 @@ test('sync job lookup is isolated by authenticated owner', async () => {
 function successful(
   tmdbId: number,
   availability: 'available' | 'unavailable',
-  checkedAt: Date,
+  checkedAt: Date
 ): MovieResourceCheckRecord {
   return {
     ownerId: 'owner-a',
@@ -303,7 +313,6 @@ test('shutdown cancels queued batch timers and preserves batches for startup rec
   assert.equal(h.calls.length, 0);
   assert.equal(h.batches.batch?.status, 'queued');
 });
-
 
 test('multi-site batches persist the launch selection and include a film whose other source has not been checked', async () => {
   const f = harness(

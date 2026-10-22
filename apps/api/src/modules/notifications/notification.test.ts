@@ -3,7 +3,13 @@ import test from 'node:test';
 import { NotificationService } from './notification.service.js';
 import { NotificationWorker } from './notification.worker.js';
 import { CHECK_INTERVAL_MS } from './notification.policy.js';
-import type { ClaimedDownload, NotificationChannel, NotificationPlan, NotificationPreferenceRecord, NotificationStore } from './notification.types.js';
+import type {
+  ClaimedDownload,
+  NotificationChannel,
+  NotificationPlan,
+  NotificationPreferenceRecord,
+  NotificationStore,
+} from './notification.types.js';
 import type { MovieDownloadProgress } from '../downloads/movie-download.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 
@@ -157,7 +163,7 @@ function fixture() {
       now,
       async () => {
         return Buffer.from('poster');
-      },
+      }
     );
   };
   const enable = (owner: string, extra: string[] = []) => {
@@ -278,7 +284,7 @@ test('preferences require authentication and reject unsupported or unlinked targ
     () => {
       return f.service.save('alice', { enabled: true, defaultChannel: 'telegram', additionalChannels: [] });
     },
-    { code: 'VALIDATION_ERROR' },
+    { code: 'VALIDATION_ERROR' }
   );
   await assert.rejects(() => f.enable('unlinked'), { code: 'CONFLICT' });
   assert.equal(f.preferences.size, 0);
@@ -330,7 +336,7 @@ test('notification HTTP settings authenticate the owner and serialize the extens
         }
         )
       ).statusCode,
-      400,
+      400
     );
     assert.equal(
       (
@@ -342,7 +348,7 @@ test('notification HTTP settings authenticate the owner and serialize the extens
         }
         )
       ).statusCode,
-      400,
+      400
     );
   } finally {
     await app.close();

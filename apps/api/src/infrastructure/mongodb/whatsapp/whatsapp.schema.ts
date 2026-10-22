@@ -7,7 +7,7 @@ const whatsappSessionSchema = new Schema(
     leaseId: String,
     leaseUntil: Date,
   },
-  { timestamps: true, collection: 'whatsapp_sessions' },
+  { timestamps: true, collection: 'whatsapp_sessions' }
 );
 whatsappSessionSchema.index({ ownerId: 1 }, { unique: true });
 export const createWhatsAppModel = (connection: Connection) => {

@@ -8,7 +8,7 @@ const notificationPreferencesSchema = new Schema(
     additionalChannels: { type: [String], default: [] },
     epoch: { type: Number, default: 0 },
   },
-  { timestamps: true, collection: 'notification_preferences' },
+  { timestamps: true, collection: 'notification_preferences' }
 );
 notificationPreferencesSchema.index({ ownerId: 1 }, { unique: true });
 export const createNotificationPreferencesModel = (connection: Connection) => {

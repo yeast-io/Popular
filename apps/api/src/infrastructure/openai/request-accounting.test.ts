@@ -36,7 +36,7 @@ test('each retry is recorded for its owner and model without prompts, output, or
       },
       maxRetries: 1,
       retryDelayMs: 0,
-    },
+    }
   );
   await client.generate(input);
   assert.equal(calls, 2);
@@ -46,7 +46,7 @@ test('each retry is recorded for its owner and model without prompts, output, or
     [
       ['alice', 'assistant.intent', 1, 'failure'],
       ['alice', 'assistant.intent', 2, 'success'],
-    ],
+    ]
   );
   assert.equal(events[0]!.operationId, events[1]!.operationId);
   assert.equal(events[0]!.tokenUsage, undefined);
@@ -88,7 +88,7 @@ test('stream completion, incomplete responses, and disconnects each record exact
             events.push(event);
           },
         },
-      },
+      }
     );
     const consume = async () => {
       for await (const _event of client.stream(input)) {
@@ -126,7 +126,7 @@ test('consumer cancellation records unknown usage and never retries a partially 
           events.push(event);
         },
       },
-    },
+    }
   );
   for await (const _event of client.stream(input)) break;
   assert.equal(calls, 1);
@@ -158,7 +158,7 @@ test('recorder failure does not retry generation; abort before request produces 
         },
       },
       maxRetries: 2,
-    },
+    }
   );
   await client.generate(input);
   assert.equal(calls, 1);

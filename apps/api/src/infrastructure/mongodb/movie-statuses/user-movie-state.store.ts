@@ -3,14 +3,12 @@ import type { MovieStatusRecord, MovieStatusStore } from '../../../modules/movie
 import type { UserMovieStateDocument } from './user-movie-state.schema.js';
 
 export class MongoMovieStatusStore implements MovieStatusStore {
-  constructor(
-    private readonly states: Model<UserMovieStateDocument>
-  ) {}
+  constructor(private readonly states: Model<UserMovieStateDocument>) {}
 
   async setStatus(
     ownerId: string,
     tmdbId: number,
-    status: Exclude<MovieStatusRecord['status'], 'unwatched'>,
+    status: Exclude<MovieStatusRecord['status'], 'unwatched'>
   ): Promise<MovieStatusRecord['status'] | null> {
     const previous = await this.states.findOne({ ownerId, tmdbId }).lean().exec();
     await this.states
@@ -20,7 +18,7 @@ export class MongoMovieStatusStore implements MovieStatusStore {
           $set: { status, ...(previous?.status === 'not_interested' ? { preference: 'disliked' } : {}) },
           $setOnInsert: { preference: 'neutral' },
         },
-        { upsert: true },
+        { upsert: true }
       )
       .exec();
     return previous ? normalizeStatus(previous.status) : null;
@@ -33,7 +31,7 @@ export class MongoMovieStatusStore implements MovieStatusStore {
       .findOneAndUpdate(
         { ownerId, tmdbId },
         { $set: { status: 'unwatched', ...(previous.status === 'not_interested' ? { preference: 'disliked' } : {}) } },
-        { returnDocument: 'after' },
+        { returnDocument: 'after' }
       )
       .lean()
       .exec();
@@ -43,7 +41,7 @@ export class MongoMovieStatusStore implements MovieStatusStore {
   async setPreference(
     ownerId: string,
     tmdbId: number,
-    preference: Exclude<MovieStatusRecord['preference'], 'neutral'>,
+    preference: Exclude<MovieStatusRecord['preference'], 'neutral'>
   ): Promise<MovieStatusRecord['preference']> {
     const previous = await this.states.findOne({ ownerId, tmdbId }).lean().exec();
     await this.states
@@ -53,7 +51,7 @@ export class MongoMovieStatusStore implements MovieStatusStore {
           $set: { preference, ...(previous?.status === 'not_interested' ? { status: 'unwatched' } : {}) },
           $setOnInsert: { status: 'unwatched' },
         },
-        { upsert: true },
+        { upsert: true }
       )
       .exec();
     return previous ? normalizePreference(previous) : 'neutral';
@@ -66,7 +64,7 @@ export class MongoMovieStatusStore implements MovieStatusStore {
       .findOneAndUpdate(
         { ownerId, tmdbId },
         { $set: { preference: 'neutral', ...(previous.status === 'not_interested' ? { status: 'unwatched' } : {}) } },
-        { returnDocument: 'after' },
+        { returnDocument: 'after' }
       )
       .lean()
       .exec();
@@ -89,10 +87,10 @@ export class MongoMovieStatusStore implements MovieStatusStore {
       | Exclude<MovieStatusRecord['preference'], 'neutral'>
       | undefined,
     page: number,
-    pageSize: number,
+    pageSize: number
   ) {
-    const filter =
-      filterValue === 'liked'
+    const filter
+      = filterValue === 'liked'
         ? { ownerId, preference: 'liked' }
         : filterValue === 'disliked'
           ? { ownerId, $or: [{ preference: 'disliked' }, { status: 'not_interested' }] }

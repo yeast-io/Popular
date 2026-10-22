@@ -3,11 +3,7 @@ import type { Redis } from 'ioredis';
 import type { SessionStore } from '../../modules/auth/auth.types.js';
 
 export class RedisSessionStore implements SessionStore {
-  constructor(
-    private readonly redis: Redis,
-    private readonly pepper: string,
-    private readonly ttlSeconds: number
-  ) {}
+  constructor(private readonly redis: Redis, private readonly pepper: string, private readonly ttlSeconds: number) {}
 
   async create(ownerId: string): Promise<string> {
     const token = randomBytes(32).toString('base64url');

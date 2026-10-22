@@ -1,5 +1,3 @@
-
-
 import type { MovieResourceSyncBatch, MovieResourceSyncStatus } from '@movie-hub/contract';
 
 export interface StoredMovieResourceSyncBatch extends MovieResourceSyncBatch {

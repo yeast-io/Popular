@@ -21,11 +21,11 @@ export const OpenAIValidationSchema = Type.Object(
           ] as const
         ).map((value) => {
           return Type.Literal(value);
-        }),
-      ),
+        })
+      )
     ),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 export type OpenAIValidation = Static<typeof OpenAIValidationSchema>;
 
@@ -36,13 +36,13 @@ export const OpenAIConfigurationSchema = Type.Object(
     model: Type.Optional(Type.String()),
     validation: Type.Optional(OpenAIValidationSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 export const SaveOpenAIConfigurationRequestSchema = Type.Object(
   {
     apiKey: Type.String({ minLength: 20, maxLength: 4096, pattern: '^\\S+$' }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 export type OpenAIConfiguration = Static<typeof OpenAIConfigurationSchema>;
 export type SaveOpenAIConfigurationRequest = Static<typeof SaveOpenAIConfigurationRequestSchema>;
@@ -51,6 +51,6 @@ export const SelectOpenAIModelRequestSchema = Type.Object(
   {
     model: Type.String({ minLength: 1, maxLength: 256 }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 export type SelectOpenAIModelRequest = Static<typeof SelectOpenAIModelRequestSchema>;

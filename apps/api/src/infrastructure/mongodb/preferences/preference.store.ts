@@ -2,17 +2,21 @@ import { randomUUID } from 'node:crypto';
 import { currentAiTrace } from '../../logging/ai-trace.js';
 import type { TasteProfile } from '@movie-hub/contract';
 import { emptyProfile } from '../../../modules/preferences/preference.domain.js';
-import type { PreferenceEvidence, PreferenceJob, PreferenceStore } from '../../../modules/preferences/preference.types.js';
+import type {
+  PreferenceEvidence,
+  PreferenceJob,
+  PreferenceStore,
+} from '../../../modules/preferences/preference.types.js';
 import type { createPreferenceModels } from './preference.schema.js';
 
 export class MongoPreferenceStore implements PreferenceStore {
-  constructor(
-    readonly models: ReturnType<typeof createPreferenceModels>
-  ) {}
+  constructor(readonly models: ReturnType<typeof createPreferenceModels>) {}
+
   async read(ownerId: string): Promise<TasteProfile> {
     const row = await this.models.profiles.findOne({ ownerId }).lean().exec();
     return row ? (row.data as TasteProfile) : emptyProfile();
   }
+
   async ensure(ownerId: string): Promise<void> {
     try {
       await this.models.profiles
@@ -22,25 +26,28 @@ export class MongoPreferenceStore implements PreferenceStore {
       if ((error as { code?: number }).code !== 11000) throw error;
     }
   }
+
   async save(ownerId: string, expected: number, profile: TasteProfile, jobId?: string): Promise<boolean> {
     await this.ensure(ownerId);
     const result = await this.models.profiles
       .updateOne(
         { ownerId, version: expected, ...(jobId ? { appliedJobs: { $ne: jobId } } : {}) },
-        { $set: { data: profile, version: profile.version }, ...(jobId ? { $addToSet: { appliedJobs: jobId } } : {}) },
+        { $set: { data: profile, version: profile.version }, ...(jobId ? { $addToSet: { appliedJobs: jobId } } : {}) }
       )
       .exec();
     return result.modifiedCount === 1;
   }
+
   async applied(ownerId: string, jobId: string): Promise<boolean> {
     return Boolean(await this.models.profiles.exists({ ownerId, appliedJobs: jobId }));
   }
+
   async enqueue(
     ownerId: string,
     key: string,
     kind: 'manual' | 'chat',
     evidence: PreferenceEvidence[],
-    fingerprint: string | null = null,
+    fingerprint: string | null = null
   ): Promise<void> {
     try {
       await this.models.jobs
@@ -57,16 +64,17 @@ export class MongoPreferenceStore implements PreferenceStore {
               ...(kind === 'manual' ? { activeOwner: ownerId } : {}),
             },
           },
-          { upsert: true },
+          { upsert: true }
         )
         .exec();
     } catch (error) {
       if ((error as { code?: number }).code !== 11000) throw error;
     }
   }
+
   async latest(ownerId: string) {
-    const row =
-      (await this.models.jobs
+    const row
+      = (await this.models.jobs
         .findOne({ ownerId, status: { $in: ['pending', 'processing'] } })
         .sort({ createdAt: -1 })
         .lean()
@@ -79,6 +87,7 @@ export class MongoPreferenceStore implements PreferenceStore {
         }
       : null;
   }
+
   async claim(leaseId: string): Promise<PreferenceJob | null> {
     const now = new Date();
     await this.models.jobs
@@ -87,7 +96,7 @@ export class MongoPreferenceStore implements PreferenceStore {
         {
           $set: { status: 'failed', error: 'Preference task exceeded recovery attempts' },
           $unset: { activeOwner: 1 },
-        },
+        }
       )
       .exec();
     const row = await this.models.jobs
@@ -99,7 +108,7 @@ export class MongoPreferenceStore implements PreferenceStore {
           ],
         },
         { $set: { status: 'processing', leaseId, leaseUntil: new Date(Date.now() + 180_000) }, $inc: { attempts: 1 } },
-        { sort: { createdAt: 1 }, returnDocument: 'after' },
+        { sort: { createdAt: 1 }, returnDocument: 'after' }
       )
       .lean()
       .exec();
@@ -116,6 +125,7 @@ export class MongoPreferenceStore implements PreferenceStore {
         }
       : null;
   }
+
   async finish(job: PreferenceJob, error?: string): Promise<void> {
     await this.models.jobs
       .updateOne(
@@ -128,10 +138,11 @@ export class MongoPreferenceStore implements PreferenceStore {
             leaseUntil: null,
           },
           ...(!error || job.attempts >= 3 ? { $unset: { activeOwner: 1 } } : {}),
-        },
+        }
       )
       .exec();
   }
+
   async owns(job: PreferenceJob): Promise<boolean> {
     return Boolean(
       await this.models.jobs.exists({
@@ -140,23 +151,25 @@ export class MongoPreferenceStore implements PreferenceStore {
         leaseId: job.leaseId,
         status: 'processing',
         leaseUntil: { $gt: new Date() },
-      }),
+      })
     );
   }
+
   async renew(job: PreferenceJob): Promise<boolean> {
     const result = await this.models.jobs
       .updateOne(
         { _id: job.id, ownerId: job.ownerId, leaseId: job.leaseId, status: 'processing' },
-        { $set: { leaseUntil: new Date(Date.now() + 180_000) } },
+        { $set: { leaseUntil: new Date(Date.now() + 180_000) } }
       )
       .exec();
     return result.matchedCount === 1;
   }
+
   async cancel(ownerId: string) {
     await this.models.jobs
       .updateMany(
         { ownerId, status: { $in: ['pending', 'processing'] } },
-        { $set: { status: 'completed', leaseUntil: null, leaseId: null }, $unset: { activeOwner: 1 } },
+        { $set: { status: 'completed', leaseUntil: null, leaseId: null }, $unset: { activeOwner: 1 } }
       )
       .exec();
   }

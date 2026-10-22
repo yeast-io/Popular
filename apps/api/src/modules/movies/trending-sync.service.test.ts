@@ -1,13 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { SyncLock, TrendingPageRecord, TrendingProvider, TrendingSnapshotRecord, TrendingStore } from './movie.types.js';
+import type {
+  SyncLock,
+  TrendingPageRecord,
+  TrendingProvider,
+  TrendingSnapshotRecord,
+  TrendingStore,
+} from './movie.types.js';
 import { TrendingSyncService } from './trending-sync.service.js';
 
 class MemoryLogger {
   readonly entries: Array<{ level: 'info' | 'error'; bindings: Record<string, unknown>; message: string }> = [];
+
   info(bindings: Record<string, unknown>, message: string) {
     this.entries.push({ level: 'info', bindings, message });
   }
+
   error(bindings: Record<string, unknown>, message: string) {
     this.entries.push({ level: 'error', bindings, message });
   }
@@ -26,18 +34,21 @@ class MemoryStore implements TrendingStore {
   async publishSnapshot(snapshot: TrendingSnapshotRecord, locale: string) {
     this.published.push({ locale, snapshot });
   }
+
   async appendSnapshotPage(
     page: TrendingPageRecord,
     locale: string,
     generation: string,
     sourcePage: number,
-    pageSize: number,
+    pageSize: number
   ) {
     this.appended.push({ locale, generation, sourcePage, pageSize, page });
   }
+
   async readPage() {
     return null;
   }
+
   async readSnapshot(locale: string, generation: string) {
     const published = this.published.find((entry) => {
       return entry.locale === locale && entry.snapshot.generation === generation;
@@ -79,7 +90,7 @@ test('single-page sync publishes a new snapshot only after the provider result i
   const result = await new TrendingSyncService(provider, store, lock, 'zh-CN', 60, logger).syncPage(
     1,
     'request',
-    'zh-CN',
+    'zh-CN'
   );
 
   assert.equal(result.status, 'completed');
@@ -93,7 +104,7 @@ test('single-page sync publishes a new snapshot only after the provider result i
       'TMDB trending page fetch started',
       'TMDB trending page fetched',
       'TMDB trending sync completed',
-    ],
+    ]
   );
 });
 
@@ -120,7 +131,7 @@ test('configured sync removes cross-page duplicates and backfills from later sou
   await new TrendingSyncService(provider, store, lock, 'zh-CN', 60, new MemoryLogger()).syncConfiguredPages(
     2,
     2,
-    'scheduler',
+    'scheduler'
   );
 
   const snapshot = store.published[0]!.snapshot;
@@ -130,7 +141,7 @@ test('configured sync removes cross-page duplicates and backfills from later sou
     [
       [1, 2],
       [3, 4],
-    ],
+    ]
   );
   assert.equal(new Set(snapshot.pages.flatMap((page) => page.movies.map(({ tmdbId }) => tmdbId))).size, 4);
   assert.equal(snapshot.sourcePage, 3);
@@ -178,7 +189,7 @@ test('load-more extends the requested generation and backfills overlaps', async 
     2,
     'load-more',
     'en-US',
-    generation,
+    generation
   );
 
   assert.equal(store.appended[0]?.generation, generation);
@@ -186,7 +197,7 @@ test('load-more extends the requested generation and backfills overlaps', async 
   assert.equal(store.appended[0]?.page.fetchedAt, fetchedAt);
   assert.deepEqual(
     store.appended[0]?.page.movies.map(({ tmdbId }) => tmdbId),
-    [3, 4],
+    [3, 4]
   );
 });
 
@@ -215,7 +226,7 @@ test('page sync scopes provider, publication, and distributed lock to the reques
   await new TrendingSyncService(provider, store, scopedLock, 'zh-CN', 60, new MemoryLogger()).syncPage(
     1,
     'request',
-    'en-US',
+    'en-US'
   );
   assert.equal(providerLocale, 'en-US');
   assert.equal(publishedLocale, 'en-US');
@@ -234,7 +245,7 @@ test('configured automatic sync uses only the configured default locale', async 
   await new TrendingSyncService(provider, new MemoryStore(), lock, 'zh-CN', 60, new MemoryLogger()).syncConfiguredPages(
     2,
     2,
-    'scheduler',
+    'scheduler'
   );
   assert.deepEqual(locales, ['zh-CN', 'zh-CN']);
 });
@@ -252,7 +263,7 @@ test('sync skips without calling TMDB when the distributed lock is held', async 
   const result = await new TrendingSyncService(provider, new MemoryStore(), heldLock, 'zh-CN', 60, logger).syncPage(
     1,
     'request',
-    'zh-CN',
+    'zh-CN'
   );
   assert.equal(result.status, 'skipped');
   assert.equal(calls, 0);

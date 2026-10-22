@@ -34,7 +34,7 @@ test('My Movies can expose a failed refresh without discarding the last successf
       locale: 'zh-CN',
     }
     ),
-    true,
+    true
   );
 });
 
@@ -64,7 +64,7 @@ test('live M-Team releases contain display data without exposing credentials', (
       ],
     }
     ),
-    true,
+    true
   );
   assert.equal(
     Value.Check(MovieReleaseListResponseSchema, {
@@ -75,6 +75,6 @@ test('live M-Team releases contain display data without exposing credentials', (
       releases: [{ id: '991', title: 'Release', seeders: 1, tags: [], apiKey: 'secret' }],
     }
     ),
-    false,
+    false
   );
 });

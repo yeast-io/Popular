@@ -1,4 +1,19 @@
-import { ApiErrorSchema, LoadMoreTrendingRequestSchema, MovieDetailParamsSchema, MovieDetailQuerySchema, MovieDetailSchema, SearchMoviesQuerySchema, SearchMoviesResponseSchema, TrendingMoviesResponseSchema, TrendingQuerySchema, type LoadMoreTrendingRequest, type MovieDetailParams, type MovieDetailQuery, type SearchMoviesQuery, type TrendingQuery } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  LoadMoreTrendingRequestSchema,
+  MovieDetailParamsSchema,
+  MovieDetailQuerySchema,
+  MovieDetailSchema,
+  SearchMoviesQuerySchema,
+  SearchMoviesResponseSchema,
+  TrendingMoviesResponseSchema,
+  TrendingQuerySchema,
+  type LoadMoreTrendingRequest,
+  type MovieDetailParams,
+  type MovieDetailQuery,
+  type SearchMoviesQuery,
+  type TrendingQuery,
+} from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
@@ -9,7 +24,7 @@ export function registerMovieRoutes(
   app: FastifyInstance,
   service: MovieService,
   auth?: AuthService,
-  config?: AppConfig,
+  config?: AppConfig
 ): void {
   app.get<{ Querystring: TrendingQuery }>(
     '/movies/trending',
@@ -23,10 +38,9 @@ export function registerMovieRoutes(
       return service.trending(
         request.query.page ?? 1,
         resolveLocale(request.query.locale, config),
-        await optionalOwnerId(request, auth, config),
+        await optionalOwnerId(request, auth, config)
       );
-    },
-  );
+    });
 
   app.get<{ Querystring: SearchMoviesQuery }>(
     '/movies/search',
@@ -41,10 +55,9 @@ export function registerMovieRoutes(
         request.query.query,
         request.query.page ?? 1,
         resolveLocale(request.query.locale, config),
-        await optionalOwnerId(request, auth, config),
+        await optionalOwnerId(request, auth, config)
       );
-    },
-  );
+    });
 
   app.get<{ Params: MovieDetailParams; Querystring: MovieDetailQuery }>(
     '/movies/:tmdbId',
@@ -59,10 +72,9 @@ export function registerMovieRoutes(
       return service.detail(
         request.params.tmdbId,
         resolveLocale(request.query.locale, config),
-        await optionalOwnerId(request, auth, config),
+        await optionalOwnerId(request, auth, config)
       );
-    },
-  );
+    });
 
   app.post<{ Body: LoadMoreTrendingRequest }>(
     '/movies/trending/load-more',
@@ -77,10 +89,9 @@ export function registerMovieRoutes(
         request.body.page,
         request.body.generation,
         resolveLocale(request.body.locale, config),
-        await optionalOwnerId(request, auth, config),
+        await optionalOwnerId(request, auth, config)
       );
-    },
-  );
+    });
 }
 
 function resolveLocale(locale: TrendingQuery['locale'], config?: AppConfig): NonNullable<TrendingQuery['locale']> {
@@ -90,7 +101,7 @@ function resolveLocale(locale: TrendingQuery['locale'], config?: AppConfig): Non
 async function optionalOwnerId(
   request: FastifyRequest,
   auth?: AuthService,
-  config?: AppConfig,
+  config?: AppConfig
 ): Promise<string | null> {
   if (!auth || !config) return null;
   return auth.optionalOwnerId(readSessionToken(request, config.SESSION_COOKIE_NAME));

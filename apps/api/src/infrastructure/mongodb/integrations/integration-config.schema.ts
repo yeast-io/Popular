@@ -11,7 +11,7 @@ const integrationConfigSchema = new Schema(
     lastValidationAt: { type: Date },
     lastFailureType: { type: String },
   },
-  { timestamps: true, collection: 'integration_configs' },
+  { timestamps: true, collection: 'integration_configs' }
 );
 
 integrationConfigSchema.index({ ownerId: 1, provider: 1 }, { unique: true });

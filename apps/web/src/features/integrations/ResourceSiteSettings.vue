@@ -24,7 +24,9 @@ let controller: AbortController | undefined;
 const configured = computed(() => configuration.value.status !== 'unconfigured');
 const endpoint = `${apiBaseUrl}/me/integrations/resource-sites/hdarea`;
 onMounted(async () => {
-  await action(async () => { applyConfiguration(await request(endpoint)); });
+  await action(async () => {
+    applyConfiguration(await request(endpoint));
+  });
   loading.value = false;
 });
 onBeforeUnmount(() => controller?.abort());
@@ -48,15 +50,17 @@ const errorKeys = {
   'resourceSite.error.timeout': true, 'resourceSite.error.invalidCredential': true,
 };
 async function action(work: () => Promise<void>) {
-  busy.value = true; notice.value = ''; feedback.value = '';
-  try { await work(); }
-  catch (error) {
+  busy.value = true;
+  notice.value = '';
+  feedback.value = '';
+  try {
+    await work();
+  } catch (error) {
     notice.value = localizedErrorMessage(error, 'resourceSite.error.network');
-    if (configured.value && error instanceof LocalizedApiError &&
-      ['resourceSite.error.authentication', 'resourceSite.error.blocked'].includes(error.translationKey))
+    if (configured.value && error instanceof LocalizedApiError
+      && ['resourceSite.error.authentication', 'resourceSite.error.blocked'].includes(error.translationKey))
       configuration.value = { ...configuration.value, status: 'configured_invalid' };
-  }
-  finally { busy.value = false; }
+  } finally { busy.value = false; }
 }
 function applyConfiguration(next: ResourceSiteConfiguration) {
   configuration.value = next;
@@ -72,14 +76,18 @@ async function save() {
         {
           ...(replacementSecret(
             cookie.value, configuration.value.cookieMasked
-          ) ? { cookie: replacementSecret(
-            cookie.value, configuration.value.cookieMasked
-          ) } : {}),
+          )
+            ? { cookie: replacementSecret(
+                cookie.value, configuration.value.cookieMasked
+              ) }
+            : {}),
           ...(replacementSecret(
             passkey.value, configuration.value.passkeyMasked
-          ) ? { passkey: replacementSecret(
-            passkey.value, configuration.value.passkeyMasked
-          ) } : {}),
+          )
+            ? { passkey: replacementSecret(
+                passkey.value, configuration.value.passkeyMasked
+              ) }
+            : {}),
         }
       ) }
     )
@@ -92,7 +100,8 @@ async function remove() {
   deleting.value = true;
   await action(async () => {
     await request(endpoint, { method: 'DELETE' });
-    applyConfiguration({ site: 'hdarea', status: 'unconfigured' }); confirmDelete.value = false;
+    applyConfiguration({ site: 'hdarea', status: 'unconfigured' });
+    confirmDelete.value = false;
     emit('configuration-changed');
   });
   deleting.value = false;

@@ -6,13 +6,13 @@ const duplicate = (error: unknown): boolean => {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 };
 export class MongoTelegramStore implements TelegramStore {
-  constructor(
-    private readonly model: Model<TelegramBindingDocument>
-  ) {}
+  constructor(private readonly model: Model<TelegramBindingDocument>) {}
+
   async findOwnerByChatId(chatId: string): Promise<string | null> {
     const row = await this.model.findOne({ chatId }).select('ownerId').lean().exec();
     return row ? String(row.ownerId) : null;
   }
+
   async find(ownerId: string): Promise<TelegramRecord | null> {
     const row = await this.model.findOne({ ownerId }).lean().exec();
     return row
@@ -23,6 +23,7 @@ export class MongoTelegramStore implements TelegramStore {
         }
       : null;
   }
+
   async pending(ownerId: string, pendingHash: string, expiresAt: Date): Promise<boolean> {
     try {
       await this.model
@@ -34,12 +35,13 @@ export class MongoTelegramStore implements TelegramStore {
       throw error;
     }
   }
+
   async consume(pendingHash: string, chatId: string, account: string, now: Date): Promise<boolean> {
     try {
       const result = await this.model
         .updateOne(
           { pendingHash, expiresAt: { $gt: now }, chatId: { $exists: false } },
-          { $set: { chatId, account }, $unset: { pendingHash: 1, expiresAt: 1 } },
+          { $set: { chatId, account }, $unset: { pendingHash: 1, expiresAt: 1 } }
         )
         .exec();
       return result.modifiedCount === 1;
@@ -48,6 +50,7 @@ export class MongoTelegramStore implements TelegramStore {
       throw error;
     }
   }
+
   async reserveTest(ownerId: string, chatId: string, now: Date): Promise<boolean> {
     const result = await this.model
       .updateOne(
@@ -56,11 +59,12 @@ export class MongoTelegramStore implements TelegramStore {
           chatId,
           $or: [{ lastTestAt: { $exists: false } }, { lastTestAt: { $lte: new Date(now.getTime() - 30_000) } }],
         },
-        { $set: { lastTestAt: now } },
+        { $set: { lastTestAt: now } }
       )
       .exec();
     return result.modifiedCount === 1;
   }
+
   async remove(ownerId: string): Promise<void> {
     await this.model.deleteOne({ ownerId }).exec();
   }

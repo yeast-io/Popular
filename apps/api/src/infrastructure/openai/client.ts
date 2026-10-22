@@ -1,13 +1,20 @@
 import { currentAiTrace } from '../logging/ai-trace.js';
 import { AppError } from '../http/app-error.js';
 import type OpenAI from 'openai';
-import type { LlmClient, LlmGenerateInput, LlmGenerateResult, LlmStreamEvent, LlmFailureDiagnostics } from '../../modules/llm/llm.types.js';
+import type {
+  LlmClient,
+  LlmGenerateInput,
+  LlmGenerateResult,
+  LlmStreamEvent,
+  LlmFailureDiagnostics,
+} from '../../modules/llm/llm.types.js';
 import { LlmProviderError } from '../../modules/llm/llm.errors.js';
 import { OpenAIRequestAccounting, readTokenUsage } from './request-accounting.js';
 import type { OpenAIAccountingOptions, OpenAIRequestAttempt, RecordedTokenUsage } from './request-accounting.types.js';
 
 export class OpenAILlmClient implements LlmClient {
   private readonly accounting: OpenAIRequestAccounting;
+
   constructor(
     private readonly client: Pick<OpenAI, 'responses'>,
     private readonly model: string,
@@ -48,7 +55,7 @@ export class OpenAILlmClient implements LlmClient {
                 }
               : {}),
           },
-          { maxRetries: 0, ...(input.signal ? { signal: input.signal } : {}) },
+          { maxRetries: 0, ...(input.signal ? { signal: input.signal } : {}) }
         );
       });
       const response = tracked.response;
@@ -57,7 +64,7 @@ export class OpenAILlmClient implements LlmClient {
       responseModel = response.model;
       if (response.status && response.status !== 'completed') {
         throw new LlmProviderError(
-          `OpenAI response did not complete (${response.status}; reason: ${safeCode(response.incomplete_details?.reason) ?? 'unknown'})`,
+          `OpenAI response did not complete (${response.status}; reason: ${safeCode(response.incomplete_details?.reason) ?? 'unknown'})`
         );
       }
       if (!response.output_text.trim()) {
@@ -87,7 +94,7 @@ export class OpenAILlmClient implements LlmClient {
           upstream.code === 'insufficient_quota' ? 'OPENAI_QUOTA_EXCEEDED' : 'OPENAI_RATE_LIMITED',
           'OpenAI quota or rate limit reached',
           undefined,
-          { cause: error },
+          { cause: error }
         );
       }
       throw new LlmProviderError('OpenAI response generation failed', { cause: error });
@@ -96,7 +103,7 @@ export class OpenAILlmClient implements LlmClient {
     }
   }
 
-  async *stream(input: LlmGenerateInput): AsyncIterable<LlmStreamEvent> {
+  async* stream(input: LlmGenerateInput): AsyncIterable<LlmStreamEvent> {
     currentAiTrace()?.event('openai.request.started', {
       model: this.model,
       maxOutputTokens: input.maxOutputTokens,
@@ -118,7 +125,7 @@ export class OpenAILlmClient implements LlmClient {
             store: false,
             stream: true,
           },
-          { maxRetries: 0, ...(input.signal ? { signal: input.signal } : {}) },
+          { maxRetries: 0, ...(input.signal ? { signal: input.signal } : {}) }
         );
       });
       const stream = tracked.response;
@@ -197,15 +204,15 @@ export class OpenAILlmClient implements LlmClient {
           upstream.code === 'insufficient_quota' ? 'OPENAI_QUOTA_EXCEEDED' : 'OPENAI_RATE_LIMITED',
           'OpenAI quota or rate limit reached',
           undefined,
-          { cause: error },
+          { cause: error }
         );
       }
       const metadata = error as { status?: unknown; code?: unknown; request_id?: unknown } | null;
       if (
-        typeof metadata?.status === 'number' &&
-        Number.isInteger(metadata.status) &&
-        metadata.status >= 100 &&
-        metadata.status <= 599
+        typeof metadata?.status === 'number'
+        && Number.isInteger(metadata.status)
+        && metadata.status >= 100
+        && metadata.status <= 599
       ) {
         diagnostics.upstreamStatus = metadata.status;
       }

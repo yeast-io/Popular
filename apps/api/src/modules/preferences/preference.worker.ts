@@ -29,7 +29,7 @@ export class PreferenceWorker {
       .catch((error) => {
         return this.logger.error(
           { event: 'preference_worker_failed', stage: 'preference.task.claim', error: serializeDiagnosticError(error) },
-          'Preference worker failed',
+          'Preference worker failed'
         );
       })
       .finally(() => {
@@ -55,7 +55,7 @@ export class PreferenceWorker {
       },
       '',
       'preference.update',
-      this.verbose,
+      this.verbose
     );
     for (const item of job.evidence) trace.sensitive(item.text);
     await withAiTrace(trace, async () => {
@@ -63,7 +63,7 @@ export class PreferenceWorker {
       const controller = new AbortController();
       const deadline = setTimeout(
         () => controller.abort(new Error('Preference task exceeded 150 second deadline')),
-        150_000,
+        150_000
       );
       const heartbeat = setInterval(() => {
         void this.store

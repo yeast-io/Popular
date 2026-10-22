@@ -11,7 +11,7 @@ describe('SSE JSON reader', () => {
         'data: {"type":"completed"}\n\n',
       ].join(
         ''
-      ),
+      )
     );
     const body = new ReadableStream<Uint8Array>({
       start(controller) {

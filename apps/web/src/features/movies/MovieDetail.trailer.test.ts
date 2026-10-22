@@ -45,7 +45,7 @@ describe('Movie Detail trailer', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
 
     const wrapper = mount(MovieDetail, { attachTo: document.body, props: { tmdbId: 603, authenticated: false } });
@@ -91,7 +91,7 @@ describe('Movie Detail trailer', () => {
           locale: 'zh-CN',
         }
         );
-      }),
+      })
     );
     const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: false } });
     await flushPromises();

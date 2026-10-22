@@ -25,6 +25,6 @@ test('load-more requires a valid trending generation', () => {
   assert.equal(Value.Check(LoadMoreTrendingRequestSchema, { page: 1, locale: 'zh-CN' }), false);
   assert.equal(
     Value.Check(LoadMoreTrendingRequestSchema, { page: 1, generation: 'not-a-uuid', locale: 'zh-CN' }),
-    false,
+    false
   );
 });

@@ -1,3 +1,8 @@
+import { createRemoteCommandModels } from './remote-downloads/remote-command.schema.js';
+import {
+  createRemoteAuthorizationModel,
+  createRemoteDeviceModel,
+} from './remote-clients/remote-authorization.schema.js';
 import { createIntegrationPreferencesModel } from './integrations/integration-preferences.schema.js';
 
 import { createResourceSiteCredentialModel } from './resource-sites/resource-site-credential.schema.js';
@@ -31,6 +36,9 @@ import { createConversationMessageModel } from './conversations/conversation-mes
 
 export function createModels(connection: Connection) {
   return {
+    remoteControl: createRemoteCommandModels(connection),
+    remoteDevices: createRemoteDeviceModel(connection),
+    remoteAuthorizations: createRemoteAuthorizationModel(connection),
     integrationPreferences: createIntegrationPreferencesModel(connection),
     resourceSiteCredentials: createResourceSiteCredentialModel(connection),
     assistantMessages: createAssistantMessageModel(connection),

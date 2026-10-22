@@ -29,7 +29,7 @@ test('only stable text messages from Telegram or WhatsApp self-chat enter the du
     [
       ['alice', 'telegram', 'hello'],
       ['bob', 'whatsapp', 'hello'],
-    ],
+    ]
   );
 });
 
@@ -43,7 +43,7 @@ test('inbox persistence failure propagates to the receiving transport', async ()
     },
     () => {
       wakes++;
-    },
+    }
   );
   await assert.rejects(
     receiver.receive('alice', {
@@ -55,7 +55,7 @@ test('inbox persistence failure propagates to the receiving transport', async ()
       text: 'hello',
     }
     ),
-    /storage unavailable/,
+    /storage unavailable/
   );
   assert.equal(wakes, 0);
 });
@@ -77,7 +77,7 @@ test('wakes only after persistence completes and returns without waiting for bac
     (input) => {
       assert.equal(persisted, true);
       wakes.push(input.chatId);
-    },
+    }
   );
   const receiving = receiver.receive('alice', {
     channel: 'telegram',
@@ -113,7 +113,7 @@ test('persistence diagnostics identify storage failure and redact the input from
       },
     },
     () => assert.fail('must not wake after persistence failure'),
-    logger,
+    logger
   );
   await assert.rejects(
     receiver.receive('alice', {
@@ -124,7 +124,7 @@ test('persistence diagnostics identify storage failure and redact the input from
       messageType: 'text',
       text: 'private incoming text',
     }
-    ),
+    )
   );
   assert.ok(logs.some((line) => line.error && line.stage === 'assistant.inbox.persist' && line.messageId === '1'));
   assert.match(JSON.stringify(logs), /DB_DOWN/);

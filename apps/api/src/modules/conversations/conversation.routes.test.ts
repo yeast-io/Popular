@@ -49,7 +49,7 @@ test('conversation routes pass the session token and expose only user message cr
       token: string | undefined,
       inputThreadId: string,
       content: string,
-      clientRequestId?: string,
+      clientRequestId?: string
     ) => {
       calls.push({ ...(token ? { token } : {}), content });
       return {
@@ -261,7 +261,7 @@ test('logs safe diagnostics after SSE starts while keeping client errors generic
       error: ((...args: unknown[]) => {
         logs.push(args);
       }) as never,
-    },
+    }
   );
   try {
     const response = await app.inject({

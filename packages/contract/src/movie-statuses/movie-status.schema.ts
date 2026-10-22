@@ -9,41 +9,41 @@ export const trackedMovieStatuses = ['watched', 'interested'] as const;
 export const TrackedMovieStatusSchema = Type.Union(
   trackedMovieStatuses.map((status) => {
     return Type.Literal(status);
-  }),
+  })
 );
 
 export const moviePreferences = ['neutral', 'liked', 'disliked'] as const;
 export const MoviePreferenceSchema = Type.Union(
   moviePreferences.map((preference) => {
     return Type.Literal(preference);
-  }),
+  })
 );
 export const trackedMoviePreferences = ['liked', 'disliked'] as const;
 export const TrackedMoviePreferenceSchema = Type.Union(
   trackedMoviePreferences.map((preference) => {
     return Type.Literal(preference);
-  }),
+  })
 );
 
 export const MovieIdParamsSchema = Type.Object(
   {
     tmdbId: Type.Integer({ minimum: 1 }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const SetMovieStatusRequestSchema = Type.Object(
   {
     status: TrackedMovieStatusSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const SetMoviePreferenceRequestSchema = Type.Object(
   {
     preference: TrackedMoviePreferenceSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieStatusResponseSchema = Type.Object(
@@ -51,7 +51,7 @@ export const MovieStatusResponseSchema = Type.Object(
     tmdbId: Type.Integer({ minimum: 1 }),
     status: MovieStatusSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MoviePreferenceResponseSchema = Type.Object(
@@ -59,14 +59,14 @@ export const MoviePreferenceResponseSchema = Type.Object(
     tmdbId: Type.Integer({ minimum: 1 }),
     preference: MoviePreferenceSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const myMoviesFilters = [...trackedMovieStatuses, ...trackedMoviePreferences] as const;
 export const MyMoviesFilterSchema = Type.Union(
   myMoviesFilters.map((filter) => {
     return Type.Literal(filter);
-  }),
+  })
 );
 
 export const MyMoviesQuerySchema = Type.Object(
@@ -76,7 +76,7 @@ export const MyMoviesQuerySchema = Type.Object(
     pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, default: 20 })),
     locale: Type.Optional(LocaleSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieResourceAvailabilitySchema = Type.Union([
@@ -107,7 +107,7 @@ export const MovieResourceSiteCheckSchema = Type.Object(
     lastAttemptStatus: Type.Optional(Type.Union([Type.Literal('success'), Type.Literal('error')])),
     lastErrorCode: Type.Optional(MovieResourceErrorCodeSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieResourceCheckSchema = Type.Composite([MovieResourceSiteCheckSchema, Type.Object({
@@ -134,7 +134,7 @@ export const MovieReleaseSchema = Type.Object(
     releaseGroup: Type.Optional(Type.String({ minLength: 1 })),
     tags: Type.Array(Type.String({ minLength: 1 })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieReleaseListResponseSchema = Type.Object(
@@ -145,7 +145,7 @@ export const MovieReleaseListResponseSchema = Type.Object(
     cached: Type.Boolean(),
     releases: Type.Array(MovieReleaseSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const StartMovieResourceSyncRequestSchema = Type.Object({}, { additionalProperties: false });
@@ -154,7 +154,7 @@ export const MovieResourceSyncParamsSchema = Type.Object(
   {
     jobId: Type.String({ minLength: 24, maxLength: 24, pattern: '^[a-fA-F0-9]{24}$' }),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const MovieResourceSyncStatusSchema = Type.Union([
@@ -181,7 +181,7 @@ export const MovieResourceSyncBatchSchema = Type.Object(
     resumeAt: Type.Optional(Type.String({ format: 'date-time' })),
     needsAction: Type.Optional(Type.Literal('update_api_key')),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 export const CurrentMovieResourceSyncBatchSchema = Type.Union([MovieResourceSyncBatchSchema, Type.Null()]);
 
@@ -201,8 +201,8 @@ export const MyMoviesResponseSchema = Type.Object(
           userPreference: MoviePreferenceSchema,
           resourceCheck: Type.Optional(MovieResourceCheckSchema),
         },
-        { additionalProperties: false },
-      ),
+        { additionalProperties: false }
+      )
     ),
     pagination: Type.Object(
       {
@@ -211,11 +211,11 @@ export const MyMoviesResponseSchema = Type.Object(
         total: Type.Integer({ minimum: 0 }),
         hasMore: Type.Boolean(),
       },
-      { additionalProperties: false },
+      { additionalProperties: false }
     ),
     locale: LocaleSchema,
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export type TrackedMovieStatus = Static<typeof TrackedMovieStatusSchema>;

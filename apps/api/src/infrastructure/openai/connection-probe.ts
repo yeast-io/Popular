@@ -6,9 +6,9 @@ export async function probeOpenAI(client: Pick<OpenAI, 'models'>): Promise<strin
   try {
     const response = await client.models.list();
     if (
-      response.object !== 'list' ||
-      !Array.isArray(response.data) ||
-      response.data.some((model) => {
+      response.object !== 'list'
+      || !Array.isArray(response.data)
+      || response.data.some((model) => {
         return model.object !== 'model' || typeof model.id !== 'string' || !model.id.trim() || model.id.length > 256;
       })
     )

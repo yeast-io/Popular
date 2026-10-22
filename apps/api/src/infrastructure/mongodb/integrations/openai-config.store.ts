@@ -4,9 +4,8 @@ import type { OpenAIConfigDocument } from './openai-config.schema.js';
 import type { OpenAIConfigRecord, OpenAIConfigStore } from '../../../modules/integrations/openai-settings.types.js';
 
 export class MongoOpenAIConfigStore implements OpenAIConfigStore {
-  constructor(
-    private readonly configs: Model<OpenAIConfigDocument>
-  ) {}
+  constructor(private readonly configs: Model<OpenAIConfigDocument>) {}
+
   async find(ownerId: string): Promise<OpenAIConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId }).select('+encryptedApiKey').lean().exec();
     return row
@@ -31,6 +30,7 @@ export class MongoOpenAIConfigStore implements OpenAIConfigStore {
         }
       : null;
   }
+
   async save(record: OpenAIConfigRecord): Promise<void> {
     await this.configs
       .updateOne(
@@ -39,16 +39,18 @@ export class MongoOpenAIConfigStore implements OpenAIConfigStore {
           $set: { ownerId: record.ownerId, encryptedApiKey: record.encryptedApiKey, maskedApiKey: record.maskedApiKey },
           $unset: { validation: 1, model: 1 },
         },
-        { upsert: true, runValidators: true },
+        { upsert: true, runValidators: true }
       )
       .exec();
   }
+
   async saveValidation(ownerId: string, encryptedApiKey: string, validation: OpenAIValidation): Promise<boolean> {
     const result = await this.configs
       .updateOne({ ownerId, encryptedApiKey }, { $set: { validation } }, { runValidators: true })
       .exec();
     return result.matchedCount === 1;
   }
+
   async selectModel(ownerId: string, encryptedApiKey: string, model: string): Promise<boolean> {
     const result = await this.configs
       .updateOne(
@@ -60,11 +62,12 @@ export class MongoOpenAIConfigStore implements OpenAIConfigStore {
           'validation.models': model,
         },
         { $set: { model } },
-        { runValidators: true },
+        { runValidators: true }
       )
       .exec();
     return result.matchedCount === 1;
   }
+
   async delete(ownerId: string): Promise<void> {
     await this.configs.deleteOne({ ownerId }).exec();
   }

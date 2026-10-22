@@ -14,7 +14,7 @@ test('conversation contracts accept bounded user messages and MongoDB ids', () =
       clientRequestId: 'request-1',
     }
     ),
-    true,
+    true
   );
   assert.equal(Value.Check(AppendConversationMessageRequestSchema, { content: '', role: 'assistant' }), false);
   assert.equal(
@@ -22,7 +22,7 @@ test('conversation contracts accept bounded user messages and MongoDB ids', () =
       content: 'Continue the conversation',
       clientRequestId: 'turn-1',
     }),
-    true,
+    true
   );
   assert.equal(Value.Check(RunConversationTurnRequestSchema, { content: 'Missing idempotency key' }), false);
 });
@@ -33,7 +33,7 @@ test('stream events distinguish deltas from durable completion', () => {
       type: 'delta',
       delta: 'partial text',
     }),
-    true,
+    true
   );
   assert.equal(
     Value.Check(ConversationTurnStreamEventSchema, {
@@ -49,14 +49,14 @@ test('stream events distinguish deltas from durable completion', () => {
       usage: { inputTokens: 10, outputTokens: 2 },
     }
     ),
-    true,
+    true
   );
   assert.equal(
     Value.Check(ConversationTurnStreamEventSchema, {
       type: 'completed',
       usage: { inputTokens: 10, outputTokens: 2 },
     }),
-    false,
+    false
   );
 });
 

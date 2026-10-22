@@ -5,10 +5,11 @@ import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import type { Redis } from 'ioredis';
 import type { TelegramService } from './telegram.service.js';
 import type { TelegramTransport } from './telegram.types.js';
+
 // Shared cursor and renewable lease allow multiple API instances without competing getUpdates consumers.
 const RENEW = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('expire',KEYS[1],60) end return 0";
-const CHECKPOINT =
-  "if redis.call('get',KEYS[1]) == ARGV[1] then redis.call('set',KEYS[2],ARGV[2]); return 1 end return 0";
+const CHECKPOINT
+  = "if redis.call('get',KEYS[1]) == ARGV[1] then redis.call('set',KEYS[2],ARGV[2]); return 1 end return 0";
 const RELEASE = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) end return 0";
 export class TelegramWorker {
   private timer?: ReturnType<typeof setTimeout>;
@@ -17,6 +18,7 @@ export class TelegramWorker {
   private stopped = true;
   private readonly key: string;
   private readonly lockTrace: RedisLockTrace;
+
   constructor(
     private readonly redis: Redis,
     token: string,
@@ -30,15 +32,17 @@ export class TelegramWorker {
     this.lockTrace = new RedisLockTrace(lockTraceEnabled, logger, (key) => this.redis.ttl(key));
     this.key = `telegram:${createHash('sha256').update(token.split(':')[0]!).digest('hex')}`;
   }
+
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
     this.logger?.info?.(
       { event: 'telegram_worker_started', pollIntervalMs: 1_000, retryDelayMs: 15_000 },
-      'Telegram polling started',
+      'Telegram polling started'
     );
     this.schedule(0);
   }
+
   private schedule(delay: number): void {
     if (this.stopped) return;
     this.timer = setTimeout(() => {
@@ -49,11 +53,12 @@ export class TelegramWorker {
           this.report();
         })
         .finally(
-        () => this.schedule(failed ? 15_000 : 1_000)
-      );
+          () => this.schedule(failed ? 15_000 : 1_000)
+        );
     }, delay);
     this.timer.unref();
   }
+
   tick(): Promise<void> {
     if (this.stopped) return Promise.resolve();
     const controller = new AbortController();
@@ -71,7 +76,7 @@ export class TelegramWorker {
       { event: 'telegram_poll', pollId: lease, channel: 'telegram' },
       '',
       'telegram.poll',
-      this.pollTraceEnabled,
+      this.pollTraceEnabled
     );
     await withAiTrace(trace, async () => {
       let updateId: number | undefined;
@@ -81,7 +86,7 @@ export class TelegramWorker {
           'acquire',
           [lock],
           () => this.redis.set(lock, lease, 'EX', 60, 'NX'),
-          { lockType: 'telegram_poll', pollId: lease, leaseSeconds: 60 },
+          { lockType: 'telegram_poll', pollId: lease, leaseSeconds: 60 }
         );
         if (acquired !== 'OK') {
           return;
@@ -92,14 +97,14 @@ export class TelegramWorker {
         const updates = await trace.step(
           'telegram.get_updates',
           () => this.transport.updates(offset, controller.signal),
-          { offset },
+          { offset }
         );
         trace.event('telegram.updates.received', { offset, updateCount: updates.length });
         for (const update of updates) {
           updateId = update.update_id;
           if (
-            this.stopped ||
-            (await this.lockTrace.run('renew', [lock], () => this.redis.eval(RENEW, 1, lock, lease), {
+            this.stopped
+            || (await this.lockTrace.run('renew', [lock], () => this.redis.eval(RENEW, 1, lock, lease), {
               lockType: 'telegram_poll',
               pollId: lease,
               leaseSeconds: 60,
@@ -128,10 +133,10 @@ export class TelegramWorker {
                   () => {
                     return this.redis.eval(CHECKPOINT, 2, lock, cursor, lease, String(update.update_id + 1));
                   },
-                  { lockType: 'telegram_poll', pollId: lease, updateId },
+                  { lockType: 'telegram_poll', pollId: lease, updateId }
                 );
               },
-              { updateId },
+              { updateId }
             )) !== 1
           ) {
             trace.event('telegram.checkpoint.rejected', { updateId, reason: 'lease_lost' });
@@ -168,7 +173,7 @@ export class TelegramWorker {
     this.stopped = true;
     this.logger?.info?.(
       { event: 'telegram_worker_stopping', activePolls: this.active.size },
-      'Telegram worker stopping',
+      'Telegram worker stopping'
     );
     if (this.timer) clearTimeout(this.timer);
     for (const controller of this.active.keys()) controller.abort();

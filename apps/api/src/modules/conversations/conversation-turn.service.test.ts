@@ -7,7 +7,13 @@ import { LlmProviderError } from '../llm/llm.errors.js';
 import type { LlmClient, LlmGenerateInput, LlmGenerateResult, LlmStreamEvent } from '../llm/llm.types.js';
 import { ContextBudgetExceededError } from './context-builder.js';
 import { ConversationTurnService } from './conversation-turn.service.js';
-import type { AppendMessageInput, ConversationMessage, ConversationStore, ConversationThread, TokenCounter } from './conversation.types.js';
+import type {
+  AppendMessageInput,
+  ConversationMessage,
+  ConversationStore,
+  ConversationThread,
+  TokenCounter,
+} from './conversation.types.js';
 
 class FakeLlmClient implements LlmClient {
   lastInput: LlmGenerateInput | null = null;
@@ -27,7 +33,7 @@ class FakeLlmClient implements LlmClient {
     return this.result;
   }
 
-  async *stream(input: LlmGenerateInput): AsyncIterable<LlmStreamEvent> {
+  async* stream(input: LlmGenerateInput): AsyncIterable<LlmStreamEvent> {
     this.calls += 1;
     this.lastInput = input;
     yield { type: 'delta', delta: this.result.content.slice(0, 7) };
@@ -45,7 +51,7 @@ class FailingLlmClient implements LlmClient {
     throw new LlmProviderError('provider unavailable');
   }
 
-  async *stream(): AsyncIterable<LlmStreamEvent> {
+  async* stream(): AsyncIterable<LlmStreamEvent> {
     throw new LlmProviderError('provider unavailable');
   }
 }
@@ -53,9 +59,7 @@ class FailingLlmClient implements LlmClient {
 class QueueLlmClient implements LlmClient {
   readonly inputs: LlmGenerateInput[] = [];
 
-  constructor(
-    private readonly results: LlmGenerateResult[]
-  ) {}
+  constructor(private readonly results: LlmGenerateResult[]) {}
 
   async generate(input: LlmGenerateInput): Promise<LlmGenerateResult> {
     this.inputs.push(input);
@@ -64,7 +68,7 @@ class QueueLlmClient implements LlmClient {
     return result;
   }
 
-  async *stream(): AsyncIterable<LlmStreamEvent> {
+  async* stream(): AsyncIterable<LlmStreamEvent> {
     throw new Error('Unexpected streaming LLM call');
   }
 }
@@ -122,15 +126,15 @@ class MemoryConversationStore implements ConversationStore {
     ownerId: string,
     threadId: string,
     role: AppendMessageInput['role'],
-    clientRequestId: string,
+    clientRequestId: string
   ): Promise<ConversationMessage | null> {
     return (
       this.messages.find((message) => {
         return (
-          message.ownerId === ownerId &&
-          message.threadId === threadId &&
-          message.role === role &&
-          message.clientRequestId === clientRequestId
+          message.ownerId === ownerId
+          && message.threadId === threadId
+          && message.role === role
+          && message.clientRequestId === clientRequestId
         );
       }) ?? null
     );
@@ -146,7 +150,7 @@ class MemoryConversationStore implements ConversationStore {
     ownerId: string,
     threadId: string,
     afterSequence: number,
-    limit: number,
+    limit: number
   ): Promise<ConversationMessage[]> {
     return this.messages
       .filter((message) => {
@@ -208,8 +212,8 @@ test('web discussion keeps streaming and counts classification usage with the pr
   if (completed?.type === 'completed') assert.deepEqual(completed.usage, { inputTokens: 25, outputTokens: 5 });
   assert.ok(
     llm.lastInput?.messages.some(
-      (message) => message.role === 'user' && message.content.includes('likes history movies'),
-    ),
+      (message) => message.role === 'user' && message.content.includes('likes history movies')
+    )
   );
 });
 const options = {
@@ -271,7 +275,7 @@ test('persists the assistant response after generation', async () => {
   assert.deepEqual(result.usage, { inputTokens: 20, outputTokens: 3 });
   assert.deepEqual(
     store.messages.map(({ role }) => role),
-    ['user', 'assistant'],
+    ['user', 'assistant']
   );
 });
 
@@ -286,13 +290,13 @@ test('streams deltas and persists the assistant only after provider completion',
       content: 'Hello',
       clientRequestId: 'request-stream',
     }
-  )[Symbol.asyncIterator]();
+    )[Symbol.asyncIterator]();
 
   assert.equal((await iterator.next()).value?.type, 'user_message');
   assert.equal((await iterator.next()).value?.type, 'delta');
   assert.deepEqual(
     store.messages.map(({ role }) => role),
-    ['user'],
+    ['user']
   );
   assert.equal((await iterator.next()).value?.type, 'delta');
   const completed = await iterator.next();
@@ -300,7 +304,7 @@ test('streams deltas and persists the assistant only after provider completion',
   assert.equal(completed.value?.type, 'completed');
   assert.deepEqual(
     store.messages.map(({ role }) => role),
-    ['user', 'assistant'],
+    ['user', 'assistant']
   );
   assert.equal(store.messages[1]?.content, 'fake assistant response');
 });
@@ -323,12 +327,11 @@ test('does not persist partial streamed output when the provider fails', async (
     },
     (error: unknown) => {
       return typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 503;
-    },
-  );
+    });
 
   assert.deepEqual(
     store.messages.map(({ role }) => role),
-    ['user'],
+    ['user']
   );
 });
 
@@ -340,12 +343,11 @@ test('does not persist an assistant message when generation fails', async () => 
     service.run({ ownerId: 'owner-1', threadId: 'thread-1', content: 'Hello', clientRequestId: 'request-failure' }),
     (error: unknown) => {
       return typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 503;
-    },
-  );
+    });
 
   assert.deepEqual(
     store.messages.map(({ role }) => role),
-    ['user'],
+    ['user']
   );
 });
 
@@ -365,7 +367,7 @@ test('rejects the turn when the newest user message exceeds budget', async () =>
       clientRequestId: 'request-large',
     }
     ),
-    ContextBudgetExceededError,
+    ContextBudgetExceededError
   );
   assert.equal(store.messages.length, 0);
 });
@@ -406,7 +408,7 @@ test('coalesces concurrent retries into one provider call', async () => {
   assert.equal(repeated.assistantMessage.id, first.assistantMessage.id);
   assert.deepEqual(
     store.messages.map(({ role }) => role),
-    ['user', 'assistant'],
+    ['user', 'assistant']
   );
 });
 
@@ -448,7 +450,7 @@ test('summarizes omitted history, persists the checkpoint, and sends the summary
   assert.match(client.inputs[1]?.messages[0]?.content ?? '', /User provided an older detail/);
   assert.deepEqual(
     client.inputs[1]?.messages.slice(1).map(({ content }) => content),
-    ['r'.repeat(250), 'q'.repeat(180)],
+    ['r'.repeat(250), 'q'.repeat(180)]
   );
   assert.equal(store.thread.summary?.throughSequence, 1);
   assert.equal(result.assistantMessage.content, 'final answer');
@@ -482,7 +484,7 @@ test('summarizes the oldest batch before it falls outside the history window', a
   assert.equal(store.thread.summary?.throughSequence, 2);
   assert.deepEqual(
     client.inputs[1]?.messages.slice(1).map(({ content }) => content),
-    ['three', 'four'],
+    ['three', 'four']
   );
 });
 
@@ -502,7 +504,7 @@ test('resolves a fresh account client for every normal and streaming turn', asyn
       return clients[resolvedOwners.length - 1]!;
     },
     tokenCounter,
-    options,
+    options
   );
   const result = await service.run({
     ownerId: 'owner-1',
@@ -526,7 +528,7 @@ test('resolves a fresh account client for every normal and streaming turn', asyn
   const before = store.messages.length;
   await assert.rejects(
     service.run({ ownerId: 'owner-1', threadId: 'thread-1', content: 'blocked', clientRequestId: 'third' }),
-    /Key deleted/,
+    /Key deleted/
   );
   assert.equal(store.messages.length, before);
   assert.deepEqual(resolvedOwners, ['owner-1', 'owner-1', 'owner-1']);

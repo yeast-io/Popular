@@ -92,13 +92,13 @@ function fixture(redis = redisFixture(), concurrency = 2, lockTraceEnabled = fal
       return rows
         .filter((row) => {
           return (
-            head(row.input) === row &&
-            ((row.status === 'pending' && row.due) || (row.status === 'processing' && row.expired))
+            head(row.input) === row
+            && ((row.status === 'pending' && row.due) || (row.status === 'processing' && row.expired))
           );
         })
         .map(
-        (row) => row.input
-      );
+          (row) => row.input
+        );
     },
     claim: async (conversation, lease) => {
       const row = head(conversation);
@@ -170,7 +170,7 @@ function fixture(redis = redisFixture(), concurrency = 2, lockTraceEnabled = fal
     lockTraceEnabled,
     (path) => {
       return posterLoader(path);
-    },
+    }
   );
   const add = async (id: string, chatId = '101', ownerId = 'alice', channel: 'telegram' | 'whatsapp' = 'telegram') => {
     const input = { ownerId, channel, chatId, messageId: id, text: 'hello', receivedAt: '2026-10-18T00:00:00.000Z' };
@@ -311,7 +311,7 @@ test('API instances share conversation leases and the concurrency cap', async (t
     },
     async () => true,
     () => undefined,
-    { maxConcurrency: 1, scanIntervalMs: 60_000 },
+    { maxConcurrency: 1, scanIntervalMs: 60_000 }
   );
   const gate = deferred();
   f.block(() => gate.promise);
@@ -508,7 +508,7 @@ test('job diagnostics correlate claim, generation, persistence and delivery with
   ]) {
     assert.ok(
       f.logs.some((line) => line.stage === stage && line.messageId === 'message-1' && line.jobId === 'message-1'),
-      stage,
+      stage
     );
   }
   assert.ok(!JSON.stringify(f.logs).includes('hello'));
@@ -541,7 +541,7 @@ test('a handled AI failure does not obscure a later delivery failure stage', asy
   assert.ok(
     failures.some((line) => {
       return line.event === 'assistant_generation_failed' && line.stage === 'assistant.workflow.run';
-    }),
+    })
   );
   assert.ok(failures.some((line) => line.event === 'assistant_job' && line.stage === 'assistant.reply.send'));
 });
@@ -574,11 +574,11 @@ test('recovery scan tracing follows its switch while task progress and failures 
     await waitFor(() => f.rows[0]!.status === 'delivered');
     assert.equal(
       f.logs.some((line) => line.event === 'assistant_scan_completed'),
-      enabled,
+      enabled
     );
     assert.equal(
       f.logs.some((line) => line.event === 'assistant_wake'),
-      enabled,
+      enabled
     );
     assert.ok(f.logs.some((line) => line.stage === 'assistant.job.claimed'));
   }
@@ -627,7 +627,7 @@ test('failed poster download falls back to text and records the failing stage wi
   assert.ok(
     f.logs.some((line) => {
       return line.stage === 'assistant.movie.poster.load' && line.outcome === 'text_fallback' && line.error;
-    }),
+    })
   );
   assert.doesNotMatch(JSON.stringify(f.logs), /Private reason/);
 });

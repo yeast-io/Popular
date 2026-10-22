@@ -2,14 +2,17 @@ import { AiTrace, currentAiTrace } from '../logging/ai-trace.js';
 import type { AiLogger } from '../logging/ai-trace.types.js';
 import { AppError } from '../http/app-error.js';
 import type { TelegramTransport, TelegramUpdate } from '../../modules/telegram/telegram.types.js';
+
 export class TelegramClient implements TelegramTransport {
   private botUsername?: string;
+
   constructor(
     private readonly token: string,
     private readonly fetcher: typeof fetch = fetch,
     private readonly logger?: AiLogger,
     private readonly pollTraceEnabled = false
   ) {}
+
   private async call<T>(method: string, payload: object | FormData, signal?: AbortSignal): Promise<T> {
     const trace = currentAiTrace() ?? new AiTrace(this.logger, { event: 'telegram_http' }, '', 'telegram.http');
     trace.sensitive(this.token);
@@ -66,10 +69,11 @@ export class TelegramClient implements TelegramTransport {
       throw new AppError(
         502,
         'SERVICE_UNAVAILABLE',
-        'Telegram request failed; check Bot configuration, connectivity, or whether the Bot is blocked',
+        'Telegram request failed; check Bot configuration, connectivity, or whether the Bot is blocked'
       );
     }
   }
+
   async username(): Promise<string> {
     if (!this.botUsername) {
       const result = await this.call<{ username?: string; is_bot?: boolean }>('getMe', {});
@@ -79,6 +83,7 @@ export class TelegramClient implements TelegramTransport {
     }
     return this.botUsername;
   }
+
   async send(chatId: string, text: string, parseMode?: 'HTML'): Promise<string> {
     const result = await this.call<{ message_id: number }>('sendMessage', {
       chat_id: chatId,
@@ -90,6 +95,7 @@ export class TelegramClient implements TelegramTransport {
       throw new AppError(502, 'SERVICE_UNAVAILABLE', 'Invalid Telegram response');
     return String(result.message_id);
   }
+
   async sendPhoto(chatId: string, photo: Buffer, caption: string): Promise<string> {
     const form = new FormData();
     form.set('chat_id', chatId);
@@ -101,18 +107,20 @@ export class TelegramClient implements TelegramTransport {
       throw new AppError(502, 'SERVICE_UNAVAILABLE', 'Invalid Telegram response');
     return String(result.message_id);
   }
+
   async typing(chatId: string, signal?: AbortSignal): Promise<void> {
     await this.call<boolean>('sendChatAction', { chat_id: chatId, action: 'typing' }, signal);
   }
+
   async updates(offset: number, signal?: AbortSignal): Promise<TelegramUpdate[]> {
     const result = await this.call<TelegramUpdate[]>(
       'getUpdates',
       { offset, timeout: 5, limit: 25, allowed_updates: ['message'] },
-      signal,
+      signal
     );
     if (
-      !Array.isArray(result) ||
-      result.some((item) => {
+      !Array.isArray(result)
+      || result.some((item) => {
         return !Number.isSafeInteger(item.update_id) || item.update_id < 0;
       })
     )

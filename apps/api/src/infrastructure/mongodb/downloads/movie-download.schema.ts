@@ -1,8 +1,9 @@
+import { remoteRequestSchema, remoteAssociationSchema } from '../remote-downloads/remote-command.schema.js';
 import { Schema, type Connection, type InferSchemaType, type Types } from 'mongoose';
 
 const notificationChannelSchema = new Schema(
   { channel: { type: String, required: true }, notified: { type: Boolean, default: false }, messageId: String },
-  { _id: false },
+  { _id: false }
 );
 const notificationIntentSchema = new Schema(
   {
@@ -13,7 +14,7 @@ const notificationIntentSchema = new Schema(
     leaseId: String,
     lockedUntil: Date,
   },
-  { _id: false },
+  { _id: false }
 );
 const notificationTaskSchema = new Schema(
   {
@@ -30,10 +31,19 @@ const notificationTaskSchema = new Schema(
     lastCheckedAt: Date,
     lastError: String,
   },
-  { _id: false },
+  { _id: false }
 );
 const movieDownloadSchema = new Schema(
   {
+    executionMode: { type: String, enum: ['local', 'remote'] },
+    remoteRequest: { type: remoteRequestSchema },
+    remoteAssociation: { type: remoteAssociationSchema },
+    remoteCommandRegistered: Boolean,
+    remoteRequestState: String,
+    remoteOutcome: String,
+    remoteProjectionRevision: Number,
+    remoteStatusSequence: Number,
+    remoteStatusState: String,
     notificationIntent: { type: notificationIntentSchema },
     notificationTask: { type: notificationTaskSchema },
     ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
@@ -60,9 +70,14 @@ const movieDownloadSchema = new Schema(
     missingSince: { type: Date },
     expiresAt: { type: Date },
   },
-  { timestamps: true, collection: 'movie_downloads' },
+  { timestamps: true, collection: 'movie_downloads' }
 );
 
+movieDownloadSchema.index({ executionMode: 1, remoteCommandRegistered: 1 });
+movieDownloadSchema.index(
+  { 'remoteRequest.commandId': 1 },
+  { unique: true, partialFilterExpression: { 'remoteRequest.commandId': { $type: 'string' } } }
+);
 movieDownloadSchema.index({ ownerId: 1, tmdbId: 1, sourceProvider: 1, sourceReleaseId: 1 }, { unique: true });
 movieDownloadSchema.index({ ownerId: 1, tmdbId: 1, updatedAt: -1 });
 movieDownloadSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, partialFilterExpression: { status: 'missing' } });

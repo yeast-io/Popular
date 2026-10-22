@@ -23,7 +23,7 @@ const successRate = computed(() => {
 const maxDailyRequests = computed(() => {
   return Math.max(
     1,
-    ...(usage.value?.daily.map((day) => day.providers.reduce((sum, provider) => sum + provider.requests, 0)) ?? []),
+    ...(usage.value?.daily.map((day) => day.providers.reduce((sum, provider) => sum + provider.requests, 0)) ?? [])
   );
 });
 
@@ -102,8 +102,8 @@ function duration(milliseconds: number): string {
 function tokens(usage: TokenUsage | undefined, field: 'inputTokens' | 'outputTokens' | 'cachedInputTokens'): string {
   if (!usage) return '—';
   const unknown = field === 'cachedInputTokens' ? usage.unknownCachedRequests : usage.unknownRequests;
-  const known =
-    field === 'cachedInputTokens'
+  const known
+    = field === 'cachedInputTokens'
       ? usage.knownRequests + usage.unknownRequests - usage.unknownCachedRequests
       : usage.knownRequests;
   if (known === 0) return t('usage.unknown');

@@ -16,7 +16,7 @@ const conversationMessageSchema = new Schema(
     inputTokens: { type: Number, required: false, min: 0 },
     outputTokens: { type: Number, required: false, min: 0 },
   },
-  { timestamps: true, collection: 'conversation_messages' },
+  { timestamps: true, collection: 'conversation_messages' }
 );
 
 conversationMessageSchema.index({ threadId: 1, sequence: 1 }, { unique: true });
@@ -28,7 +28,7 @@ conversationMessageSchema.index(
     partialFilterExpression: {
       clientRequestId: { $type: 'string' },
     },
-  },
+  }
 );
 
 export type ConversationMessageDocument = InferSchemaType<typeof conversationMessageSchema> & {

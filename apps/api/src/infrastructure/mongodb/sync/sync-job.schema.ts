@@ -13,7 +13,7 @@ const syncJobSchema = new Schema(
     consecutiveFailures: { type: Number, required: true, default: 0, min: 0 },
     lastErrorSummary: { type: String, maxlength: 1_000 },
   },
-  { timestamps: true, collection: 'sync_jobs' },
+  { timestamps: true, collection: 'sync_jobs' }
 );
 
 syncJobSchema.index({ key: 1 }, { unique: true });

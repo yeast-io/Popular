@@ -7,9 +7,11 @@ import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { NotificationService } from './notification.service.js';
 import { buildDownloadNotification } from './notification.worker.js';
+
 export class NotificationTestService {
   private readonly sending = new Set<string>();
   private readonly lastSent = new Map<string, number>();
+
   constructor(
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly store: NotificationTestStore,
@@ -20,6 +22,7 @@ export class NotificationTestService {
     private readonly payload = buildDownloadNotification,
     private readonly now: () => Date = () => new Date()
   ) {}
+
   async list(token: string | undefined, page: number): Promise<NotificationTestList> {
     const owner = await this.auth.requireOwnerId(token);
     const records = await this.store.listCompleted(owner, (page - 1) * 30, 31);
@@ -29,10 +32,10 @@ export class NotificationTestService {
         ...new Set(
           visible.map((row) => {
             return row.tmdbId;
-          }),
+          })
         ),
       ],
-      this.locale,
+      this.locale
     );
     const byId = new Map(movies.map((movie) => [movie.tmdbId, movie]));
     return {
@@ -54,6 +57,7 @@ export class NotificationTestService {
       }),
     };
   }
+
   async send(token: string | undefined, id: string, channelId: string): Promise<NotificationTestResult> {
     const owner = await this.auth.requireOwnerId(token);
     const record = await this.store.findCompleted(owner, id);
@@ -74,7 +78,7 @@ export class NotificationTestService {
         record.lastSyncedAt ?? this.now(),
         this.movies,
         this.locale,
-        this.webOrigin,
+        this.webOrigin
       );
       this.lastSent.set(key, this.now().getTime());
       try {

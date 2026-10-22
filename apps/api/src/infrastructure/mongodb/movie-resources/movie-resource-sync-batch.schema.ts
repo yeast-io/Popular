@@ -19,12 +19,12 @@ const movieResourceSyncBatchSchema = new Schema(
     resumeAt: { type: Date },
     needsAction: { type: String, enum: ['update_api_key'] },
   },
-  { timestamps: true, collection: 'movie_resource_sync_batches', versionKey: false },
+  { timestamps: true, collection: 'movie_resource_sync_batches', versionKey: false }
 );
 
 movieResourceSyncBatchSchema.index(
   { ownerId: 1, active: 1 },
-  { unique: true, partialFilterExpression: { active: true } },
+  { unique: true, partialFilterExpression: { active: true } }
 );
 movieResourceSyncBatchSchema.index({ active: 1, status: 1, resumeAt: 1 });
 movieResourceSyncBatchSchema.index({ ownerId: 1, createdAt: -1 });

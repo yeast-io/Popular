@@ -1,12 +1,18 @@
-import { ApiErrorSchema, NotificationPreferencesSchema, SaveNotificationPreferencesSchema, type SaveNotificationPreferences } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  NotificationPreferencesSchema,
+  SaveNotificationPreferencesSchema,
+  type SaveNotificationPreferences,
+} from '@movie-hub/contract';
 import type { FastifyInstance } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { NotificationService } from './notification.service.js';
+
 export function registerNotificationRoutes(
   app: FastifyInstance,
   service: NotificationService,
-  config: AppConfig,
+  config: AppConfig
 ): void {
   const response = {
     200: NotificationPreferencesSchema,
@@ -22,6 +28,6 @@ export function registerNotificationRoutes(
     { schema: { body: SaveNotificationPreferencesSchema, response } },
     (request) => {
       return service.save(readSessionToken(request, config.SESSION_COOKIE_NAME), request.body);
-    },
+    }
   );
 }

@@ -1,4 +1,12 @@
-import { ApiErrorSchema, MTeamConfigurationSchema, SaveMTeamConfigurationRequestSchema, type SaveMTeamConfigurationRequest, QBittorrentConfigurationSchema, SaveQBittorrentConfigurationRequestSchema, type SaveQBittorrentConfigurationRequest } from '@movie-hub/contract';
+import {
+  ApiErrorSchema,
+  MTeamConfigurationSchema,
+  SaveMTeamConfigurationRequestSchema,
+  type SaveMTeamConfigurationRequest,
+  QBittorrentConfigurationSchema,
+  SaveQBittorrentConfigurationRequestSchema,
+  type SaveQBittorrentConfigurationRequest,
+} from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
@@ -9,7 +17,7 @@ export function registerIntegrationRoutes(
   app: FastifyInstance,
   service: IntegrationService,
   config: AppConfig,
-  qbittorrent?: QBittorrentIntegrationService,
+  qbittorrent?: QBittorrentIntegrationService
 ): void {
   const token = (request: FastifyRequest) => readSessionToken(request, config.SESSION_COOKIE_NAME);
   const errorResponses = {
@@ -27,7 +35,7 @@ export function registerIntegrationRoutes(
     {
       schema: { response: { 200: MTeamConfigurationSchema, 401: ApiErrorSchema } },
     },
-    async (request) => service.getMTeam(token(request)),
+    async (request) => service.getMTeam(token(request))
   );
 
   app.put<{ Body: SaveMTeamConfigurationRequest }>(
@@ -38,7 +46,7 @@ export function registerIntegrationRoutes(
         response: { 200: MTeamConfigurationSchema, ...errorResponses },
       },
     },
-    async (request) => service.saveMTeam(token(request), request.body),
+    async (request) => service.saveMTeam(token(request), request.body)
   );
 
   app.post(
@@ -46,7 +54,7 @@ export function registerIntegrationRoutes(
     {
       schema: { response: { 200: MTeamConfigurationSchema, ...errorResponses } },
     },
-    async (request) => service.retestMTeam(token(request)),
+    async (request) => service.retestMTeam(token(request))
   );
 
   app.delete(
@@ -57,7 +65,7 @@ export function registerIntegrationRoutes(
     async (request, reply) => {
       await service.deleteMTeam(token(request));
       return reply.status(204).send();
-    },
+    }
   );
 
   if (!qbittorrent) return;
@@ -67,7 +75,7 @@ export function registerIntegrationRoutes(
     {
       schema: { response: { 200: QBittorrentConfigurationSchema, 401: ApiErrorSchema } },
     },
-    async (request) => qbittorrent.get(token(request)),
+    async (request) => qbittorrent.get(token(request))
   );
 
   app.put<{ Body: SaveQBittorrentConfigurationRequest }>(
@@ -78,7 +86,7 @@ export function registerIntegrationRoutes(
         response: { 200: QBittorrentConfigurationSchema, ...errorResponses },
       },
     },
-    async (request) => qbittorrent.save(token(request), request.body),
+    async (request) => qbittorrent.save(token(request), request.body)
   );
 
   app.post(
@@ -86,7 +94,7 @@ export function registerIntegrationRoutes(
     {
       schema: { response: { 200: QBittorrentConfigurationSchema, ...errorResponses } },
     },
-    async (request) => qbittorrent.retest(token(request)),
+    async (request) => qbittorrent.retest(token(request))
   );
 
   app.delete(
@@ -97,6 +105,6 @@ export function registerIntegrationRoutes(
     async (request, reply) => {
       await qbittorrent.delete(token(request));
       return reply.status(204).send();
-    },
+    }
   );
 }

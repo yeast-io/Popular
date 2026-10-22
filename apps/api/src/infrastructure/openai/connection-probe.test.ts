@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { probeOpenAI } from './connection-probe.js';
+
 test('lists model metadata only and returns sorted unique IDs without generation', async () => {
   let calls = 0;
   const models = await probeOpenAI({
@@ -40,8 +41,7 @@ test('maps provider failures to safe reasons without raw SDK errors or secret-be
         assert.equal((failure as Error).cause, undefined);
         assert.equal(JSON.stringify(failure).includes('secret-private-api-key'), false);
         return true;
-      },
-    );
+      });
   }
   await assert.rejects(
     () => {
@@ -54,6 +54,6 @@ test('maps provider failures to safe reasons without raw SDK errors or secret-be
       } as never
       );
     },
-    { reason: 'invalid_response' },
+    { reason: 'invalid_response' }
   );
 });

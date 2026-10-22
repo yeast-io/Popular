@@ -30,8 +30,8 @@ test('manual active slots and profile owners have database uniqueness', async ()
     models.jobs.schema
       .indexes()
       .some(
-      ([fields, options]) => fields.activeOwner === 1 && options.unique && options.sparse
-    ),
+        ([fields, options]) => fields.activeOwner === 1 && options.unique && options.sparse
+      )
   );
   assert.ok(models.profiles.schema.indexes().some(([fields, options]) => fields.ownerId === 1 && options.unique));
   await connection.close();

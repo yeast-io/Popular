@@ -30,7 +30,7 @@ test('Chinese and English summaries use separate localization identities', async
       },
     ],
     syncedAt,
-    'zh-CN',
+    'zh-CN'
   );
   await store.upsertMovies(
     [
@@ -44,7 +44,7 @@ test('Chinese and English summaries use separate localization identities', async
       },
     ],
     syncedAt,
-    'en-US',
+    'en-US'
   );
 
   assert.equal(movieWrites.length, 2);
@@ -55,7 +55,7 @@ test('Chinese and English summaries use separate localization identities', async
     [
       { movieTmdbId: 42, locale: 'zh-CN' },
       { movieTmdbId: 42, locale: 'en-US' },
-    ],
+    ]
   );
   assert.deepEqual(
     operations.map(({ updateOne }) => updateOne.update.$set),
@@ -74,7 +74,7 @@ test('Chinese and English summaries use separate localization identities', async
         backdropPath: '/en-backdrop.jpg',
         summarySyncedAt: syncedAt,
       },
-    ],
+    ]
   );
   const baseOperations = movieWrites as Array<{
     updateOne: { update: { $set: Record<string, unknown>; $setOnInsert: unknown } };
@@ -107,7 +107,7 @@ test('movie detail upsert keeps image paths scoped to the requested locale', asy
     localizations as never,
     {} as never,
     people as never,
-    credits as never,
+    credits as never
   );
 
   await store.writeMovieDetail(
@@ -122,7 +122,7 @@ test('movie detail upsert keeps image paths scoped to the requested locale', asy
       directors: [],
     },
     new Date('2026-10-12T00:00:00.000Z'),
-    'en-US',
+    'en-US'
   );
 
   const update = movieUpdates[0]?.[1] as { $set: Record<string, unknown>; $setOnInsert: unknown };
@@ -151,7 +151,7 @@ test('movie detail stores a localized trailer and clears it when TMDB no longer 
     localizations as never,
     {} as never,
     people as never,
-    credits as never,
+    credits as never
   );
   const base = { tmdbId: 42, title: 'Movie', genreIds: [], genres: [], cast: [], directors: [] };
 
@@ -170,7 +170,7 @@ test('movie detail stores a localized trailer and clears it when TMDB no longer 
       },
     },
     new Date('2026-10-13T00:00:00.000Z'),
-    'en-US',
+    'en-US'
   );
   await store.writeMovieDetail(base, new Date('2026-10-14T00:00:00.000Z'), 'en-US');
 
@@ -272,7 +272,7 @@ test('publishes every generation page before switching the active pointer', asyn
     resultSets as never,
     undefined,
     undefined,
-    states as never,
+    states as never
   );
   const generation = '00000000-0000-4000-8000-000000000001';
   const fetchedAt = new Date('2026-10-13T00:00:00.000Z');
@@ -293,7 +293,7 @@ test('publishes every generation page before switching the active pointer', asyn
         };
       }),
     },
-    'zh-CN',
+    'zh-CN'
   );
 
   assert.deepEqual(calls, ['movies', 'localizations', 'pages', 'activate', 'expire-old']);
@@ -302,10 +302,10 @@ test('publishes every generation page before switching the active pointer', asyn
   }>;
   assert.deepEqual(
     writes.map(({ updateOne }) => updateOne.filter.key),
-    [trendingGenerationKey('zh-CN', generation, 1), trendingGenerationKey('zh-CN', generation, 2)],
+    [trendingGenerationKey('zh-CN', generation, 1), trendingGenerationKey('zh-CN', generation, 2)]
   );
   assert.equal(
     writes.every(({ updateOne }) => updateOne.update.$set.generation === generation),
-    true,
+    true
   );
 });

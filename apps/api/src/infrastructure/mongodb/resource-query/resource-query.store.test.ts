@@ -11,11 +11,14 @@ test('resource query reads, lease acquisition, saves and release always scope th
   const query = (filter: Record<string, unknown>, update?: Record<string, unknown>) => {
     queries.push(filter);
     if (update) updates.push(update);
-    return { lean: () => {
-      return ({ exec: async () => ({ data: emptyResourceState() }) });
-    }, exec: async () => {
-      return ({ matchedCount });
-    } };
+    return {
+      lean: () => {
+        return { exec: async () => ({ data: emptyResourceState() }) };
+      },
+      exec: async () => {
+        return { matchedCount };
+      },
+    };
   };
   const model = { findOne: query, updateOne: query, findOneAndUpdate: query };
   const store = new MongoResourceQueryStore(model as unknown as ReturnType<typeof createResourceQueryModel>);
@@ -41,9 +44,12 @@ test('resource query reads, lease acquisition, saves and release always scope th
 test('resource TTL uses a root BSON date, and ensure resets expired state while protecting active leases', async () => {
   let pipeline: Array<{ $set: Record<string, unknown> }> = [];
   const now = Date.now();
-  const store = new MongoResourceQueryStore({ updateOne: (_filter: unknown, update: typeof pipeline) => {
-    pipeline = update; return { exec: async () => ({ matchedCount: 1 }) };
-  } } as unknown as ReturnType<typeof createResourceQueryModel>);
+  const store = new MongoResourceQueryStore({
+    updateOne: (_filter: unknown, update: typeof pipeline) => {
+      pipeline = update;
+      return { exec: async () => ({ matchedCount: 1 }) };
+    },
+  } as unknown as ReturnType<typeof createResourceQueryModel>);
   await store.ensure('alice', '$literal-chat');
   const set = pipeline[0]!.$set;
   assert.deepEqual(set.conversation, { $literal: '$literal-chat' });
@@ -57,9 +63,12 @@ test('resource TTL uses a root BSON date, and ensure resets expired state while 
 
 test('logical expiry filters old resource rows even if MongoDB has not deleted them yet', async () => {
   let scope: Record<string, unknown> = {};
-  const store = new MongoResourceQueryStore({ findOne: (filter: Record<string, unknown>) => {
-    scope = filter; return { lean: () => ({ exec: async () => null }) };
-  } } as unknown as ReturnType<typeof createResourceQueryModel>);
+  const store = new MongoResourceQueryStore({
+    findOne: (filter: Record<string, unknown>) => {
+      scope = filter;
+      return { lean: () => ({ exec: async () => null }) };
+    },
+  } as unknown as ReturnType<typeof createResourceQueryModel>);
   assert.equal(await store.read('alice', 'web:thread'), null);
   assert.equal(scope.ownerId, 'alice');
   const conditions = scope.$or as Array<{ expiresAt: { $gt?: Date; $exists?: boolean } }>;

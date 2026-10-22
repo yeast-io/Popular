@@ -1,0 +1,37 @@
+[package]
+name = "popular-helper-agent"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+ring = "0.17"
+rsa = "0.9.10"
+rand = "0.8"
+sha2 = "0.10"
+base64 = "0.23"
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "sync", "macros", "rt-multi-thread", "net", "io-util"] }
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+tempfile = "3"
+dotenvy = "0.15"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "query"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.5"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSImage", "NSMenu", "NSMenuItem", "NSAttributedString", "NSFont"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSAttributedString", "NSRange", "NSString", "NSData"] }
+keyring = { version = "=3.6.3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "=3.6.3", features = ["windows-native"] }

@@ -1,5 +1,8 @@
 import { Schema, type Connection, type InferSchemaType, type Types } from 'mongoose';
-import { EXTERNAL_PROVIDER_ID_MAX_LENGTH, EXTERNAL_PROVIDER_ID_PATTERN } from '../../../modules/external-usage/external-usage.policy.js';
+import {
+  EXTERNAL_PROVIDER_ID_MAX_LENGTH,
+  EXTERNAL_PROVIDER_ID_PATTERN,
+} from '../../../modules/external-usage/external-usage.policy.js';
 
 export const EXTERNAL_USAGE_RETENTION_DAYS = 90;
 
@@ -47,14 +50,14 @@ const externalRequestEventSchema = new Schema(
           outputTokens: { type: Number, required: true, min: 0 },
           cachedInputTokens: { type: Number, min: 0 },
         },
-        { _id: false },
+        { _id: false }
       ),
       required: false,
     },
     occurredAt: { type: Date, required: true },
     expiresAt: { type: Date, required: true },
   },
-  { collection: 'external_request_events', versionKey: false },
+  { collection: 'external_request_events', versionKey: false }
 );
 
 externalRequestEventSchema.index({ ownerId: 1, occurredAt: -1, provider: 1 });

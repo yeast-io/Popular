@@ -1,23 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { MovieRecord, MovieStatusRecord, TrendingPageRecord, TrendingSnapshotRecord, TrendingStore } from './movie.types.js';
+import type {
+  MovieRecord,
+  MovieStatusRecord,
+  TrendingPageRecord,
+  TrendingSnapshotRecord,
+  TrendingStore,
+} from './movie.types.js';
 import { MovieService } from './movie.service.js';
 
 const generation = '00000000-0000-4000-8000-000000000001';
 
 class MemoryTrendingStore implements TrendingStore {
   readonly pages = new Map<string, TrendingPageRecord>();
+
   async publishSnapshot(record: TrendingSnapshotRecord, locale: 'zh-CN' | 'en-US') {
     for (const page of record.pages) this.pages.set(`${locale}:${page.page}`, page);
   }
+
   async appendSnapshotPage(record: TrendingPageRecord, locale: 'zh-CN' | 'en-US') {
     this.pages.set(`${locale}:${record.page}`, record);
   }
+
   async readPage(page: number, locale: 'zh-CN' | 'en-US', requestedGeneration?: string) {
     const record = this.pages.get(`${locale}:${page}`);
     if (!record || (requestedGeneration && requestedGeneration !== generation)) return null;
     return { ...record, generation };
   }
+
   async readSnapshot(locale: 'zh-CN' | 'en-US', requestedGeneration: string) {
     if (requestedGeneration !== generation) return null;
     const pages = [...this.pages.entries()]
@@ -64,7 +74,7 @@ test('trending preserves source order and maps optional presentation fields', as
   const result = await service.trending(1, 'zh-CN', null);
   assert.deepEqual(
     result.items.map(({ tmdbId }) => tmdbId),
-    [20, 3],
+    [20, 3]
   );
   assert.equal(result.items[0]?.posterUrl, 'https://image.tmdb.org/t/p/w500/poster.jpg');
   assert.equal(result.items[1]?.posterUrl, undefined);
@@ -90,7 +100,7 @@ test('trending lazily syncs the requested locale when its page is missing', asyn
             { page, totalPages: 1, totalResults: 1, fetchedAt, movies: [{ tmdbId: 1, title: 'Movie', genreIds: [] }] },
           ],
         },
-        locale,
+        locale
       );
       return { status: 'completed' as const, pages: 1, movies: 1 };
     },
@@ -384,7 +394,7 @@ test('search rejects a different-locale cache when TMDB fails', async () => {
 
   await assert.rejects(
     () => new MovieService(store, {} as never, provider, catalog).search('movie', 1, 'en-US', null),
-    /TMDB unavailable/,
+    /TMDB unavailable/
   );
 });
 
@@ -443,11 +453,11 @@ test('detail fetches, persists, and returns cast and director metadata', async (
   assert.equal(result.runtimeMinutes, 120);
   assert.deepEqual(
     result.cast.map(({ name, character }) => ({ name, character })),
-    [{ name: '演员', character: '角色' }],
+    [{ name: '演员', character: '角色' }]
   );
   assert.deepEqual(
     result.directors.map(({ name }) => name),
-    ['导演'],
+    ['导演']
   );
   assert.deepEqual(result.trailer, {
     tmdbVideoId: 'video-1',

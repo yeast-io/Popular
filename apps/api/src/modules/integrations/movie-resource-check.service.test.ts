@@ -4,7 +4,13 @@ import type { MovieCatalogStore, MovieDetailRecord, MovieSearchProvider } from '
 import { IntegrationValidationError } from './integration.service.js';
 import type { IntegrationConfigStore } from './integration.types.js';
 import { isActiveRelease, MovieResourceCheckService } from './movie-resource-check.service.js';
-import type { MTeamRelease, MTeamResourceSearcher, MovieResourceCheckCompletion, MovieResourceCheckKey, MovieResourceCheckStore } from './movie-resource-check.types.js';
+import type {
+  MTeamRelease,
+  MTeamResourceSearcher,
+  MovieResourceCheckCompletion,
+  MovieResourceCheckKey,
+  MovieResourceCheckStore,
+} from './movie-resource-check.types.js';
 import { SecretCrypto } from './secret-crypto.js';
 
 const now = new Date('2026-10-13T00:00:00.000Z');
@@ -19,6 +25,7 @@ class StubCheckStore implements MovieResourceCheckStore {
   async readForMovies() {
     return [];
   }
+
   async readOne() {
     return this.checking
       ? {
@@ -38,7 +45,7 @@ class StubCheckStore implements MovieResourceCheckStore {
     _failedAttemptBefore: Date,
     _identityFingerprint: string | undefined,
     _credentialsVerifiedAt: Date | undefined,
-    force: boolean,
+    force: boolean
   ) {
     this.acquireCalls.push({ key, force });
     if (!this.acquire || this.checking) return false;
@@ -121,7 +128,7 @@ function harness(identity: { title: string; imdbId?: string } | null = { title: 
       releaseListTtlMs: 120_000,
     },
     { info: () => undefined, error: () => undefined },
-    () => now,
+    () => now
   );
   return { checks, detail, mteam, service, writes };
 }
@@ -153,15 +160,15 @@ test('IMDb checks count only exact, visible, unbanned releases with seeders', as
   assert.equal(checks.completed[0]?.lastAttemptStatus, 'success');
   assert.equal(
     checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined,
-    'available',
+    'available'
   );
   assert.equal(
     checks.completed[0] && 'matchedBy' in checks.completed[0] ? checks.completed[0].matchedBy : undefined,
-    'imdb',
+    'imdb'
   );
   assert.equal(
     checks.completed[0] && 'expiresAt' in checks.completed[0] ? checks.completed[0].expiresAt.toISOString() : undefined,
-    '2026-10-14T00:00:00.000Z',
+    '2026-10-14T00:00:00.000Z'
   );
 });
 
@@ -177,11 +184,11 @@ test('a successful IMDb query with only dead or hidden releases is unavailable',
   assert.equal(checks.completed[0]?.lastAttemptStatus, 'success');
   assert.equal(
     checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined,
-    'unavailable',
+    'unavailable'
   );
   assert.equal(
     checks.completed[0] && 'expiresAt' in checks.completed[0] ? checks.completed[0].expiresAt.toISOString() : undefined,
-    '2026-10-13T06:00:00.000Z',
+    '2026-10-13T06:00:00.000Z'
   );
 });
 
@@ -195,7 +202,7 @@ test('missing IMDb ID refreshes TMDB details then uses title only as an uncertai
   assert.equal(checks.completed[0]?.lastAttemptStatus, 'success');
   assert.equal(
     checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined,
-    'unmatchable',
+    'unmatchable'
   );
   assert.equal(checks.completed[0] && 'matchedBy' in checks.completed[0], false);
   assert.equal(checks.completed[0] && 'expiresAt' in checks.completed[0], false);
@@ -203,7 +210,7 @@ test('missing IMDb ID refreshes TMDB details then uses title only as an uncertai
     checks.completed[0] && 'identityFingerprint' in checks.completed[0]
       ? checks.completed[0].identityFingerprint
       : undefined,
-    '["The Matrix",null]',
+    '["The Matrix",null]'
   );
 });
 

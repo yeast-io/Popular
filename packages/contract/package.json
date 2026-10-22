@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./socket-rpc": {
+      "types": "./dist/helper-gateway/socket-rpc.service.d.ts",
+      "default": "./dist/helper-gateway/socket-rpc.service.js"
     }
   },
   "scripts": {

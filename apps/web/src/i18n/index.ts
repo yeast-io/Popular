@@ -39,7 +39,7 @@ export function t(key: TranslationKey, params?: TranslationParams): string {
 
 export function formatDate(
   value: Date | string,
-  options: Intl.DateTimeFormatOptions = { dateStyle: 'medium' },
+  options: Intl.DateTimeFormatOptions = { dateStyle: 'medium' }
 ): string {
   const date = value instanceof Date ? value : new Date(value);
   return new Intl.DateTimeFormat(activeLocale.value, options).format(date);

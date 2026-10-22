@@ -13,36 +13,57 @@ const dateOrNow = (field: string) => ({ $cond: [{ $eq: [{ $type: field }, 'date'
 export async function initializeAssistantRetention(
   messages: AssistantMessageModel,
   resources: ReturnType<typeof createResourceQueryModel>,
-  diagnostics: { logger?: AiLogger; verbose: boolean },
+  diagnostics: { logger?: AiLogger; verbose: boolean }
 ): Promise<void> {
   const trace = new AiTrace(diagnostics.logger, {}, '', 'assistant.retention.initialize', diagnostics.verbose);
   await withAiTrace(trace, async () => {
     try {
       const messageAnchor = { $ifNull: ['$completedAt', dateOrNow('$updatedAt')] };
       const messageResult = await aiStep('assistant.retention.messages.backfill', () => {
-        return messages.updateMany(
-          { status: { $in: ['delivered', 'failed'] }, expiresAt: { $exists: false } },
-          [{ $set: { completedAt: messageAnchor, expiresAt: { $add: [messageAnchor, ASSISTANT_MESSAGE_RETENTION_MS] } } }],
-          { timestamps: false, hint: { expiresAt: 1 } },
-        ).exec();
+        return messages
+          .updateMany(
+            { status: { $in: ['delivered', 'failed'] }, expiresAt: { $exists: false } },
+            [
+              {
+                $set: {
+                  completedAt: messageAnchor,
+                  expiresAt: { $add: [messageAnchor, ASSISTANT_MESSAGE_RETENTION_MS] },
+                },
+              },
+            ],
+            { timestamps: false, hint: { expiresAt: 1 } }
+          )
+          .exec();
       });
-      trace.event(
-        'assistant.retention.messages.backfilled',
-        { outcome: 'success', modifiedCount: messageResult.modifiedCount }
+      trace.event('assistant.retention.messages.backfilled', {
+        outcome: 'success',
+        modifiedCount: messageResult.modifiedCount,
+      }
       );
       const resourceResult = await aiStep('assistant.retention.resources.backfill', () => {
-        return resources.updateMany(
-          { expiresAt: { $exists: false } },
-          [{ $set: { expiresAt: { $add: [
-            { $max: [dateOrNow('$updatedAt'), { $ifNull: ['$leaseUntil', dateOrNow('$updatedAt')] }] },
-            RESOURCE_QUERY_RETENTION_MS,
-          ] } } }],
-          { timestamps: false, hint: { expiresAt: 1 } },
-        ).exec();
+        return resources
+          .updateMany(
+            { expiresAt: { $exists: false } },
+            [
+              {
+                $set: {
+                  expiresAt: {
+                    $add: [
+                      { $max: [dateOrNow('$updatedAt'), { $ifNull: ['$leaseUntil', dateOrNow('$updatedAt')] }] },
+                      RESOURCE_QUERY_RETENTION_MS,
+                    ],
+                  },
+                },
+              },
+            ],
+            { timestamps: false, hint: { expiresAt: 1 } }
+          )
+          .exec();
       });
-      trace.event(
-        'assistant.retention.resources.backfilled',
-        { outcome: 'success', modifiedCount: resourceResult.modifiedCount }
+      trace.event('assistant.retention.resources.backfilled', {
+        outcome: 'success',
+        modifiedCount: resourceResult.modifiedCount,
+      }
       );
     } catch (error) {
       trace.fail(error);

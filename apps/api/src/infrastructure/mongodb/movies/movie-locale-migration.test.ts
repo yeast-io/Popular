@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertStateAssociationsPreserved, legacyMovieFilter, migratedLocale, selectCanonicalMovies, toBaseMovieUpdate, toLocalizationInsert } from './movie-locale-migration.js';
+import {
+  assertStateAssociationsPreserved,
+  legacyMovieFilter,
+  migratedLocale,
+  selectCanonicalMovies,
+  toBaseMovieUpdate,
+  toLocalizationInsert,
+} from './movie-locale-migration.js';
 
 test('migration recognizes legacy localized fields even when locale is absent', () => {
   assert.ok(legacyMovieFilter.$or.some((condition) => 'title' in condition));

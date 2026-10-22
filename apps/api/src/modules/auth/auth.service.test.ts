@@ -7,18 +7,22 @@ import type { AuthUserStore, SessionStore, StoredUser } from './auth.types.js';
 
 class MemoryUsers implements AuthUserStore {
   readonly users = new Map<string, StoredUser>();
+
   async countUsers() {
     return this.users.size;
   }
+
   async createPasswordUser(input: Omit<StoredUser, 'id'>): Promise<StoredUser> {
     if (this.users.has(input.email)) throw new DuplicateEmailError();
     const user = { ...input, id: String(this.users.size + 1) };
     this.users.set(user.email, user);
     return user;
   }
+
   async findByEmailWithPassword(email: string) {
     return this.users.get(email) ?? null;
   }
+
   async findById(id: string) {
     return (
       [...this.users.values()].find((user) => {
@@ -26,12 +30,14 @@ class MemoryUsers implements AuthUserStore {
       }) ?? null
     );
   }
+
   async updateDisplayName(id: string, displayName: string) {
     const user = await this.findById(id);
     if (!user) return null;
     user.displayName = displayName;
     return user;
   }
+
   async updateAvatarObjectKey(id: string, avatarObjectKey: string | undefined) {
     const user = await this.findById(id);
     if (!user) return null;
@@ -43,14 +49,17 @@ class MemoryUsers implements AuthUserStore {
 
 class MemorySessions implements SessionStore {
   readonly sessions = new Map<string, string>();
+
   async create(ownerId: string) {
     const token = `token-${ownerId}-${this.sessions.size}`;
     this.sessions.set(token, ownerId);
     return token;
   }
+
   async getOwnerId(token: string) {
     return this.sessions.get(token) ?? null;
   }
+
   async delete(token: string) {
     this.sessions.delete(token);
   }
@@ -84,13 +93,12 @@ test('register rejects new users once the configured limit is reached', async ()
     service.register({ email: 'second@example.com', password: 'correct horse battery staple', displayName: 'Second' }),
     (error: unknown) => {
       return (
-        error instanceof AppError &&
-        error.statusCode === 403 &&
-        error.code === 'REGISTRATION_LIMIT_REACHED' &&
-        error.message === 'Registration user limit has been reached'
+        error instanceof AppError
+        && error.statusCode === 403
+        && error.code === 'REGISTRATION_LIMIT_REACHED'
+        && error.message === 'Registration user limit has been reached'
       );
-    },
-  );
+    });
   assert.equal(users.users.size, 1);
 });
 
@@ -113,8 +121,7 @@ test('login rejects a wrong password without revealing which credential failed',
     service.login({ email: 'missing@example.com', password: 'incorrect password' }),
     (error: unknown) => {
       return error instanceof AppError && error.statusCode === 401 && error.message === 'Invalid email or password';
-    },
-  );
+    });
 });
 
 test('current user and logout use the server-side session', async () => {
@@ -131,6 +138,6 @@ test('current user and logout use the server-side session', async () => {
   await service.logout(registered.token);
   await assert.rejects(
     service.currentUser(registered.token),
-    (error: unknown) => error instanceof AppError && error.statusCode === 401,
+    (error: unknown) => error instanceof AppError && error.statusCode === 401
   );
 });

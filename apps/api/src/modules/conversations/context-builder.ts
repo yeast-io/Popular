@@ -1,9 +1,12 @@
-import type { ContextBuilderInput, ContextBuilderResult, ConversationMessage, TokenCounter } from './conversation.types.js';
+import type {
+  ContextBuilderInput,
+  ContextBuilderResult,
+  ConversationMessage,
+  TokenCounter,
+} from './conversation.types.js';
 
 export class ContextBudgetExceededError extends Error {
-  constructor(
-    message: string
-  ) {
+  constructor(message: string) {
     super(message);
     this.name = 'ContextBudgetExceededError';
   }

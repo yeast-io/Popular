@@ -116,10 +116,10 @@ function applyConfiguration(next: TransmissionConfiguration) {
 
 function canSubmit(): boolean {
   if (!baseUrl.value.trim()) return false;
-  const canRetainPassword =
-    configured.value &&
-    config.value.baseUrl === baseUrl.value.trim().replace(/\/$/, '') &&
-    config.value.username === username.value.trim();
+  const canRetainPassword
+    = configured.value
+      && config.value.baseUrl === baseUrl.value.trim().replace(/\/$/, '')
+      && config.value.username === username.value.trim();
   return Boolean(username.value.trim()) && (Boolean(replacementSecret(password.value, config.value.passwordMasked)) || canRetainPassword);
 }
 </script>

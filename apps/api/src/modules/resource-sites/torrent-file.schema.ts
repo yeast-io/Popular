@@ -5,7 +5,9 @@ export function validateTorrentFile(bytes: Uint8Array): void {
   const data = Buffer.from(bytes);
   let offset = 0;
   let hasInfo = false;
-  const invalid = (): never => { throw new ResourceSiteError('invalidResponse'); };
+  const invalid = (): never => {
+    throw new ResourceSiteError('invalidResponse');
+  };
   const string = (): Buffer => {
     const start = offset;
     while (offset < data.length && data[offset]! >= 48 && data[offset]! <= 57) offset++;
@@ -37,11 +39,12 @@ export function validateTorrentFile(bytes: Uint8Array): void {
     } else if (token === 105) {
       const start = ++offset;
       while (offset < data.length && data[offset] !== 101) offset++;
-      if (offset >= data.length || !/^(?:0|-?[1-9]\d*)$/.test(
-        data.subarray(start, offset).toString('utf8')
-      )) return invalid();
+      if (offset >= data.length || !/^(?:0|-?[1-9]\d*)$/.test(data.subarray(start, offset).toString('utf8')))
+        return invalid();
       offset++;
-    } else { string(); }
+    } else {
+      string();
+    }
   };
   if (data[0] !== 100) return invalid();
   value(0);

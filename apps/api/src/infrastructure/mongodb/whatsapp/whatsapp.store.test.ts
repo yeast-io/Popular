@@ -23,7 +23,7 @@ test('auth state is encrypted and bound to owner; all reads/writes require an un
   };
   const store = new MongoWhatsAppStore(
     model as never,
-    new SecretCrypto('test-whatsapp-encryption-key-at-least-32-characters'),
+    new SecretCrypto('test-whatsapp-encryption-key-at-least-32-characters')
   );
   const plaintext = JSON.stringify({
     creds: { secret: 'alice-private-credential' },
@@ -48,7 +48,7 @@ test('a stale process cannot overwrite or clear a newer lease session', async ()
   const model = { updateOne: () => ({ exec: async () => ({ matchedCount: 0 }) }) };
   const store = new MongoWhatsAppStore(
     model as never,
-    new SecretCrypto('test-whatsapp-encryption-key-at-least-32-characters'),
+    new SecretCrypto('test-whatsapp-encryption-key-at-least-32-characters')
   );
   await assert.rejects(() => store.save('alice', 'expired-lease', 'private-state'), /lease lost/);
   await assert.rejects(() => store.clear('alice', 'expired-lease'), /lease lost/);

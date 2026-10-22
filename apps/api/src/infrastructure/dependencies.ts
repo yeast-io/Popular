@@ -39,6 +39,6 @@ export async function closeInfrastructure(infrastructure: Infrastructure): Promi
   await Promise.allSettled(
     infrastructure.healthDependencies.map((dependency) => {
       return dependency.close();
-    }),
+    })
   );
 }

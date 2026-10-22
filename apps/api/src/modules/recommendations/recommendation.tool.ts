@@ -7,7 +7,13 @@ import { recommendationMessages } from './recommendation.messages.js';
 import type { Locale } from '@movie-hub/contract';
 import type { LlmMessage } from '../llm/llm.types.js';
 import type { MovieCatalogStore, MovieDetailRecord, MovieRecord, MovieStatusStore } from '../movies/movie.types.js';
-import type { DiscoveryProvider, RecommendationProfileReader, RecommendationStore, RecommendationResult, RecommendationMovie } from './recommendation.types.js';
+import type {
+  DiscoveryProvider,
+  RecommendationProfileReader,
+  RecommendationStore,
+  RecommendationResult,
+  RecommendationMovie,
+} from './recommendation.types.js';
 import { RECOMMENDATION_GENRE_IDS, emptyRecommendationState, isRecommendationActive } from './recommendation.domain.js';
 import type { RecommendationDecisions } from './recommendation.types.js';
 
@@ -21,12 +27,14 @@ export class RecommendationTool {
     private readonly locale: Locale,
     private readonly diagnostics: { logger?: AiLogger; verbose: boolean } = { verbose: false }
   ) {}
+
   async active(ownerId: string, conversation: string) {
     const row = await aiStep('recommendation.active.read', () => {
       return this.store.read(ownerId, conversation);
     });
     return row ? isRecommendationActive(row.state) : false;
   }
+
   async run(
     ownerId: string,
     conversation: string,
@@ -34,10 +42,11 @@ export class RecommendationTool {
     text: string,
     history: LlmMessage[],
     decisions: RecommendationDecisions,
-    signal?: AbortSignal,
+    signal?: AbortSignal
   ): Promise<string> {
     return (await this.runResult(ownerId, conversation, eventId, text, history, decisions, signal)).replyText;
   }
+
   async runResult(
     ownerId: string,
     conversation: string,
@@ -46,7 +55,7 @@ export class RecommendationTool {
     history: LlmMessage[],
     decisions: RecommendationDecisions,
     signal?: AbortSignal,
-    locale: Locale = this.locale,
+    locale: Locale = this.locale
   ): Promise<RecommendationResult> {
     const trace = new AiTrace(
       this.diagnostics.logger,
@@ -57,7 +66,7 @@ export class RecommendationTool {
       },
       text,
       'recommendation.tool',
-      this.diagnostics.verbose,
+      this.diagnostics.verbose
     );
     for (const message of history) trace.sensitive(message.content);
     return withAiTrace(trace, async () => {
@@ -70,8 +79,7 @@ export class RecommendationTool {
           await aiStep('recommendation.state.ensure', () => this.store.ensure(ownerId, conversation));
           acquired = await aiStep('recommendation.lease.acquire', () => {
             return this.store.acquire(ownerId, conversation, leaseId);
-          },
-          );
+          });
           if (!acquired) throw new Error('Recommendation conversation is busy');
           const deadline = AbortSignal.timeout(policy.executionTimeoutMs);
           return this.execute(
@@ -83,7 +91,7 @@ export class RecommendationTool {
             decisions,
             leaseId,
             signal ? AbortSignal.any([signal, deadline]) : deadline,
-            locale,
+            locale
           );
         });
       } catch (error) {
@@ -103,6 +111,7 @@ export class RecommendationTool {
       return reply;
     });
   }
+
   private async execute(
     ownerId: string,
     conversation: string,
@@ -112,7 +121,7 @@ export class RecommendationTool {
     decisions: RecommendationDecisions,
     leaseId: string,
     signal: AbortSignal,
-    locale: Locale,
+    locale: Locale
   ): Promise<RecommendationResult> {
     signal.throwIfAborted();
     const interactionAt = new Date();
@@ -145,7 +154,7 @@ export class RecommendationTool {
         state.active ? state.questions : 0,
         combined.slice(-policy.historyMessages),
         signal,
-        locale,
+        locale
       );
     });
     currentAiTrace()?.event('recommendation.plan.selected', {
@@ -163,9 +172,9 @@ export class RecommendationTool {
     let reply: string;
     let movies: RecommendationMovie[] | undefined;
     if (
-      plan.question &&
-      !plan.recommendNow &&
-      (state.active ? state.questions : 0) < policy.maxClarificationQuestions
+      plan.question
+      && !plan.recommendNow
+      && (state.active ? state.questions : 0) < policy.maxClarificationQuestions
     ) {
       state.questions = (state.active ? state.questions : 0) + 1;
       state.active = true;
@@ -201,7 +210,7 @@ export class RecommendationTool {
           candidates.push(
             ...(await aiStep('recommendation.reference.related', () => {
               return this.provider.related(search.movies[0]!.tmdbId, locale, ownerId);
-            })),
+            }))
           );
       } else {
         const liked = await aiStep('recommendation.seeds.read', () => {
@@ -215,8 +224,8 @@ export class RecommendationTool {
               () => {
                 return this.provider.related(movie.tmdbId, locale, ownerId);
               },
-              { tmdbId: movie.tmdbId },
-            )),
+              { tmdbId: movie.tmdbId }
+            ))
           );
         }
       }
@@ -227,15 +236,15 @@ export class RecommendationTool {
             () => {
               return this.provider.discover(filters, page, locale, ownerId);
             },
-            { page },
-          )),
+            { page }
+          ))
         );
       }
       candidates = [...new Map(candidates.map((movie) => [movie.tmdbId, movie])).values()];
       const states = await aiStep('recommendation.statuses.read', () => {
         return this.statuses.readForMovies(
           ownerId,
-          candidates.map((movie) => movie.tmdbId),
+          candidates.map((movie) => movie.tmdbId)
         );
       });
       const excluded = new Set(
@@ -245,20 +254,20 @@ export class RecommendationTool {
           })
           .map((item) => {
             return item.tmdbId;
-          }),
+          })
       );
       const recent = new Set(
         state.batches.slice(-policy.recentBatches).flatMap((batch) => {
           return batch.movieIds;
-        }),
+        })
       );
       candidates = candidates.filter((movie) => {
         return (
-          !excluded.has(movie.tmdbId) &&
-          !recent.has(movie.tmdbId) &&
-          (!movie.releaseDate || movie.releaseDate <= new Date().toISOString().slice(0, 10)) &&
-          filters.genres.every((id) => movie.genreIds.includes(id)) &&
-          !filters.excludeGenres.some((id) => movie.genreIds.includes(id))
+          !excluded.has(movie.tmdbId)
+          && !recent.has(movie.tmdbId)
+          && (!movie.releaseDate || movie.releaseDate <= new Date().toISOString().slice(0, 10))
+          && filters.genres.every((id) => movie.genreIds.includes(id))
+          && !filters.excludeGenres.some((id) => movie.genreIds.includes(id))
         );
       });
       const details: MovieDetailRecord[] = [];
@@ -274,7 +283,7 @@ export class RecommendationTool {
             }
             );
           },
-          { tmdbId: movie.tmdbId },
+          { tmdbId: movie.tmdbId }
         );
         if (filters.maxRuntime && (!detail.runtimeMinutes || detail.runtimeMinutes > filters.maxRuntime)) continue;
         if (filters.language && detail.originalLanguage !== filters.language) continue;
@@ -283,7 +292,7 @@ export class RecommendationTool {
           () => {
             return this.catalog.writeMovieDetail(detail, new Date(), locale);
           },
-          { tmdbId: movie.tmdbId },
+          { tmdbId: movie.tmdbId }
         );
         details.push(detail);
       }
@@ -294,7 +303,7 @@ export class RecommendationTool {
           () => {
             return decisions.rank(profile, combined.slice(-policy.historyMessages), details, signal, locale, plan);
           },
-          { candidateCount: details.length, requestedCount: plan.requestedCount },
+          { candidateCount: details.length, requestedCount: plan.requestedCount }
         );
         const chosen = [...new Map(ranked.movies.map((item) => [item.tmdbId, item])).values()];
         await aiStep('recommendation.rank.validate', async () => {
@@ -305,7 +314,7 @@ export class RecommendationTool {
         const latest = await aiStep('recommendation.statuses.recheck', () => {
           return this.statuses.readForMovies(
             ownerId,
-            chosen.map((item) => item.tmdbId),
+            chosen.map((item) => item.tmdbId)
           );
         });
         const blocked = new Set(
@@ -315,7 +324,7 @@ export class RecommendationTool {
             })
             .map((item) => {
               return item.tmdbId;
-            }),
+            })
         );
         const eligible = chosen
           .filter((item) => {
@@ -336,8 +345,8 @@ export class RecommendationTool {
             ...(detail.posterPath ? { posterPath: detail.posterPath } : {}),
           };
         });
-        reply =
-          eligible
+        reply
+          = eligible
             .map((item, index) => {
               return `${index + 1}. ${
                 details.find((movie) => movie.tmdbId === item.tmdbId)!.title
@@ -361,13 +370,13 @@ export class RecommendationTool {
       state.history = [];
     }
     state.events = Object.fromEntries(
-      [...Object.entries(state.events), [eventId, reply]].slice(-policy.retainedEvents),
+      [...Object.entries(state.events), [eventId, reply]].slice(-policy.retainedEvents)
     );
     state.eventMovies = Object.fromEntries(
       Object.keys(state.events).flatMap((id) => {
         const savedMovies = id === eventId ? movies : state.eventMovies?.[id];
         return savedMovies?.length ? [[id, savedMovies]] : [];
-      }),
+      })
     );
     signal.throwIfAborted();
     currentAiTrace()?.sensitive(reply);

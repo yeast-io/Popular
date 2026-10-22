@@ -11,11 +11,14 @@ test('workflow session reads, lease acquisition, saves and release always scope 
   const query = (filter: Record<string, unknown>, update?: Record<string, unknown>) => {
     queries.push(filter);
     if (update) updates.push(update);
-    return { lean: () => {
-      return ({ exec: async () => ({ data: emptyAssistantSession() }) });
-    }, exec: async () => {
-      return ({ matchedCount });
-    } };
+    return {
+      lean: () => {
+        return { exec: async () => ({ data: emptyAssistantSession() }) };
+      },
+      exec: async () => {
+        return { matchedCount };
+      },
+    };
   };
   const model = { findOne: query, updateOne: query, findOneAndUpdate: query };
   const store = new MongoAssistantSessionStore(model as unknown as ReturnType<typeof createAssistantSessionModel>);
@@ -41,9 +44,12 @@ test('workflow session reads, lease acquisition, saves and release always scope 
 test('workflow session TTL uses a root BSON date, and ensure resets expired state while protecting active leases', async () => {
   let pipeline: Array<{ $set: Record<string, unknown> }> = [];
   const now = Date.now();
-  const store = new MongoAssistantSessionStore({ updateOne: (_filter: unknown, update: typeof pipeline) => {
-    pipeline = update; return { exec: async () => ({ matchedCount: 1 }) };
-  } } as unknown as ReturnType<typeof createAssistantSessionModel>);
+  const store = new MongoAssistantSessionStore({
+    updateOne: (_filter: unknown, update: typeof pipeline) => {
+      pipeline = update;
+      return { exec: async () => ({ matchedCount: 1 }) };
+    },
+  } as unknown as ReturnType<typeof createAssistantSessionModel>);
   await store.ensure('alice', '$literal-chat');
   const set = pipeline[0]!.$set;
   assert.deepEqual(set.conversation, { $literal: '$literal-chat' });
@@ -57,9 +63,12 @@ test('workflow session TTL uses a root BSON date, and ensure resets expired stat
 
 test('logical expiry filters old workflow rows even if MongoDB has not deleted them yet', async () => {
   let scope: Record<string, unknown> = {};
-  const store = new MongoAssistantSessionStore({ findOne: (filter: Record<string, unknown>) => {
-    scope = filter; return { lean: () => ({ exec: async () => null }) };
-  } } as unknown as ReturnType<typeof createAssistantSessionModel>);
+  const store = new MongoAssistantSessionStore({
+    findOne: (filter: Record<string, unknown>) => {
+      scope = filter;
+      return { lean: () => ({ exec: async () => null }) };
+    },
+  } as unknown as ReturnType<typeof createAssistantSessionModel>);
   assert.equal(await store.read('alice', 'web:thread'), null);
   assert.equal(scope.ownerId, 'alice');
   const conditions = scope.$or as Array<{ expiresAt: { $gt?: Date; $exists?: boolean } }>;

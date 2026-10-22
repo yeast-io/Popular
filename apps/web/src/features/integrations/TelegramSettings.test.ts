@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { setLocale } from '../../i18n';
 import TelegramSettings from './TelegramSettings.vue';
+
 beforeEach(() => {
   setLocale('en-US');
   vi.useFakeTimers();
@@ -29,7 +30,7 @@ it('opens a binding link, polls owner status, tests and requires confirmation be
       }
       if (url.endsWith('/test')) return Response.json({ messageId: '1' });
       return Response.json(state);
-    }),
+    })
   );
   const wrapper = mount(TelegramSettings);
   await flushPromises();
@@ -71,7 +72,7 @@ it('hides expired binding links and clears links when refresh fails', async () =
         }
         );
       return Response.json({ status: expired ? 'unbound' : 'pending' });
-    }),
+    })
   );
   const wrapper = mount(TelegramSettings);
   await flushPromises();
@@ -95,7 +96,7 @@ it('hides expired binding links and clears links when refresh fails', async () =
 it('does not expose configuration or binding actions when server has no Bot', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => Response.json({ status: 'unavailable' })),
+    vi.fn(async () => Response.json({ status: 'unavailable' }))
   );
   const wrapper = mount(TelegramSettings);
   await flushPromises();

@@ -8,7 +8,7 @@ const userMovieStateSchema = new Schema(
     status: { type: String, required: true, enum: [...movieStatuses, 'not_interested'], default: 'unwatched' },
     preference: { type: String, required: true, enum: moviePreferences, default: 'neutral' },
   },
-  { timestamps: true, collection: 'user_movie_states' },
+  { timestamps: true, collection: 'user_movie_states' }
 );
 
 userMovieStateSchema.index({ ownerId: 1, tmdbId: 1 }, { unique: true });

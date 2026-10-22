@@ -23,7 +23,7 @@ export class AssistantMessageReceiver {
         messageId: message.messageId,
       },
       message.text ?? '',
-      'assistant.receive',
+      'assistant.receive'
     );
     await withAiTrace(trace, async () => {
       const skip = (reason: string) => trace.event('assistant.message.filtered', { reason });

@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { setLocale } from '../../i18n';
 import NotificationTestPage from './NotificationTestPage.vue';
+
 beforeEach(() => {
   setLocale('en-US');
   vi.useFakeTimers();
@@ -37,7 +38,7 @@ it('renders one button per available channel and sends only the selected channel
             ],
             page: 1,
             hasMore: false,
-          },
+          }
     );
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -77,7 +78,7 @@ it('renders one button per available channel and sends only the selected channel
 it('shows empty data and request errors without automatically sending any messages', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => Response.json({ channels, items: [], page: 1, hasMore: false })),
+    vi.fn(async () => Response.json({ channels, items: [], page: 1, hasMore: false }))
   );
   const wrapper = mount(NotificationTestPage);
   await flushPromises();

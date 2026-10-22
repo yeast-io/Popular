@@ -33,7 +33,7 @@ it('shows OpenAI with partial token totals and a model/operation breakdown, with
         models: [{ provider: 'openai', model: 'test-model', operation: 'assistant.intent', ...metrics }],
       }
       );
-    }),
+    })
   );
   const wrapper = mount(UsageStatistics);
   await flushPromises();
@@ -68,7 +68,7 @@ it('shows unknown instead of zero when no model request returned usage', async (
         operations: [],
       }
       );
-    }),
+    })
   );
   const wrapper = mount(UsageStatistics);
   await flushPromises();
@@ -76,7 +76,7 @@ it('shows unknown instead of zero when no model request returned usage', async (
     wrapper
       .findAll('.usage-provider-grid dd')
       .slice(-3)
-      .map((node) => node.text()),
+      .map((node) => node.text())
   ).toEqual(
     ['Unknown', 'Unknown', 'Unknown']
   );

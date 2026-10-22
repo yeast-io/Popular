@@ -37,10 +37,10 @@ function setup() {
     selectModel: async (id, key, model) => {
       const record = records.get(id);
       if (
-        !record ||
-        record.encryptedApiKey !== key ||
-        record.validation?.status !== 'valid' ||
-        !record.validation.models.includes(model)
+        !record
+        || record.encryptedApiKey !== key
+        || record.validation?.status !== 'valid'
+        || !record.validation.models.includes(model)
       )
         return false;
       records.set(id, { ...record, model });
@@ -158,7 +158,7 @@ test('missing key blocks normal and streaming turns before any message write', a
       throw new Error('must not call model');
     },
     { count: (s) => s.length },
-    { systemPrompt: 'test', maxContextTokens: 1000, maxOutputTokens: 10, summaryMaxOutputTokens: 10 },
+    { systemPrompt: 'test', maxContextTokens: 1000, maxOutputTokens: 10, summaryMaxOutputTokens: 10 }
   );
   const app = await buildApp({
     config,
@@ -268,7 +268,7 @@ test('concurrent tests share one request, and a stale result cannot validate a r
     assert.equal(calls, 1);
     assert.equal(
       results.every((result) => result.status === 'rejected' && result.reason.code === 'CONFLICT'),
-      true,
+      true
     );
     assert.equal((await service.get('alice')).validation, undefined);
     assert.equal((await service.get('alice')).configured, action === 'replace');
@@ -370,7 +370,7 @@ test('model selection cannot update replaced credentials or a changed model list
     {
       model: 'default-model',
       verify: async () => ['test-model'],
-    },
+    }
   );
   await service.test('alice');
   await assert.rejects(service.selectModel('alice', 'test-model'), { code: 'CONFLICT' });

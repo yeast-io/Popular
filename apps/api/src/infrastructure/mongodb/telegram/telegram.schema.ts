@@ -9,13 +9,13 @@ const telegramBindingSchema = new Schema(
     expiresAt: Date,
     lastTestAt: Date,
   },
-  { timestamps: true, collection: 'telegram_bindings' },
+  { timestamps: true, collection: 'telegram_bindings' }
 );
 telegramBindingSchema.index({ ownerId: 1 }, { unique: true });
 telegramBindingSchema.index({ chatId: 1 }, { unique: true, partialFilterExpression: { chatId: { $type: 'string' } } });
 telegramBindingSchema.index(
   { pendingHash: 1 },
-  { unique: true, partialFilterExpression: { pendingHash: { $type: 'string' } } },
+  { unique: true, partialFilterExpression: { pendingHash: { $type: 'string' } } }
 );
 export const createTelegramModel = (connection: Connection) => {
   return connection.model('TelegramBinding', telegramBindingSchema);

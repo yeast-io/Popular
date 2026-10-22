@@ -27,8 +27,8 @@ export interface LlmGenerateResult {
   outputTokens: number;
 }
 
-export type LlmStreamEvent =
-  { type: 'delta'; delta: string } | { type: 'completed'; inputTokens: number; outputTokens: number };
+export type LlmStreamEvent
+  = { type: 'delta'; delta: string } | { type: 'completed'; inputTokens: number; outputTokens: number };
 
 export interface LlmClient {
   generate(input: LlmGenerateInput): Promise<LlmGenerateResult>;

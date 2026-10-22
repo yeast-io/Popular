@@ -28,7 +28,7 @@ export const MTeamConfigurationSchema = Type.Object(
     lastValidationAt: Type.Optional(Type.String({ format: 'date-time' })),
     lastFailureType: Type.Optional(IntegrationFailureTypeSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const SaveMTeamConfigurationRequestSchema = Type.Object(
@@ -37,7 +37,7 @@ export const SaveMTeamConfigurationRequestSchema = Type.Object(
     webBaseUrl: Type.Optional(Type.String({ minLength: 1, maxLength: 2048 })),
     apiKey: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const QBittorrentAuthMethodSchema = Type.Union([Type.Literal('api_key'), Type.Literal('username_password')]);
@@ -55,7 +55,7 @@ export const QBittorrentConfigurationSchema = Type.Object(
     lastValidationAt: Type.Optional(Type.String({ format: 'date-time' })),
     lastFailureType: Type.Optional(IntegrationFailureTypeSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 const QBittorrentBaseUrlSchema = Type.String({ minLength: 1, maxLength: 2048 });
@@ -67,7 +67,7 @@ export const SaveQBittorrentConfigurationRequestSchema = Type.Union([
       authMethod: Type.Literal('api_key'),
       apiKey: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
     },
-    { additionalProperties: false },
+    { additionalProperties: false }
   ),
   Type.Object(
     {
@@ -76,7 +76,7 @@ export const SaveQBittorrentConfigurationRequestSchema = Type.Union([
       username: Type.String({ minLength: 1, maxLength: 256 }),
       password: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
     },
-    { additionalProperties: false },
+    { additionalProperties: false }
   ),
 ]);
 
@@ -99,7 +99,7 @@ export const TransmissionConfigurationSchema = Type.Object(
     lastValidationAt: Type.Optional(Type.String({ format: 'date-time' })),
     lastFailureType: Type.Optional(IntegrationFailureTypeSchema),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export const SaveTransmissionConfigurationRequestSchema = Type.Object(
@@ -108,7 +108,7 @@ export const SaveTransmissionConfigurationRequestSchema = Type.Object(
     username: Type.String({ minLength: 1, maxLength: 256 }),
     password: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
   },
-  { additionalProperties: false },
+  { additionalProperties: false }
 );
 
 export type TransmissionConfiguration = Static<typeof TransmissionConfigurationSchema>;

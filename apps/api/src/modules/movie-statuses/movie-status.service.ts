@@ -1,6 +1,14 @@
 import type { MovieSiteResourcesService } from '../integrations/movie-site-resources.service.js';
 import type { MovieResourceCheckDispatcher } from './movie-status.types.js';
-import type { Locale, MovieReleaseListResponse, MovieResourceCheckResponse, MyMoviesFilter, MyMoviesResponse, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
+import type {
+  Locale,
+  MovieReleaseListResponse,
+  MovieResourceCheckResponse,
+  MyMoviesFilter,
+  MyMoviesResponse,
+  TrackedMoviePreference,
+  TrackedMovieStatus,
+} from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieCatalogStore, MovieStatusStore } from '../movies/movie.types.js';
 import { toMovieSummary } from '../movies/movie.service.js';
@@ -68,7 +76,7 @@ export class MovieStatusService {
     status: MyMoviesFilter | undefined,
     page: number,
     pageSize: number,
-    locale: Locale = this.defaultLocale,
+    locale: Locale = this.defaultLocale
   ): Promise<MyMoviesResponse> {
     const result = await this.statuses.list(ownerId, status, page, pageSize);
     for (const item of result.items) {
@@ -77,31 +85,40 @@ export class MovieStatusService {
     const [movies, resourceChecks] = await Promise.all([
       this.movies.readMovies(
         result.items.map(({ tmdbId }) => tmdbId),
-        locale,
+        locale
       ),
       this.resourceCheckStore?.readForMovies(
         ownerId,
         result.items.map(({ tmdbId }) => {
           return tmdbId;
-        }),
+        })
       ) ?? [],
     ]);
     const stateById = new Map(result.items.map((item) => [item.tmdbId, item]));
-    const resourceCheckById = new Map(resourceChecks.filter((check) => {
-      return check.provider === 'mteam';
-    }).map((check) => {
-      return [check.tmdbId, check];
-    }));
-    const summaries = await this.siteResources?.summaries(ownerId, result.items.map((item) => item.tmdbId));
+    const resourceCheckById = new Map(
+      resourceChecks
+        .filter((check) => {
+          return check.provider === 'mteam';
+        })
+        .map((check) => {
+          return [check.tmdbId, check];
+        })
+    );
+    const summaries = await this.siteResources?.summaries(
+      ownerId,
+      result.items.map((item) => item.tmdbId)
+    );
     return {
       items: movies.flatMap((movie) => {
         const state = stateById.get(movie.tmdbId);
         const storedResourceCheck = resourceCheckById.get(movie.tmdbId);
-        const resourceCheck = summaries?.get(movie.tmdbId) ?? (storedResourceCheck
-          ? toResourceCheckResponse(storedResourceCheck)
-          : state?.status === 'interested'
-            ? emptyResourceCheck()
-            : undefined);
+        const resourceCheck
+          = summaries?.get(movie.tmdbId)
+            ?? (storedResourceCheck
+              ? toResourceCheckResponse(storedResourceCheck)
+              : state?.status === 'interested'
+                ? emptyResourceCheck()
+                : undefined);
         return state
           ? [
               {
@@ -122,7 +139,7 @@ function emptyResourceCheck(): MovieResourceCheckResponse {
 }
 
 function toResourceCheckResponse(
-  resourceCheck: Awaited<ReturnType<MovieResourceCheckStore['readOne']>>,
+  resourceCheck: Awaited<ReturnType<MovieResourceCheckStore['readOne']>>
 ): MovieResourceCheckResponse {
   if (!resourceCheck) return emptyResourceCheck();
   return {

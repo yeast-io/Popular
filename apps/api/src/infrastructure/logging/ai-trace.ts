@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { serializeDiagnosticError } from './diagnostic-error.js';
+
 const context = new AsyncLocalStorage<AiTrace>();
 export const currentAiTrace = () => context.getStore();
 export const withAiTrace = <T>(trace: AiTrace, action: () => T): T => context.run(trace, action);
@@ -13,6 +14,7 @@ export class AiTrace {
   private readonly secrets = new Set<string>();
   private lastStage = 'request';
   private failedStage: string | undefined;
+
   constructor(
     private readonly logger: AiLogger | undefined,
     private readonly bindings: Record<string, unknown>,
@@ -23,9 +25,11 @@ export class AiTrace {
     this.correlationId = String(bindings.correlationId ?? bindings.requestId ?? bindings.jobId ?? randomUUID());
     this.sensitive(content);
   }
+
   sensitive(value: string): void {
     if (value) this.secrets.add(value);
   }
+
   event(stage: string, fields: Record<string, unknown> = {}): void {
     this.lastStage = stage;
     if (this.eventsEnabled)
@@ -38,9 +42,10 @@ export class AiTrace {
           elapsedMs: Date.now() - this.started,
           ...fields,
         },
-        stage,
+        stage
       );
   }
+
   async step<T>(stage: string, action: () => Promise<T>, fields: Record<string, unknown> = {}): Promise<T> {
     const start = Date.now();
     this.event(`${stage}.started`, fields);
@@ -53,10 +58,12 @@ export class AiTrace {
       throw error;
     }
   }
+
   /** Clear a recorded failure after the caller has handled it and continues execution. */
   clearFailure(): void {
     this.failedStage = undefined;
   }
+
   fail(error: unknown, fields: Record<string, unknown> = {}): void {
     this.logger?.error(
       {
@@ -68,7 +75,7 @@ export class AiTrace {
         ...fields,
         error: serializeDiagnosticError(error, [...this.secrets]),
       },
-      this.operation ? `${this.operation} failed` : 'AI conversation request failed',
+      this.operation ? `${this.operation} failed` : 'AI conversation request failed'
     );
   }
 }

@@ -23,13 +23,16 @@ function mountControls() {
         { key: channel.id, channel: channel.name, enabled: controls.enabledChannels.includes(
           channel.id
         ), disabled: controls.disabled,
-          onChange: (enabled: boolean) => controls.toggleChannel(channel.id, enabled) },
+        onChange: (enabled: boolean) => controls.toggleChannel(channel.id, enabled) }
       );
     });
   } } });
 }
 beforeEach(() => setLocale('en-US'));
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 it.each(['en-US', 'zh-CN'] as const)('independently saves each channel and disables notifications when both are off in %s', async (locale) => {
   setLocale(locale);
@@ -86,7 +89,9 @@ it('restores the saved switch state when an update fails', async () => {
 
 it('keeps switches disabled until saved preferences arrive even if availability arrives first', async () => {
   let resolveInitial!: (response: Response) => void;
-  const initial = new Promise<Response>((resolve) => { resolveInitial = resolve; });
+  const initial = new Promise<Response>((resolve) => {
+    resolveInitial = resolve;
+  });
   const preferences = { enabled: true, defaultChannel: 'whatsapp', additionalChannels: [], channels };
   vi.stubGlobal(
     'fetch',

@@ -15,7 +15,7 @@ test('uses a v3 API key as an api_key query parameter', async () => {
   };
   await new TmdbClient('0123456789abcdef0123456789abcdef', 1_000, 'https://example.test/3', fetcher).fetchPage(
     1,
-    'zh-CN',
+    'zh-CN'
   );
   const url = new URL(requestedUrl);
   assert.equal(url.searchParams.get('api_key'), '0123456789abcdef0123456789abcdef');
@@ -127,7 +127,7 @@ test('maps movie details, the best YouTube trailer, directors, and only the firs
   assert.equal(detail.cast.length, 20);
   assert.deepEqual(
     detail.directors.map(({ person }) => person.name),
-    ['Director'],
+    ['Director']
   );
 });
 
@@ -235,7 +235,7 @@ test('records every real TMDB retry with user attribution', async () => {
     [
       { outcome: 'failure', attempt: 1, trigger: 'api_request', httpStatus: 429, errorCode: 'rate_limited' },
       { outcome: 'success', attempt: 2, trigger: 'retry', httpStatus: 200, errorCode: undefined },
-    ],
+    ]
   );
   assert.equal(events[0]?.operationId, events[1]?.operationId);
   assert.equal(events[0]?.ownerId, 'owner-1');

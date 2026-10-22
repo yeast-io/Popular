@@ -1,3 +1,18 @@
+import { randomUUID } from 'node:crypto';
+import { GatewayPool } from './infrastructure/socket/gateway-pool.service.js';
+import { MongoRemoteControlStore } from './infrastructure/mongodb/remote-downloads/remote-control.store.js';
+import { RemoteDownloadService } from './modules/remote-downloads/remote-download.service.js';
+import { RemoteDownloadCoordinator } from './modules/remote-downloads/remote-download-coordinator.service.js';
+import { RemoteDownloadWorker } from './modules/remote-downloads/remote-download.worker.js';
+import { readTorrentMetadata } from './modules/remote-downloads/torrent-metadata.schema.js';
+import { integrationSecretContext } from './modules/integrations/integration.service.js';
+import { RpcError } from '@movie-hub/contract/socket-rpc';
+import { AiTrace, withAiTrace } from './infrastructure/logging/ai-trace.js';
+import { MongoRemoteAuthorizationMigration } from './infrastructure/mongodb/remote-clients/remote-authorization-migration.store.js';
+import { MongoRemoteAuthorizationStore } from './infrastructure/mongodb/remote-clients/remote-authorization.store.js';
+import { RemoteClientService } from './modules/remote-clients/remote-client.service.js';
+import { AuthorizationGatewayClient } from './modules/remote-clients/authorization-gateway.service.js';
+import { RemoteClientWorker } from './modules/remote-clients/remote-client.worker.js';
 import { withMTeamEndpoints } from './modules/integrations/mteam-endpoints.domain.js';
 import { IntegrationPreferencesService } from './modules/integrations/integration-preferences.service.js';
 import { MongoIntegrationPreferencesStore } from './infrastructure/mongodb/integrations/integration-preferences.store.js';
@@ -104,7 +119,7 @@ shutdown.register('mongodb', 100, () => infrastructure.mongodb.close());
 shutdown.register('redis', 110, () => infrastructure.redis.close());
 const shutdownHandlers = installShutdownHandlers(shutdown, process, async () => {
   await Promise.all(
-    [loggers.app, loggers.error].map((logger) => new Promise<void>((resolve) => logger.flush(() => resolve()))),
+    [loggers.app, loggers.error].map((logger) => new Promise<void>((resolve) => logger.flush(() => resolve())))
   );
 });
 
@@ -124,14 +139,70 @@ try {
     },
     undefined,
     undefined,
-    config.SCAN_TRACE_ENABLED,
+    config.SCAN_TRACE_ENABLED
   );
   shutdown.register('external_usage_aggregation', 45, () => externalUsageAggregation.stop());
+  await Promise.all([models.users.init(), models.remoteDevices.init(), models.remoteAuthorizations.init()]);
+  const remoteMigration = new MongoRemoteAuthorizationMigration(
+    models.users,
+    models.remoteDevices,
+    models.remoteAuthorizations
+  );
+  const migrationTrace = new AiTrace(loggers.error, {}, '', 'remote-client.migration', config.VERBOSE);
+  await withAiTrace(migrationTrace, async () => {
+    try {
+      await migrationTrace.step('remote-client.migration', () => remoteMigration.migrate());
+    } catch (error) {
+      migrationTrace.fail(error);
+      throw error;
+    }
+  });
+  const gatewayPool = new GatewayPool({
+    urls: config.REMOTE_GATEWAY_BASE_URL ? [config.REMOTE_GATEWAY_BASE_URL] : [],
+    token: config.REMOTE_GATEWAY_SERVICE_TOKEN ?? '',
+    instanceId: randomUUID(),
+    size: config.REMOTE_GATEWAY_POOL_SIZE,
+    allowInsecure: config.REMOTE_GATEWAY_ALLOW_INSECURE_DEV,
+    diagnostics: {
+      verbose: config.VERBOSE,
+      info: (fields) => loggers.app.info(fields, 'gateway-pool'),
+      error: (err, fields) => loggers.error.error({ err, ...fields }, 'gateway-pool'),
+    },
+    handle: async (command, payload, frame) => {
+      const trace = new AiTrace(
+        loggers.error,
+        { correlationId: frame.correlationId, command, messageId: frame.messageId },
+        '',
+        'gateway-rpc',
+        config.VERBOSE
+      );
+      return withAiTrace(trace, async () => {
+        try {
+          return await trace.step('gateway-rpc.handle', () => remoteDownloads.handle(command, payload));
+        } catch (error) {
+          trace.fail(error);
+          throw error;
+        }
+      });
+    },
+  });
+  const remoteClientService = new RemoteClientService(
+    new MongoRemoteAuthorizationStore(models.users, models.remoteDevices),
+    new AuthorizationGatewayClient(gatewayPool),
+    new SecretCrypto(config.INTEGRATION_SECRET_KEY)
+  );
+  shutdown.register('gateway_pool', 70, () => gatewayPool.stop());
+  const remoteClientWorker = new RemoteClientWorker(remoteClientService, {
+    logger: loggers.error,
+    verbose: config.VERBOSE,
+  });
+  shutdown.register('remote_client_notifications', 31, () => remoteClientWorker.stop());
+  remoteClientWorker.start();
   const userStore = new MongoAuthUserStore(models.users, models.authIdentities);
   const sessionStore = new RedisSessionStore(
     infrastructure.redis.getClient(),
     config.SESSION_TOKEN_PEPPER,
-    config.SESSION_TTL_SECONDS,
+    config.SESSION_TTL_SECONDS
   );
   const authService = new AuthService(userStore, sessionStore, config.REGISTRATION_USER_LIMIT);
   const externalUsageService = new ExternalUsageService(authService, externalUsageStore);
@@ -141,7 +212,7 @@ try {
     userStore,
     avatarStore,
     config.AVATAR_MAX_BYTES,
-    config.AVATAR_MAX_PIXELS,
+    config.AVATAR_MAX_PIXELS
   );
   const trendingStore = new MongoTrendingStore(
     models.movies,
@@ -149,14 +220,14 @@ try {
     models.movieResultSets,
     models.people,
     models.movieCredits,
-    models.trendingStates,
+    models.trendingStates
   );
   const tmdb = new TmdbClient(
     config.TMDB_READ_ACCESS_TOKEN,
     config.TMDB_REQUEST_TIMEOUT_MS,
     undefined,
     undefined,
-    externalUsageStore,
+    externalUsageStore
   );
   const trendingSync = new TrendingSyncService(
     tmdb,
@@ -167,16 +238,23 @@ try {
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
       error: (bindings, message) => loggers.error.error(bindings, message),
-    },
+    }
   );
   const movieStatusStore = new MongoMovieStatusStore(models.userMovieStates);
   const mteamEndpoints = { baseUrl: config.MTEAM_BASE_URL, webBaseUrl: config.MTEAM_WEB_BASE_URL };
-  const integrationConfigStore = withMTeamEndpoints(new MongoIntegrationConfigStore(models.integrationConfigs), mteamEndpoints);
-  const mteam = new MTeamClient(config.MTEAM_REQUEST_TIMEOUT_MS, externalUsageStore, { minimumIntervalMs: config.MTEAM_SEARCH_MIN_INTERVAL_MS, logger: loggers.error, verbose: config.VERBOSE });
+  const integrationConfigStore = withMTeamEndpoints(
+    new MongoIntegrationConfigStore(models.integrationConfigs),
+    mteamEndpoints
+  );
+  const mteam = new MTeamClient(config.MTEAM_REQUEST_TIMEOUT_MS, externalUsageStore, {
+    minimumIntervalMs: config.MTEAM_SEARCH_MIN_INTERVAL_MS,
+    logger: loggers.error,
+    verbose: config.VERBOSE,
+  });
   const secrets = new SecretCrypto(config.INTEGRATION_SECRET_KEY);
   const movieResourceCheckStore = new MongoMovieResourceCheckStore(
     models.movieResourceChecks,
-    models.movieResourceCheckTasks,
+    models.movieResourceCheckTasks
   );
   const movieResourceChecks = new MovieResourceCheckService(
     movieResourceCheckStore,
@@ -197,13 +275,16 @@ try {
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
       error: (bindings, message) => loggers.error.error(bindings, message),
-    },
+    }
   );
   const movieService = new MovieService(trendingStore, trendingSync, tmdb, trendingStore, movieStatusStore);
   await models.resourceSiteCredentials.init();
   const resourceSiteService = new ResourceSiteService(
-    createResourceSiteRegistry(config.HDAREA_BASE_URL), new MongoResourceSiteCredentialStore(models.resourceSiteCredentials),
-    secrets, new ResourceSiteHttpClient(), { logger: loggers.error, verbose: config.VERBOSE },
+    createResourceSiteRegistry(config.HDAREA_BASE_URL),
+    new MongoResourceSiteCredentialStore(models.resourceSiteCredentials),
+    secrets,
+    new ResourceSiteHttpClient(),
+    { logger: loggers.error, verbose: config.VERBOSE }
   );
   const resourceSearchService = new ResourceSearchService([
     new MTeamSearchSource(integrationConfigStore, secrets, mteam),
@@ -218,7 +299,7 @@ try {
     secrets,
     new Set([...config.MTEAM_ALLOWED_HOSTS, new URL(config.MTEAM_BASE_URL).hostname]),
     undefined,
-    mteamEndpoints,
+    mteamEndpoints
   );
   const transmissionConfigStore = new MongoTransmissionConfigStore(models.transmissionConfigs);
   const transmission = new TransmissionClient(config.TRANSMISSION_REQUEST_TIMEOUT_MS);
@@ -226,7 +307,7 @@ try {
     authService,
     transmissionConfigStore,
     transmission,
-    secrets,
+    secrets
   );
   const qbittorrentConfigStore = new MongoQBittorrentConfigStore(models.qbittorrentConfigs);
   const qbittorrent = new QBittorrentClient(config.QBITTORRENT_REQUEST_TIMEOUT_MS);
@@ -234,7 +315,7 @@ try {
     authService,
     qbittorrentConfigStore,
     qbittorrent,
-    secrets,
+    secrets
   );
   const openaiConfigStore = new MongoOpenAIConfigStore(models.openaiConfigs);
   await models.integrationPreferences.init();
@@ -242,38 +323,118 @@ try {
     new MongoIntegrationPreferencesStore(models.integrationPreferences),
     async (ownerId) => {
       const [resources, qb, tr, ai] = await Promise.all([
-        resourceSearchService.list(
-          ownerId
-        ), qbittorrentConfigStore.find(
-          ownerId
-        ), transmissionConfigStore.find(
-          ownerId
-        ), openaiConfigStore.find(
-          ownerId
-        ),
+        resourceSearchService.list(ownerId),
+        qbittorrentConfigStore.find(ownerId),
+        transmissionConfigStore.find(ownerId),
+        openaiConfigStore.find(ownerId),
       ]
       );
       return [
         ...resources.sources.map((source) => ({ ...source, category: 'resource' as const })),
-        { id: 'qbittorrent', name: 'qBittorrent', category: 'downloader' as const, status: !qb ? 'unconfigured' as const : qb.lastFailureType ? 'configured_invalid' as const : qb.verifiedAt ? 'configured_valid' as const : 'configured_unverified' as const },
-        { id: 'transmission', name: 'Transmission', category: 'downloader' as const, status: !tr ? 'unconfigured' as const : tr.lastFailureType ? 'configured_invalid' as const : tr.verifiedAt ? 'configured_valid' as const : 'configured_unverified' as const },
-        { id: 'openai', name: 'OpenAI', category: 'ai' as const, status: !ai ? 'unconfigured' as const : ai.validation?.status === 'valid' ? 'configured_valid' as const : ai.validation?.status === 'failed' ? 'configured_invalid' as const : 'configured_unverified' as const },
+        {
+          id: 'qbittorrent',
+          name: 'qBittorrent',
+          category: 'downloader' as const,
+          status: !qb
+            ? ('unconfigured' as const)
+            : qb.lastFailureType
+              ? ('configured_invalid' as const)
+              : qb.verifiedAt
+                ? ('configured_valid' as const)
+                : ('configured_unverified' as const),
+        },
+        {
+          id: 'transmission',
+          name: 'Transmission',
+          category: 'downloader' as const,
+          status: !tr
+            ? ('unconfigured' as const)
+            : tr.lastFailureType
+              ? ('configured_invalid' as const)
+              : tr.verifiedAt
+                ? ('configured_valid' as const)
+                : ('configured_unverified' as const),
+        },
+        {
+          id: 'openai',
+          name: 'OpenAI',
+          category: 'ai' as const,
+          status: !ai
+            ? ('unconfigured' as const)
+            : ai.validation?.status === 'valid'
+              ? ('configured_valid' as const)
+              : ai.validation?.status === 'failed'
+                ? ('configured_invalid' as const)
+                : ('configured_unverified' as const),
+        },
       ];
-    },
+    });
+  for (const service of [
+    integrationService,
+    transmissionIntegrationService,
+    qbittorrentIntegrationService,
+    resourceSiteService,
+  ])
+    service.preferences = integrationPreferencesService;
+  const movieSiteResourcesService = new MovieSiteResourcesService(
+    movieResourceCheckStore,
+    movieResourceChecks,
+    integrationPreferencesService,
+    resourceSearchService,
+    resourceSiteService,
+    trendingStore,
+    tmdb,
+    config.TMDB_LANGUAGE,
+    { logger: loggers.error, verbose: config.VERBOSE },
+    config.MTEAM_RESOURCE_AVAILABLE_TTL_SECONDS * 1_000
   );
-  for (const service of [integrationService, transmissionIntegrationService, qbittorrentIntegrationService, resourceSiteService]) service.preferences = integrationPreferencesService;
-  const movieSiteResourcesService = new MovieSiteResourcesService(movieResourceCheckStore, movieResourceChecks,
-    integrationPreferencesService, resourceSearchService, resourceSiteService, trendingStore, tmdb, config.TMDB_LANGUAGE,
-    { logger: loggers.error, verbose: config.VERBOSE }, config.MTEAM_RESOURCE_AVAILABLE_TTL_SECONDS * 1_000);
+  await Promise.all([
+    models.remoteControl.commands.init(),
+    models.remoteControl.receipts.init(),
+    models.movieDownloads.init(),
+  ]);
+  const remoteDownloads = new RemoteDownloadService({
+    store: new MongoRemoteControlStore(models.users, models.remoteDevices, models.movieDownloads, models.remoteControl),
+    report: (err, fields) => loggers.error.error({ err, ...fields }, 'remote-download'),
+    torrent: async (command, download) => {
+      await movieSiteResourcesService.releaseForDownload(
+        command.ownerId,
+        download.tmdbId,
+        command.source,
+        command.resourceId
+      );
+      let url: string;
+      if (command.source === 'hdarea')
+        url = await resourceSiteService.torrentUrl(command.ownerId, 'hdarea', command.resourceId);
+      else {
+        const credentials = await integrationConfigStore.find(command.ownerId, 'mteam');
+        if (!credentials) throw new RpcError('RESOURCE_SITE_NOT_CONFIGURED', 'not_applied');
+        url = await mteam.torrentUrl(
+          credentials.baseUrl,
+          secrets.decrypt(credentials.encryptedApiKey, integrationSecretContext(command.ownerId, 'mteam')),
+          command.resourceId
+        );
+      }
+      return { url, torrentHash: await readTorrentMetadata(url) };
+    },
+  });
+  const remoteDownloadCoordinator = new RemoteDownloadCoordinator(gatewayPool, remoteDownloads);
+  const remoteDownloadWorker = new RemoteDownloadWorker(remoteDownloads);
+  shutdown.register('remote_downloads', 32, () => remoteDownloadWorker.stop());
+  await remoteDownloads.sweep();
+  remoteDownloadWorker.start();
+  gatewayPool.start();
   const movieStatusService = new MovieStatusService(
     movieStatusStore,
     trendingStore,
     config.TMDB_LANGUAGE,
-    { schedule: (ownerId, tmdbId, options) => movieSiteResourcesService.schedule(ownerId, tmdbId, options),
+    {
+      schedule: (ownerId, tmdbId, options) => movieSiteResourcesService.schedule(ownerId, tmdbId, options),
       request: (ownerId, tmdbId, force) => movieResourceChecks.request(ownerId, tmdbId, force),
-      listReleases: (ownerId, tmdbId) => movieResourceChecks.listReleases(ownerId, tmdbId) },
+      listReleases: (ownerId, tmdbId) => movieResourceChecks.listReleases(ownerId, tmdbId),
+    },
     movieResourceCheckStore,
-    movieSiteResourcesService,
+    movieSiteResourcesService
   );
   const movieResourceSyncService = new MovieResourceSyncService(
     movieStatusStore,
@@ -285,7 +446,7 @@ try {
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
       error: (bindings, message) => loggers.error.error(bindings, message),
-    },
+    }
   );
   movieResourceSyncService.verbose = config.VERBOSE;
   await models.telegramBindings.init();
@@ -296,12 +457,15 @@ try {
     (input) => {
       return assistantWorker.wake(input);
     },
-    loggers.app,
+    loggers.app
   );
   const telegramClient = config.TELEGRAM_BOT_TOKEN
     ? new TelegramClient(config.TELEGRAM_BOT_TOKEN, undefined, loggers.app, config.TELEGRAM_POLL_TRACE_ENABLED)
     : undefined;
-  const receiveMessage = async (ownerId: string, message: import("./modules/incoming-message.types.js").IncomingMessage) => {
+  const receiveMessage = async (
+    ownerId: string,
+    message: import('./modules/incoming-message.types.js').IncomingMessage
+  ) => {
     await assistantReceiver.receive(ownerId, message);
     loggers.app.info(
       {
@@ -311,7 +475,7 @@ try {
         messageId: message.messageId,
         messageType: message.messageType,
       },
-      'User message received',
+      'User message received'
     );
   };
   const telegramService = new TelegramService(
@@ -320,10 +484,10 @@ try {
     telegramClient,
     undefined,
     receiveMessage,
-    loggers.app,
+    loggers.app
   );
-  const telegramWorker =
-    telegramClient && config.TELEGRAM_BOT_TOKEN
+  const telegramWorker
+    = telegramClient && config.TELEGRAM_BOT_TOKEN
       ? new TelegramWorker(
           infrastructure.redis.getClient(),
           config.TELEGRAM_BOT_TOKEN,
@@ -331,18 +495,18 @@ try {
           telegramService,
           () => {
             return loggers.app.warn(
-              'Telegram polling failed; check connectivity, token, and that no webhook or external poller uses this bot',
+              'Telegram polling failed; check connectivity, token, and that no webhook or external poller uses this bot'
             );
           },
           loggers.app,
           config.REDIS_LOCK_TRACE_ENABLED,
-          config.TELEGRAM_POLL_TRACE_ENABLED,
+          config.TELEGRAM_POLL_TRACE_ENABLED
         )
       : undefined;
   shutdown.register('telegram_worker', 10, () => telegramWorker?.stop());
   loggers.app.info(
     { event: 'telegram_configuration', enabled: Boolean(telegramWorker) },
-    'Telegram polling configuration',
+    'Telegram polling configuration'
   );
   await models.whatsappSessions.init();
   const whatsappService = new WhatsAppService(
@@ -352,7 +516,7 @@ try {
     (ownerId, event) => {
       return loggers.app.info({ ownerId, ...event }, 'WhatsApp connection lifecycle');
     },
-    receiveMessage,
+    receiveMessage
   );
   shutdown.register('whatsapp_sessions', 40, () => whatsappService.close());
   await Promise.all([models.movieDownloads.init(), models.notificationPreferences.init()]);
@@ -376,7 +540,7 @@ try {
         },
         send: (ownerId, notification) => whatsappService.sendNotification(ownerId, notification),
       },
-    ],
+    ]
   );
   const movieDownloadService = new MovieDownloadService(
     authService,
@@ -390,32 +554,27 @@ try {
     undefined,
     { configs: transmissionConfigStore, client: transmission },
     notificationService,
-    { resources: movieSiteResourcesService, sites: resourceSiteService },
+    { resources: movieSiteResourcesService, sites: resourceSiteService }
   );
   movieDownloadService.preferences = integrationPreferencesService;
   const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
   const conversationService = new ConversationService(authService, conversationStore);
-  const openaiSettingsService = new OpenAISettingsService(
-    authService,
-    openaiConfigStore,
-    secrets,
-    {
-      model: config.OPENAI_MODEL,
-      recommendedModels: config.OPENAI_RECOMMENDED_MODELS,
-      verify: (apiKey) => {
-        return probeOpenAI(
-          new OpenAI({ apiKey, timeout: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000), maxRetries: 0 }),
-        );
-      },
+  const openaiSettingsService = new OpenAISettingsService(authService, openaiConfigStore, secrets, {
+    model: config.OPENAI_MODEL,
+    recommendedModels: config.OPENAI_RECOMMENDED_MODELS,
+    verify: (apiKey) => {
+      return probeOpenAI(
+        new OpenAI({ apiKey, timeout: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000), maxRetries: 0 })
+      );
     },
-  );
+  });
   openaiSettingsService.preferences = integrationPreferencesService;
   const createOwnerLlmClient = async (ownerId: string) => {
     const { apiKey, model } = await openaiSettingsService.requireCredentials(ownerId);
     return new OpenAILlmClient(
       new OpenAI({ apiKey, timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0 }),
       model,
-      { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES },
+      { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES }
     );
   };
   const preferenceModels = createPreferenceModels(models.users.db);
@@ -427,12 +586,12 @@ try {
     trendingStore,
     tmdb,
     config.TMDB_LANGUAGE,
-    (ownerId) => openaiSettingsService.requireCredentials(ownerId),
+    (ownerId) => openaiSettingsService.requireCredentials(ownerId)
   );
   const preferenceWorkflow = new PreferenceWorkflow(
     preferenceStore,
     new PreferenceAgent(createOwnerLlmClient, config.OPENAI_MAX_CONTEXT_TOKENS),
-    (job, signal) => preferenceService.enrich(job, signal),
+    (job, signal) => preferenceService.enrich(job, signal)
   );
   const preferenceWorker = new PreferenceWorker(preferenceStore, preferenceWorkflow, loggers.error, config.VERBOSE);
   shutdown.register('preference_worker', 21, () => preferenceWorker.stop());
@@ -445,22 +604,32 @@ try {
     trendingStore,
     movieStatusStore,
     config.TMDB_LANGUAGE,
-    { logger: loggers.error, verbose: config.VERBOSE },
+    { logger: loggers.error, verbose: config.VERBOSE }
   );
   const resourceQueryModel = createResourceQueryModel(models.users.db);
   await resourceQueryModel.init();
   await initializeAssistantRetention(models.assistantMessages, resourceQueryModel, {
-    logger: loggers.error, verbose: config.VERBOSE,
+    logger: loggers.error,
+    verbose: config.VERBOSE,
   });
   const resources = new ResourceQueryTool(
     new MongoResourceQueryStore(resourceQueryModel),
-    [new MTeamResourceProvider(movieResourceChecks), ...[...resourceSiteService.registry.values()].map((site) => {
-      return new ResourceSiteResourceProvider(site.id, site.name, resourceSiteService, trendingStore, config.TMDB_LANGUAGE);
-    })],
+    [
+      new MTeamResourceProvider(movieResourceChecks),
+      ...[...resourceSiteService.registry.values()].map((site) => {
+        return new ResourceSiteResourceProvider(
+          site.id,
+          site.name,
+          resourceSiteService,
+          trendingStore,
+          config.TMDB_LANGUAGE
+        );
+      }),
+    ],
     tmdb,
     trendingStore,
     config.TMDB_LANGUAGE,
-    { logger: loggers.error, verbose: config.VERBOSE },
+    { logger: loggers.error, verbose: config.VERBOSE }
   );
   const assistantSessionModel = createAssistantSessionModel(models.users.db);
   await assistantSessionModel.init();
@@ -490,7 +659,7 @@ try {
       safetyMarginTokens: 256,
       messageOverheadTokens: 4,
       reply: createAssistantConversationReply(assistantOptions),
-    },
+    }
   );
 
   const assistantWorkflow = new AssistantWorkflow(createOwnerLlmClient, assistantOptions);
@@ -521,7 +690,7 @@ try {
       },
     },
     loggers.app,
-    config.REDIS_LOCK_TRACE_ENABLED,
+    config.REDIS_LOCK_TRACE_ENABLED
   );
 
   shutdown.register('assistant_worker', 20, () => assistantWorker.stop());
@@ -538,7 +707,7 @@ try {
     },
     undefined,
     undefined,
-    config.SCAN_TRACE_ENABLED,
+    config.SCAN_TRACE_ENABLED
   );
   shutdown.register('notification_worker', 30, () => notificationWorker.stop());
   const notificationTestService = new NotificationTestService(
@@ -547,10 +716,15 @@ try {
     notificationService,
     trendingStore,
     config.TMDB_LANGUAGE,
-    config.WEB_ORIGIN,
+    config.WEB_ORIGIN
   );
   const app = await buildApp({
-    resourceSiteService, resourceSearchService, integrationPreferencesService, movieSiteResourcesService,
+    remoteClientService,
+    remoteDownloadCoordinator,
+    resourceSiteService,
+    resourceSearchService,
+    integrationPreferencesService,
+    movieSiteResourcesService,
     preferenceService,
     telegramService,
     notificationTestService,

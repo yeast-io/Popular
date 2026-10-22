@@ -78,7 +78,9 @@ async function toggleChannel(id: string, enabled: boolean) {
   }
 }
 defineExpose({ refresh });
-onMounted(() => { void refresh(false); });
+onMounted(() => {
+  void refresh(false);
+});
 onUnmounted(() => {
   disposed = true;
   controller.abort();

@@ -14,6 +14,7 @@ export class PreferenceService {
     private readonly locale: Locale,
     private readonly requireModel: (ownerId: string) => Promise<unknown>
   ) {}
+
   private async marks(ownerId: string) {
     const first = await this.statuses.list(ownerId, undefined, 1, 500);
     const rows = [...first.items];
@@ -23,7 +24,7 @@ export class PreferenceService {
       ...new Map(
         rows.map((item) => {
           return [item.tmdbId, item];
-        }),
+        })
       ).values(),
     ].sort((a, b) => {
       return a.tmdbId - b.tmdbId;
@@ -34,10 +35,11 @@ export class PreferenceService {
       fingerprint: fingerprint(
         items.map(({ tmdbId, status, preference }) => {
           return { tmdbId, status, preference };
-        }),
+        })
       ),
     };
   }
+
   async get(ownerId: string): Promise<TasteProfileResponse> {
     const [profile, marks, task] = await Promise.all([
       this.store.read(ownerId),
@@ -53,6 +55,7 @@ export class PreferenceService {
       task,
     };
   }
+
   async generate(ownerId: string) {
     const marks = await this.marks(ownerId);
     const profile = await this.store.read(ownerId);
@@ -94,6 +97,7 @@ export class PreferenceService {
     await this.store.enqueue(ownerId, `manual:${randomUUID()}`, 'manual', evidence, marks.fingerprint);
     return this.get(ownerId);
   }
+
   async enrich(job: PreferenceJob, signal?: AbortSignal): Promise<PreferenceJob> {
     if ((await this.marks(job.ownerId)).fingerprint !== job.fingerprint)
       throw new Error('Movie feedback changed; generate again');
@@ -103,7 +107,7 @@ export class PreferenceService {
       job.evidence.map((item) => {
         return (JSON.parse(item.text) as { tmdbId: number }).tmdbId;
       }),
-      this.locale,
+      this.locale
     );
     for (const item of job.evidence) {
       signal?.throwIfAborted();
@@ -149,6 +153,7 @@ export class PreferenceService {
     }
     return { ...job, evidence };
   }
+
   async chatEvidence(ownerId: string, eventId: string, text: string, history: string[]) {
     if (!(await this.store.read(ownerId)).autoMaintain) return;
     await this.store.enqueue(ownerId, `chat:${eventId}`, 'chat', [
@@ -163,6 +168,7 @@ export class PreferenceService {
       },
     ]);
   }
+
   async edit(
     ownerId: string,
     expectedVersion: number,
@@ -171,7 +177,7 @@ export class PreferenceService {
       entryId?: string | undefined;
       content?: string | undefined;
       clear?: boolean | undefined;
-    },
+    }
   ) {
     const profile = await this.store.read(ownerId);
     if (profile.version !== expectedVersion)
