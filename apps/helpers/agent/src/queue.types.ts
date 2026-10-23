@@ -7,7 +7,10 @@ export interface QueueItem {
   title: string | null;
   enqueuedAt: number;
   expiresAt: number;
-  reason: 'queued' | 'agent_offline' | 'downloader_unavailable' | 'target_changed' | 'gateway_unavailable' | 'retrying' | 'verifying' | 'executing';
+  limitDetectedAt?: number;
+  nextAttemptAt?: number;
+  lastAttemptAt?: number;
+  reason: 'queued' | 'agent_offline' | 'downloader_unavailable' | 'target_changed' | 'gateway_unavailable' | 'retrying' | 'verifying' | 'executing' | 'torrent_daily_limit';
 }
 export interface QueueSnapshot {
   observedAt: number;

@@ -1,3 +1,5 @@
+import { resourceDownloadLimitKind } from '../../modules/resource-sites/resource-download-limit.schema.js';
+import { ResourceDownloadLimitError } from '../../modules/resource-sites/resource-download-limit.errors.js';
 import { MTeamMemberProfileSchema } from './member-profile.schema.js';
 import { parseTorrentUrl } from './torrent-url.schema.js';
 import { releaseTitleMetadata } from '../../modules/resource-sites/release-metadata.domain.js';
@@ -186,6 +188,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
         cause: error,
       });
     }
+    if (resourceDownloadLimitKind('mteam', payload)) throw new ResourceDownloadLimitError();
     if (!isSuccessPayload(payload))
       throw new IntegrationValidationError('remote_error', 'M-Team rejected the torrent download request');
     const tokenUrl = (payload as { data?: unknown }).data;

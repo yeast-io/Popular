@@ -66,9 +66,16 @@ onUnmounted(() => clearInterval(timer));
           <span class="queue-reason">{{ text[`queueReason_${item.reason}`] }}</span>
         </div>
         <h3>{{ item.title || text.queueResource.replace('{id}', item.resourceId) }}</h3>
+        <p v-if="item.reason === 'torrent_daily_limit'" class="queue-limit" role="status">
+          {{ text.queueLimitExplanation.replace('{site}', item.source === 'mteam' ? 'M-Team' : 'HDArea') }}
+          {{ item.nextAttemptAt && item.nextAttemptAt > now ? text.queueLimitPaused : text.queueLimitDue }}
+        </p>
         <dl>
           <div><dt>{{ text.queueEnqueued }}</dt><dd>{{ queueDate(item.enqueuedAt, locale) }}</dd></div>
           <div><dt>{{ text.queueExpires }}</dt><dd>{{ queueDate(item.expiresAt, locale) }}</dd></div>
+          <div v-if="item.reason === 'torrent_daily_limit' && item.limitDetectedAt"><dt>{{ text.queueLimitDetected }}</dt><dd>{{ queueDate(item.limitDetectedAt, locale) }}</dd></div>
+          <div v-if="item.lastAttemptAt"><dt>{{ text.queueLastAttempt }}</dt><dd>{{ queueDate(item.lastAttemptAt, locale) }}</dd></div>
+          <div v-if="item.nextAttemptAt"><dt>{{ text.queueNextAttempt }}</dt><dd>{{ item.nextAttemptAt < item.expiresAt ? queueDate(item.nextAttemptAt, locale) : text.queueExpiresBeforeRetry }}</dd></div>
           <div class="queue-remaining" :class="{ urgent: item.expiresAt - now < 3600000 }"><dt>{{ text.queueRemaining }}</dt><dd>{{ queueRemaining(item.expiresAt, now, locale) }}</dd></div>
         </dl>
       </li>

@@ -1,3 +1,4 @@
+import type { ResourceDownloadScope, ResourceDownloadLimit } from '../resource-sites/resource-download-limit.types.js';
 import type { RemoteClientDiagnostics } from '../remote-clients/remote-client.types.js';
 import type {
   CommandRecord,
@@ -22,6 +23,8 @@ export interface RemoteDownloadSource {
   downloaderType?: AgentStatus['downloaderType'];
 }
 export interface RemoteControlStore {
+  resourceDownloadLimit(scope: ResourceDownloadScope, now: number): Promise<ResourceDownloadLimit | null>;
+  saveResourceDownloadLimit(limit: ResourceDownloadLimit): Promise<ResourceDownloadLimit>;
   queued(context: Session, now: number, cursor?: string): Promise<AgentQueueSnapshot>;
   authorization(keyDigest: string, deviceId?: string): Promise<Authorization | null>;
   validate(context: Session): Promise<Authorization | null>;

@@ -56,6 +56,7 @@ export function publicCommand(c: CommandRecord): PublicCommand {
 }
 
 export function queueReason(command: Pick<CommandRecord, 'state' | 'lastErrorCode'>): AgentQueueItem['reason'] {
+  if (command.lastErrorCode === 'RESOURCE_TORRENT_DAILY_LIMIT') return 'torrent_daily_limit';
   if (command.state === 'unknown') return 'verifying';
   if (command.state === 'granted') return 'executing';
   if (command.lastErrorCode === 'DEVICE_OFFLINE') return 'agent_offline';

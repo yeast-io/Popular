@@ -129,6 +129,7 @@ try {
   await Promise.all([
     models.remoteControl.commands.init(),
     models.remoteControl.receipts.init(),
+    models.remoteControl.limits.init(),
     models.qbittorrentConfigs.init(),
     models.transmissionConfigs.init(),
   ]);
@@ -379,6 +380,7 @@ try {
   await Promise.all([
     models.remoteControl.commands.init(),
     models.remoteControl.receipts.init(),
+    models.remoteControl.limits.init(),
     models.movieDownloads.init(),
   ]);
   const remoteDownloads = new RemoteDownloadService({
@@ -405,7 +407,7 @@ try {
         );
       }
       currentAiTrace()?.sensitive(url);
-      return { url, torrentHash: await readTorrentMetadata(url) };
+      return { url, torrentHash: await readTorrentMetadata(url, { source: command.source }) };
     },
   });
   const remoteDownloadCoordinator = new RemoteDownloadCoordinator(gatewayPool, remoteDownloads);

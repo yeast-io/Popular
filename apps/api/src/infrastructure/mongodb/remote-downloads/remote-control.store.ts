@@ -1,3 +1,4 @@
+import type { ResourceDownloadScope, ResourceDownloadLimit } from '../../../modules/resource-sites/resource-download-limit.types.js';
 import { MISSING_DOWNLOAD_RETENTION_MS } from '../../../modules/downloads/movie-download.policy.js';
 import { REMOTE_HISTORY_RETENTION_MS } from '../../../modules/remote-downloads/remote-download.policy.js';
 import { randomUUID } from 'node:crypto';
@@ -28,6 +29,24 @@ export class MongoRemoteControlStore implements RemoteControlStore {
     readonly models: RemoteCommandModels
   ) {}
 
+  async resourceDownloadLimit(scope: ResourceDownloadScope, now: number): Promise<ResourceDownloadLimit | null> {
+    return this.models.limits.findOne({ ownerId: scope.ownerId, source: scope.source, resourceId: scope.resourceId,
+      retryAt: { $gt: now } }).select('-_id').lean().exec();
+  }
+
+  async saveResourceDownloadLimit(limit: ResourceDownloadLimit): Promise<ResourceDownloadLimit> {
+    const scope = { ownerId: limit.ownerId, source: limit.source, resourceId: limit.resourceId };
+    const update = { $set: { kind: limit.kind }, $max: { detectedAt: limit.detectedAt, retryAt: limit.retryAt } };
+    try {
+      return (await this.models.limits.findOneAndUpdate(scope, update,
+        { upsert: true, new: true, setDefaultsOnInsert: false }).select('-_id').lean().exec())!;
+    } catch (error) {
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 11000) throw error;
+      // Concurrent first detections converge on the same user/site/resource record.
+      return (await this.models.limits.findOneAndUpdate(scope, update, { new: true }).select('-_id').lean().exec())!;
+    }
+  }
+
   async queued(context: Session, now: number, cursor?: string): Promise<AgentQueueSnapshot> {
     const parts = cursor?.split(':');
     if (parts) ensure(parts.length === 2 && Number.isSafeInteger(Number(parts[0])) && Number(parts[0]) > 0
@@ -47,7 +66,7 @@ export class MongoRemoteControlStore implements RemoteControlStore {
       { $unwind: '$download' },
       { $facet: { count: [{ $count: 'value' }], items: [...after, { $limit: 51 },
         { $lookup: { from: 'movies', localField: 'download.tmdbId', foreignField: 'tmdbId', as: 'movie' } },
-        { $project: { _id: 0, commandId: 1, resourceId: 1, source: 1, state: 1, lastErrorCode: 1,
+        { $project: { _id: 0, commandId: 1, resourceId: 1, source: 1, state: 1, lastErrorCode: 1, limitDetectedAt: 1, lastAttemptAt: 1, nextAttemptAt: 1,
           enqueuedAt: '$createdAt', expiresAt: '$queueExpiresAt',
           title: { $substrCP: [{ $ifNull: ['$download.remoteRequest.displayTitle',
             { $ifNull: [{ $arrayElemAt: ['$movie.originalTitle', 0] }, ''] }] }, 0, 512] } } }] } },
@@ -321,6 +340,7 @@ export class MongoRemoteControlStore implements RemoteControlStore {
   }
 
   async purgeExpiredQueue(now: number) {
+    await this.models.limits.deleteMany({ retryAt: { $lte: now } }).exec();
     await this.models.commands.deleteMany({ retiredAt: { $lte: now - REMOTE_HISTORY_RETENTION_MS },
       state: { $in: ['succeeded', 'closed'] }, projected: true }).exec();
     // Remove the parent first so crash recovery cannot resurrect an expired queue entry.

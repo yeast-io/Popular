@@ -30,6 +30,12 @@ pub struct Item {
     pub enqueued_at: u64,
     pub expires_at: u64,
     pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit_detected_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_attempt_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_attempt_at: Option<u64>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -86,6 +92,12 @@ impl Snapshot {
                     && protocol::positive(item.enqueued_at)
                     && protocol::positive(item.expires_at)
                     && item.expires_at > item.enqueued_at
+                    && item.limit_detected_at.is_none_or(protocol::positive)
+                    && item.next_attempt_at.is_none_or(protocol::positive)
+                    && item.last_attempt_at.is_none_or(protocol::positive)
+                    && (item.reason != "torrent_daily_limit"
+                        || matches!((item.limit_detected_at, item.next_attempt_at),
+                        (Some(detected), Some(retry)) if retry > detected))
                     && matches!(
                         item.reason.as_str(),
                         "queued"
@@ -96,6 +108,7 @@ impl Snapshot {
                             | "retrying"
                             | "verifying"
                             | "executing"
+                            | "torrent_daily_limit"
                     )
             })
     }
@@ -260,6 +273,25 @@ mod tests {
         journal::atomic(directory.path(), "identity.json", &identity).unwrap();
         assert!(view(directory.path(), &runtime).snapshot.is_none());
         assert!(accept(directory.path(), &runtime, &identity, &context, &data).is_err());
+    }
+    #[test]
+    fn accepts_cooldown_metadata_and_rejects_incomplete_or_invalid_retry_times() {
+        let data = json!({"observedAt":1000,"total":1,"nextCursor":null,"items":[{
+            "commandId":"limited","resourceId":"42","source":"mteam","title":null,
+            "enqueuedAt":100,"expiresAt":900000000,"reason":"torrent_daily_limit",
+            "limitDetectedAt":1000,"nextAttemptAt":86401000,"lastAttemptAt":1000
+        }]});
+        let snapshot: Snapshot = protocol::parse(&data).unwrap();
+        assert!(snapshot.valid());
+        let mut invalid = data.clone();
+        invalid["items"][0]["nextAttemptAt"] = json!(999);
+        assert!(!protocol::parse::<Snapshot>(&invalid).unwrap().valid());
+        invalid = data;
+        invalid["items"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("limitDetectedAt");
+        assert!(!protocol::parse::<Snapshot>(&invalid).unwrap().valid());
     }
     #[test]
     fn rejects_invalid_queue_payloads_and_cursors() {

@@ -46,10 +46,15 @@ export class RemoteDownloadCoordinator {
       || (c.nextAttemptAt ?? 0) > this.downloads.now()) return;
     // A CAS lease prevents simultaneous workers from starting another delivery attempt.
     const leased: CommandRecord = { ...c, revision: c.revision + 1,
-      nextAttemptAt: this.downloads.now() + REMOTE_QUEUE_RETRY_MS };
+      nextAttemptAt: this.downloads.now() + REMOTE_QUEUE_RETRY_MS, lastAttemptAt: this.downloads.now() };
     if (!await this.downloads.options.store.compareCommand(c, leased)) return;
     c = leased;
     try {
+      const limit = await aiStep('remote-queue.resource-limit.read', () => this.downloads.options.store.resourceDownloadLimit(c, this.downloads.now()));
+      if (limit) {
+        await this.downloads.deferForResourceLimit(commandId, limit);
+        return;
+      }
       const status = await aiStep('remote-queue.gateway.status', () => this.gateway.call<DeviceStatus>(
         '__get_device_status__', { ownerId: c.ownerId, deviceId: c.deviceId,
           authVersion: c.authVersion, deviceVersion: c.deviceVersion }, c.correlationId));
@@ -68,7 +73,7 @@ export class RemoteDownloadCoordinator {
         if (latest.deliverySessionId === status.session!.sessionId && latest.expiresAt > this.downloads.now()
           && latest.state !== 'failed') return latest;
         const { envelope: _envelope, executionId: _execution, grantSessionId: _session,
-          grantExpiresAt: _grant, executionDownloader: _downloader, result: _result, resultDigest: _digest, ...rest } = latest;
+          grantExpiresAt: _grant, limitDetectedAt: _limit, executionDownloader: _downloader, result: _result, resultDigest: _digest, ...rest } = latest;
         return { ...rest, state: 'accepted', deliverySessionId: status.session!.sessionId,
           deliveryMessageId: randomUUID(), expiresAt: Math.min(latest.queueExpiresAt!, this.downloads.now() + REMOTE_DELIVERY_TTL_MS),
           targetDownloader: latest.targetDownloader ?? { downloaderType: target.downloaderType, instanceId: target.instanceId },

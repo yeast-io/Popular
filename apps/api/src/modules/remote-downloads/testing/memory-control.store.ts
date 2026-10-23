@@ -1,3 +1,4 @@
+import type { ResourceDownloadScope, ResourceDownloadLimit } from '../../resource-sites/resource-download-limit.types.js';
 // TEST DOUBLE ONLY. Production uses MongoRemoteControlStore; this is not evidence of MongoDB behavior.
 import { randomUUID } from 'node:crypto';
 import type {
@@ -17,9 +18,23 @@ export class MemoryControlStore implements RemoteControlStore {
   readonly accounts = new Map<string, Authorization>();
   readonly devices = new Map<string, FixtureDevice>();
   readonly limits = new Map<string, number>();
+  readonly resourceLimits = new Map<string, ResourceDownloadLimit>();
   readonly downloads = new Map<string, FixtureDownload>();
   readonly commands = new Map<string, CommandRecord>();
   readonly receipts = new Map<string, string>();
+
+  async resourceDownloadLimit(scope: ResourceDownloadScope, now: number): Promise<ResourceDownloadLimit | null> {
+    const value = this.resourceLimits.get(JSON.stringify([scope.ownerId, scope.source, scope.resourceId]));
+    return value && value.retryAt > now ? structuredClone(value) : null;
+  }
+
+  async saveResourceDownloadLimit(limit: ResourceDownloadLimit): Promise<ResourceDownloadLimit> {
+    const key = JSON.stringify([limit.ownerId, limit.source, limit.resourceId]);
+    const old = this.resourceLimits.get(key);
+    const value = old && old.retryAt > limit.retryAt ? old : limit;
+    this.resourceLimits.set(key, structuredClone(value));
+    return structuredClone(value);
+  }
 
   async queued(context: Session, now: number, cursor?: string): Promise<AgentQueueSnapshot> {
     const commands = [...this.commands.values()].filter((c) => c.ownerId === context.ownerId
@@ -32,7 +47,10 @@ export class MemoryControlStore implements RemoteControlStore {
       || (c.queueExpiresAt === Number(expiry) && c.commandId > id!));
     const items = rest.slice(0, 50).map((c) => ({ commandId: c.commandId, resourceId: c.resourceId,
       source: c.source as 'mteam' | 'hdarea', title: null, enqueuedAt: c.createdAt,
-      expiresAt: c.queueExpiresAt!, reason: queueReason(c) }));
+      expiresAt: c.queueExpiresAt!, reason: queueReason(c),
+      ...(c.limitDetectedAt ? { limitDetectedAt: c.limitDetectedAt } : {}),
+      ...(c.lastAttemptAt ? { lastAttemptAt: c.lastAttemptAt } : {}),
+      ...(c.nextAttemptAt ? { nextAttemptAt: c.nextAttemptAt } : {}) }));
     const last = items.at(-1);
     return { observedAt: now, total: commands.length, ...(cursor ? { cursor } : {}),
       nextCursor: rest.length > 50 && last ? `${last.expiresAt}:${last.commandId}` : null, items };
@@ -133,6 +151,8 @@ export class MemoryControlStore implements RemoteControlStore {
   }
 
   async purgeExpiredQueue(now: number) {
+    for (const [key, limit] of this.resourceLimits)
+      if (limit.retryAt <= now) this.resourceLimits.delete(key);
     for (const [id, c] of this.commands) {
       if (c.queueExpiresAt && c.queueExpiresAt <= now && !['succeeded', 'duplicate'].includes(c.state)) {
         this.downloads.delete(c.downloadId);

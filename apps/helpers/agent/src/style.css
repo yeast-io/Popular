@@ -327,3 +327,5 @@ button:disabled { cursor: default; }
 .queue-remaining.urgent dd { color: #a85521; }
 .queue-pagination { display: flex; justify-content: space-between; gap: 12px; padding-top: 14px; }
 .queue-empty { padding: 42px 20px; text-align: center; color: #526970; border: 1px dashed #becbd1; border-radius: 12px; }
+
+.queue-limit { margin: 0 0 16px; padding: 10px 12px; border-radius: 6px; background: #fff7e8; color: #805713; font-size: 12px; line-height: 1.6; }

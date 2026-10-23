@@ -128,7 +128,15 @@
     "apiKeyAuth": "API Key",
     "downloaderApiKey": "qBittorrent API Key",
     "apiKeyPlaceholder": "Enter the qBittorrent API Key",
-    "apiKeyHint": "Requires qBittorrent 5.2.0 or later. Generate an API Key in qBittorrent Preferences → WebUI → API Key. This is separate from the Gateway Key."
+    "apiKeyHint": "Requires qBittorrent 5.2.0 or later. Generate an API Key in qBittorrent Preferences → WebUI → API Key. This is separate from the Gateway Key.",
+    "queueReason_torrent_daily_limit": "Daily torrent download limit reached",
+    "queueLimitExplanation": "{site} reported the daily download limit for this torrent. It has not been submitted to your download tool.",
+    "queueLimitPaused": "Automatic retry is paused until the next attempt time (24-hour cooldown).",
+    "queueLimitDue": "The cooldown has ended; waiting for Popular to retry.",
+    "queueLimitDetected": "Limit detected",
+    "queueLastAttempt": "Last attempt",
+    "queueNextAttempt": "Next attempt",
+    "queueExpiresBeforeRetry": "This task expires before the next attempt."
   },
   "zh-CN": {
     "title": "Agent",
@@ -259,6 +267,14 @@
     "apiKeyAuth": "API Key",
     "downloaderApiKey": "qBittorrent API Key",
     "apiKeyPlaceholder": "输入 qBittorrent API Key",
-    "apiKeyHint": "需要 qBittorrent 5.2.0 或更新版本。在 qBittorrent 设置 → WebUI → API Key 中生成；此密钥与 Gateway Key 不同。"
+    "apiKeyHint": "需要 qBittorrent 5.2.0 或更新版本。在 qBittorrent 设置 → WebUI → API Key 中生成；此密钥与 Gateway Key 不同。",
+    "queueReason_torrent_daily_limit": "单个种子当日下载已达上限",
+    "queueLimitExplanation": "{site} 提示该种子的当日下载次数已达上限，尚未提交给下载工具。",
+    "queueLimitPaused": "自动重试已暂停至下次尝试时间（冷却 24 小时）。",
+    "queueLimitDue": "冷却期已结束，等待 Popular 重新尝试。",
+    "queueLimitDetected": "触发时间",
+    "queueLastAttempt": "上次尝试",
+    "queueNextAttempt": "下次尝试",
+    "queueExpiresBeforeRetry": "任务将在下次尝试前到期。"
   }
 }

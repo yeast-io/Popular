@@ -1,3 +1,4 @@
+import { createResourceDownloadLimitModel } from './resource-download-limit.schema.js';
 import { Schema, type Connection } from 'mongoose';
 import type { CommandRecord } from '@movie-hub/contract';
 
@@ -64,6 +65,8 @@ export const remoteCommandSchema = new Schema<CommandRecord>(
     nextAttemptAt: Number,
     retryAttempt: Number,
     lastErrorCode: String,
+    limitDetectedAt: Number,
+    lastAttemptAt: Number,
     targetDownloader: new Schema({ downloaderType: String, instanceId: String }, { _id: false }),
     envelope: String,
     torrentHash: String,
@@ -91,6 +94,7 @@ export const remoteReceiptSchema = new Schema(
 );
 export function createRemoteCommandModels(connection: Connection) {
   return {
+    limits: createResourceDownloadLimitModel(connection),
     commands: connection.model('RemoteClientCommand', remoteCommandSchema),
     receipts: connection.model('RemoteClientEventReceipt', remoteReceiptSchema),
   };

@@ -1,3 +1,5 @@
+import { resourceDownloadLimitKind } from '../resource-sites/resource-download-limit.schema.js';
+import { ResourceDownloadLimitError } from '../resource-sites/resource-download-limit.errors.js';
 import { serializeDiagnosticError } from '@movie-hub/contract';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
@@ -81,7 +83,15 @@ export async function readTorrentMetadata(url: string, options: TorrentMetadataO
           }
         }
         signal.throwIfAborted();
-        return aiStep('remote-download.torrent-metadata.hash', async () => torrentMetadataHash(Buffer.concat(chunks)),
+        const metadata = Buffer.concat(chunks);
+        if (options.source && (response.headers.get('content-type')?.includes('json') || metadata[0] === 123)) {
+          let payload: unknown;
+          try {
+            payload = JSON.parse(metadata.toString('utf8'));
+          } catch { /* Invalid JSON remains invalid torrent metadata. */ }
+          if (resourceDownloadLimitKind(options.source, payload)) throw new ResourceDownloadLimitError();
+        }
+        return aiStep('remote-download.torrent-metadata.hash', async () => torrentMetadataHash(metadata),
           { responseBytes: size, redirectCount: redirects });
       }
       throw new RpcError('TORRENT_METADATA_UNAVAILABLE', 'not_applied');

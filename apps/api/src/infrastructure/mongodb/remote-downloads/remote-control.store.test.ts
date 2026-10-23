@@ -326,9 +326,10 @@ test('queue cleanup deletes expired parents before commands and preserves confir
   };
   const store = new MongoRemoteControlStore({} as never, {} as never,
     { deleteMany: deletion('downloads') } as never,
-    { commands: { deleteMany: deletion('commands') } } as never);
+    { commands: { deleteMany: deletion('commands') }, limits: { deleteMany: deletion('limits') } } as never);
   await store.purgeExpiredQueue(123456);
   assert.deepEqual(calls, [
+    { kind: 'limits', filter: { retryAt: { $lte: 123456 } } },
     { kind: 'commands', filter: { retiredAt: { $lte: 123456 - 30 * 86400000 }, state: { $in: ['succeeded', 'closed'] }, projected: true } },
     { kind: 'downloads', filter: { 'executionMode': 'remote', 'remoteRequest.queueExpiresAt': { $lte: 123456 },
       'remoteAssociation': { $exists: false }, 'remoteOutcome': { $nin: ['succeeded', 'duplicate'] } } },
@@ -353,4 +354,35 @@ test('rearming a failed attempt removes old execution and envelope fields with t
   assert.deepEqual(filter, { commandId: 'command', revision: 2 });
   assert.deepEqual(update?.$unset, { executionId: 1, envelope: 1, result: 1 });
   assert.deepEqual(update?.$set, next);
+});
+
+test('REAL Mongo (opt-in): resource cooldown is durable and uniquely scoped to user/site/torrent', {
+  skip: !process.env.REMOTE_GATEWAY_TEST_MONGODB_URI, timeout: 30_000,
+}, async (t) => {
+  const name = 'popular_resource_limit_test_' + randomUUID().replaceAll('-', '');
+  const connection = await createConnection(process.env.REMOTE_GATEWAY_TEST_MONGODB_URI!, {
+    dbName: name, serverSelectionTimeoutMS: 5000,
+  }).asPromise();
+  t.after(async () => {
+    assert.equal(connection.name, name);
+    await connection.dropDatabase();
+    await connection.close();
+  });
+  const models = createRemoteCommandModels(connection);
+  await models.limits.init();
+  const store = new MongoRemoteControlStore({} as never, {} as never, {} as never, models);
+  const now = 1_800_000_000_000;
+  const limit = { ownerId: 'user-a', source: 'mteam', resourceId: '42', kind: 'torrent_daily_limit' as const,
+    detectedAt: now, retryAt: now + 86400000 };
+  await Promise.all(Array.from({ length: 8 }, () => store.saveResourceDownloadLimit(limit)));
+  assert.equal(await models.limits.countDocuments(), 1);
+  const restarted = new MongoRemoteControlStore({} as never, {} as never, {} as never, createRemoteCommandModels(connection));
+  assert.equal((await restarted.resourceDownloadLimit(limit, now))!.retryAt, limit.retryAt);
+  for (const scope of [{ ...limit, ownerId: 'user-b' }, { ...limit, source: 'hdarea' }, { ...limit, resourceId: '43' }])
+    assert.equal(await restarted.resourceDownloadLimit(scope, now), null);
+  assert.equal(await restarted.resourceDownloadLimit(limit, limit.retryAt), null);
+  await store.saveResourceDownloadLimit({ ...limit, detectedAt: now - 1000, retryAt: limit.retryAt - 1000 });
+  assert.equal((await store.resourceDownloadLimit(limit, now))!.retryAt, limit.retryAt);
+  await store.saveResourceDownloadLimit({ ...limit, detectedAt: limit.retryAt, retryAt: limit.retryAt + 86400000 });
+  assert.equal((await store.resourceDownloadLimit(limit, limit.retryAt))!.retryAt, limit.retryAt + 86400000);
 });

@@ -55,6 +55,32 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       expect(wrapper.text()).toContain(locale === 'zh-CN' ? '暂无待处理任务' : 'No pending tasks');
       wrapper.unmount();
     });
+    it('shows a site-specific per-torrent cooldown and next attempt instead of generic retry text', async () => {
+      const now = Date.now();
+      const view: QueueView = { stale: false, loading: false, snapshot: { observedAt: now, total: 1,
+        nextCursor: null, items: [{ commandId: 'limited-command', resourceId: '42', source: 'mteam',
+          title: 'Limited resource', enqueuedAt: now - 60000, expiresAt: now + 7 * 86400000,
+          reason: 'torrent_daily_limit', limitDetectedAt: now, lastAttemptAt: now,
+          nextAttemptAt: now + 86400000 }] } };
+      invoke.mockImplementation(async (command: string) => command === 'queue_status' ? view : undefined);
+      const wrapper = mount(PendingTasks, { props: { locale } });
+      try {
+        await flushPromises();
+        expect(wrapper.text()).toContain(locale === 'zh-CN' ? '单个种子当日下载已达上限' : 'Daily torrent download limit reached');
+        expect(wrapper.text()).toContain(locale === 'zh-CN' ? '下次尝试' : 'Next attempt');
+        expect(wrapper.text()).toContain(locale === 'zh-CN' ? '上次尝试' : 'Last attempt');
+        expect(wrapper.get('.queue-limit').text()).toContain('M-Team');
+        expect(wrapper.get('.queue-limit').text()).toContain(locale === 'zh-CN' ? '冷却 24 小时' : '24-hour cooldown');
+        expect(wrapper.text()).not.toContain(locale === 'zh-CN' ? '等待重试' : 'Waiting to retry');
+        await wrapper.get('.queue-heading button').trigger('click');
+        await flushPromises();
+        expect(invoke.mock.calls.every(([command]) => ['queue_status', 'queue_page'].includes(command))).toBe(true);
+        view.snapshot!.items[0]!.expiresAt = now + 3600000;
+        await vi.advanceTimersByTimeAsync(2000);
+        await flushPromises();
+        expect(wrapper.text()).toContain(locale === 'zh-CN' ? '任务将在下次尝试前到期' : 'This task expires before the next attempt');
+      } finally { wrapper.unmount(); }
+    });
     it('formats expiry rather than showing a negative countdown', () => {
       expect(queueRemaining(1000, 2000, locale)).toBe(locale === 'zh-CN' ? '已过期' : 'Expired');
       expect(queueRemaining(61000, 1000, locale)).toContain('1');

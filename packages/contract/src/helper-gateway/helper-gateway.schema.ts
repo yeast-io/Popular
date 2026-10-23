@@ -40,8 +40,9 @@ export const AgentQueueItemSchema = Type.Object({
   commandId: id, resourceId: id, source: Type.Union([Type.Literal('mteam'), Type.Literal('hdarea')]),
   title: Type.Union([Type.String({ maxLength: 512 }), Type.Null()]),
   enqueuedAt: integer, expiresAt: integer,
+  limitDetectedAt: Type.Optional(integer), nextAttemptAt: Type.Optional(integer), lastAttemptAt: Type.Optional(integer),
   reason: Type.Union(['queued', 'agent_offline', 'downloader_unavailable', 'target_changed', 'gateway_unavailable',
-    'retrying', 'verifying', 'executing'].map((value) => Type.Literal(value))),
+    'retrying', 'verifying', 'executing', 'torrent_daily_limit'].map((value) => Type.Literal(value))),
 }, object);
 export const AgentQueueSnapshotSchema = Type.Object({
   observedAt: integer, total: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),

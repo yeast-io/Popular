@@ -36,7 +36,7 @@ export interface StatusPayload {
 }
 export interface CommandRecord extends DownloadRequest {
   retiredAt?: number;
-  queueExpiresAt?: number; nextAttemptAt?: number; retryAttempt?: number; lastErrorCode?: string;
+  queueExpiresAt?: number; nextAttemptAt?: number; retryAttempt?: number; lastErrorCode?: string; limitDetectedAt?: number; lastAttemptAt?: number;
   targetDownloader?: { downloaderType: AgentStatus['downloaderType']; instanceId: string };
   revision: number; digest: string; state: CommandState; createdAt: number; expiresAt: number;
   deliverySessionId: string; deliveryMessageId: string; envelope?: string; torrentHash?: string;

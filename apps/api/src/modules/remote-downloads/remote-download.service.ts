@@ -1,3 +1,5 @@
+import { RESOURCE_DOWNLOAD_LIMIT_COOLDOWN_MS, RESOURCE_TORRENT_DAILY_LIMIT } from '../resource-sites/resource-download-limit.policy.js';
+import type { ResourceDownloadLimit } from '../resource-sites/resource-download-limit.types.js';
 import { REMOTE_DELIVERY_TTL_MS, REMOTE_QUEUE_RETENTION_MS } from './remote-download.policy.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { randomUUID } from 'node:crypto';
@@ -269,6 +271,20 @@ export class RemoteDownloadService {
     throw new RpcError('UNSUPPORTED_COMMAND', 'not_applied');
   }
 
+  async deferForResourceLimit(commandId: string, limit: ResourceDownloadLimit) {
+    const command = await this.change(commandId, async (latest) => {
+      ensure(latest.ownerId === limit.ownerId && latest.source === limit.source && latest.resourceId === limit.resourceId,
+        'RESOURCE_LIMIT_SCOPE_MISMATCH');
+      if (latest.executionId || ['succeeded', 'duplicate', 'closed', 'cancelled'].includes(latest.state)) return latest;
+      return { ...latest, state: 'failed', lastErrorCode: RESOURCE_TORRENT_DAILY_LIMIT,
+        limitDetectedAt: limit.detectedAt, nextAttemptAt: limit.retryAt, projected: false };
+    });
+    currentAiTrace()?.event('remote-queue.resource-limit.deferred', {
+      commandId, source: limit.source, resourceId: limit.resourceId, retryAt: limit.retryAt,
+    });
+    await this.project(command);
+  }
+
   private async prepare(context: Session, commandId: string): Promise<PreparedDelivery> {
     let c = await this.get(commandId);
     checkContext(c, context);
@@ -277,10 +293,29 @@ export class RemoteDownloadService {
       c.deliverySessionId === context.sessionId && c.expiresAt > this.now() && awaitingExecution(c),
       'DELIVERY_EXPIRED'
     );
+    const activeLimit = await aiStep('remote-queue.resource-limit.read', () => this.options.store.resourceDownloadLimit(c, this.now()));
+    if (activeLimit) {
+      await this.deferForResourceLimit(commandId, activeLimit);
+      throw new RpcError(RESOURCE_TORRENT_DAILY_LIMIT, 'not_applied');
+    }
     if (c.envelope) return { command: c, keys: auth.keys! };
     const d = await this.options.store.download(c);
     ensure(d, 'DOWNLOAD_OWNERSHIP_MISMATCH');
-    const torrent = await this.options.torrent(c, d);
+    const torrent = await aiStep('remote-queue.torrent.prepare', async () => {
+      try {
+        return await this.options.torrent(c, d);
+      } catch (error) {
+        if (error instanceof RpcError && error.code === RESOURCE_TORRENT_DAILY_LIMIT) {
+          const detectedAt = this.now();
+          const limit = await aiStep('remote-queue.resource-limit.persist', () => this.options.store.saveResourceDownloadLimit({
+            ownerId: c.ownerId, source: c.source, resourceId: c.resourceId, kind: 'torrent_daily_limit',
+            detectedAt, retryAt: detectedAt + RESOURCE_DOWNLOAD_LIMIT_COOLDOWN_MS,
+          }));
+          await this.deferForResourceLimit(commandId, limit);
+        }
+        throw error;
+      }
+    });
     ensure(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(torrent.torrentHash), 'TORRENT_HASH_REQUIRED');
     const url = new URL(torrent.url);
     ensure(url.protocol === 'https:' && !url.username && !url.password && !url.hash, 'INVALID_TORRENT_URL');

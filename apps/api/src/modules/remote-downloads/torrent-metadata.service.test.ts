@@ -132,3 +132,12 @@ test('redirects share one timeout budget and redact original and destination URL
   }), { code: 'TORRENT_METADATA_UNAVAILABLE' });
   assert.equal(signal!.aborted, true);
 });
+
+test('recognizes a known site quota response before hashing and leaves unknown providers unclassified', async () => {
+  const fetcher: typeof fetch = async () => new Response(JSON.stringify({ code: 'ERROR', data: null,
+    message: '相同種子當天最多下載10次' }), { headers: { 'content-type': 'application/json' } });
+  await assert.rejects(readTorrentMetadata('https://tracker.example/file', { source: 'mteam', fetch: fetcher }),
+    { code: 'RESOURCE_TORRENT_DAILY_LIMIT', effect: 'not_applied' });
+  await assert.rejects(readTorrentMetadata('https://tracker.example/file', { source: 'hdarea', fetch: fetcher }),
+    { code: 'INVALID_TORRENT_METADATA' });
+});
