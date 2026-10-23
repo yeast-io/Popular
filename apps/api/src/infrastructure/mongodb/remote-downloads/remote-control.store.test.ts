@@ -10,7 +10,6 @@ import { MongoRemoteControlStore } from './remote-control.store.js';
 import type { CommandRecord, DeviceKeys } from '@movie-hub/contract';
 import { fingerprint } from '../../../modules/remote-downloads/remote-download.domain.js';
 import { MongoMovieDownloadStore } from '../downloads/movie-download.store.js';
-import { MongoRemoteCommandIndexMigration } from './remote-command-index-migration.store.js';
 
 test('an unrelated unique-index failure retains the original MongoDB error and cause details', async () => {
   const duplicate = Object.assign(new Error('duplicate downloadId'), { code: 11000, keyPattern: { downloadId: 1 } });
@@ -92,8 +91,6 @@ test(
     const downloads = createMovieDownloadModel(connection);
     const models = createRemoteCommandModels(connection);
     await Promise.all([users, devices, downloads, models.commands, models.receipts].map((m) => m.init()));
-    // Reproduce an existing installation's legacy uniqueness constraint.
-    await models.commands.collection.createIndex({ downloadId: 1 }, { unique: true });
     const user = await users.create({
       email: 'gateway-test@example.invalid',
       displayName: 'test',
@@ -216,11 +213,6 @@ test(
     assert.equal(fresh.id, missing.id);
     assert.notEqual(fresh.remoteCommandId, c.commandId);
     assert.equal(fresh.status, 'submitting');
-    await assert.rejects(store.recoverCommands(), (error: unknown) => {
-      assert.equal((error as { code: number }).code, 11000);
-      return true;
-    });
-    await new MongoRemoteCommandIndexMigration(models.commands).migrate();
     await store.recoverCommands();
     assert.equal(await models.commands.countDocuments({ downloadId: fresh.id }), 2);
     assert.ok(await store.command(c.commandId));

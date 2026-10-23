@@ -72,6 +72,17 @@ test('self-chat replies cannot loop back into the receiver, even before send res
     await tick();
     assert.deepEqual(payloads[1], { image: poster, caption: 'Movie reason and link' });
     assert.equal(received, 0);
+    for (const locale of ['en-US', 'zh-CN'] as const) {
+      await connection.sendNotification({ id: 'notification', locale, title: 'Movie', resourceName: 'Release',
+        provider: 'Seedbox', totalBytes: 1024 ** 3, completedAt: new Date('2026-10-23T00:00:00Z'),
+        detailUrl: 'https://popular.example/movies/7', poster });
+      const payload = payloads.at(-1)!;
+      assert.equal(payload.image, poster);
+      assert.ok(payload.caption?.includes(locale === 'en-US' ? 'Download complete' : '下载完成'));
+      assert.ok(payload.caption?.includes(locale === 'en-US' ? 'Downloader: Seedbox' : '下载器: Seedbox'));
+      assert.ok(payload.caption?.includes(locale === 'en-US' ? 'Completion detected at:' : '检测完成时间:'));
+    }
+    assert.equal(received, 0);
     handlers.get('messages.upsert')!({
       type: 'notify',
       messages: [

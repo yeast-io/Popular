@@ -47,6 +47,13 @@ class MemoryUsers implements AuthUserStore {
     );
   }
 
+  async updateLocale(id: string, locale: 'zh-CN' | 'en-US') {
+    const user = await this.findById(id);
+    if (!user) return null;
+    user.locale = locale;
+    return user;
+  }
+
   async updateDisplayName(id: string, displayName: string) {
     const user = await this.findById(id);
     if (!user) return null;

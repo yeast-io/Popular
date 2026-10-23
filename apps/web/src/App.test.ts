@@ -2,7 +2,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
-import { setLocale } from './i18n';
+import { setLocale, useI18n } from './i18n';
 
 const fetchedAt = '2026-10-12T00:00:00.000Z';
 const trendingGeneration = '00000000-0000-4000-8000-000000000001';
@@ -665,5 +665,73 @@ describe('experimental page switches', () => {
     } finally {
       wrapper.unmount();
     }
+  });
+});
+
+describe('account language', () => {
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/');
+    setLocale('zh-CN');
+    vi.stubGlobal('scrollTo', vi.fn());
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function setup(savedLocale?: 'en-US' | 'zh-CN', fail = false) {
+    const saves: string[] = [];
+    const account = { id: 'locale-owner', email: 'locale@example.com', displayName: 'Owner', locale: savedLocale };
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return Response.json({ user: account });
+      if (url.endsWith('/users/me/locale')) {
+        const locale = JSON.parse(String(init?.body)).locale;
+        saves.push(locale);
+        if (fail) return new Response(null, { status: 503 });
+        return Response.json({ user: { ...account, locale } });
+      }
+      if (url.endsWith('/config')) return Response.json({});
+      return Response.json({ items: [], page: 1, hasMore: false, source: 'cache',
+        resultCompleteness: 'complete', fetchedAt, generation: trendingGeneration, locale: 'en-US' });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return { saves, fetcher };
+  }
+
+  it('restores account language instead of overwriting it with the browser language', async () => {
+    const f = setup('en-US');
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(useI18n().locale.value).toBe('en-US');
+    expect(window.localStorage.getItem('movie-hub.locale')).toBe('en-US');
+    expect(f.saves).toEqual([]);
+    wrapper.unmount();
+  });
+
+  it('initializes legacy accounts and persists subsequent switches in order', async () => {
+    const f = setup();
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(f.saves).toEqual(['zh-CN']);
+    const buttons = wrapper.findAll('.locale-options button');
+    await buttons[1]!.trigger('click');
+    await buttons[0]!.trigger('click');
+    await flushPromises();
+    expect(f.saves).toEqual(['zh-CN', 'en-US', 'zh-CN']);
+    expect(useI18n().locale.value).toBe('zh-CN');
+    wrapper.unmount();
+  });
+
+  it('restores the saved account language if a language update fails', async () => {
+    const f = setup('en-US', true);
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper.findAll('.locale-options button')[0]!.trigger('click');
+    await flushPromises();
+    expect(f.saves).toEqual(['zh-CN']);
+    expect(useI18n().locale.value).toBe('en-US');
+    expect(wrapper.get('[role="alert"]').text()).toBe('The request failed. Please try again.');
+    wrapper.unmount();
   });
 });

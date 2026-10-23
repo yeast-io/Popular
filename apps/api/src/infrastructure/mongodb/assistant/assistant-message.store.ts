@@ -1,4 +1,4 @@
-import { ASSISTANT_MESSAGE_RETENTION_MS } from '../assistant-retention.js';
+import { ASSISTANT_MESSAGE_RETENTION_MS } from '../../../modules/assistant/assistant-retention.policy.js';
 import { Types } from 'mongoose';
 import type {
   AssistantQueue,

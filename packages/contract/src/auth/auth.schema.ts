@@ -1,4 +1,5 @@
 import { Static, Type } from '@sinclair/typebox';
+import { LocaleSchema } from '../common/locale.schema.js';
 
 const EmailSchema = Type.String({ format: 'email', maxLength: 254 });
 const PasswordSchema = Type.String({ minLength: 12, maxLength: 128 });
@@ -25,6 +26,7 @@ export const AuthUserSchema = Type.Object(
     id: Type.String(),
     email: EmailSchema,
     displayName: Type.String(),
+    locale: Type.Optional(LocaleSchema),
     avatarUrl: Type.Optional(Type.String({ minLength: 1 })),
   },
   { additionalProperties: false }

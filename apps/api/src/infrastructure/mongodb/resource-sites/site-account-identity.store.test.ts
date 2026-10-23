@@ -6,7 +6,6 @@ import { createIntegrationConfigModel } from '../integrations/integration-config
 import { MongoIntegrationConfigStore } from '../integrations/integration-config.store.js';
 import { createResourceSiteCredentialModel } from './resource-site-credential.schema.js';
 import { MongoResourceSiteCredentialStore } from './resource-site-credential.store.js';
-import { MongoSiteAccountMigrationStore } from './site-account-migration.store.js';
 import { IntegrationService } from '../../../modules/integrations/integration.service.js';
 import { ResourceSiteService } from '../../../modules/resource-sites/resource-site.service.js';
 import { SecretCrypto } from '../../../modules/integrations/secret-crypto.js';
@@ -101,25 +100,7 @@ test('REAL Mongo: site identity uniqueness, concurrent binding, credential repla
   await credentials.collection.insertOne({ ownerId: legacyOwner, site: 'hdarea', encryptedCookie: 'legacy-cookie', version: 'legacy' });
   await assert.rejects(service.saveMTeam(winner, mtInput('account-2-key')), pending);
   await assert.rejects(hd.configure(hdWinner, 'hdarea', 'account-2-cookie'), pending);
-  // Keeping a verified identity does not create another binding and remains possible during migration.
+  // Updating an already verified account remains possible while legacy identities are unresolved.
   await service.saveMTeam(loser, mtInput('account-1-key-update'));
   await hd.configure(hdLoser, 'hdarea', 'account-1-cookie-update');
-  const migration = new MongoSiteAccountMigrationStore(integrations, credentials);
-  const entries = await migration.listPending();
-  assert.equal(entries.length, 2);
-  for (const entry of entries) assert.equal(await migration.assign(entry, '303'), true);
-  assert.equal((await migration.listPending()).length, 0);
-  for (const entry of entries) assert.equal(await migration.assign(entry, '404'), false);
-  await service.saveMTeam(winner, mtInput('account-2-key'));
-  await hd.configure(hdWinner, 'hdarea', 'account-2-cookie');
-
-  // A migration entry cannot recreate a deleted record or attach an obsolete credential's ID.
-  const staleOwner = new Types.ObjectId();
-  await credentials.collection.insertOne({ ownerId: staleOwner, site: 'hdarea', encryptedCookie: 'stale', version: 'legacy' });
-  const [stale] = await migration.listPending();
-  assert.ok(stale);
-  await credentials.updateOne({ ownerId: staleOwner }, { $set: { encryptedCookie: 'replaced' } });
-  assert.equal(await migration.assign(stale, '505'), false);
-  await credentials.deleteOne({ ownerId: staleOwner });
-  assert.equal(await migration.assign(stale, '505'), false);
 });

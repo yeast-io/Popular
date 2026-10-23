@@ -1,7 +1,10 @@
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import {
   ApiErrorSchema,
   AuthResponseSchema,
   UpdateProfileRequestSchema,
+  UpdateUserLocaleRequestSchema,
+  type UpdateUserLocaleRequest,
   type UpdateProfileRequest,
 } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -17,6 +20,25 @@ export function registerUserRoutes(app: FastifyInstance, service: UserService, c
     { parseAs: 'buffer', bodyLimit: config.AVATAR_MAX_BYTES },
     (_request, body, done) => {
       done(null, body);
+    }
+  );
+
+  app.put<{ Body: UpdateUserLocaleRequest }>(
+    '/users/me/locale',
+    { schema: { body: UpdateUserLocaleRequestSchema,
+      response: { 200: AuthResponseSchema, 400: ApiErrorSchema, 401: ApiErrorSchema } } },
+    async (request) => {
+      const trace = new AiTrace(app.log, { requestId: request.id }, '', 'user.locale.update', config.VERBOSE);
+      return withAiTrace(trace, async () => {
+        try {
+          const user = await service.updateLocale(token(request, config), request.body);
+          trace.event('user.locale.completed', { outcome: 'success' });
+          return { user };
+        } catch (error) {
+          trace.fail(error);
+          throw error;
+        }
+      });
     }
   );
 

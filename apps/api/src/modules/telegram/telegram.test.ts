@@ -388,6 +388,8 @@ test('download notification uses owner-scoped photo with escaped HTML, bounded c
   await f.service.sendNotification('alice', withoutPoster);
   assert.equal(f.sent[1]!.photo, undefined);
   assert.equal(f.sent[1]!.parseMode, 'HTML');
+  assert.ok(f.sent[1]!.text.includes('下载完成'));
+  assert.ok(!f.sent[1]!.text.includes('Download complete'));
   await f.service.sendNotification('alice', {
     ...notification,
     title: '😀&'.repeat(2000),
@@ -403,6 +405,10 @@ test('download notification uses owner-scoped photo with escaped HTML, bounded c
   assert.ok(!caption.includes('\uFFFD'));
   assert.ok(caption.includes('…</b>'));
   assert.ok(caption.includes('…</code>'));
+  await f.service.sendNotification('alice', { ...notification, locale: 'en-US' });
+  assert.ok(f.sent[3]!.text.includes('Download complete'));
+  assert.ok(f.sent[3]!.text.includes('View details'));
+  assert.ok(!f.sent[3]!.text.includes('下载完成'));
 });
 
 test('photo upload sends actual poster bytes as multipart with HTML caption, without a fixed content-type header', async () => {

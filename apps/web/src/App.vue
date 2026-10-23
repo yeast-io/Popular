@@ -33,9 +33,12 @@ const email = ref('');
 const password = ref('');
 const displayName = ref('');
 const user = ref<AuthUser | null>(null);
+let localeSaveQueue = Promise.resolve();
+let localeRevision = 0;
 const loading = ref(true);
 const submitting = ref(false);
 const errorMessage = ref('');
+const localeError = ref('');
 const successMessage = ref('');
 const profileName = ref('');
 const avatarFile = ref<File | null>(null);
@@ -203,11 +206,16 @@ function clearAuthFieldError(field: AuthField) {
 }
 
 function setUser(nextUser: AuthUser) {
+  const accountChanged = user.value?.id !== nextUser.id;
   if (user.value?.id !== nextUser.id) {
     settingsSection.value = currentPage.value === 'settings' ? settingsSectionFromSearch(window.location.search) : 'profile';
     settingsVisited.value = new Set([settingsSection.value]);
   }
   user.value = nextUser;
+  if (accountChanged) {
+    if (nextUser.locale) setLocale(nextUser.locale);
+    else chooseLocale(locale.value);
+  }
   profileName.value = nextUser.displayName;
   avatarRemoved.value = false;
   avatarFile.value = null;
@@ -469,8 +477,30 @@ function scrollToEdge(edge: 'top' | 'bottom') {
 }
 
 function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
+  localeError.value = '';
   setLocale(nextLocale);
   localeMenu.value?.removeAttribute('open');
+  const ownerId = user.value?.id;
+  if (!ownerId) return;
+  const revision = ++localeRevision;
+  localeSaveQueue = localeSaveQueue.then(async () => {
+    if (user.value?.id !== ownerId) return;
+    try {
+      const response = await fetch(`${apiBaseUrl}/users/me/locale`, {
+        method: 'PUT', credentials: 'include',
+        headers: { 'content-type': 'application/json', 'accept-language': nextLocale },
+        body: JSON.stringify({ locale: nextLocale }),
+      });
+      if (!response.ok) throw response;
+      if (user.value?.id === ownerId) user.value.locale = nextLocale;
+    } catch (error) {
+      if (user.value?.id === ownerId && revision === localeRevision) {
+        if (user.value.locale) setLocale(user.value.locale);
+        localeError.value = localizedErrorMessage(
+          error instanceof Response ? await localizedResponseError(error) : error, 'errors.serviceUnavailable');
+      }
+    }
+  });
 }
 
 function navigateFromAccount(page: 'settings' | 'usage' | 'notification-tests') {
@@ -622,6 +652,7 @@ function closeAccountMenu() {
         </button>
       </nav>
     </header>
+    <p v-if="localeError" class="error" role="alert">{{ localeError }}</p>
 
     <KeepAlive :max="2">
       <MovieBrowser

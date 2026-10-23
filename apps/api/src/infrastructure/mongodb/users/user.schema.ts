@@ -1,3 +1,4 @@
+import { supportedLocales } from '@movie-hub/contract';
 import { remoteClientUserFields, addRemoteClientUserIndexes } from '../remote-clients/remote-authorization.schema.js';
 import { Schema, type Connection, type InferSchemaType } from 'mongoose';
 
@@ -7,6 +8,7 @@ const userSchema = new Schema(
     email: { type: String, required: true, trim: true, lowercase: true },
     displayName: { type: String, required: true, trim: true, maxlength: 80 },
     passwordHash: { type: String, select: false },
+    locale: { type: String, enum: supportedLocales },
     avatarObjectKey: { type: String },
   },
   { timestamps: true, collection: 'users' }

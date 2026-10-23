@@ -1,4 +1,5 @@
-import type { AuthUser, UpdateProfileRequest } from '@movie-hub/contract';
+import { aiStep } from '../../infrastructure/logging/ai-trace.js';
+import type { AuthUser, UpdateProfileRequest, UpdateUserLocaleRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { toAuthUser, type AuthService } from '../auth/auth.service.js';
 import type { AuthUserStore } from '../auth/auth.types.js';
@@ -13,6 +14,13 @@ export class UserService {
     private readonly maxAvatarBytes: number,
     private readonly maxAvatarPixels: number
   ) {}
+
+  async updateLocale(token: string | undefined, input: UpdateUserLocaleRequest): Promise<AuthUser> {
+    const ownerId = await aiStep('user.locale.authenticate', () => this.auth.requireOwnerId(token));
+    const user = await aiStep('user.locale.persist', () => this.users.updateLocale(ownerId, input.locale));
+    if (!user) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    return toAuthUser(user);
+  }
 
   async updateProfile(token: string | undefined, input: UpdateProfileRequest): Promise<AuthUser> {
     const ownerId = await this.auth.requireOwnerId(token);

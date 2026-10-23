@@ -1,6 +1,5 @@
-import { MongoRemoteCommandIndexMigration } from './infrastructure/mongodb/remote-downloads/remote-command-index-migration.store.js';
-import { MongoSiteAccountMigrationStore } from './infrastructure/mongodb/resource-sites/site-account-migration.store.js';
-import { SiteAccountMigrationService } from './modules/resource-sites/site-account-migration.service.js';
+import OpenAI from 'openai';
+import './config/load-env.js';
 import { randomUUID } from 'node:crypto';
 import { GatewayPool } from './infrastructure/socket/gateway-pool.service.js';
 import { MongoRemoteControlStore } from './infrastructure/mongodb/remote-downloads/remote-control.store.js';
@@ -8,11 +7,10 @@ import { RemoteDownloadService } from './modules/remote-downloads/remote-downloa
 import { RemoteMovieDownloadService } from './modules/remote-downloads/remote-movie-download.service.js';
 import { RemoteDownloadCoordinator } from './modules/remote-downloads/remote-download-coordinator.service.js';
 import { RemoteDownloadWorker } from './modules/remote-downloads/remote-download.worker.js';
-import { readTorrentMetadata } from './modules/remote-downloads/torrent-metadata.schema.js';
+import { readTorrentMetadata } from './modules/remote-downloads/torrent-metadata.service.js';
 import { integrationSecretContext } from './modules/integrations/integration.service.js';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
 import { AiTrace, withAiTrace, currentAiTrace } from './infrastructure/logging/ai-trace.js';
-import { MongoRemoteAuthorizationMigration } from './infrastructure/mongodb/remote-clients/remote-authorization-migration.store.js';
 import { MongoRemoteAuthorizationStore } from './infrastructure/mongodb/remote-clients/remote-authorization.store.js';
 import { RemoteClientService } from './modules/remote-clients/remote-client.service.js';
 import { AuthorizationGatewayClient } from './modules/remote-clients/authorization-gateway.service.js';
@@ -23,7 +21,6 @@ import { MongoIntegrationPreferencesStore } from './infrastructure/mongodb/integ
 import { MovieSiteResourcesService } from './modules/integrations/movie-site-resources.service.js';
 import { createAssistantSessionModel } from './infrastructure/mongodb/assistant/assistant-session.schema.js';
 import { MongoAssistantSessionStore } from './infrastructure/mongodb/assistant/assistant-session.store.js';
-import { initializeAssistantRetention } from './infrastructure/mongodb/assistant-retention.js';
 import { ResourceQueryTool } from './modules/resource-query/resource-query.tool.js';
 import { ResourceSearchService } from './modules/resource-search/resource-search.service.js';
 import { MTeamSearchSource } from './modules/resource-search/mteam-search.source.js';
@@ -49,7 +46,6 @@ import { MongoTelegramStore } from './infrastructure/mongodb/telegram/telegram.s
 import { probeOpenAI } from './infrastructure/openai/connection-probe.js';
 import { NotificationTestService } from './modules/notifications/notification-test.service.js';
 import { MongoNotificationTestStore } from './infrastructure/mongodb/notifications/notification-test.store.js';
-import './config/load-env.js';
 import { MongoNotificationStore } from './infrastructure/mongodb/notifications/notification.store.js';
 import { NotificationService } from './modules/notifications/notification.service.js';
 import { NotificationWorker } from './modules/notifications/notification.worker.js';
@@ -85,7 +81,6 @@ import { MongoMovieResourceSyncBatchStore } from './infrastructure/mongodb/movie
 import { MovieResourceSyncService } from './modules/integrations/movie-resource-sync.service.js';
 import { MongoQBittorrentConfigStore } from './infrastructure/mongodb/integrations/qbittorrent-config.store.js';
 import { MongoTransmissionConfigStore } from './infrastructure/mongodb/integrations/transmission-config.store.js';
-import { MongoDownloaderInstanceMigration } from './infrastructure/mongodb/integrations/downloader-instance-migration.store.js';
 import { TransmissionClient } from './infrastructure/transmission/client.js';
 import { TransmissionIntegrationService } from './modules/integrations/transmission-integration.service.js';
 import { QBittorrentClient } from './infrastructure/qbittorrent/client.js';
@@ -97,7 +92,6 @@ import { ExternalUsageAggregationService } from './modules/external-usage/extern
 import { ExternalUsageService } from './modules/external-usage/external-usage.service.js';
 import { MongoConversationStore } from './infrastructure/mongodb/conversations/conversation.store.js';
 import { ConversationService } from './modules/conversations/conversation.service.js';
-import OpenAI from 'openai';
 import { OpenAILlmClient } from './infrastructure/openai/client.js';
 import { Utf8ByteTokenCounter } from './modules/llm/utf8-byte-token-counter.js';
 import { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
@@ -132,31 +126,12 @@ try {
   await connectInfrastructure(infrastructure);
   shutdown.assertRunning();
   const models = createModels(infrastructure.mongodb.getConnection());
-  const commandIndexMigrationTrace = new AiTrace(loggers.error, {}, '', 'remote-command-index.migration', config.VERBOSE);
-  await withAiTrace(commandIndexMigrationTrace, async () => {
-    try {
-      await commandIndexMigrationTrace.step('remote-command-index.migration', () =>
-        new MongoRemoteCommandIndexMigration(models.remoteControl.commands, models.movieDownloads).migrate());
-    } catch (error) {
-      commandIndexMigrationTrace.fail(error);
-      throw error;
-    }
-  });
-  const downloaderMigration = new MongoDownloaderInstanceMigration(
-    models.qbittorrentConfigs,
-    models.transmissionConfigs,
-    models.movieDownloads,
-    models.integrationPreferences
-  );
-  const downloaderMigrationTrace = new AiTrace(loggers.error, {}, '', 'downloader-instance.migration', config.VERBOSE);
-  await withAiTrace(downloaderMigrationTrace, async () => {
-    try {
-      await downloaderMigrationTrace.step('downloader-instance.migration', () => downloaderMigration.migrate());
-    } catch (error) {
-      downloaderMigrationTrace.fail(error);
-      throw error;
-    }
-  });
+  await Promise.all([
+    models.remoteControl.commands.init(),
+    models.remoteControl.receipts.init(),
+    models.qbittorrentConfigs.init(),
+    models.transmissionConfigs.init(),
+  ]);
   await Promise.all([models.externalRequestEvents.init(), models.externalUsageDaily.init()]);
   const externalUsageStore = new MongoExternalUsageStore(models.externalRequestEvents, models.externalUsageDaily, {
     error: (bindings, message) => loggers.error.error(bindings, message),
@@ -172,21 +147,7 @@ try {
     config.SCAN_TRACE_ENABLED
   );
   shutdown.register('external_usage_aggregation', 45, () => externalUsageAggregation.stop());
-  await Promise.all([models.users.init(), models.remoteDevices.init(), models.remoteAuthorizations.init()]);
-  const remoteMigration = new MongoRemoteAuthorizationMigration(
-    models.users,
-    models.remoteDevices,
-    models.remoteAuthorizations
-  );
-  const migrationTrace = new AiTrace(loggers.error, {}, '', 'remote-client.migration', config.VERBOSE);
-  await withAiTrace(migrationTrace, async () => {
-    try {
-      await migrationTrace.step('remote-client.migration', () => remoteMigration.migrate());
-    } catch (error) {
-      migrationTrace.fail(error);
-      throw error;
-    }
-  });
+  await Promise.all([models.users.init(), models.remoteDevices.init()]);
   const gatewayPool = new GatewayPool({
     urls: config.REMOTE_GATEWAY_BASE_URL ? [config.REMOTE_GATEWAY_BASE_URL] : [],
     token: config.REMOTE_GATEWAY_SERVICE_TOKEN ?? '',
@@ -317,15 +278,6 @@ try {
     new HDAreaHttpClient(),
     { logger: loggers.error, verbose: config.VERBOSE }
   );
-  await new SiteAccountMigrationService(
-    new MongoSiteAccountMigrationStore(models.integrationConfigs, models.resourceSiteCredentials),
-    mteam,
-    config.MTEAM_BASE_URL,
-    resourceSiteService.registry,
-    new HDAreaHttpClient(),
-    secrets,
-    { logger: loggers.error, verbose: config.VERBOSE }
-  ).migrate();
   const resourceSearchService = new ResourceSearchService([
     new MTeamSearchSource(integrationConfigStore, secrets, mteam),
     ...[...resourceSiteService.registry.values()].map((site) => {
@@ -648,10 +600,6 @@ try {
   );
   const resourceQueryModel = createResourceQueryModel(models.users.db);
   await resourceQueryModel.init();
-  await initializeAssistantRetention(models.assistantMessages, resourceQueryModel, {
-    logger: loggers.error,
-    verbose: config.VERBOSE,
-  });
   const resources = new ResourceQueryTool(
     new MongoResourceQueryStore(resourceQueryModel),
     [
@@ -747,7 +695,9 @@ try {
     },
     undefined,
     undefined,
-    config.SCAN_TRACE_ENABLED
+    config.SCAN_TRACE_ENABLED,
+    { resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
+      logger: loggers.app, verbose: config.VERBOSE }
   );
   shutdown.register('notification_worker', 30, () => notificationWorker.stop());
   const notificationTestService = new NotificationTestService(
@@ -756,7 +706,10 @@ try {
     notificationService,
     trendingStore,
     config.TMDB_LANGUAGE,
-    config.WEB_ORIGIN
+    config.WEB_ORIGIN,
+    undefined,
+    undefined,
+    { resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE) }
   );
   const app = await buildApp({
     remoteClientService,

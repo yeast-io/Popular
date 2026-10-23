@@ -78,3 +78,16 @@ test('standalone duplicate user insert remains a conflict', async () => {
   const harness = standaloneHarness({ userError: duplicate });
   await assert.rejects(harness.store.createPasswordUser(input), DuplicateEmailError);
 });
+
+test('locale update persists only the account preference and maps it into the returned user', async () => {
+  const users = {
+    findByIdAndUpdate: (id: string, update: unknown, options: unknown) => {
+      assert.equal(id, 'owner');
+      assert.deepEqual(update, { $set: { locale: 'en-US' } });
+      assert.deepEqual(options, { new: true, runValidators: true });
+      return { select: () => ({ exec: async () => ({ _id: id, ...input, locale: 'en-US' }) }) };
+    },
+  } as unknown as Model<UserDocument>;
+  const store = new MongoAuthUserStore(users, {} as Model<AuthIdentityDocument>);
+  assert.equal((await store.updateLocale('owner', 'en-US'))?.locale, 'en-US');
+});

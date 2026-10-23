@@ -1,4 +1,4 @@
-import { RESOURCE_QUERY_RETENTION_MS } from '../assistant-retention.js';
+import { RESOURCE_QUERY_RETENTION_MS } from '../../../modules/assistant/assistant-retention.policy.js';
 import { emptyResourceState } from '../../../modules/resource-query/resource-query.domain.js';
 import type { ResourceQueryState, ResourceQueryStore } from '../../../modules/resource-query/resource-query.types.js';
 import type { createResourceQueryModel } from './resource-query.schema.js';

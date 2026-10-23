@@ -1,3 +1,4 @@
+import { downloadNotificationMessages } from '../../modules/notifications/notification.presentation.js';
 import makeWASocket, {
   BufferJSON,
   Browsers,
@@ -280,11 +281,12 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
       async sendNotification(notification) {
         const current = socket;
         if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
+        const messages = downloadNotificationMessages[notification.locale ?? 'zh-CN'];
         const caption = [
-          `✅ 下载完成 · ${notification.title}`,
+          `✅ ${messages.completed} · ${notification.title}`,
           notification.resourceName,
-          `下载器: ${notification.provider} · ${(notification.totalBytes / 1024 ** 3).toFixed(2)} GiB`,
-          `检测完成时间: ${notification.completedAt.toISOString()}`,
+          `${messages.provider}: ${notification.provider} · ${(notification.totalBytes / 1024 ** 3).toFixed(2)} GiB`,
+          `${messages.completedAt}: ${notification.completedAt.toISOString()}`,
           notification.detailUrl,
         ].join('\n');
         return sendOwnMessage(notification.poster ? { image: notification.poster, caption } : { text: caption });

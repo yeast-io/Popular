@@ -52,6 +52,13 @@ class MemoryUsers implements AuthUserStore {
     );
   }
 
+  async updateLocale(id: string, locale: 'zh-CN' | 'en-US') {
+    const user = await this.findById(id);
+    if (!user) return null;
+    user.locale = locale;
+    return user;
+  }
+
   async updateDisplayName(id: string, displayName: string) {
     const user = await this.findById(id);
     if (!user) return null;
@@ -218,3 +225,28 @@ function pngHeader(width: number, height: number): Buffer {
   bytes.writeUInt32BE(height, 20);
   return bytes;
 }
+
+test('account locale persists in auth responses, validates input, and requires the owning session', async () => {
+  const f = await fixture();
+  try {
+    for (const locale of ['en-US', 'zh-CN']) {
+      const saved = await f.app.inject({ method: 'PUT', url: '/api/v1/users/me/locale',
+        headers: { cookie: f.cookie }, payload: { locale } });
+      assert.equal(saved.statusCode, 200);
+      assert.equal(saved.json().user.locale, locale);
+      const me = await f.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: { cookie: f.cookie } });
+      assert.equal(me.json().user.locale, locale);
+    }
+    const invalid = await f.app.inject({ method: 'PUT', url: '/api/v1/users/me/locale',
+      headers: { cookie: f.cookie }, payload: { locale: 'fr-FR' } });
+    assert.equal(invalid.statusCode, 400);
+    const anonymous = await f.app.inject({ method: 'PUT', url: '/api/v1/users/me/locale', payload: { locale: 'en-US' } });
+    assert.equal(anonymous.statusCode, 401);
+    const another = await f.app.inject({ method: 'POST', url: '/api/v1/auth/register',
+      payload: { email: 'other@example.com', password: 'correct horse battery staple', displayName: 'Other' } });
+    assert.equal(another.statusCode, 201);
+    assert.equal(another.json().user.locale, undefined);
+    const me = await f.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: { cookie: f.cookie } });
+    assert.equal(me.json().user.locale, 'zh-CN');
+  } finally { await f.app.close(); }
+});

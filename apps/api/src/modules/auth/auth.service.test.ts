@@ -31,6 +31,13 @@ class MemoryUsers implements AuthUserStore {
     );
   }
 
+  async updateLocale(id: string, locale: 'zh-CN' | 'en-US') {
+    const user = await this.findById(id);
+    if (!user) return null;
+    user.locale = locale;
+    return user;
+  }
+
   async updateDisplayName(id: string, displayName: string) {
     const user = await this.findById(id);
     if (!user) return null;
@@ -140,4 +147,17 @@ test('current user and logout use the server-side session', async () => {
     service.currentUser(registered.token),
     (error: unknown) => error instanceof AppError && error.statusCode === 401
   );
+});
+
+test('notification locale uses the account preference and defaults only for users without one', async () => {
+  const users = new MemoryUsers();
+  const service = new AuthService(users, new MemorySessions(), 10);
+  const alice = await users.createPasswordUser({ email: 'alice@example.com', displayName: 'Alice', passwordHash: 'hash' });
+  const bob = await users.createPasswordUser({ email: 'bob@example.com', displayName: 'Bob', passwordHash: 'hash' });
+  assert.equal(await service.localeForOwner(alice.id, 'zh-CN'), 'zh-CN');
+  await users.updateLocale(alice.id, 'en-US');
+  assert.equal(await service.localeForOwner(alice.id, 'zh-CN'), 'en-US');
+  assert.equal(await service.localeForOwner(bob.id, 'zh-CN'), 'zh-CN');
+  await users.updateLocale(alice.id, 'zh-CN');
+  assert.equal(await service.localeForOwner(alice.id, 'en-US'), 'zh-CN');
 });

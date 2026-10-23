@@ -1,3 +1,4 @@
+import { downloadNotificationMessages } from '../notifications/notification.presentation.js';
 import type { TelegramStore, TelegramUpdate, TelegramTransport } from './telegram.types.js';
 import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
@@ -195,8 +196,9 @@ function field(value: string, limit: number): string {
   return escapeHtml(shortened + '…');
 }
 function downloadCaption(notification: DownloadNotification): string {
+  const messages = downloadNotificationMessages[notification.locale ?? 'zh-CN'];
   const lines = [
-    '<b>✅ 下载完成 / Download complete</b>',
+    `<b>✅ ${messages.completed}</b>`,
     `<b>${field(notification.title, 180)}</b>`,
     `<code>${field(notification.resourceName, 400)}</code>`,
     `${field(notification.provider, 40)} · ${(notification.totalBytes / 1024 ** 3).toFixed(2)} GiB`,
@@ -205,7 +207,7 @@ function downloadCaption(notification: DownloadNotification): string {
   try {
     const url = new URL(notification.detailUrl);
     if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password)
-      lines.push(`<a href="${escapeHtml(url.href)}">查看详情 / View details</a>`);
+      lines.push(`<a href="${escapeHtml(url.href)}">${messages.details}</a>`);
   } catch {
     /* An invalid detail link must not prevent delivery of the notification. */
   }

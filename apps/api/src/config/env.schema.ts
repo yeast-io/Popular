@@ -241,10 +241,6 @@ export const TrendingEnvSchema = z.object({
   ...trendingFields,
 });
 
-export const MigrationEnvSchema = z.object(mongodbFields);
-
 export type AppConfig = z.infer<typeof EnvSchema> & { trustProxy: false | string[] };
 
 export type TrendingConfig = z.infer<typeof TrendingEnvSchema>;
-
-export type MigrationConfig = z.infer<typeof MigrationEnvSchema>;

@@ -1,3 +1,4 @@
+import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { remoteDownloadMessages } from '../remote-downloads/remote-download.messages.js';
 import { loadTmdbPoster as loadPoster } from '../../infrastructure/tmdb/poster.js';
 import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
@@ -5,7 +6,7 @@ import type { Locale } from '@movie-hub/contract';
 import type { MovieDownloadService } from '../downloads/movie-download.service.js';
 import type { MovieCatalogStore } from '../movies/movie.types.js';
 import type { NotificationService } from './notification.service.js';
-import type { ClaimedDownload, DownloadNotification } from './notification.types.js';
+import type { ClaimedDownload, DownloadNotification, NotificationLocaleOptions } from './notification.types.js';
 
 export class NotificationWorker {
   private timer?: ReturnType<typeof setInterval>;
@@ -23,7 +24,8 @@ export class NotificationWorker {
     },
     private readonly now: () => Date = () => new Date(),
     private readonly poster: (path: string) => Promise<Buffer | undefined> = loadPoster,
-    private readonly scanTraceEnabled = false
+    private readonly scanTraceEnabled = false,
+    private readonly localeOptions: NotificationLocaleOptions = {}
   ) {}
 
   start() {
@@ -80,7 +82,12 @@ export class NotificationWorker {
     for (let i = 0; i < 20 && !this.stopped; i++) {
       const claim = await store.claimTask(this.now());
       if (!claim) break;
-      await this.process(claim);
+      const trace = new AiTrace(this.localeOptions.logger, { taskId: claim.task.id, downloadId: claim.record.id },
+        '', 'notification.download', this.localeOptions.verbose === true);
+      await withAiTrace(trace, async () => {
+        trace.event('notification.started');
+        await this.process(claim);
+      });
     }
   }
 
@@ -100,7 +107,7 @@ export class NotificationWorker {
     try {
       if (!(await this.active(claim))) return;
       if (!claim.task.downloaded) {
-        const progress = await this.downloads.inspect(claim.record);
+        const progress = await aiStep('notification.download.inspect', () => this.downloads.inspect(claim.record));
         if (!progress) {
           error = 'DOWNLOAD_NOT_FOUND';
           return;
@@ -117,27 +124,33 @@ export class NotificationWorker {
             error = 'CHANNEL_UNAVAILABLE';
             continue;
           }
-          const sent = await channel.send(claim.record.ownerId, payload);
+          const sent = await aiStep('notification.channel.send', () => channel.send(claim.record.ownerId, payload), { channel: target.channel });
           if (!(await store.channelNotified(claim, target.channel, sent.messageId))) return;
-        } catch {
+        } catch (cause) {
+          currentAiTrace()?.fail(cause, { channel: target.channel });
+          currentAiTrace()?.clearFailure();
           error = 'NOTIFICATION_SEND_FAILED';
         }
       }
-    } catch {
+    } catch (cause) {
+      currentAiTrace()?.fail(cause);
       error = 'DOWNLOAD_CHECK_FAILED';
     } finally {
       await store.finish(claim, this.now(), error);
       if (error) this.report(error);
+      currentAiTrace()?.event('notification.completed', { outcome: error ?? 'success' });
     }
   }
 
   private async payload(claim: ClaimedDownload): Promise<DownloadNotification> {
+    const locale = await aiStep('notification.locale.read', async () =>
+      this.localeOptions.resolveLocale ? this.localeOptions.resolveLocale(claim.record.ownerId) : this.locale);
     return buildDownloadNotification(
       claim.record,
       claim.task.id,
       claim.task.completedAt ?? this.now(),
       this.movies,
-      this.locale,
+      locale,
       this.webOrigin,
       this.poster
     );
@@ -155,20 +168,27 @@ export async function buildDownloadNotification(
 ): Promise<DownloadNotification> {
   let movie;
   try {
-    movie = (await movies.readMovies([record.tmdbId], locale))[0];
-  } catch {
+    movie = (await aiStep('notification.movie.read', () => movies.readMovies([record.tmdbId], locale)))[0];
+    currentAiTrace()?.event('notification.movie.resolved', { locale, outcome: movie ? 'found' : 'missing' });
+  } catch (error) {
+    currentAiTrace()?.fail(error);
+    currentAiTrace()?.clearFailure();
     /* use persisted download info */
   }
   let poster: Buffer | undefined;
   if (movie?.posterPath) {
     try {
-      poster = await posterLoader(movie.posterPath);
-    } catch {
+      poster = await aiStep('notification.poster.load', () => posterLoader(movie!.posterPath!));
+    } catch (error) {
+      currentAiTrace()?.fail(error);
+      currentAiTrace()?.clearFailure();
       /* text fallback */
     }
   }
+  currentAiTrace()?.event('notification.poster.resolved', { outcome: poster?.length ? 'loaded' : 'missing' });
   return {
     id,
+    locale,
     title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
     resourceName: record.name ?? `TMDB ${record.tmdbId}`,
     provider: record.downloaderName ?? record.provider ?? remoteDownloadMessages[locale].agent,

@@ -1,4 +1,4 @@
-import { RESOURCE_QUERY_RETENTION_MS } from '../assistant-retention.js';
+import { RESOURCE_QUERY_RETENTION_MS } from '../../../modules/assistant/assistant-retention.policy.js';
 import { emptyAssistantSession } from '../../../modules/assistant/assistant-session.domain.js';
 import type { AssistantSession, AssistantSessionStore } from '../../../modules/assistant/assistant-session.types.js';
 import type { createAssistantSessionModel } from './assistant-session.schema.js';

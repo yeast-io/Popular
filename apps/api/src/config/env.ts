@@ -1,5 +1,5 @@
-import { EnvSchema, TrendingEnvSchema, MigrationEnvSchema } from './env.schema.js';
-import type { AppConfig, TrendingConfig, MigrationConfig } from './env.schema.js';
+import { EnvSchema, TrendingEnvSchema } from './env.schema.js';
+import type { AppConfig, TrendingConfig } from './env.schema.js';
 
 export class InvalidEnvironmentError extends Error {
   constructor(public readonly issues: string[]) {
@@ -24,18 +24,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
 
 export function loadTrendingConfig(environment: NodeJS.ProcessEnv = process.env): TrendingConfig {
   const parsed = TrendingEnvSchema.safeParse(environment);
-  if (!parsed.success) {
-    throw new InvalidEnvironmentError(
-      parsed.error.issues.map((issue) => {
-        return `${issue.path.join('.') || 'environment'}: ${issue.message}`;
-      })
-    );
-  }
-  return parsed.data;
-}
-
-export function loadMigrationConfig(environment: NodeJS.ProcessEnv = process.env): MigrationConfig {
-  const parsed = MigrationEnvSchema.safeParse(environment);
   if (!parsed.success) {
     throw new InvalidEnvironmentError(
       parsed.error.issues.map((issue) => {

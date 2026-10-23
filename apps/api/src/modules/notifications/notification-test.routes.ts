@@ -1,3 +1,4 @@
+import { AiTrace, aiStep, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import {
   ApiErrorSchema,
   NotificationTestListSchema,
@@ -30,7 +31,16 @@ export function registerNotificationTestRoutes(
       },
     },
     (request) => {
-      return service.list(readSessionToken(request, config.SESSION_COOKIE_NAME), request.query.page ?? 1);
+      const trace = new AiTrace(app.log, { requestId: request.id }, '', 'notification.test.list', config.VERBOSE);
+      return withAiTrace(trace, async () => {
+        try {
+          return await aiStep('notification.test.list', () =>
+            service.list(readSessionToken(request, config.SESSION_COOKIE_NAME), request.query.page ?? 1));
+        } catch (error) {
+          trace.fail(error);
+          throw error;
+        }
+      });
     });
   app.post<{ Params: { id: string }; Body: SendNotificationTest }>(
     '/me/notification-tests/downloads/:id/send',
@@ -52,10 +62,16 @@ export function registerNotificationTestRoutes(
       },
     },
     (request) => {
-      return service.send(
-        readSessionToken(request, config.SESSION_COOKIE_NAME),
-        request.params.id,
-        request.body.channel
-      );
+      const trace = new AiTrace(app.log, { requestId: request.id, downloadId: request.params.id }, '',
+        'notification.test.send', config.VERBOSE);
+      return withAiTrace(trace, async () => {
+        try {
+          return await aiStep('notification.test.send', () => service.send(
+            readSessionToken(request, config.SESSION_COOKIE_NAME), request.params.id, request.body.channel));
+        } catch (error) {
+          trace.fail(error);
+          throw error;
+        }
+      });
     });
 }

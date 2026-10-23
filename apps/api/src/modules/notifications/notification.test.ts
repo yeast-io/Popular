@@ -9,6 +9,8 @@ import type {
   NotificationPlan,
   NotificationPreferenceRecord,
   NotificationStore,
+  NotificationLocaleOptions,
+  DownloadNotification,
 } from './notification.types.js';
 import type { MovieDownloadProgress } from '../downloads/movie-download.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
@@ -22,13 +24,15 @@ test('completion notification labels the concrete downloader instance', async ()
   assert.equal(notification.provider, 'Seedbox');
 });
 
-function fixture() {
+function fixture(localeOptions: NotificationLocaleOptions = {}) {
   let time = Date.now();
   const now = () => new Date(time);
   const preferences = new Map<string, NotificationPreferenceRecord>();
   const tasks: ClaimedDownload[] = [];
   const plans: Array<{ owner: string; id: string; plan: NotificationPlan }> = [];
   const sent: string[] = [];
+  const payloads: DownloadNotification[] = [];
+  const readLocales: string[] = [];
   const checked: string[] = [];
   let failSecond = true;
   const defaults = () => {
@@ -124,6 +128,7 @@ function fixture() {
         if (id === 'test_channel' && failSecond) throw new Error('temporarily unavailable');
         assert.equal(payload.title, 'Movie');
         assert.equal(payload.poster?.toString(), 'poster');
+        payloads.push(payload);
         sent.push(`${owner}:${id}`);
         return { messageId: `msg-${sent.length}` };
       },
@@ -160,7 +165,8 @@ function fixture() {
         },
       },
       {
-        readMovies: async () => {
+        readMovies: async (_ids, locale) => {
+          readLocales.push(locale);
           return [{ tmdbId: 7, title: 'Movie', genreIds: [], posterPath: '/poster.jpg' }];
         },
       },
@@ -172,7 +178,9 @@ function fixture() {
       now,
       async () => {
         return Buffer.from('poster');
-      }
+      },
+      false,
+      localeOptions
     );
   };
   const enable = (owner: string, extra: string[] = []) => {
@@ -190,6 +198,8 @@ function fixture() {
     preferences,
     sent,
     checked,
+    payloads,
+    readLocales,
     enable,
     create,
     worker,
@@ -362,4 +372,33 @@ test('notification HTTP settings authenticate the owner and serialize the extens
   } finally {
     await app.close();
   }
+});
+
+test('completion uses each owner latest locale even when changed after task creation', async () => {
+  const locales = new Map<string, 'en-US' | 'zh-CN'>([['alice', 'zh-CN'], ['bob', 'zh-CN']]);
+  const f = fixture({ resolveLocale: async (owner) => locales.get(owner)! });
+  await f.enable('alice');
+  await f.enable('bob');
+  await f.create('alice', 'alice-download');
+  await f.create('bob', 'bob-download');
+  locales.set('alice', 'en-US');
+  f.complete();
+  f.advance();
+  await f.worker().tick();
+  assert.deepEqual(f.readLocales, ['en-US', 'zh-CN']);
+  assert.deepEqual(f.payloads.map((payload) => payload.locale), ['en-US', 'zh-CN']);
+  assert.ok(f.payloads.every((payload) => payload.poster?.toString() === 'poster'));
+});
+
+test('locale lookup failure leaves the task retryable instead of sending in a wrong default language', async () => {
+  const f = fixture({ resolveLocale: async () => {
+    throw new Error('user store unavailable');
+  } });
+  await f.enable('alice');
+  await f.create('alice', 'download');
+  f.complete();
+  f.advance();
+  await f.worker().tick();
+  assert.deepEqual(f.sent, []);
+  assert.equal(f.tasks[0]!.task.notified, false);
 });

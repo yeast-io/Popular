@@ -1,3 +1,5 @@
+import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { NotificationLocaleOptions } from './notification.types.js';
 import type { NotificationTestStore } from './notification-test.types.js';
 import { randomUUID } from 'node:crypto';
 import type { Locale, NotificationTestList, NotificationTestResult } from '@movie-hub/contract';
@@ -20,11 +22,14 @@ export class NotificationTestService {
     private readonly locale: Locale,
     private readonly webOrigin: string,
     private readonly payload = buildDownloadNotification,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly localeOptions: NotificationLocaleOptions = {}
   ) {}
 
   async list(token: string | undefined, page: number): Promise<NotificationTestList> {
     const owner = await this.auth.requireOwnerId(token);
+    const locale = await aiStep('notification.locale.read', async () =>
+      await this.localeOptions.resolveLocale?.(owner) ?? this.locale);
     const records = await this.store.listCompleted(owner, (page - 1) * 30, 31);
     const visible = records.slice(0, 30);
     const movies = await this.movies.readMovies(
@@ -35,7 +40,7 @@ export class NotificationTestService {
           })
         ),
       ],
-      this.locale
+      locale
     );
     const byId = new Map(movies.map((movie) => [movie.tmdbId, movie]));
     return {
@@ -74,19 +79,23 @@ export class NotificationTestService {
       if (!channel) throw new AppError(400, 'VALIDATION_ERROR', 'Unsupported notification channel');
       if (!(await channel.isConfigured(owner)))
         throw new AppError(409, 'CONFLICT', 'Link the selected notification channel first');
+      const locale = await aiStep('notification.locale.read', async () =>
+        await this.localeOptions.resolveLocale?.(owner) ?? this.locale);
       const payload = await this.payload(
         record,
         randomUUID(),
         record.lastSyncedAt ?? this.now(),
         this.movies,
-        this.locale,
+        locale,
         this.webOrigin
       );
       this.lastSent.set(key, this.now().getTime());
       try {
-        await channel.send(owner, payload);
+        await aiStep('notification.channel.send', () => channel.send(owner, payload), { channel: channel.id });
         return { results: [{ channel: channel.id, sent: true }] };
-      } catch {
+      } catch (error) {
+        currentAiTrace()?.fail(error);
+        currentAiTrace()?.clearFailure();
         return { results: [{ channel: channel.id, sent: false }] };
       }
     } finally {

@@ -16,3 +16,15 @@ test('existing users model composes the canonical hidden RCCK fields and preserv
   assert.ok(users.schema.indexes().some(([fields, options]) => fields.email === 1 && options.unique));
   assert.ok(users.schema.indexes().some(([fields, options]) => fields['rcck.keyDigest'] === 1 && options.unique));
 });
+
+test('account locale supports both interface languages without assigning a default to legacy users', () => {
+  const users = createUserModel(createConnection());
+  const input = { email: 'owner@example.com', displayName: 'Owner' };
+  assert.equal(new users(input).locale, undefined);
+  for (const locale of ['en-US', 'zh-CN']) {
+    const user = new users({ ...input, locale });
+    assert.equal(user.validateSync(), undefined);
+    assert.equal(user.locale, locale);
+  }
+  assert.ok(new users({ ...input, locale: 'fr-FR' }).validateSync()?.errors.locale);
+});

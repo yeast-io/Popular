@@ -1,4 +1,5 @@
 import { Static, Type } from '@sinclair/typebox';
+import { LocaleSchema } from '../common/locale.schema.js';
 
 export const UpdateProfileRequestSchema = Type.Object(
   {
@@ -8,3 +9,6 @@ export const UpdateProfileRequestSchema = Type.Object(
 );
 
 export type UpdateProfileRequest = Static<typeof UpdateProfileRequestSchema>;
+
+export const UpdateUserLocaleRequestSchema = Type.Object({ locale: LocaleSchema }, { additionalProperties: false });
+export type UpdateUserLocaleRequest = Static<typeof UpdateUserLocaleRequestSchema>;

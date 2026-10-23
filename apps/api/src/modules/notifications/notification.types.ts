@@ -1,4 +1,5 @@
-import type { SaveNotificationPreferences } from '@movie-hub/contract';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
+import type { Locale, SaveNotificationPreferences } from '@movie-hub/contract';
 import type { MovieDownloadProgress, MovieDownloadRecord } from '../downloads/movie-download.types.js';
 
 export interface NotificationPreferenceRecord extends SaveNotificationPreferences {
@@ -19,6 +20,7 @@ export interface DownloadNotification {
   completedAt: Date;
   detailUrl: string;
   poster?: Buffer;
+  locale?: Locale;
 }
 export interface NotificationChannel {
   id: string;
@@ -67,4 +69,10 @@ export interface NotificationStore {
   downloaded(claim: ClaimedDownload, progress: MovieDownloadProgress, now: Date): Promise<boolean>;
   channelNotified(claim: ClaimedDownload, channel: string, messageId: string): Promise<boolean>;
   finish(claim: ClaimedDownload, now: Date, error?: string): Promise<void>;
+}
+
+export interface NotificationLocaleOptions {
+  resolveLocale?: (ownerId: string) => Promise<Locale>;
+  logger?: AiLogger;
+  verbose?: boolean;
 }

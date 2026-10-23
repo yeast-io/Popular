@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NotificationTestService } from './notification-test.service.js';
 import { NotificationService } from './notification.service.js';
-import type { NotificationStore } from './notification.types.js';
+import type { NotificationLocaleOptions, NotificationStore } from './notification.types.js';
 import type { MovieDownloadRecord } from '../downloads/movie-download.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { buildApp } from '../../app.js';
 import { loadConfig } from '../../config/env.js';
 
 const id = '507f1f77bcf86cd799439011';
-function fixture() {
+function fixture(localeOptions: NotificationLocaleOptions = {}) {
+  const movieLocales: string[] = [];
+  const payloadLocales: string[] = [];
   const sent: string[] = [];
   const reads: string[] = [];
   const record: MovieDownloadRecord = {
@@ -74,13 +76,15 @@ function fixture() {
     },
     notifications,
     {
-      readMovies: async () => {
+      readMovies: async (_ids, locale) => {
+        movieLocales.push(locale);
         return [{ tmdbId: 7, title: 'Movie', genreIds: [], posterPath: '/p.jpg' }];
       },
     },
     'zh-CN',
     'http://localhost:5173',
-    async (row) => {
+    async (row, _id, _at, _movies, locale) => {
+      payloadLocales.push(locale);
       return {
         id: 'manual',
         title: 'Movie',
@@ -94,12 +98,15 @@ function fixture() {
     },
     () => {
       return new Date(now);
-    }
+    },
+    localeOptions
   );
   return {
     service,
     sent,
     reads,
+    movieLocales,
+    payloadLocales,
     advance: () => {
       now += 30000;
     },
@@ -233,4 +240,19 @@ test('HTTP sends only the explicitly selected registered channel and rejects mis
   } finally {
     await app.close();
   }
+});
+
+test('manual download notification list and send resolve the current account language', async () => {
+  let locale: 'en-US' | 'zh-CN' = 'en-US';
+  const f = fixture({ resolveLocale: async () => locale });
+  await f.service.list('alice', 1);
+  await f.service.send('alice', id, 'telegram');
+  assert.deepEqual(f.movieLocales, ['en-US']);
+  assert.deepEqual(f.payloadLocales, ['en-US']);
+  locale = 'zh-CN';
+  f.advance();
+  await f.service.list('alice', 1);
+  await f.service.send('alice', id, 'telegram');
+  assert.deepEqual(f.movieLocales, ['en-US', 'zh-CN']);
+  assert.deepEqual(f.payloadLocales, ['en-US', 'zh-CN']);
 });

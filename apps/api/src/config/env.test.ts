@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { InvalidEnvironmentError, loadConfig, loadMigrationConfig, loadTrendingConfig } from './env.js';
+import { InvalidEnvironmentError, loadConfig, loadTrendingConfig } from './env.js';
 
 const valid = {
   WEB_ORIGIN: 'http://localhost:5173',
@@ -66,19 +66,6 @@ test('trending job config does not require unrelated web, session, or MinIO sett
   );
   assert.equal(config.TMDB_LANGUAGE, 'zh-CN');
   assert.equal(config.MONGODB_DB_NAME, 'movie_hub');
-});
-
-test('movie locale migration requires only MongoDB settings', () => {
-  assert.deepEqual(
-    loadMigrationConfig({
-      MONGODB_URI: 'mongodb://localhost:27017',
-      MONGODB_DB_NAME: 'movie_hub',
-    }),
-    {
-      MONGODB_URI: 'mongodb://localhost:27017',
-      MONGODB_DB_NAME: 'movie_hub',
-    }
-  );
 });
 
 test('rejects an unsupported configured TMDB locale', () => {

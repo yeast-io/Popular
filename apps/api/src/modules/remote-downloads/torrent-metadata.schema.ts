@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
-import { serializeDiagnosticError } from '@movie-hub/contract';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
+import { TORRENT_METADATA_MAX_BYTES } from './torrent-metadata.policy.js';
 
 /** Parse exact bencoded info bytes without re-encoding; hashes use Node/OpenSSL. Bounded untrusted metadata. */
 export function torrentMetadataHash(buffer: Buffer): string {
-  if (buffer.length > 8 * 1024 * 1024 || buffer[0] !== 100)
+  if (buffer.length > TORRENT_METADATA_MAX_BYTES || buffer[0] !== 100)
     throw new RpcError('INVALID_TORRENT_METADATA', 'not_applied');
   let offset = 0;
   let info: Buffer | undefined;
@@ -78,36 +78,4 @@ export function torrentMetadataHash(buffer: Buffer): string {
   return createHash(v1 ? 'sha1' : 'sha256')
     .update(info)
     .digest('hex');
-}
-export async function readTorrentMetadata(url: string): Promise<string> {
-  const parsed = new URL(url);
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash)
-    throw new RpcError('INVALID_TORRENT_URL', 'not_applied');
-  try {
-    const response = await fetch(parsed, { redirect: 'error', signal: AbortSignal.timeout(10_000) });
-    if (!response.ok || !response.body) {
-      await response.body?.cancel();
-      throw new RpcError('TORRENT_METADATA_UNAVAILABLE', 'not_applied');
-    }
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    const reader = response.body.getReader();
-    try {
-      while (true) {
-        const next = await reader.read();
-        if (next.done) break;
-        size += next.value.byteLength;
-        if (size > 8 * 1024 * 1024) throw new RpcError('TORRENT_METADATA_TOO_LARGE', 'not_applied');
-        chunks.push(next.value);
-      }
-    } finally {
-      await reader.cancel();
-    }
-    return torrentMetadataHash(Buffer.concat(chunks));
-  } catch (error) {
-    if (error instanceof RpcError) throw error;
-    throw new RpcError('TORRENT_METADATA_UNAVAILABLE', 'not_applied', {
-      cause: serializeDiagnosticError(error, [url]),
-    });
-  }
 }

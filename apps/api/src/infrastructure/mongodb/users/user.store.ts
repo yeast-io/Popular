@@ -1,3 +1,4 @@
+import type { Locale } from '@movie-hub/contract';
 import type { UserModel, IdentityModel } from './user-store.types.js';
 
 import type { UserDocument } from './user.schema.js';
@@ -79,6 +80,12 @@ export class MongoAuthUserStore implements AuthUserStore {
     return user?.passwordHash ? toStoredUser(user) : null;
   }
 
+  async updateLocale(id: string, locale: Locale): Promise<StoredUser | null> {
+    const user = await this.users.findByIdAndUpdate(id, { $set: { locale } }, { new: true, runValidators: true })
+      .select('+passwordHash').exec();
+    return user ? toStoredUser(user) : null;
+  }
+
   async updateDisplayName(id: string, displayName: string): Promise<StoredUser | null> {
     const user = await this.users
       .findByIdAndUpdate(id, { $set: { displayName } }, { new: true })
@@ -99,6 +106,7 @@ function toStoredUser(user: UserDocument & { _id: unknown }): StoredUser {
     id: String(user._id),
     email: user.email,
     displayName: user.displayName,
+    ...(user.locale ? { locale: user.locale } : {}),
     passwordHash: user.passwordHash ?? '',
     ...(user.avatarObjectKey ? { avatarObjectKey: user.avatarObjectKey } : {}),
   };

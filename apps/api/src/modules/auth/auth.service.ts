@@ -1,4 +1,5 @@
-import type { AuthUser, LoginRequest, RegisterRequest } from '@movie-hub/contract';
+import { aiStep } from '../../infrastructure/logging/ai-trace.js';
+import type { AuthUser, Locale, LoginRequest, RegisterRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { DuplicateEmailError } from './auth.errors.js';
@@ -88,6 +89,11 @@ export class AuthService {
     return token ? this.sessions.getOwnerId(token) : null;
   }
 
+  async localeForOwner(ownerId: string, fallback: Locale): Promise<Locale> {
+    const user = await aiStep('user.locale.read', () => this.users.findById(ownerId));
+    return user?.locale ?? fallback;
+  }
+
   async logout(token: string | undefined): Promise<void> {
     if (token) await this.sessions.delete(token);
   }
@@ -102,6 +108,7 @@ export function toAuthUser(user: StoredUser): AuthUser {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
+    ...(user.locale ? { locale: user.locale } : {}),
     ...(user.avatarObjectKey
       ? { avatarUrl: `/api/v1/users/me/avatar?v=${encodeURIComponent(user.avatarObjectKey)}` }
       : {}),
