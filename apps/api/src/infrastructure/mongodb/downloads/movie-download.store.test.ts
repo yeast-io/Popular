@@ -1,3 +1,4 @@
+import { fingerprint } from '../../../modules/remote-downloads/remote-download.domain.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MISSING_DOWNLOAD_RETENTION_MS } from '../../../modules/downloads/movie-download.policy.js';
@@ -149,4 +150,25 @@ test('HDArea persistence uses source in both lookup and unique creation and pres
     (await store.createSubmitting('owner-one', 603, '991', 'transmission', 'hdarea')).record.sourceProvider,
     'hdarea'
   );
+});
+
+test('a remote claim atomically persists its recoverable command identity, pinned downloader and original queue deadline', async () => {
+  let stored!: Record<string, unknown>;
+  const store = new MongoMovieDownloadStore({ async create(input: Record<string, unknown>) {
+    stored = input;
+    return { toObject: () => input };
+  } } as never);
+  const result = await store.createSubmitting('owner-one', 603, '991', 'transmission', 'mteam', undefined,
+    'Popular Link Agent', { deviceId: 'device-a', authVersion: 2, deviceVersion: 3, correlationId: 'trace-original',
+      targetDownloader: { downloaderType: 'transmission', instanceId: 'nas-1' } });
+  const intent = stored.remoteRequest as Record<string, unknown>;
+  assert.equal(stored.executionMode, 'remote');
+  assert.equal(result.record.remoteCorrelationId, 'trace-original');
+  assert.equal(result.record.remoteCommandId, intent.commandId);
+  assert.equal(Number(intent.queueExpiresAt) - Number(intent.createdAt), 7 * 86400000);
+  assert.equal(intent.digest, fingerprint({ commandId: intent.commandId, downloadId: result.record.id,
+    ownerId: 'owner-one', deviceId: 'device-a', authVersion: 2, deviceVersion: 3,
+    source: 'mteam', resourceId: '991', correlationId: 'trace-original' }));
+  assert.deepEqual(intent.targetDownloader, { downloaderType: 'transmission', instanceId: 'nas-1' });
+  assert.equal(JSON.stringify(stored).includes('torrentUrl'), false);
 });

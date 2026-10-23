@@ -8,6 +8,7 @@ const evidence = new Schema(
 const result = new Schema({ commandId: String, executionId: String, outcome: String, evidence }, { _id: false });
 export const remoteRequestSchema = new Schema(
   {
+    displayTitle: String,
     commandId: String,
     deviceId: String,
     authVersion: Number,
@@ -18,6 +19,8 @@ export const remoteRequestSchema = new Schema(
     digest: String,
     createdAt: Number,
     expiresAt: Number,
+    queueExpiresAt: Number,
+    targetDownloader: new Schema({ downloaderType: String, instanceId: String }, { _id: false }),
     deliverySessionId: String,
     deliveryMessageId: String,
   },
@@ -41,7 +44,7 @@ export const remoteAssociationSchema = new Schema(
 export const remoteCommandSchema = new Schema<CommandRecord>(
   {
     commandId: { type: String, required: true, unique: true },
-    downloadId: { type: String, required: true, unique: true },
+    downloadId: { type: String, required: true },
     ownerId: { type: String, required: true },
     deviceId: { type: String, required: true },
     authVersion: { type: Number, required: true },
@@ -56,6 +59,12 @@ export const remoteCommandSchema = new Schema<CommandRecord>(
     expiresAt: { type: Number, required: true },
     deliverySessionId: { type: String, required: true },
     deliveryMessageId: { type: String, required: true },
+    retiredAt: Number,
+    queueExpiresAt: Number,
+    nextAttemptAt: Number,
+    retryAttempt: Number,
+    lastErrorCode: String,
+    targetDownloader: new Schema({ downloaderType: String, instanceId: String }, { _id: false }),
     envelope: String,
     torrentHash: String,
     executionId: String,
@@ -69,7 +78,12 @@ export const remoteCommandSchema = new Schema<CommandRecord>(
   },
   { collection: 'remote_client_commands', versionKey: false }
 );
+remoteCommandSchema.index({ queueExpiresAt: 1 });
+remoteCommandSchema.index({ retiredAt: 1 });
+remoteCommandSchema.index({ ownerId: 1, deviceId: 1, authVersion: 1, deviceVersion: 1, queueExpiresAt: 1, commandId: 1 });
+remoteCommandSchema.index({ downloadId: 1, createdAt: 1 });
 remoteCommandSchema.index({ deviceId: 1, state: 1, expiresAt: 1 });
+remoteCommandSchema.index({ state: 1, nextAttemptAt: 1, queueExpiresAt: 1 });
 remoteCommandSchema.index({ projected: 1, state: 1 });
 export const remoteReceiptSchema = new Schema(
   { key: { type: String, required: true, unique: true }, digest: { type: String, required: true } },

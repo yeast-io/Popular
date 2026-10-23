@@ -65,6 +65,10 @@ test(
       true
     );
     assert.equal((await one.get(fresh.deviceId))!.status!.reachable, false);
+    const observedAt = (await one.get(fresh.deviceId))!.statusObservedAt;
+    assert.equal(typeof observedAt, 'number');
+    await two.renew(fresh);
+    assert.equal((await one.get(fresh.deviceId))!.statusObservedAt, observedAt);
     const limits = await Promise.all(Array.from({ length: 10 }, () => one.rateLimit('atomic', 3, 1000)));
     assert.equal(limits.filter(Boolean).length, 3);
     // Deterministically advance the Redis expiry rather than waiting for wall-clock time.

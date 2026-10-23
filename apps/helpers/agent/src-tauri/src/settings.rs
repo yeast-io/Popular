@@ -8,6 +8,14 @@ pub enum Provider {
     Transmission,
 }
 
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DownloaderAuthMode {
+    #[default]
+    Password,
+    ApiKey,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Settings {
@@ -16,6 +24,8 @@ pub struct Settings {
     pub provider: Provider,
     pub downloader_url: String,
     pub username: String,
+    #[serde(default)]
+    pub auth_mode: DownloaderAuthMode,
     #[serde(default = "enabled")]
     pub autostart: bool,
     #[serde(default = "enabled")]
@@ -35,6 +45,7 @@ impl Default for Settings {
             provider: Provider::default(),
             downloader_url: "http://127.0.0.1:8080".into(),
             username: String::new(),
+            auth_mode: DownloaderAuthMode::default(),
             autostart: true,
             gateway_enabled: true,
             downloader_configured: false,
@@ -47,12 +58,16 @@ impl Default for Settings {
 pub struct StoredSettings {
     pub settings: Settings,
     pub credential_id: Option<String>,
+    #[serde(default)]
+    pub downloader_identity: Option<crate::protocol::DownloaderTarget>,
 }
 
 // The secret bundle exists only in native memory and the OS credential store.
 #[derive(Default, Serialize, Deserialize)]
 pub struct Secrets {
     pub api_key: String,
+    // Active downloader credential: WebUI password or API key, selected by auth_mode.
+    // In downloader settings bundles, api_key above is the Gateway credential.
     pub password: String,
 }
 
@@ -91,6 +106,8 @@ pub struct TestRequest {
     pub provider: Provider,
     pub downloader_url: String,
     pub username: String,
+    #[serde(default)]
+    pub auth_mode: DownloaderAuthMode,
     pub password: SecretChange,
 }
 
@@ -187,6 +204,7 @@ pub fn downloader_url(raw: &str, provider: &Provider) -> Result<String, crate::e
 }
 
 pub fn validate_stored(settings: &Settings) -> Result<(), crate::errors::AgentError> {
+    validate_auth_mode(&settings.provider, &settings.auth_mode)?;
     if !matches!(settings.locale.as_str(), "en-US" | "zh-CN") || settings.username.len() > 512 {
         return Err(crate::errors::AgentError::code("invalidSettings"));
     }
@@ -200,6 +218,7 @@ pub fn validate_stored(settings: &Settings) -> Result<(), crate::errors::AgentEr
 }
 
 pub fn normalize(mut settings: Settings) -> Result<Settings, crate::errors::AgentError> {
+    validate_auth_mode(&settings.provider, &settings.auth_mode)?;
     if !matches!(settings.locale.as_str(), "en-US" | "zh-CN") || settings.username.len() > 512 {
         return Err(crate::errors::AgentError::code("invalidSettings"));
     }
@@ -212,6 +231,20 @@ pub fn normalize(mut settings: Settings) -> Result<Settings, crate::errors::Agen
         settings.downloader_url = downloader_url(&settings.downloader_url, &settings.provider)?;
     }
     Ok(settings)
+}
+
+pub fn validate_auth_mode(
+    provider: &Provider,
+    mode: &DownloaderAuthMode,
+) -> Result<(), crate::errors::AgentError> {
+    if *provider == Provider::Transmission && *mode != DownloaderAuthMode::Password {
+        return Err(crate::errors::AgentError::code("invalidSettings"));
+    }
+    Ok(())
+}
+
+pub fn same_downloader_credentials(a: &Settings, b: &Settings) -> bool {
+    same_downloader(a, b) && a.auth_mode == b.auth_mode
 }
 
 pub fn same_downloader(a: &Settings, b: &Settings) -> bool {
@@ -250,10 +283,12 @@ mod tests {
     fn migration_preserves_existing_connections_and_fresh_install_is_unconfigured() {
         let mut old = serde_json::to_value(Settings::default()).unwrap();
         old.as_object_mut().unwrap().remove("gatewayEnabled");
+        old.as_object_mut().unwrap().remove("authMode");
         old.as_object_mut().unwrap().remove("downloaderConfigured");
         let restored: Settings = serde_json::from_value(old).unwrap();
         assert!(restored.gateway_enabled && restored.downloader_configured);
         assert!(!Settings::default().downloader_configured);
+        assert!(restored.auth_mode == DownloaderAuthMode::Password);
     }
     #[test]
     fn rejects_embedded_secrets_and_non_http_downloader() {
@@ -363,6 +398,28 @@ mod tests {
             ..old.clone()
         };
         assert!(same_downloader(&old, &new));
+    }
+    #[test]
+    fn authentication_switch_requires_a_new_secret_without_changing_downloader_identity() {
+        let old = Settings::default();
+        let new = Settings {
+            auth_mode: DownloaderAuthMode::ApiKey,
+            ..old.clone()
+        };
+        assert!(same_downloader(&old, &new));
+        assert!(!same_downloader_credentials(&old, &new));
+        assert!(resolve_secret(
+            &SecretChange::Keep,
+            "old-password",
+            same_downloader_credentials(&old, &new)
+        )
+        .is_err());
+        let invalid = Settings {
+            provider: Provider::Transmission,
+            ..new
+        };
+        assert!(validate_stored(&invalid).is_err());
+        assert!(normalize(invalid).is_err());
     }
     #[test]
     fn never_reuses_a_secret_for_a_different_target() {

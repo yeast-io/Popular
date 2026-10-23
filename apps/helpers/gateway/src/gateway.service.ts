@@ -1,6 +1,7 @@
+import { DOWNLOADER_STATUS_TTL_MS } from './gateway.policy.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
-import { GatewayRpcSchemas } from '@movie-hub/contract';
+import { GatewayRpcSchemas, AgentQueueRequestSchema, AgentQueueSnapshotSchema } from '@movie-hub/contract';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
 import type { RpcFrame } from '@movie-hub/contract/socket-rpc';
 import type {
@@ -80,10 +81,20 @@ export class GatewayService {
         protocolErrorSchema.parse(wire.payload);
         return;
       }
+      if (wire.command === '__queue_request__') {
+        requireCondition(Value.Check(AgentQueueRequestSchema, wire.payload), 'INVALID_REQUEST');
+        const snapshot = await this.options.popular.call('__list_queued_downloads__',
+          { context: peer.session, ...(wire.payload as { cursor?: string }) }, correlationId);
+        requireCondition(Value.Check(AgentQueueSnapshotSchema, snapshot), 'INVALID_QUEUE_SNAPSHOT');
+        await this.active(peer.session);
+        peer.send(message('__queue_snapshot__', snapshot, wire));
+        return;
+      }
       if (wire.command === '__agent_status__') {
         const status = agentStatusSchema.parse(wire.payload);
-        requireCondition(await this.options.router.renew(peer.session, status), 'SESSION_REVOKED', 401);
+        requireCondition(await this.options.router.renew(peer.session, status, this.now()), 'SESSION_REVOKED', 401);
         peer.status = status;
+        peer.statusObservedAt = this.now();
         return;
       }
       const event = { context: peer.session, agentMessageId: wire.messageId, agentDigest: fingerprint(wire) };
@@ -98,7 +109,8 @@ export class GatewayService {
       }
       if (wire.command === '__request_execution__') {
         const p = executionSchema.parse(wire.payload);
-        requireCondition(peer.status?.configured && peer.status.reachable, 'DOWNLOADER_UNAVAILABLE');
+        requireCondition(peer.status?.configured && peer.status.reachable
+          && peer.statusObservedAt !== undefined && this.now() - peer.statusObservedAt < DOWNLOADER_STATUS_TTL_MS, 'DOWNLOADER_UNAVAILABLE');
         try {
           const response = await this.options.popular.call<{ decision: 'granted'; command: CommandRecord }>(
             '__authorize_execution__',
@@ -320,7 +332,14 @@ export class GatewayService {
           && route.ownerId === p.ownerId
           && route.authVersion === p.authVersion
           && route.deviceVersion === p.deviceVersion;
-      return { online: !!online, ...(online ? { session: route, agentStatus: route.status ?? null } : {}) };
+      const fresh = online && route.statusObservedAt !== undefined && this.now() - route.statusObservedAt < DOWNLOADER_STATUS_TTL_MS;
+      return { online: !!online, isAgentOnline: !!online,
+        isAgentDownloaderOnline: !!(fresh && route.status?.configured && route.status.reachable),
+        checkedAt: this.now(), ...(online
+          ? { session: { ownerId: route.ownerId, deviceId: route.deviceId, authVersion: route.authVersion,
+              deviceVersion: route.deviceVersion, sessionId: route.sessionId, instanceId: route.instanceId }, agentStatus: fresh ? route.status ?? null : null,
+            statusObservedAt: route.statusObservedAt }
+          : {}) };
     }
     if (command === '__dispatch_download__') {
       const p = payload as DownloadRequest;
@@ -335,7 +354,8 @@ export class GatewayService {
         return this.options.bus.call(route.instanceId, 'gateway', frame);
       }
       const peer = [...this.peers.values()].find((peer) => peer.session && sameSession(peer.session, route));
-      requireCondition(peer?.session && peer.status?.configured && peer.status.reachable, 'DOWNLOADER_UNAVAILABLE');
+      requireCondition(peer?.session && peer.status?.configured && peer.status.reachable
+        && peer.statusObservedAt !== undefined && this.now() - peer.statusObservedAt < DOWNLOADER_STATUS_TTL_MS, 'DOWNLOADER_UNAVAILABLE');
       return this.deliver(peer, p.commandId, p);
     }
     if (command === '__authorization_changed__') {
@@ -376,6 +396,7 @@ export class GatewayService {
         resourceId: c.resourceId,
         correlationId: c.correlationId,
         expiresAt: c.expiresAt,
+        ...(c.queueExpiresAt ? { queueExpiresAt: c.queueExpiresAt, retryAttempt: c.retryAttempt ?? 0 } : {}),
         torrentUrl: prepared.torrent.url,
         torrentHash: prepared.torrent.torrentHash,
       });
@@ -415,7 +436,8 @@ export class GatewayService {
     for (const p of peers) {
       try {
         await this.current(p.session!, p.id);
-        if (!p.status?.configured || !p.status.reachable) continue;
+        if (!p.status?.configured || !p.status.reachable || p.statusObservedAt === undefined
+          || this.now() - p.statusObservedAt >= DOWNLOADER_STATUS_TTL_MS) continue;
         const pending = await this.options.popular.call<{ commandIds: string[] }>('__list_pending_deliveries__', {
           context: p.session,
         });
@@ -436,7 +458,7 @@ export class GatewayService {
           if (!p.session) return;
           try {
             await this.current(p.session);
-            requireCondition(await this.options.router.renew(p.session, p.status), 'SESSION_REVOKED', 401);
+            requireCondition(await this.options.router.renew(p.session), 'SESSION_REVOKED', 401);
           } catch (error) {
             this.options.logger.error(
               { err: error, stage: 'session.validate', sessionId: p.session.sessionId },

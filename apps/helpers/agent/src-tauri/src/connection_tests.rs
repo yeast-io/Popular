@@ -193,7 +193,8 @@ impl Client {
                 settings,
                 Secrets {
                     api_key: api_key.into(),
-                    password: "dummy-password".into(),
+                    password: std::env::var("HELPER_REAL_DOWNLOADER_PASSWORD")
+                        .unwrap_or_else(|_| "dummy-password".into()),
                 },
                 identity,
                 serde_json::from_str(&key)?,
@@ -250,7 +251,8 @@ async fn gateway_protocol_recovery_matrix() {
             .wait(|s| s["duplicateEvents"].as_u64().unwrap() > 0)
             .await;
         assert_eq!(stats["adds"], 1);
-        assert_eq!(stats["grants"], 1);
+        // Duplicate delivery requests may replay the same grant; only one execution is authorized.
+        assert_eq!(stats["grantedExecutions"].as_array().unwrap().len(), 1);
         let received = stats["received"].as_array().unwrap();
         assert_eq!(received[0], received[1]);
         fixture
@@ -368,7 +370,7 @@ async fn gateway_protocol_recovery_matrix() {
         let task = client.start();
         fixture.ready(5).await;
         assert!(
-            crate::device::target(client.directory.path(), &client.settings).unwrap() == old_target
+            crate::device::target(client.directory.path(), &client.settings).unwrap() != old_target
         );
         fixture
             .control(json!({"issue":true,"expired":true,"hash":"d".repeat(40)}))
@@ -607,4 +609,238 @@ async fn gateway_user_disconnect_preserves_unknown_result_and_device_identity() 
     assert_eq!(fixture.stats().await["adds"], 1);
     client.runtime.changed.notify_one();
     stop(task).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "Real Agent/Gateway queue attempts with simulated downloader and stores"]
+async fn gateway_queued_retry_preserves_attempt_history_and_never_adds_twice() {
+    let fixture = Fixture::start();
+    let client = Client::new(&fixture, Provider::Qbittorrent);
+    let task = client.start();
+    fixture.ready(1).await;
+    fixture.control(json!({"issue":true,"queue":true,"commandId":"queued-retry","downloadId":"queued-download","failPreflight":true})).await;
+    fixture.wait(|s| event(s, "outcome", "failed")).await;
+    assert_eq!(fixture.stats().await["adds"], 0);
+    fixture.control(json!({"retry":"queued-retry"})).await;
+    let stats = fixture.wait(|s| event(s, "outcome", "succeeded")).await;
+    assert_eq!(stats["adds"], 1);
+    assert_eq!(stats["grants"], 2);
+    let journal = client.journal();
+    assert_eq!(journal.records.len(), 2);
+    assert_eq!(journal.records[0].retry_attempt, Some(1));
+    assert_eq!(journal.records[1].retry_attempt, Some(2));
+    assert_eq!(
+        journal.records[0].queue_expires_at,
+        journal.records[1].queue_expires_at
+    );
+    assert_ne!(
+        journal.records[0].execution_id,
+        journal.records[1].execution_id
+    );
+    fixture
+        .control(json!({"issue":true,"commandId":"queued-retry"}))
+        .await;
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert_eq!(fixture.stats().await["adds"], 1);
+    client.runtime.changed.notify_one();
+    stop(task).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "Real Agent/Gateway negative reports with simulated stores and HTTP API"]
+async fn gateway_reports_unconfigured_and_reset_identity_without_idle_tasks() {
+    let fixture = Fixture::start();
+    let mut client = Client::new(&fixture, Provider::Transmission);
+    client.settings.downloader_configured = false;
+    let task = client.start();
+    let first = fixture
+        .wait(|s| s["statusReports"].as_array().is_some_and(|s| !s.is_empty()))
+        .await;
+    let placeholder = first["statusReports"][0]["instanceId"].clone();
+    assert_eq!(first["statusReports"][0]["configured"], false);
+    assert_eq!(first["statusReports"][0]["reachable"], false);
+    client.runtime.changed.notify_one();
+    stop(task).await.unwrap();
+    let task = client.start();
+    fixture
+        .wait(|s| s["auth"] == 2 && s["statusReports"].as_array().unwrap().len() >= 3)
+        .await;
+    assert_eq!(
+        fixture.stats().await["statusReports"][2]["instanceId"],
+        placeholder
+    );
+    client.runtime.changed.notify_one();
+    stop(task).await.unwrap();
+    client.settings.downloader_configured = true;
+    let task = client.start();
+    fixture.ready(3).await;
+    let count = fixture.stats().await["statusReports"]
+        .as_array()
+        .unwrap()
+        .len();
+    fixture
+        .wait(|s| {
+            s["statusReports"].as_array().unwrap().len() > count
+                && s["statusReports"].as_array().unwrap().last().unwrap()["reachable"] == true
+        })
+        .await;
+    assert_eq!(fixture.stats().await["adds"], 0);
+    let stored = crate::settings::StoredSettings {
+        settings: Settings::default(),
+        ..Default::default()
+    };
+    journal::atomic(client.directory.path(), "settings.json", &stored).unwrap();
+    client.runtime.changed.notify_one();
+    stop(task).await.unwrap();
+    let stats = fixture
+        .wait(|s| s["statusReports"].as_array().unwrap().last().unwrap()["reachable"] == false)
+        .await;
+    let reports = stats["statusReports"].as_array().unwrap();
+    assert_eq!(reports.last().unwrap()["configured"], false);
+    let online = reports
+        .iter()
+        .rev()
+        .find(|r| r["reachable"] == true)
+        .unwrap();
+    assert_eq!(online["instanceId"], reports.last().unwrap()["instanceId"]);
+    assert_eq!(
+        online["downloaderType"],
+        reports.last().unwrap()["downloaderType"]
+    );
+}
+
+#[tokio::test]
+#[ignore = "Real Agent/Gateway offline queue with simulated stores and downloader"]
+async fn gateway_offline_queue_delivers_on_reconnect_with_original_deadline() {
+    let fixture = Fixture::start();
+    let client = Client::new(&fixture, Provider::Qbittorrent);
+    let task = client.start();
+    fixture.ready(1).await;
+    fixture.control(json!({"disconnect":true})).await;
+    assert!(stop(task).await.is_err());
+    fixture.wait(|s| s["clients"] == 0).await;
+    fixture.control(json!({"issue":true,"queue":true,"commandId":"offline-queue","downloadId":"offline-download"})).await;
+    let first = fixture.stats().await;
+    assert_eq!(first["adds"], 0);
+    let deadline = first["commands"][0]["queueExpiresAt"].clone();
+    assert!(deadline.as_u64().unwrap() > 0);
+    let task = client.start();
+    fixture.ready(2).await;
+    fixture.control(json!({"retry":"offline-queue"})).await;
+    let done = fixture.wait(|s| event(s, "outcome", "succeeded")).await;
+    assert_eq!(done["adds"], 1);
+    assert_eq!(done["commands"][0]["queueExpiresAt"], deadline);
+    client.runtime.changed.notify_one();
+    stop(task).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "Opt-in live Transmission test; requires HELPER_REAL_DOWNLOADER_URL/USERNAME/PASSWORD and HELPER_REAL_TORRENT_URL/HASH; adds and pauses a test task"]
+async fn live_transmission_queued_push_produces_real_evidence() {
+    use crate::downloads::Downloader;
+    let url = std::env::var("HELPER_REAL_DOWNLOADER_URL").expect("set live downloader URL");
+    let username =
+        std::env::var("HELPER_REAL_DOWNLOADER_USERNAME").expect("set live downloader username");
+    let password =
+        std::env::var("HELPER_REAL_DOWNLOADER_PASSWORD").expect("set live downloader password");
+    let hash = std::env::var("HELPER_REAL_TORRENT_HASH").expect("set test torrent hash");
+    let fixture = Fixture::start();
+    let mut client = Client::new(&fixture, Provider::Transmission);
+    client.settings.downloader_url = url.clone();
+    client.settings.username = username.clone();
+    let mut downloader =
+        Downloader::connect(client.settings.clone(), password.clone(), &Trace::new())
+            .await
+            .unwrap();
+    downloader.probe().await.unwrap();
+    assert!(
+        downloader.tasks(&hash).await.unwrap().is_empty(),
+        "test torrent already exists; refusing to adopt or modify it"
+    );
+    let task = client.start();
+    fixture.ready(1).await;
+    fixture.control(json!({"issue":true,"queue":true,"commandId":"live-transmission-test","downloadId":"live-transmission-download","hash":hash})).await;
+    fixture.wait(|s| event(s, "outcome", "succeeded")).await;
+    let record = client.journal().records[0].clone();
+    assert_eq!(record.phase, "succeeded");
+    assert_eq!(record.retry_attempt, Some(1));
+    let found = downloader.tasks(&hash).await.unwrap();
+    assert_eq!(found.len(), 1);
+    assert!(crate::downloads::owned(&found[0], &record.marker()));
+    assert_eq!(record.evidence.as_ref().unwrap()["torrentHash"], hash);
+    fixture
+        .control(json!({"issue":true,"commandId":"live-transmission-test"}))
+        .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(downloader.tasks(&hash).await.unwrap().len(), 1);
+    // Pause only the task created by this test, after checking its full hash and ownership marker.
+    let http = super::client().unwrap();
+    let payload =
+        json!({"method":"torrent-stop","arguments":{"ids":[found[0]["id"].clone()]},"tag":1});
+    let first = http
+        .post(&url)
+        .basic_auth(&username, Some(&password))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    let response = if first.status().as_u16() == 409 {
+        let session = first
+            .headers()
+            .get("x-transmission-session-id")
+            .unwrap()
+            .clone();
+        http.post(&url)
+            .basic_auth(&username, Some(&password))
+            .header("x-transmission-session-id", session)
+            .json(&payload)
+            .send()
+            .await
+            .unwrap()
+    } else {
+        first
+    };
+    assert!(response.status().is_success());
+    let receipt: Value = response.json().await.unwrap();
+    assert_eq!(receipt["result"], "success");
+    client.runtime.changed.notify_one();
+    stop(task).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "Real Agent/Gateway queue metadata over loopback with simulated storage; no downloader is configured"]
+async fn gateway_queue_metadata_is_available_without_a_download_tool() {
+    let fixture = Fixture::start();
+    let mut client = Client::new(&fixture, Provider::Transmission);
+    client.settings.downloader_configured = false;
+    let task = client.start();
+    fixture
+        .wait(|s| s["auth"] == 1 && !s["statusReports"].as_array().unwrap().is_empty())
+        .await;
+    fixture
+        .control(json!({"issue":true,"queue":true,"commandId":"queue-metadata-only"}))
+        .await;
+    client.runtime.queue_refresh.notify_one();
+    fixture
+        .wait(|_| {
+            crate::queue::view(client.directory.path(), &client.runtime)
+                .snapshot
+                .as_ref()
+                .is_some_and(|s| s.total == 1)
+        })
+        .await;
+    let view = crate::queue::view(client.directory.path(), &client.runtime);
+    let snapshot = view.snapshot.unwrap();
+    assert!(!view.stale);
+    assert_eq!(snapshot.items[0].command_id, "queue-metadata-only");
+    assert_eq!(snapshot.items[0].reason, "downloader_unavailable");
+    assert_eq!(fixture.stats().await["adds"], 0);
+    assert_eq!(fixture.stats().await["grants"], 0);
+    client.runtime.changed.notify_one();
+    stop(task).await.unwrap();
+    let offline = Runtime::default();
+    crate::queue::initialize(client.directory.path(), &offline);
+    let cache = crate::queue::view(client.directory.path(), &offline);
+    assert!(cache.stale);
+    assert_eq!(cache.snapshot.unwrap().total, 1);
 }

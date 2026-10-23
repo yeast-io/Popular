@@ -1,3 +1,5 @@
+import { REMOTE_DELIVERY_TTL_MS, REMOTE_QUEUE_RETENTION_MS } from './remote-download.policy.js';
+import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { randomUUID } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
 import { PopularRpcSchemas } from '@movie-hub/contract';
@@ -53,7 +55,7 @@ export class RemoteDownloadService {
     throw new RpcError('SERVICE_BUSY', 'not_applied');
   }
 
-  async register(input: DownloadRequest, session: Session) {
+  async register(input: DownloadRequest, session: Session, queued = false) {
     const existing = await this.options.store.command(input.commandId);
     if (existing) {
       ensure(existing.digest === fingerprint(input), 'IDEMPOTENCY_CONFLICT');
@@ -69,13 +71,15 @@ export class RemoteDownloadService {
     );
     const d = await this.options.store.download(input);
     ensure(d?.executionMode === 'remote', 'DOWNLOAD_OWNERSHIP_MISMATCH');
+    const createdAt = this.now();
     const c: CommandRecord = {
       ...input,
       digest: fingerprint(input),
       revision: 0,
       state: 'accepted',
-      createdAt: this.now(),
-      expiresAt: this.now() + 60_000,
+      createdAt,
+      expiresAt: createdAt + REMOTE_DELIVERY_TTL_MS,
+      ...(queued ? { queueExpiresAt: createdAt + REMOTE_QUEUE_RETENTION_MS, nextAttemptAt: createdAt, retryAttempt: 0 } : {}),
       deliverySessionId: session.sessionId,
       deliveryMessageId: randomUUID(),
     };
@@ -105,6 +109,9 @@ export class RemoteDownloadService {
     }
     const context = p.context as Session;
     const auth = await this.authorized(context);
+    if (command === '__list_queued_downloads__')
+      return aiStep('remote-queue.snapshot', () => this.options.store.queued(context, this.now(), p.cursor as string | undefined),
+        { deviceId: context.deviceId });
     if (command === '__validate_session__') return auth;
     if (command === '__list_pending_deliveries__') {
       const pending: string[] = [];
@@ -140,7 +147,10 @@ export class RemoteDownloadService {
         const downloader = p.downloader as AgentStatus;
         ensure(downloader.configured && downloader.reachable, 'DOWNLOADER_UNAVAILABLE');
         const download = await this.options.store.download(c);
-        ensure(download?.downloaderType === downloader.downloaderType, 'DOWNLOADER_TYPE_MISMATCH');
+        ensure(download, 'DOWNLOAD_OWNERSHIP_MISMATCH');
+        ensure(c.queueExpiresAt
+          ? c.targetDownloader?.downloaderType === downloader.downloaderType && c.targetDownloader.instanceId === downloader.instanceId
+          : download?.downloaderType === downloader.downloaderType, 'DOWNLOADER_TYPE_MISMATCH');
         if (c.executionId) {
           ensure(
             c.executionId === p.executionId
@@ -228,7 +238,15 @@ export class RemoteDownloadService {
     if (command === '__record_download_status__') {
       await this.remember(context, p);
       const status = p.status as StatusPayload;
-      const c = await this.get(status.commandId);
+      const c = await this.options.store.command(status.commandId);
+      if (!c && status.state === 'deleted') {
+        // After history retention, an authenticated late deletion receipt is a durable no-op.
+        // It must not block an old Agent outbox or recreate a task association.
+        await this.authorized(context);
+        currentAiTrace()?.event('remote-download.status.retired', { commandId: status.commandId, outcome: 'ignored' });
+        return { persisted: true, commandId: status.commandId, executionId: status.executionId, sequence: status.sequence };
+      }
+      ensure(c, 'COMMAND_NOT_FOUND');
       checkContext(c, context);
       ensure(
         c.executionId === status.executionId
@@ -244,7 +262,8 @@ export class RemoteDownloadService {
         'STATUS_SEQUENCE_CONFLICT'
       );
       await this.authorized(context);
-      ensure((await this.options.store.applyStatus(c, status)) !== 'conflict', 'DOWNLOAD_ASSOCIATION_CONFLICT');
+      ensure((await aiStep('remote-download.status.persist', () => this.options.store.applyStatus(c, status),
+        { commandId: c.commandId, executionId: c.executionId, status: status.state })) !== 'conflict', 'DOWNLOAD_ASSOCIATION_CONFLICT');
       return { persisted: true, commandId: c.commandId, executionId: c.executionId, sequence: status.sequence };
     }
     throw new RpcError('UNSUPPORTED_COMMAND', 'not_applied');
@@ -289,7 +308,7 @@ export class RemoteDownloadService {
   }
 
   async project(c: CommandRecord) {
-    if (c.projected || (!c.result && !['closed', 'expired', 'cancelled'].includes(c.state))) return;
+    if (c.projected || (!c.queueExpiresAt && !c.result && !['closed', 'expired', 'cancelled'].includes(c.state))) return;
     ensure(await this.options.store.projectResult(c), 'DOWNLOAD_ASSOCIATION_CONFLICT');
     await this.change(c.commandId, async (latest) => {
       return latest.resultDigest === c.resultDigest && latest.closeId === c.closeId && latest.state === c.state
@@ -320,10 +339,13 @@ export class RemoteDownloadService {
 
   async sweep() {
     await this.options.store.recoverCommands();
+    await aiStep('remote-download.retention.cleanup', async () => {
+      await this.options.store.purgeExpiredQueue?.(this.now());
+    });
     for await (const row of this.options.store.scanCommands({ pendingOnly: true })) {
       try {
         const c = await this.change(row.commandId, async (c) => {
-          if (!awaitingExecution(c) && c.state !== 'granted') return c;
+          if (!awaitingExecution(c) && c.state !== 'granted' && !(c.queueExpiresAt && c.state === 'failed')) return c;
           const a = await this.options.store.validate({
             ownerId: c.ownerId,
             deviceId: c.deviceId,
@@ -333,7 +355,8 @@ export class RemoteDownloadService {
             instanceId: 'recovery',
           }
           );
-          if (a?.active && (c.state === 'granted' ? c.grantExpiresAt! : c.expiresAt) > this.now()) return c;
+          if (a?.active && ((c.queueExpiresAt && c.state !== 'granted')
+            || (c.state === 'granted' ? c.grantExpiresAt! : c.expiresAt) > this.now())) return c;
           if (c.state === 'granted') {
             const result: ResultPayload = { commandId: c.commandId, executionId: c.executionId!, outcome: 'unknown' };
             return { ...c, state: 'unknown', result, resultDigest: fingerprint(result), projected: false };

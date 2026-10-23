@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
-import { flushPromises, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { DownloadProvider, DownloaderChoice, DownloadSource, MovieDownload } from '@movie-hub/contract';
+import type { DownloadProvider, DownloaderChoice, DownloadSource, MovieDownload, RemoteClientDevice } from '@movie-hub/contract';
 import { setLocale } from '../../i18n';
 import MovieDetail from './MovieDetail.vue';
+
+enableAutoUnmount(afterEach);
 
 async function setup(
   providers: DownloadProvider[],
@@ -19,9 +21,12 @@ async function setup(
     hdarea?: boolean;
     downloaderChoices?: DownloaderChoice[];
     postResponse?: Promise<Response>;
+    remoteDevices?: RemoteClientDevice[];
+    existingRemoteDeviceId?: string;
   } = {}
 ) {
   setLocale(options.locale ?? 'en-US');
+  let downloadGets = 0;
   const posts: { sourceReleaseId: string; provider: DownloadProvider; downloaderInstanceId: string }[] = [];
   const existing
     = options.retry || options.status
@@ -34,6 +39,9 @@ async function setup(
             provider: options.retry ?? 'transmission',
             status: options.status ?? 'failed',
             progress: options.progress ?? 0,
+            ...(options.existingRemoteDeviceId
+              ? { executionMode: 'remote', remoteDeviceId: options.existingRemoteDeviceId, pushState: 'succeeded' }
+              : {}),
           },
         ]
       : [];
@@ -41,6 +49,7 @@ async function setup(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith('/me/remote-client')) return Response.json({ hasKey: true, devices: options.remoteDevices ?? [] });
       if (url.endsWith('/me/integration-preferences')) return Response.json({
         defaults: { resource: 'mteam', ...(options.defaultProvider ? { downloader: options.defaultProvider } : {}) }, selectedSites: [], effectiveSites: options.hdarea ? ['mteam', 'hdarea'] : ['mteam'],
         choices: [{ id: 'mteam', name: 'M-Team', category: 'resource', status: 'configured_valid' }],
@@ -78,14 +87,21 @@ async function setup(
                 tmdbId: 603,
                 sourceProvider: body.sourceProvider ?? 'mteam',
                 sourceReleaseId: '991',
-                provider: body.provider,
+                provider: body.provider ?? 'qbittorrent',
+                ...(body.remoteDeviceId
+                  ? { executionMode: 'remote', remoteDeviceId: body.remoteDeviceId,
+                      pushState: 'accepted', queueExpiresAt: '2026-10-30T00:00:00Z' }
+                  : {}),
                 status: 'downloading',
                 progress: 35,
               },
               { status: 201 }
             );
       }
-      if (url.endsWith('/downloads')) return Response.json({ items: existing });
+      if (url.endsWith('/downloads')) {
+        downloadGets++;
+        return Response.json({ items: existing });
+      }
       return Response.json({
         tmdbId: 603,
         title: 'Movie',
@@ -104,11 +120,16 @@ async function setup(
   await flushPromises();
   await wrapper.get('.resource-status-button').trigger('click');
   await flushPromises();
-  const clickDownload = async () => {
+  const clickDownload = async (confirmSelected = true) => {
     document.body.querySelector<HTMLButtonElement>('.release-download-button')!.click();
     await flushPromises();
+    if (confirmSelected && document.body.querySelector('[role=alertdialog] input:checked')) {
+      document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
+      await flushPromises();
+    }
   };
-  return { wrapper, posts, clickDownload };
+  return { wrapper, posts, clickDownload, downloadGets: () => downloadGets,
+    setDownloadStatus: (status: MovieDownload['status']) => { existing[0]!.status = status; } };
 }
 
 describe('download provider selection', () => {
@@ -119,11 +140,13 @@ describe('download provider selection', () => {
         { downloaderInstanceId: '00000000-0000-4000-8000-000000000002', provider: 'transmission', name: 'Seedbox' },
       ],
     });
-    const choices = [...document.body.querySelectorAll<HTMLElement>('.release-downloader-option')];
+    expect(document.body.querySelector('.release-downloader-select')).toBeNull();
+    await f.clickDownload(false);
+    expect(f.posts).toEqual([]);
+    const choices = [...document.body.querySelectorAll<HTMLElement>('.download-provider-option')];
     expect(choices.map((choice) => choice.textContent?.trim())).toEqual(['Home NAS', 'Seedbox']);
     expect(choices.every((choice) => choice.querySelector('img') !== null)).toBe(true);
-    expect(document.body.querySelector('.release-downloader-select')?.textContent).not.toContain('Download to');
-    expect(document.body.querySelector('.release-downloader-select')?.getAttribute('aria-label')).toBe('Choose a downloader');
+    expect(document.body.querySelector('[role=alertdialog] fieldset')?.getAttribute('aria-label')).toBe('Downloader');
     const button = document.body.querySelector<HTMLButtonElement>('.release-download-button')!;
     expect(button.textContent?.trim()).toBe('');
     expect(button.getAttribute('aria-label')).toBe('Download');
@@ -133,7 +156,10 @@ describe('download provider selection', () => {
 
   it('uses downloader types when saved names are unavailable', async () => {
     const f = await setup(['qbittorrent', 'transmission']);
-    const choices = [...document.body.querySelectorAll<HTMLElement>('.release-downloader-option')];
+    expect(document.body.querySelector('.release-downloader-select')).toBeNull();
+    await f.clickDownload(false);
+    expect(f.posts).toEqual([]);
+    const choices = [...document.body.querySelectorAll<HTMLElement>('.download-provider-option')];
     expect(choices.map((choice) => choice.textContent?.trim())).toEqual(['qBittorrent', 'Transmission']);
     f.wrapper.unmount();
   });
@@ -148,6 +174,8 @@ describe('download provider selection', () => {
     panel.scrollTop = 500;
     const scrollTo = vi.spyOn(panel, 'scrollTo').mockImplementation(() => {});
     document.body.querySelector<HTMLButtonElement>('.release-card:last-child .release-download-button')!.click();
+    await flushPromises();
+    document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
     await flushPromises();
     expect(scrollTo).toHaveBeenCalledWith({ top: 500, behavior: 'smooth' });
     const first = panel.querySelector<HTMLElement>('.release-card')!;
@@ -186,6 +214,8 @@ describe('download provider selection', () => {
     const scrollTo = vi.spyOn(panel, 'scrollTo').mockImplementation(() => {});
     vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: locale === 'zh-CN' } as MediaQueryList);
     card.querySelector<HTMLButtonElement>('.release-download-button')!.click();
+    await flushPromises();
+    document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
     await flushPromises();
     expect(scrollTo).toHaveBeenCalledExactlyOnceWith({
       top: site === 'hdarea' ? 730 : 530,
@@ -228,10 +258,14 @@ describe('download provider selection', () => {
   });
 
   it.each(['qbittorrent', 'transmission'] as const)(
-    'submits immediately when only %s is configured',
+    'opens the picker before submitting when only %s is configured',
     async (provider) => {
       const f = await setup([provider]);
-      await f.clickDownload();
+      await f.clickDownload(false);
+      expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
+      expect(f.posts).toEqual([]);
+      document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
+      await flushPromises();
       expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
       expect(f.posts).toEqual([{ sourceReleaseId: '991', provider, downloaderInstanceId: provider }]);
       expect(document.body.querySelector('.release-download-progress')?.textContent).toContain(
@@ -312,11 +346,47 @@ describe('download provider selection', () => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
   document.body.style.overflow = '';
 });
+
+for (const locale of ['en-US', 'zh-CN'] as const) {
+  it(`stops polling a deleted Agent task and permits public Transmission after the old Agent is unbound (${locale})`, async () => {
+    vi.useFakeTimers();
+    const f = await setup(['transmission'], { locale, status: 'missing', existingRemoteDeviceId: 'old-agent',
+      remoteDevices: [] });
+    const gets = f.downloadGets();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await flushPromises();
+    expect(f.downloadGets()).toBe(gets);
+    await f.clickDownload();
+    expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'transmission', downloaderInstanceId: 'transmission' }]);
+    f.wrapper.unmount();
+  });
+  it.each(['failed'] as const)(`keeps observing an accepted Agent task after %s and displays recovery (${locale})`, async (status) => {
+    vi.useFakeTimers();
+    const f = await setup([], { locale, status, existingRemoteDeviceId: 'device-a',
+      remoteDevices: [{ id: 'device-a', authVersion: 1, deviceVersion: 1,
+        boundAt: '2026-10-21T00:00:00Z', isAgentOnline: true, isAgentDownloaderOnline: true }] });
+    const getsBeforeRecovery = f.downloadGets();
+    f.setDownloadStatus('paused');
+    await vi.advanceTimersByTimeAsync(2_000);
+    await flushPromises();
+    expect(f.downloadGets()).toBeGreaterThan(getsBeforeRecovery);
+    expect(document.body.querySelector('.release-download-progress')?.textContent).toContain(
+      locale === 'zh-CN' ? '已暂停' : 'Paused');
+    expect(document.body.querySelector('.release-card')?.classList.contains('is-download-failed')).toBe(false);
+    expect(f.posts).toEqual([]);
+    document.body.querySelector<HTMLButtonElement>('.release-panel-heading button')!.click();
+    const getsBeforeClose = f.downloadGets();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(f.downloadGets()).toBe(getsBeforeClose);
+    f.wrapper.unmount();
+  });
+}
 
 it.each(['en-US', 'zh-CN'] as const)('shows a neutral missing task without stale progress and permits explicit redownload in %s', async (locale) => {
   const f = await setup(['qbittorrent'], { locale, retry: 'qbittorrent', status: 'missing', progress: 2 });
@@ -335,5 +405,47 @@ it.each(['en-US', 'zh-CN'] as const)('shows a neutral missing task without stale
   expect(f.posts).toEqual([]);
   await f.clickDownload();
   expect(f.posts).toEqual([{ sourceReleaseId: '991', provider: 'qbittorrent', downloaderInstanceId: 'qbittorrent' }]);
+  f.wrapper.unmount();
+});
+
+it.each(['en-US', 'zh-CN'] as const)('offers an offline bound Agent without a local downloader and explains the queue before pushing (%s)', async (locale) => {
+  const f = await setup([], { locale, remoteDevices: [{ id: 'device-a', authVersion: 1, deviceVersion: 1,
+    boundAt: '2026-10-21T00:00:00Z', isAgentOnline: false, isAgentDownloaderOnline: false }] });
+  await f.clickDownload(false);
+  const dialog = document.body.querySelector<HTMLElement>('[role=alertdialog]')!;
+  expect(dialog.querySelector('.download-provider-option-agent')?.getAttribute('title')).toContain('device-a');
+  expect(dialog.textContent).not.toContain('device-a');
+  expect(dialog.querySelector('.download-provider-divider')).toBeNull();
+  expect(dialog.textContent).toContain(locale === 'zh-CN' ? '保留 7 天' : '7 days');
+  expect(dialog.querySelector('.download-agent-status')?.getAttribute('aria-label')).toBe(locale === 'zh-CN' ? '离线或不可用' : 'Offline or unavailable');
+  expect(dialog.querySelector('.download-agent-status')?.classList.contains('is-online')).toBe(false);
+  expect(f.posts).toEqual([]);
+  dialog.querySelector<HTMLButtonElement>('.primary')!.click();
+  await flushPromises();
+  expect(f.posts).toEqual([{ sourceReleaseId: '991', remoteDeviceId: 'device-a', sourceReleaseTitle: 'Movie.Release' }]);
+  expect(document.body.textContent).toContain(locale === 'zh-CN' ? '等待推送至下载助手' : 'Queued for Agent');
+  expect(document.body.textContent).toContain(locale === 'zh-CN' ? '到期并自动删除' : 'expires and is deleted');
+  f.wrapper.unmount();
+});
+
+it.each(['en-US', 'zh-CN'] as const)('pushes a missing task back to its original Agent and replaces the missing status (%s)', async (locale) => {
+  const f = await setup([], { locale, status: 'missing', progress: 50, existingRemoteDeviceId: 'device-a',
+    remoteDevices: [{ id: 'device-a', authVersion: 1, deviceVersion: 1,
+      boundAt: '2026-10-21T00:00:00Z', isAgentOnline: true, isAgentDownloaderOnline: true }] });
+  const card = document.body.querySelector<HTMLElement>('.release-card')!;
+  expect(card.querySelector('[role=status]')?.textContent).toContain(
+    locale === 'zh-CN' ? '下载器中不存在该任务' : 'Task is missing from the downloader');
+  expect(card.querySelector('progress')).toBeNull();
+  await f.clickDownload(false);
+  const selected = document.body.querySelector<HTMLInputElement>('[role=alertdialog] input:checked')!;
+  expect(selected.value).toBe('agent:device-a');
+  document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
+  await flushPromises();
+  expect(f.posts).toEqual([{ sourceReleaseId: '991', remoteDeviceId: 'device-a', sourceReleaseTitle: 'Movie.Release' }]);
+  expect(card.querySelector('[role=status]')?.textContent).toContain(
+    locale === 'zh-CN' ? '等待推送至下载助手' : 'Queued for Agent');
+  expect(card.querySelector('[role=status]')?.textContent).not.toContain(
+    locale === 'zh-CN' ? '下载器中不存在该任务' : 'Task is missing from the downloader');
+  expect(card.querySelector('.release-download-button')).toBeNull();
   f.wrapper.unmount();
 });

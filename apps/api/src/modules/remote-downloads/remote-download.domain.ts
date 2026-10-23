@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
-import type { CommandRecord, PublicCommand, Session } from '@movie-hub/contract';
+import type { CommandRecord, PublicCommand, Session, AgentQueueItem } from '@movie-hub/contract';
 
 export function canonical(value: unknown): string {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
@@ -53,4 +53,14 @@ export function publicCommand(c: CommandRecord): PublicCommand {
             ? null
             : false,
   };
+}
+
+export function queueReason(command: Pick<CommandRecord, 'state' | 'lastErrorCode'>): AgentQueueItem['reason'] {
+  if (command.state === 'unknown') return 'verifying';
+  if (command.state === 'granted') return 'executing';
+  if (command.lastErrorCode === 'DEVICE_OFFLINE') return 'agent_offline';
+  if (command.lastErrorCode === 'DOWNLOADER_UNAVAILABLE') return 'downloader_unavailable';
+  if (command.lastErrorCode === 'DOWNLOADER_INSTANCE_MISMATCH') return 'target_changed';
+  if (command.lastErrorCode === 'GATEWAY_UNAVAILABLE') return 'gateway_unavailable';
+  return command.state === 'failed' ? 'retrying' : 'queued';
 }

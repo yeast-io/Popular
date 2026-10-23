@@ -1,11 +1,11 @@
 //! Only HTTP URL submission; never reads torrent files or supplies a download directory.
 use crate::{
     diagnostics::Trace,
-    downloader::{body, checked},
+    downloader::{body, checked, qbittorrent_login, qbittorrent_request, qbittorrent_success},
     errors::AgentError,
     settings::{Provider, Settings},
 };
-use reqwest::{header, Client};
+use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -23,6 +23,7 @@ impl Downloader {
         password: String,
         trace: &Trace,
     ) -> Result<Self, AgentError> {
+        crate::settings::validate_auth_mode(&settings.provider, &settings.auth_mode)?;
         if !settings.downloader_configured {
             return Err(AgentError::code("downloaderRequired"));
         }
@@ -44,26 +45,18 @@ impl Downloader {
         };
         trace.stage("downloader.connect.started");
         if this.settings.provider == Provider::Qbittorrent {
-            let response = checked(
-                this.qb("auth/login", true)
-                    .form(&[
-                        ("username", &this.settings.username),
-                        ("password", &this.password),
-                    ])
-                    .send()
-                    .await?,
-            )?;
-            this.cookie = response
-                .headers()
-                .get_all(header::SET_COOKIE)
-                .iter()
-                .filter_map(|v| v.to_str().ok())
-                .filter_map(|v| v.split(';').next())
-                .find(|v| v.starts_with("SID="))
-                .map(str::to_owned);
-            if body(response).await? != b"Ok." {
-                return Err(AgentError::code("authenticationError"));
-            }
+            this.cookie = qbittorrent_login(
+                &this.client,
+                &this.settings.downloader_url,
+                &this.settings.auth_mode,
+                &this.settings.username,
+                &this.password,
+                trace,
+            )
+            .await?;
+            trace.stage("downloader.version.started");
+            this.probe().await?;
+            trace.stage("downloader.version.completed");
         } else {
             this.rpc("session-get", json!({"fields":["version"]}))
                 .await?;
@@ -72,18 +65,15 @@ impl Downloader {
         Ok(this)
     }
     fn qb(&self, path: &str, post: bool) -> reqwest::RequestBuilder {
-        let base = self.settings.downloader_url.trim_end_matches('/');
-        let url = format!("{base}/api/v2/{path}");
-        let query = if post {
-            self.client.post(url)
-        } else {
-            self.client.get(url)
-        };
-        let mut query = query.header(header::REFERER, format!("{base}/"));
-        if let Some(cookie) = &self.cookie {
-            query = query.header(header::COOKIE, cookie);
-        }
-        query
+        qbittorrent_request(
+            &self.client,
+            &self.settings.downloader_url,
+            path,
+            post,
+            &self.settings.auth_mode,
+            &self.password,
+            self.cookie.as_deref(),
+        )
     }
     async fn rpc(&mut self, method: &str, args: Value) -> Result<Value, AgentError> {
         for attempt in 0..2 {
@@ -133,6 +123,28 @@ impl Downloader {
             };
         }
         Err(AgentError::code("invalidResponse"))
+    }
+    pub async fn probe(&mut self) -> Result<(), AgentError> {
+        if self.settings.provider == Provider::Qbittorrent {
+            let bytes = body(checked(self.qb("app/version", false).send().await?)?).await?;
+            if !bytes.starts_with(b"v")
+                || !bytes.get(1).is_some_and(u8::is_ascii_digit)
+                || bytes.len() > 100
+            {
+                return Err(AgentError::code("invalidResponse"));
+            }
+        } else {
+            let value = self
+                .rpc("session-get", json!({"fields":["version"]}))
+                .await?;
+            if !value["version"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty() && s.len() <= 100)
+            {
+                return Err(AgentError::code("invalidResponse"));
+            }
+        }
+        Ok(())
     }
     pub async fn tasks(&mut self, hash: &str) -> Result<Vec<Value>, AgentError> {
         self.tasks_many(&[hash.to_owned()]).await
@@ -206,7 +218,7 @@ impl Downloader {
                     .await?,
             )?)
             .await?;
-            if bytes != b"Ok." {
+            if !qbittorrent_success(&bytes) {
                 return Err(AgentError::code("invalidResponse"));
             }
             Ok(true)

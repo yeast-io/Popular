@@ -318,7 +318,27 @@ pub struct Command {
     pub correlation_id: String,
     pub expires_at: u64,
     pub torrent_url: String,
+    #[serde(default, deserialize_with = "optional_integer")]
+    pub queue_expires_at: Option<u64>,
+    #[serde(default, deserialize_with = "optional_integer")]
+    pub retry_attempt: Option<u64>,
     pub torrent_hash: String,
+}
+fn optional_integer<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error> {
+    u64::deserialize(deserializer).map(Some)
+}
+impl Command {
+    pub fn valid_deadlines(&self, now: u64) -> bool {
+        positive(self.expires_at)
+            && self.expires_at > now
+            && self.expires_at <= now.saturating_add(60_000)
+            && self.retry_attempt.is_none_or(|n| n <= MAX_INTEGER)
+            && self
+                .queue_expires_at
+                .is_none_or(|n| positive(n) && self.expires_at <= n)
+    }
 }
 pub fn command(
     wire: &Wire,
@@ -354,7 +374,7 @@ pub fn command(
         || command.message_id != wire.message_id
         || Some(command.correlation_id.as_str()) != wire.correlation_id.as_deref()
         || command.expires_at <= now
-        || command.expires_at > now + 300_000
+        || !command.valid_deadlines(now)
         || ![
             &command.command_id,
             &command.download_id,

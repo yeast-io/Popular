@@ -1,7 +1,7 @@
 use crate::{
     diagnostics::Trace,
     errors::AgentError,
-    settings::{downloader_endpoint, downloader_url, Provider, TestRequest},
+    settings::{downloader_endpoint, downloader_url, DownloaderAuthMode, Provider, TestRequest},
 };
 use reqwest::{header, Client, Response};
 use serde_json::{json, Value};
@@ -26,6 +26,91 @@ pub(crate) async fn body(mut response: Response) -> Result<Vec<u8>, AgentError> 
     }
     Ok(bytes)
 }
+// qBittorrent changed successful actions from `Ok.` to an empty body.
+// Reject legacy `Fails.` and unexpected HTML, then verify the authenticated API.
+pub(crate) fn qbittorrent_success(bytes: &[u8]) -> bool {
+    bytes.is_empty() || bytes == b"Ok."
+}
+
+pub(crate) fn qbittorrent_request(
+    client: &Client,
+    base: &str,
+    path: &str,
+    post: bool,
+    mode: &DownloaderAuthMode,
+    secret: &str,
+    cookie: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let base = base.trim_end_matches('/');
+    let url = format!("{base}/api/v2/{path}");
+    let query = if post {
+        client.post(url)
+    } else {
+        client.get(url)
+    };
+    let mut query = query.header(header::REFERER, format!("{base}/"));
+    if let Ok(url) = url::Url::parse(base) {
+        query = query.header(header::ORIGIN, url.origin().ascii_serialization());
+    }
+    if *mode == DownloaderAuthMode::ApiKey {
+        query = query.bearer_auth(secret);
+    } else if let Some(cookie) = cookie {
+        query = query.header(header::COOKIE, cookie);
+    }
+    query
+}
+
+pub(crate) async fn qbittorrent_login(
+    client: &Client,
+    base: &str,
+    mode: &DownloaderAuthMode,
+    username: &str,
+    secret: &str,
+    trace: &Trace,
+) -> Result<Option<String>, AgentError> {
+    if *mode == DownloaderAuthMode::ApiKey {
+        trace.stage("downloader.api-key.started");
+        if secret.is_empty() || header::HeaderValue::from_str(&format!("Bearer {secret}")).is_err()
+        {
+            return Err(AgentError::code("invalidSecret"));
+        }
+        // API keys cannot call auth/login or auth/logout. The protected version probe validates the key.
+        return Ok(None);
+    }
+    trace.stage("downloader.login.started");
+    let response = checked(
+        qbittorrent_request(client, base, "auth/login", true, mode, secret, None)
+            .form(&[("username", username), ("password", secret)])
+            .send()
+            .await?,
+    )?;
+    let cookie = response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .filter_map(|v| v.split(';').next())
+        .map(str::trim)
+        .find(|v| {
+            let Some((name, value)) = v.split_once('=') else {
+                return false;
+            };
+            // Older releases use SID; newer releases scope the name to the WebUI port.
+            // Preserve the server's name: an external proxy port may differ from that port.
+            let session_name = name == "SID"
+                || name.strip_prefix("QBT_SID_").is_some_and(|port| {
+                    !port.is_empty() && port.bytes().all(|v| v.is_ascii_digit())
+                });
+            session_name && !value.is_empty()
+        })
+        .map(str::to_owned);
+    if !qbittorrent_success(&body(response).await?) {
+        return Err(AgentError::code("authenticationError"));
+    }
+    trace.stage("downloader.login.completed");
+    Ok(cookie)
+}
+
 fn version(value: Option<&str>) -> Result<(), AgentError> {
     match value {
         Some(v) if !v.trim().is_empty() && v.len() <= 100 && !v.contains(['<', '>', '\n']) => {
@@ -43,7 +128,9 @@ pub async fn test_and_save(
     trace: &Trace,
 ) -> Result<crate::settings::Snapshot, AgentError> {
     use crate::{
-        settings::{resolve_secret, same_downloader, SaveRequest, SecretChange, Settings},
+        settings::{
+            resolve_secret, same_downloader_credentials, SaveRequest, SecretChange, Settings,
+        },
         storage,
     };
     let stored = storage::load(directory)?;
@@ -53,12 +140,13 @@ pub async fn test_and_save(
         provider: request.provider.clone(),
         downloader_url: downloader_url(&request.downloader_url, &request.provider)?,
         username: request.username.clone(),
+        auth_mode: request.auth_mode.clone(),
         ..stored.settings.clone()
     };
     let password = resolve_secret(
         &request.password,
         &previous.password,
-        same_downloader(&target, &stored.settings),
+        same_downloader_credentials(&target, &stored.settings),
     )?;
     test(request, password.clone(), trace).await?;
     // Only a successful API test reaches the commit. Gateway and startup settings come from disk.
@@ -97,6 +185,7 @@ pub fn reset(
         provider: Default::default(),
         downloader_url: String::new(),
         username: String::new(),
+        auth_mode: DownloaderAuthMode::default(),
         ..stored.settings
     };
     // Keep device identity, execution history and target associations intact.
@@ -113,6 +202,7 @@ pub fn reset(
 }
 
 pub async fn test(request: TestRequest, password: String, trace: &Trace) -> Result<(), AgentError> {
+    crate::settings::validate_auth_mode(&request.provider, &request.auth_mode)?;
     let url = downloader_endpoint(&request.downloader_url, &request.provider)?;
     if request.username.len() > 512 {
         return Err(AgentError::code("invalidSettings"));
@@ -129,40 +219,25 @@ pub async fn test(request: TestRequest, password: String, trace: &Trace) -> Resu
         match request.provider {
             Provider::Qbittorrent => {
                 let base = url.as_str().trim_end_matches('/');
-                let origin = url.origin().ascii_serialization();
-                trace.stage("downloader.login.started");
-                let response = checked(
-                    client
-                        .post(format!("{base}/api/v2/auth/login"))
-                        .header(header::ORIGIN, &origin)
-                        .header(header::REFERER, format!("{base}/"))
-                        .form(&[
-                            ("username", request.username.as_str()),
-                            ("password", password.as_str()),
-                        ])
-                        .send()
-                        .await?,
-                )?;
-                let cookie = response
-                    .headers()
-                    .get_all(header::SET_COOKIE)
-                    .iter()
-                    .filter_map(|v| v.to_str().ok())
-                    .filter_map(|v| v.split(';').next())
-                    .find(|v| v.starts_with("SID="))
-                    .map(str::to_owned);
-                if body(response).await? != b"Ok." {
-                    return Err(AgentError::code("authenticationError"));
-                }
-                trace.stage("downloader.login.completed");
+                let cookie = qbittorrent_login(
+                    &client,
+                    base,
+                    &request.auth_mode,
+                    &request.username,
+                    &password,
+                    trace,
+                )
+                .await?;
                 trace.stage("downloader.version.started");
-                let mut query = client
-                    .get(format!("{base}/api/v2/app/version"))
-                    .header(header::ORIGIN, origin)
-                    .header(header::REFERER, format!("{base}/"));
-                if let Some(cookie) = cookie {
-                    query = query.header(header::COOKIE, cookie);
-                }
+                let query = qbittorrent_request(
+                    &client,
+                    base,
+                    "app/version",
+                    false,
+                    &request.auth_mode,
+                    &password,
+                    cookie.as_deref(),
+                );
                 let bytes = body(checked(query.send().await?)?).await?;
                 let value = std::str::from_utf8(&bytes).ok();
                 // qBittorrent versions start with v; avoid accepting a generic HTML login page.
@@ -298,6 +373,7 @@ mod tests {
     fn request(provider: Provider, url: String) -> TestRequest {
         TestRequest {
             provider,
+            auth_mode: DownloaderAuthMode::default(),
             downloader_url: url,
             username: "user".into(),
             password: crate::settings::SecretChange::Keep,
@@ -374,7 +450,19 @@ mod tests {
             targets_before,
             std::fs::read(directory.path().join("downloader-targets.json")).unwrap()
         );
-        assert!(crate::device::target(directory.path(), &initial).unwrap() == target);
+        assert!(crate::device::target(directory.path(), &snapshot.settings).unwrap() == target);
+        storage::save(
+            directory.path(),
+            SaveRequest {
+                settings: initial.clone(),
+                api_key: SecretChange::Keep,
+                password: SecretChange::Set("new-password".into()),
+            },
+            &store,
+            &trace,
+        )
+        .unwrap();
+        assert!(crate::device::target(directory.path(), &initial).unwrap() != target);
         for name in ["identity.json", crate::journal::JOURNAL] {
             assert_eq!(
                 std::fs::read(directory.path().join(name)).unwrap(),
@@ -499,6 +587,172 @@ mod tests {
             .contains("cookie: sid=test-session"));
         assert!(!requests[1].contains("p%26"));
     }
+    #[tokio::test]
+    async fn qbittorrent_empty_login_body_is_verified_for_testing_and_execution() {
+        use crate::{downloads::Downloader, settings::Settings};
+        for cookie_name in ["SID", "QBT_SID_8080", "QBT_SID_12345"] {
+            for execution in [false, true] {
+                let (url, server) = mock(vec![
+                    response("204 No Content", &format!("Set-Cookie: unrelated=ignore; Path=/\r\nSet-Cookie: {cookie_name}=new-session; HttpOnly; Path=/\r\n"), ""),
+                    response("200 OK", "", "v5.2.0"),
+                ]).await;
+                if execution {
+                    Downloader::connect(
+                        Settings {
+                            downloader_configured: true,
+                            downloader_url: format!("{url}/proxy"),
+                            ..Settings::default()
+                        },
+                        "password".into(),
+                        &Trace::new(),
+                    )
+                    .await
+                    .unwrap();
+                } else {
+                    test(
+                        request(Provider::Qbittorrent, format!("{url}/proxy")),
+                        "password".into(),
+                        &Trace::new(),
+                    )
+                    .await
+                    .unwrap();
+                }
+                let requests = server.await.unwrap();
+                assert_eq!(requests.len(), 2);
+                assert!(requests[1].starts_with("GET /proxy/api/v2/app/version "));
+                assert!(requests[1].to_lowercase().contains(&format!(
+                    "cookie: {}=new-session",
+                    cookie_name.to_lowercase()
+                )));
+                assert!(!requests[1].contains("unrelated=ignore"));
+                assert!(!requests[1].contains("HttpOnly"));
+            }
+        }
+        // A successful login response alone never proves authenticated access.
+        let (url, server) = mock(vec![
+            response("200 OK", "", ""),
+            response("403 Forbidden", "", "Forbidden"),
+        ])
+        .await;
+        assert_eq!(
+            test(
+                request(Provider::Qbittorrent, url),
+                "password".into(),
+                &Trace::new()
+            )
+            .await
+            .unwrap_err()
+            .code,
+            "authenticationError"
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn qbittorrent_api_key_skips_login_and_authenticates_every_download_request() {
+        use crate::{downloads::Downloader, settings::Settings};
+        let key = "qbt_test_key";
+        let (url, server) = mock(vec![response("200 OK", "", "v5.2.0")]).await;
+        let mut input = request(Provider::Qbittorrent, url);
+        input.auth_mode = DownloaderAuthMode::ApiKey;
+        test(input, key.into(), &Trace::new()).await.unwrap();
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].starts_with("GET /api/v2/app/version "));
+        assert!(requests[0]
+            .to_lowercase()
+            .contains("authorization: bearer qbt_test_key"));
+        assert!(!requests[0].contains("username="));
+
+        for add_body in ["", "Ok."] {
+            let (url, server) = mock(vec![
+                response("200 OK", "", "v5.2.0"),
+                response("200 OK", "", add_body),
+                response("200 OK", "", "[]"),
+            ])
+            .await;
+            let mut downloader = Downloader::connect(
+                Settings {
+                    downloader_configured: true,
+                    downloader_url: url,
+                    auth_mode: DownloaderAuthMode::ApiKey,
+                    ..Settings::default()
+                },
+                key.into(),
+                &Trace::new(),
+            )
+            .await
+            .unwrap();
+            assert!(downloader
+                .add("https://example.invalid/test.torrent", "test-marker")
+                .await
+                .unwrap());
+            downloader.tasks(&"a".repeat(40)).await.unwrap();
+            let requests = server.await.unwrap();
+            assert_eq!(requests.len(), 3);
+            for request in &requests {
+                assert!(request
+                    .to_lowercase()
+                    .contains("authorization: bearer qbt_test_key"));
+                assert!(!request.contains("auth/login"));
+                assert!(!request.to_lowercase().contains("cookie:"));
+                assert!(!request.contains("username="));
+                assert!(!request.lines().next().unwrap().contains(key));
+            }
+            assert!(requests[1].starts_with("POST /api/v2/torrents/add "));
+        }
+    }
+
+    #[tokio::test]
+    async fn qbittorrent_api_key_rejection_does_not_fall_back_to_password_or_commit() {
+        use crate::{
+            settings::{SaveRequest, SecretChange, Settings},
+            storage,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let store = Memory::default();
+        let trace = Trace::new();
+        storage::save(
+            dir.path(),
+            SaveRequest {
+                settings: Settings::default(),
+                api_key: SecretChange::Set("gateway-key".into()),
+                password: SecretChange::Clear,
+            },
+            &store,
+            &trace,
+        )
+        .unwrap();
+        let before = std::fs::read(dir.path().join("settings.json")).unwrap();
+        for status in ["401 Unauthorized", "403 Forbidden"] {
+            let (url, server) = mock(vec![response(status, "", "Forbidden")]).await;
+            let mut input = request(Provider::Qbittorrent, url);
+            input.auth_mode = DownloaderAuthMode::ApiKey;
+            input.password = SecretChange::Set("rejected-key".into());
+            assert_eq!(
+                test_and_save(dir.path(), input, &store, &trace)
+                    .await
+                    .err()
+                    .unwrap()
+                    .code,
+                "authenticationError"
+            );
+            assert_eq!(server.await.unwrap().len(), 1);
+            assert_eq!(
+                std::fs::read(dir.path().join("settings.json")).unwrap(),
+                before
+            );
+        }
+        for key in ["", "bad\r\nkey"] {
+            let mut input = request(Provider::Qbittorrent, "http://127.0.0.1:1".into());
+            input.auth_mode = DownloaderAuthMode::ApiKey;
+            assert_eq!(
+                test(input, key.into(), &trace).await.unwrap_err().code,
+                "invalidSecret"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn transmission_legacy_and_modern_session_handshake() {
         for (modern, path) in [(false, ""), (true, "/custom/rpc")] {

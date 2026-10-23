@@ -1,5 +1,7 @@
 # Helper Gateway Socket v1 — 公钥协议
 
+> 2026-10-23：新增 Popular 主动状态查询及 7 天推送队列。新队列、状态时效和 Agent 接入要求以[交接契约](agent-queued-push-handoff.md)为准；原短期命令接口继续保留，新 Web 下载流程使用持久队列。
+
 这是本次 Gateway 的完整线协议，与当前旧 Agent 的共享密钥协议不兼容。模拟客户端位于 `../../../../tools/remote-gateway/simulate.mjs`，运行 `pnpm --filter @movie-hub/helper-gateway simulate`。任何设备客户端实现均须按本文件迁移并独立完成 downloader/journal 集成验证。
 
 ## Transport 与公共消息头

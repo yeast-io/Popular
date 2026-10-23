@@ -18,11 +18,12 @@ export type {
 } from '@movie-hub/contract';
 export interface Route extends Session {
   status?: AgentStatus;
+  statusObservedAt?: number;
 }
 export interface Router {
   claim(session: Session): Promise<void>;
   get(deviceId: string): Promise<Route | null>;
-  renew(session: Session, status?: AgentStatus): Promise<boolean>;
+  renew(session: Session, status?: AgentStatus, observedAt?: number): Promise<boolean>;
   release(session: Session): Promise<void>;
   wake(deviceId: string): Promise<void>;
   subscribe(handler: (deviceId: string) => void): Promise<void>;
@@ -35,6 +36,7 @@ export interface Peer {
   digest: string;
   session?: Session;
   status?: AgentStatus;
+  statusObservedAt?: number;
   handshake?: Map<string, { digest: string; response: WireMessage }>;
   challenge?: {
     text: string;

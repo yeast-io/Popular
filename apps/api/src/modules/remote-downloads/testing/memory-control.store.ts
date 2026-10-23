@@ -7,10 +7,11 @@ import type {
   DownloadRequest,
   CommandRecord,
   StatusPayload,
+  AgentQueueSnapshot,
 } from '@movie-hub/contract';
-import type { RemoteControlStore } from '../remote-download.types.js';
+import type { RemoteControlStore, RemoteCommandScan } from '../remote-download.types.js';
 import type { FixtureDownload, FixtureDevice } from './memory-control.types.js';
-import { ensure, fingerprint } from '../remote-download.domain.js';
+import { ensure, fingerprint, queueReason } from '../remote-download.domain.js';
 
 export class MemoryControlStore implements RemoteControlStore {
   readonly accounts = new Map<string, Authorization>();
@@ -19,6 +20,23 @@ export class MemoryControlStore implements RemoteControlStore {
   readonly downloads = new Map<string, FixtureDownload>();
   readonly commands = new Map<string, CommandRecord>();
   readonly receipts = new Map<string, string>();
+
+  async queued(context: Session, now: number, cursor?: string): Promise<AgentQueueSnapshot> {
+    const commands = [...this.commands.values()].filter((c) => c.ownerId === context.ownerId
+      && c.deviceId === context.deviceId && c.authVersion === context.authVersion && c.deviceVersion === context.deviceVersion
+      && !c.retiredAt && (c.queueExpiresAt ?? 0) > now
+      && ['accepted', 'delivered', 'received', 'granted', 'failed', 'unknown'].includes(c.state))
+      .sort((a, b) => a.queueExpiresAt! - b.queueExpiresAt! || a.commandId.localeCompare(b.commandId));
+    const [expiry, id] = cursor?.split(':') ?? [];
+    const rest = commands.filter((c) => !cursor || c.queueExpiresAt! > Number(expiry)
+      || (c.queueExpiresAt === Number(expiry) && c.commandId > id!));
+    const items = rest.slice(0, 50).map((c) => ({ commandId: c.commandId, resourceId: c.resourceId,
+      source: c.source as 'mteam' | 'hdarea', title: null, enqueuedAt: c.createdAt,
+      expiresAt: c.queueExpiresAt!, reason: queueReason(c) }));
+    const last = items.at(-1);
+    return { observedAt: now, total: commands.length, ...(cursor ? { cursor } : {}),
+      nextCursor: rest.length > 50 && last ? `${last.expiresAt}:${last.commandId}` : null, items };
+  }
 
   async authorization(digest: string, deviceId?: string) {
     const a = [...this.accounts.values()].find((a) => a.keyDigest === digest && a.active);
@@ -114,15 +132,26 @@ export class MemoryControlStore implements RemoteControlStore {
     return true;
   }
 
+  async purgeExpiredQueue(now: number) {
+    for (const [id, c] of this.commands) {
+      if (c.queueExpiresAt && c.queueExpiresAt <= now && !['succeeded', 'duplicate'].includes(c.state)) {
+        this.downloads.delete(c.downloadId);
+        this.commands.delete(id);
+      }
+    }
+  }
+
   async recoverCommands() {
     for (const d of this.downloads.values())
       if (d.intent && !this.commands.has(d.intent.commandId)) await this.createCommand(d.intent);
   }
 
-  async* scanCommands(filter: { deviceId?: string; pendingOnly?: boolean } = {}) {
+  async* scanCommands(filter: RemoteCommandScan = {}) {
     for (const c of [...this.commands.values()]) {
+      if (filter.retryBefore !== undefined && (!c.queueExpiresAt || c.queueExpiresAt <= filter.retryBefore
+        || (c.nextAttemptAt ?? 0) > filter.retryBefore || !['accepted', 'delivered', 'received', 'failed'].includes(c.state))) continue;
       if (filter.deviceId && c.deviceId !== filter.deviceId) continue;
-      if (filter.pendingOnly && c.projected && !['accepted', 'delivered', 'received', 'granted'].includes(c.state))
+      if (filter.pendingOnly && c.projected && !['accepted', 'delivered', 'received', 'granted', 'failed'].includes(c.state))
         continue;
       yield structuredClone(c);
     }
@@ -150,6 +179,7 @@ export class MemoryControlStore implements RemoteControlStore {
   }
 
   async applyStatus(c: CommandRecord, status: StatusPayload) {
+    if (c.retiredAt !== undefined) return 'stale' as const;
     const d = this.downloads.get(c.downloadId);
     if (
       !d?.association
@@ -157,8 +187,12 @@ export class MemoryControlStore implements RemoteControlStore {
       || fingerprint(d.association.result?.evidence) !== fingerprint(status.evidence)
     )
       return 'conflict' as const;
-    if ((d.status?.sequence ?? 0) >= status.sequence) return 'stale' as const;
+    if (d.status?.state === 'deleted' || (d.status?.sequence ?? 0) >= status.sequence) return 'stale' as const;
     d.status = structuredClone(status);
+    if (status.state === 'deleted') {
+      const stored = this.commands.get(c.commandId)!;
+      this.commands.set(c.commandId, { ...stored, retiredAt: Date.now() });
+    }
     return 'applied' as const;
   }
 }

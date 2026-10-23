@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IntegrationPreferences, ApiError, DownloadProvider, DownloaderChoice, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MoviePreference, MovieResourceCheckResponse, MovieStatus, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
+import type { RemoteClientDevice, RemoteClientConfiguration, IntegrationPreferences, ApiError, DownloadProvider, DownloaderChoice, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MoviePreference, MovieResourceCheckResponse, MovieStatus, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
 import { getIntegrationLogo } from '../settings/integration-logos';
 import ResourceSiteSelector from './ResourceSiteSelector.vue';
 import type { MovieSiteReleaseGroup } from './movie-site-releases.types';
@@ -39,6 +39,8 @@ const downloads = ref<MovieDownload[]>([]);
 const downloadProviders = ref<DownloaderChoice[]>([]);
 const downloadProvidersError = ref('');
 const selectedDownloaderId = ref('');
+const remoteDevices = ref<RemoteClientDevice[]>([]);
+let devicePoll: ReturnType<typeof setInterval> | undefined;
 const downloadChoiceDialog = ref<HTMLElement | null>(null);
 let downloadTrigger: HTMLElement | null = null;
 const confirmingRelease = ref<MovieRelease | null>(null);
@@ -89,6 +91,9 @@ onMounted(() => {
     void loadResourceCheck();
     void loadDownloadSnapshot();
   }
+  devicePoll = setInterval(() => {
+    if (releasesOpen.value && props.authenticated) void loadRemoteDevices();
+  }, 60_000);
   document.addEventListener('visibilitychange', handleVisibilityChange);
 });
 onBeforeUnmount(() => {
@@ -98,6 +103,7 @@ onBeforeUnmount(() => {
   requestController?.abort();
   stopResourcePolling();
   stopDownloadPolling();
+  clearInterval(devicePoll);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   trailerOpen.value = false;
   releasesOpen.value = false;
@@ -332,7 +338,7 @@ async function showReleases() {
         (choice) => choice.category === 'resource' && choice.id === site
       )?.name ?? site, supportsDownload: site === 'mteam', loading: true, error: '' });
     });
-    await Promise.all([loadDownloadProviders(), loadDownloads(), ...releaseGroups.value.map((group) => {
+    await Promise.all([loadDownloadProviders(), loadRemoteDevices(), loadDownloads(), ...releaseGroups.value.map((group) => {
       return loadReleaseGroup(group);
     })]);
     if (generation === releaseGeneration) await loadResourceCheck();
@@ -374,6 +380,21 @@ function closeTrailer(restoreFocus = true) {
 
 function trailerEmbedUrl(videoId: string): string {
   return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1`;
+}
+
+async function loadRemoteDevices() {
+  try {
+    const response = await fetch(`${apiBaseUrl}/me/remote-client`, { credentials: 'include', cache: 'no-store',
+      headers: { 'accept-language': locale.value } });
+    if (!response.ok) throw new Error('Device status unavailable');
+    const result = await response.json() as RemoteClientConfiguration;
+    remoteDevices.value = result.hasKey && Array.isArray(result.devices) ? result.devices : [];
+  } catch { remoteDevices.value = []; }
+}
+
+function remoteAllowed(deviceId: string): boolean {
+  const prior = confirmingRelease.value ? downloadFor(confirmingRelease.value.id, confirmingSite.value) : undefined;
+  return !prior || (prior.executionMode === 'remote' && prior.remoteDeviceId === deviceId);
 }
 
 async function loadDownloadProviders() {
@@ -434,7 +455,8 @@ function downloadCardClass(releaseId: string, site = 'mteam'): string | undefine
   return undefined;
 }
 
-function providerName(provider: DownloadProvider): string {
+function providerName(provider: DownloadProvider | undefined): string {
+  if (!provider) return t('movie.download.agentName');
   return provider === 'transmission' ? 'Transmission' : 'qBittorrent';
 }
 
@@ -460,7 +482,13 @@ function choiceFor(download: MovieDownload): DownloaderChoice | undefined {
 function canDownload(releaseId: string, site = 'mteam'): boolean {
   if (site !== 'mteam' && site !== 'hdarea') return false;
   const existing = downloadFor(releaseId, site);
-  return existing ? Boolean(choiceFor(existing)) : downloadProviders.value.length > 0;
+  return existing
+    ? existing.status === 'missing'
+      ? downloadProviders.value.length > 0 || remoteDevices.value.length > 0
+      : (existing.executionMode === 'remote'
+          ? remoteDevices.value.some((device) => device.id === existing.remoteDeviceId)
+          : Boolean(choiceFor(existing)))
+    : downloadProviders.value.length > 0 || remoteDevices.value.length > 0;
 }
 
 function downloadUnavailable(releaseId: string, site = 'mteam'): string {
@@ -475,15 +503,16 @@ function requestDownload(release: MovieRelease, site = 'mteam') {
   if (site !== 'mteam' && site !== 'hdarea') return;
   if (!canDownload(release.id, site) || submittingReleaseId.value) return;
   downloadTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const prior = downloadFor(release.id, site);
+  const previous = downloadFor(release.id, site);
+  const prior = previous?.status === 'missing' ? undefined : previous;
   const original = prior ? choiceFor(prior) : undefined;
-  const selected = original ?? downloadProviders.value.find((choice) => choice.downloaderInstanceId === selectedDownloaderId.value)
+  const selected = original ?? downloadProviders.value.find((choice) => choice.downloaderInstanceId === (selectedDownloaderId.value || integrationPreferences.value?.defaults.downloader))
     ?? (downloadProviders.value.length === 1 ? downloadProviders.value[0] : undefined);
-  if (selected) {
-    void submitDownload(release, selected, site);
-    return;
-  }
-  selectedDownloaderId.value = '';
+  selectedDownloaderId.value = prior?.executionMode === 'remote'
+    ? `agent:${prior.remoteDeviceId}`
+    : selected?.downloaderInstanceId ?? '';
+  if (!selectedDownloaderId.value && !downloadProviders.value.length && remoteDevices.value.length === 1)
+    selectedDownloaderId.value = `agent:${remoteDevices.value[0]!.id}`;
   confirmingRelease.value = release;
   confirmingSite.value = site;
   void nextTick(() => {
@@ -501,12 +530,14 @@ async function confirmDownload() {
   const release = confirmingRelease.value;
   const choice = downloadProviders.value.find((item) => item.downloaderInstanceId === selectedDownloaderId.value);
   const site = confirmingSite.value;
-  if (!release || !choice || submittingReleaseId.value) return;
+  const deviceId = selectedDownloaderId.value.startsWith('agent:') ? selectedDownloaderId.value.slice(6) : undefined;
+  if (!release || (!choice && !deviceId) || submittingReleaseId.value) return;
+  if (deviceId && !remoteAllowed(deviceId)) return;
   cancelDownload();
-  await submitDownload(release, choice, site);
+  await submitDownload(release, choice, site, deviceId);
 }
 
-async function submitDownload(release: MovieRelease, choice: DownloaderChoice, site: DownloadSource = 'mteam') {
+async function submitDownload(release: MovieRelease, choice: DownloaderChoice | undefined, site: DownloadSource = 'mteam', deviceId?: string) {
   if (submittingReleaseId.value) return;
   const requestedTmdbId = props.tmdbId;
   const key = downloadKey(release.id, site);
@@ -532,8 +563,10 @@ async function submitDownload(release: MovieRelease, choice: DownloaderChoice, s
     const response = await fetch(`${apiBaseUrl}/me/movies/${requestedTmdbId}/downloads`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sourceReleaseId: release.id, provider: choice.provider, downloaderInstanceId: choice.downloaderInstanceId, ...(site !== 'mteam' ? { sourceProvider: site } : {}) }),
+      headers: { 'content-type': 'application/json', 'accept-language': locale.value },
+      body: JSON.stringify({ sourceReleaseId: release.id, ...(deviceId
+        ? { remoteDeviceId: deviceId, sourceReleaseTitle: release.title.slice(0, 512) }
+        : { provider: choice!.provider, downloaderInstanceId: choice!.downloaderInstanceId }), ...(site !== 'mteam' ? { sourceProvider: site } : {}) }),
     });
     const body = (await response.json()) as MovieDownload | ApiError;
     if (!response.ok) throw localizedApiError(body, 'errors.movieDownloadFailed');
@@ -563,7 +596,10 @@ function scheduleDownloadPoll() {
   if (!releasesOpen.value || document.visibilityState === 'hidden') return;
   if (
     !downloads.value.some((download) => {
-      return ['submitting', 'downloading', 'paused', 'seeding'].includes(download.status);
+      return ['submitting', 'downloading', 'paused', 'seeding'].includes(download.status)
+        // A successfully added remote task can recover from downloader errors or reappear later.
+        || (download.executionMode === 'remote' && download.pushState === 'succeeded' && download.status !== 'missing')
+        || Boolean(download.queueExpiresAt && !['succeeded', 'duplicate', 'cancelled', 'closed'].includes(download.pushState ?? ''));
     })
   )
     return;
@@ -581,6 +617,12 @@ function handleVisibilityChange() {
 }
 
 function downloadStatus(download: MovieDownload): string {
+  if (download.executionMode === 'remote' && !['succeeded', 'duplicate'].includes(download.pushState ?? '')) {
+    if (download.pushState === 'unknown') return t('movie.download.agentUnknown');
+    if (download.pushState === 'failed' || download.lastErrorCode) return t('movie.download.agentRetry');
+    if (['cancelled', 'closed', 'expired'].includes(download.pushState ?? '')) return t('movie.download.agentClosed');
+    return t('movie.download.agentQueued');
+  }
   return t(`movie.download.status.${download.status}` as `movie.download.status.${MovieDownload['status']}`);
 }
 
@@ -998,20 +1040,6 @@ function syncedAtLabel(syncedAt: string): string {
               {{ t('movie.releases.close') }}
             </button>
           </div>
-          <div v-if="downloadProviders.length" class="release-downloader-select" role="group" :aria-label="t('movie.download.chooseProvider')">
-            <div class="release-downloader-options">
-              <button
-                v-for="choice in downloadProviders" :key="choice.downloaderInstanceId" type="button"
-                class="release-downloader-option" :class="{ 'is-selected': selectedDownloaderId === choice.downloaderInstanceId }"
-                :aria-pressed="selectedDownloaderId === choice.downloaderInstanceId" :disabled="Boolean(submittingReleaseId)"
-                :aria-label="instanceLabel(choice)" @click="selectedDownloaderId = choice.downloaderInstanceId"
-              >
-                <img :src="getIntegrationLogo(choice.provider)" alt="" aria-hidden="true" />
-                <span>{{ instanceLabel(choice) }}</span>
-                <small v-if="integrationPreferences?.defaults.downloader === choice.downloaderInstanceId">{{ t('integrationDefaults.default') }}</small>
-              </button>
-            </div>
-          </div>
           <div ref="releasePanelContent" class="release-panel-content">
             <p v-if="releasesError" class="browse-error" role="alert">{{ releasesError }}</p>
             <p v-if="releasesLoading && !releaseGroups.length" class="muted-copy" role="status">{{ t('movie.releases.loading') }}</p>
@@ -1158,6 +1186,9 @@ function syncedAtLabel(syncedAt: string): string {
                     "
                   ></progress>
                 </div>
+                <p v-if="downloadFor(release.id, group.site)?.executionMode === 'remote' && downloadFor(release.id, group.site)?.queueExpiresAt && !['succeeded', 'duplicate'].includes(downloadFor(release.id, group.site)?.pushState ?? '')" class="download-retry-note" role="status">
+                  {{ t('movie.download.agentExpires', { date: formatDate(downloadFor(release.id, group.site)!.queueExpiresAt!, { dateStyle: 'short', timeStyle: 'short' }) }) }}
+                </p>
                 <p v-if="downloadErrors[downloadKey(release.id, group.site)]" class="browse-error" role="alert">
                   {{ downloadErrors[downloadKey(release.id, group.site)] }}
                 </p>
@@ -1186,14 +1217,32 @@ function syncedAtLabel(syncedAt: string): string {
                     :value="choice.downloaderInstanceId"
                     :disabled="
                       Boolean(
-                        downloadFor(confirmingRelease.id, confirmingSite) && choiceFor(downloadFor(confirmingRelease.id, confirmingSite)!)?.downloaderInstanceId !== choice.downloaderInstanceId,
+                        downloadFor(confirmingRelease.id, confirmingSite) && (downloadFor(confirmingRelease.id, confirmingSite)!.executionMode === 'remote' || choiceFor(downloadFor(confirmingRelease.id, confirmingSite)!)?.downloaderInstanceId !== choice.downloaderInstanceId),
                       )
                     "
                   />
                   <img :src="getIntegrationLogo(choice.provider)" alt="" class="download-provider-logo" aria-hidden="true" />
                   <span>{{ instanceLabel(choice) }}</span>
                 </label>
+                <hr v-if="downloadProviders.length && remoteDevices.length" class="download-provider-divider" />
+                <label v-for="device in remoteDevices" :key="device.id" class="download-provider-option download-provider-option-agent" :title="t('movie.download.agentDeviceTooltip', { device: device.id })">
+                  <input v-model="selectedDownloaderId" type="radio" name="download-provider" :value="`agent:${device.id}`" :disabled="!remoteAllowed(device.id)" />
+                  <img src="/popular-link-agent-white-ui.png" alt="" class="download-provider-logo" aria-hidden="true" />
+                  <span>
+                    <b class="download-agent-name">
+                      {{ t('movie.download.agentTarget') }}
+                      <i
+                        class="download-agent-status"
+                        :class="{ 'is-online': device.isAgentOnline && device.isAgentDownloaderOnline }"
+                        role="img"
+                        :aria-label="t(device.isAgentOnline && device.isAgentDownloaderOnline ? 'remoteClient.online' : 'remoteClient.offline')"
+                        :title="t(device.isAgentOnline && device.isAgentDownloaderOnline ? 'remoteClient.online' : 'remoteClient.offline')"
+                      ></i>
+                    </b>
+                  </span>
+                </label>
               </fieldset>
+              <p v-if="selectedDownloaderId.startsWith('agent:')" class="download-retry-note" role="status">{{ t('movie.download.agentQueuePolicy') }}</p>
               <p v-if="downloadFor(confirmingRelease.id, confirmingSite)" class="download-retry-note">
                 {{ t('movie.download.retryProvider') }}
               </p>
@@ -1207,7 +1256,7 @@ function syncedAtLabel(syncedAt: string): string {
                   :disabled="!selectedDownloaderId || Boolean(submittingReleaseId)"
                   @click="confirmDownload"
                 >
-                  {{ t('movie.download.confirm') }}
+                  {{ t(selectedDownloaderId.startsWith('agent:') ? 'movie.download.pushAgent' : 'movie.download.confirm') }}
                 </button>
               </div>
             </div>
@@ -1310,6 +1359,17 @@ function syncedAtLabel(syncedAt: string): string {
   font-size: 0.78rem;
   cursor: pointer;
 }
+.download-provider-option-agent { grid-column: 1 / -1; }
+.download-agent-name { display: inline-flex; align-items: center; gap: 8px; font-weight: inherit; }
+.download-agent-status { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: #e65b5b; }
+.download-agent-status.is-online { background: #45c879; }
+.download-provider-divider {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid #303234;
+}
 .download-provider-option:has(input:checked) {
   border-color: #e84b2c;
   color: #f3f0e9;
@@ -1323,7 +1383,7 @@ function syncedAtLabel(syncedAt: string): string {
   opacity: 0.5;
   cursor: default;
 }
-.download-provider-logo { width: 20px; height: 20px; object-fit: contain; }
+.download-provider-logo { flex-shrink: 0; margin-right: 8px; width: 20px; height: 20px; object-fit: contain; }
 .download-provider-option input {
   position: absolute;
   inset: 0;
@@ -1340,6 +1400,8 @@ function syncedAtLabel(syncedAt: string): string {
   justify-content: space-between;
   gap: 8px;
   width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .download-provider-option span::after {
   content: '✓';

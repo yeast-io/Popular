@@ -34,5 +34,5 @@ export { redactDiagnosticText, serializeDiagnosticError } from './diagnostics/di
 
 export * from './remote-client.schema.js';
 export * from './helper-gateway/helper-gateway.schema.js';
-export type { DeviceKeys, Authorization, Session, AgentStatus, DownloadRequest, CommandState, CommandRecord,
+export type { DeviceKeys, Authorization, Session, AgentStatus, DeviceStatus, DownloadRequest, CommandState, CommandRecord,
   TaskEvidence, ResultPayload, StatusPayload, PreparedDelivery, PublicCommand, WireMessage } from './helper-gateway/helper-gateway.types.js';

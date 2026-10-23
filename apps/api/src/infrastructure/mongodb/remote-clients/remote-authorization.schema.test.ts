@@ -47,6 +47,8 @@ test('RCCK belongs to users, is hidden by default, and its digest is globally un
   assert.equal(devices.collection.name, 'remote_client_devices');
   assert.equal(devices.schema.path('keys').options.select, false);
   assert.equal(devices.schema.path('encryptedKey'), undefined);
+  assert.equal(new devices().isAgentOnline, false);
+  assert.equal(new devices().isAgentDownloaderOnline, false);
   assert.ok(
     !devices.schema
       .indexes()

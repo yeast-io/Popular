@@ -31,15 +31,20 @@ export const MovieDownloadStatusSchema = Type.Union([
   Type.Literal('missing'),
 ]);
 
-export const MovieDownloadSchema = Type.Object(
+const MovieDownloadBaseSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
     tmdbId: Type.Integer({ minimum: 1 }),
     sourceProvider: DownloadSourceSchema,
     sourceReleaseId: Type.String({ minLength: 1 }),
-    provider: DownloadProviderSchema,
-    downloaderInstanceId: Type.Optional(DownloaderInstanceIdSchema),
+    provider: Type.Optional(DownloadProviderSchema),
+    downloaderInstanceId: Type.Optional(Type.Union([DownloaderInstanceIdSchema, DownloadProviderSchema])),
     downloaderName: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+    executionMode: Type.Optional(Type.Union([Type.Literal('local'), Type.Literal('remote')])),
+    remoteDeviceId: Type.Optional(Type.String()),
+    queueExpiresAt: Type.Optional(Type.String({ format: 'date-time' })),
+    pushState: Type.Optional(Type.String()),
+    retryAttempt: Type.Optional(Type.Integer({ minimum: 0 })),
     status: MovieDownloadStatusSchema,
     progress: Type.Number({ minimum: 0, maximum: 100 }),
     downloadedBytes: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -53,6 +58,12 @@ export const MovieDownloadSchema = Type.Object(
   { additionalProperties: false }
 );
 
+export const MovieDownloadSchema = Type.Union([
+  Type.Object({ ...MovieDownloadBaseSchema.properties, executionMode: Type.Literal('remote') }, { additionalProperties: false }),
+  Type.Object({ ...MovieDownloadBaseSchema.properties, provider: DownloadProviderSchema,
+    executionMode: Type.Optional(Type.Literal('local')) }, { additionalProperties: false }),
+]);
+
 export const MovieDownloadListResponseSchema = Type.Object(
   {
     items: Type.Array(MovieDownloadSchema),
@@ -62,6 +73,8 @@ export const MovieDownloadListResponseSchema = Type.Object(
 
 export const CreateMovieDownloadRequestSchema = Type.Object(
   {
+    sourceReleaseTitle: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
+    remoteDeviceId: Type.Optional(Type.String({ minLength: 1, maxLength: 160, pattern: '^[a-zA-Z0-9_-]+$' })),
     provider: Type.Optional(DownloadProviderSchema),
     downloaderInstanceId: Type.Optional(DownloaderInstanceIdSchema),
     sourceProvider: Type.Optional(DownloadSourceSchema),

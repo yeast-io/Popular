@@ -342,6 +342,17 @@ pub async fn session_transport(
             journal::atomic(directory, "identity.json", &identity)?;
             crate::device::target(directory, &settings)?
         };
+        {
+            let mut state = runtime.queue.lock().unwrap_or_else(|e| e.into_inner());
+            if state
+                .cache
+                .as_ref()
+                .is_some_and(|cache| !crate::queue::same_binding(cache, &context))
+            {
+                state.cache = None;
+                state.cursor = None;
+            }
+        }
         runtime.set_binding(BindingState::Bound, Some(context.device_id.clone()));
         runtime.update(Some("online"), None, None);
         trace.stage("gateway.session.authenticated");
@@ -352,9 +363,31 @@ pub async fn session_transport(
             let mut heartbeat = tokio::time::interval(Duration::from_secs(15));
             heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             let mut last_pong = Instant::now();
+            let mut queue_request: Option<String> = None;
             loop {
                 let frame = tokio::select! {
-                    _=heartbeat.tick()=>{if last_pong.elapsed()>Duration::from_secs(45) {return Err(AgentError::code("timeout"));} Message::Ping(Vec::new().into())},
+                    _=runtime.changed.notified()=>{
+                        let current = crate::storage::load(directory)?.settings;
+                        // Revoke availability on the authenticated connection before switching sessions.
+                        let configured=current.downloader_configured && crate::settings::same_downloader(&current,&settings);
+                        let report=protocol::message("__agent_status__",json!({"downloaderType":target.downloader_type,"instanceId":target.instance_id,"configured":configured,"reachable":false}),Some(trace.id.clone()));
+                        tokio::time::timeout(Duration::from_secs(5),sink.send(Message::Text(serde_json::to_string(&report)?.into()))).await.map_err(|_|AgentError::code("timeout"))?.map_err(network)?;
+                        return Ok(());
+                    },
+                    _=runtime.queue_refresh.notified()=>{
+                        let cursor=runtime.queue.lock().unwrap_or_else(|e|e.into_inner()).cursor.clone();
+                        let payload=cursor.map_or_else(||json!({}),|v|json!({"cursor":v}));
+                        let request=protocol::message("__queue_request__",payload,Some(trace.id.clone()));
+                        queue_request=Some(request.message_id.clone());
+                        Message::Text(serde_json::to_string(&request)?.into())
+                    },
+                    _=heartbeat.tick()=>{
+                        let cursor=runtime.queue.lock().unwrap_or_else(|e|e.into_inner()).cursor.clone();
+                        let payload=cursor.map_or_else(||json!({}),|v|json!({"cursor":v}));
+                        let request=protocol::message("__queue_request__",payload,Some(trace.id.clone()));
+                        queue_request=Some(request.message_id.clone());
+                        tokio::time::timeout(Duration::from_secs(5),sink.send(Message::Text(serde_json::to_string(&request)?.into()))).await.map_err(|_|AgentError::code("timeout"))?.map_err(network)?;
+                        if last_pong.elapsed()>Duration::from_secs(45) {return Err(AgentError::code("timeout"));} Message::Ping(Vec::new().into())},
                     message=outbound.recv()=>{
                         let Some(wire)=message else {return Ok(());};
                         let text=serde_json::to_string(&wire)?;
@@ -373,6 +406,19 @@ pub async fn session_transport(
                                     let error=remote_error(&wire)?;
                                     if matches!(error.code,"rebindRequired"|"sessionRevoked") {return Err(error);}
                                 }
+                                if wire.command=="__queue_snapshot__" {
+                                    if queue_request.is_none() || wire.reply_to.as_ref()!=queue_request.as_ref() || wire.correlation_id.as_deref()!=Some(&trace.id) {continue;}
+                                    queue_request=None;
+                                    let _guard=lock.lock().await;
+                                    crate::queue::accept(directory,runtime,&identity,&context,&wire.payload)?;
+                                    trace.stage("queue.snapshot.received");
+                                    continue;
+                                }
+                                if wire.command=="__error__" && queue_request.is_some() && wire.reply_to.as_ref()==queue_request.as_ref() {
+                                    queue_request=None;
+                                    crate::diagnostics::failure("queue.snapshot",&trace.id,&remote_error(&wire)?,0);
+                                    continue;
+                                }
                                 incoming.try_send(wire).map_err(|_|AgentError::code("gatewayUnavailable"))?;
                                 continue;
                             },
@@ -387,6 +433,8 @@ pub async fn session_transport(
                     .map_err(network)?;
             }
         };
+        let health =
+            crate::execution::report_status(outgoing.clone(), &settings, &secrets, &target);
         let work = crate::execution::Session {
             directory,
             lock,
@@ -400,13 +448,9 @@ pub async fn session_transport(
         }
         .worker(outgoing, inbound);
         // Revocation/disconnect cancels in-flight execution. A possibly submitted add is already durable unknown.
-        tokio::select! {result=io=>result,result=work=>result}
+        tokio::select! {result=io=>result,result=work=>result,result=health=>result}
     };
-    let result = tokio::select! {
-        biased;
-        _ = runtime.changed.notified() => Ok(()),
-        result = action => result,
-    };
+    let result = action.await;
     if let Err(error) = &result {
         trace.failed(error);
         if matches!(error.code, "rebindRequired" | "deviceLimitReached") {

@@ -29,7 +29,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "j
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.6.5"
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSImage", "NSMenu", "NSMenuItem", "NSAttributedString", "NSFont"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSImage", "NSMenu", "NSMenuItem", "NSAttributedString", "NSFont", "NSBezierPath", "NSColor", "NSGraphics", "NSStringDrawing"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSAttributedString", "NSRange", "NSString", "NSData"] }
 keyring = { version = "=3.6.3", features = ["apple-native"] }
 

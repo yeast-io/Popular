@@ -18,10 +18,13 @@ export class MemoryRouter implements Router {
     return old && old.expiry > this.now() ? structuredClone(old.route) : null;
   }
 
-  async renew(session: Session, status?: AgentStatus) {
+  async renew(session: Session, status?: AgentStatus, observedAt = this.now()) {
     const old = this.routes.get(session.deviceId);
     if (!old || old.expiry <= this.now() || !sameSession(old.route, session)) return false;
-    if (status) old.route.status = structuredClone(status);
+    if (status) {
+      old.route.status = structuredClone(status);
+      old.route.statusObservedAt = observedAt;
+    }
     old.expiry = this.now() + this.leaseMs;
     return true;
   }

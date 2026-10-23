@@ -17,6 +17,7 @@ import type {
   RemoteAuthorizationStore,
   RemoteClientOperation,
   RemoteClientDiagnostics,
+  RemoteDeviceRecord,
 } from './remote-client.types.js';
 
 export class RemoteClientService {
@@ -34,6 +35,7 @@ export class RemoteClientService {
           return this.store.devices(ownerId, key.authVersion);
         })
       : [];
+    for (const device of devices) await this.refreshStatus(device);
     // Include pending unbind notifications even though the unbound row is no longer in the device list.
     const pending = await aiStep('remote-client.notifications.read', () => this.store.pending(ownerId));
     return {
@@ -47,10 +49,45 @@ export class RemoteClientService {
           authVersion: device.authVersion,
           deviceVersion: device.deviceVersion,
           boundAt: device.boundAt.toISOString(),
+          isAgentOnline: device.isAgentOnline,
+          isAgentDownloaderOnline: device.isAgentDownloaderOnline,
+          ...(device.statusCheckedAt ? { statusCheckedAt: device.statusCheckedAt.toISOString() } : {}),
+          ...(device.downloaderType ? { downloaderType: device.downloaderType } : {}),
+          ...(device.downloaderInstanceId ? { downloaderInstanceId: device.downloaderInstanceId } : {}),
         };
       }),
       gatewayNotificationPending: pending.some((event) => event.ownerId === ownerId),
     };
+  }
+
+  async syncStatuses(): Promise<void> {
+    if (!this.store.statusDevices) return;
+    for await (const device of this.store.statusDevices()) {
+      const { key } = await this.store.account(device.ownerId);
+      if (key?.active && key.authVersion === device.authVersion) await this.refreshStatus(device);
+    }
+  }
+
+  private async refreshStatus(device: RemoteDeviceRecord) {
+    if (!this.gateway.status || !this.store.updateStatus) return;
+    const checkedAt = new Date();
+    if (device.statusCheckedAt && checkedAt.getTime() - device.statusCheckedAt.getTime() < 60_000) return;
+    try {
+      const status = await aiStep('remote-client.gateway.status', () => this.gateway.status!(device, currentAiTrace()?.correlationId));
+      device.isAgentOnline = status.isAgentOnline;
+      device.isAgentDownloaderOnline = status.isAgentOnline && status.isAgentDownloaderOnline;
+      if (status.agentStatus) {
+        device.downloaderType = status.agentStatus.downloaderType;
+        device.downloaderInstanceId = status.agentStatus.instanceId;
+      }
+    } catch (error) {
+      device.isAgentOnline = false;
+      device.isAgentDownloaderOnline = false;
+      currentAiTrace()?.fail(error, { deviceId: device.deviceId, outcome: 'status-unavailable' });
+      currentAiTrace()?.clearFailure();
+    }
+    device.statusCheckedAt = checkedAt;
+    await aiStep('remote-client.status.persist', () => this.store.updateStatus!(device, checkedAt));
   }
 
   async readKey(ownerId: string, locale: Locale): Promise<RemoteClientKey> {

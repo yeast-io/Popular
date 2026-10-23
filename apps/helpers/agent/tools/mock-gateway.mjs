@@ -22,6 +22,10 @@ export async function startMock({ port = 0 } = {}) {
   let dropAckState = null;
   let dropAdd = false;
   let offline = false;
+  let failPreflight = false;
+  const statusReports = [];
+  const grantedExecutions = new Set();
+  let lastSession;
   let neverCreate = false;
   let modern = false;
   let corrupt = null;
@@ -45,6 +49,7 @@ export async function startMock({ port = 0 } = {}) {
         }
         if (reply.command === '__execution_granted__') {
           stats.grants++;
+          grantedExecutions.add(JSON.parse(Buffer.from(reply.payload.grant.split('.')[1], 'base64url')).executionId);
           if (dropGrant) {
             dropGrant = false;
             peer.close(1012);
@@ -72,6 +77,10 @@ export async function startMock({ port = 0 } = {}) {
       else events.set(wire.messageId, structuredClone(wire));
     }
     if (wire.command === '__execution_recovery__') stats.recoveries++;
+    if (wire.command === '__agent_status__') {
+      statusReports.push(structuredClone(wire.payload));
+      lastSession = peer.session;
+    }
     try {
       return await original(peer, wire);
     } catch (error) {
@@ -87,7 +96,7 @@ export async function startMock({ port = 0 } = {}) {
     return result;
   };
   f.backend.options.torrent = async () => ({
-    url: `https://tracker.invalid/download?hash=${hash}&passkey=DO_NOT_LOG`,
+    url: process.env.HELPER_REAL_TORRENT_URL ?? `https://tracker.invalid/download?hash=${hash}&passkey=DO_NOT_LOG`,
     torrentHash: hash,
   });
   const app = await createGatewayApp(f.gateway, 'internal-test-token-0000000000000000', { allowInsecureDev: true });
@@ -99,6 +108,8 @@ export async function startMock({ port = 0 } = {}) {
     ...stats,
     events: [...events.values()],
     received,
+    statusReports,
+    grantedExecutions: [...grantedExecutions],
     tasks: [...tasks.values()],
     clients: f.gateway.peers.size,
     devices: [...f.store.devices.values()].map((d) => ({ deviceId: d.deviceId, status: d.status })),
@@ -108,6 +119,8 @@ export async function startMock({ port = 0 } = {}) {
       executionId: c.executionId,
       state: c.state,
       result: c.result,
+      queueExpiresAt: c.queueExpiresAt,
+      retryAttempt: c.retryAttempt,
     })),
   }));
   app.post('/test/control', async (request) => {
@@ -118,6 +131,21 @@ export async function startMock({ port = 0 } = {}) {
     if ('dropAck' in body) dropAck = body.dropAck;
     if ('dropAckState' in body) dropAckState = body.dropAckState;
     if ('offline' in body) offline = body.offline;
+    if ('failPreflight' in body) failPreflight = body.failPreflight;
+    if (body.retry) {
+      await f.backend.change(body.retry, async (c) => ({ ...c, nextAttemptAt: 0 }));
+      const peer = [...f.gateway.peers.values()][0];
+      const send = peer.send;
+      peer.send = (wire) => {
+        if (wire.command === '__add_download__') deliveries.set(body.retry, structuredClone(wire));
+        send(wire);
+      };
+      try {
+        await f.coordinator.retryQueued();
+      } finally {
+        peer.send = send;
+      }
+    }
     if ('neverCreate' in body) neverCreate = body.neverCreate;
     if ('dropGrant' in body) dropGrant = body.dropGrant;
     if ('dropAuthResult' in body) dropAuthResult = body.dropAuthResult;
@@ -141,7 +169,8 @@ export async function startMock({ port = 0 } = {}) {
     }
     if (body.disconnect) for (const peer of f.gateway.peers.values()) peer.close(1012);
     if (body.issue) {
-      const peer = [...f.gateway.peers.values()][0];
+      const peer = [...f.gateway.peers.values()][0]
+        ?? (body.queue && lastSession ? { session: lastSession, send() {} } : undefined);
       if (!peer?.session) throw Error('fixture has no authenticated client');
       hash = body.hash ?? 'a'.repeat(40);
       const id = body.commandId ?? randomUUID();
@@ -174,7 +203,8 @@ export async function startMock({ port = 0 } = {}) {
           }
           send(wire);
         };
-        await f.coordinator.dispatch(input);
+        if (body.queue) await f.coordinator.enqueue(input);
+        else await f.coordinator.dispatch(input);
         peer.send = send;
         if (body.expired || body.wrongSession || body.wrongOwner || body.wrongHash || body.tampered) {
           // A separate delivery with a genuine server signature exercises protected-field validation.
@@ -205,6 +235,10 @@ export async function startMock({ port = 0 } = {}) {
     if (path.endsWith('/auth/login')) return reply.header('Set-Cookie', 'SID=mock').send('Ok.');
     if (path.endsWith('/app/version')) return reply.send('v5.0.0');
     if (path.endsWith('/torrents/info')) {
+      if (failPreflight) {
+        failPreflight = false;
+        return reply.code(503).send({});
+      }
       const hashes = new URL(request.url, 'http://localhost').searchParams.get('hashes')?.split('|');
       return [...tasks.values()]
         .filter((t) => !hashes || hashes.includes(t.hash))

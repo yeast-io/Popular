@@ -116,6 +116,8 @@ function fixture() {
       authVersion: account.key!.authVersion,
       deviceVersion: 1,
       status: 'bound',
+      isAgentOnline: false,
+      isAgentDownloaderOnline: false,
       boundAt: new Date('2026-10-21T00:00:00Z'),
       operations: [],
     };
@@ -151,6 +153,19 @@ const mutation = (expectedAuthVersion: number) => ({ operationId: randomUUID(), 
 const unbindInput = (authVersion = 1, deviceVersion = 1) => {
   return { ...mutation(authVersion), expectedDeviceVersion: deviceVersion };
 };
+
+test('device metadata exposes Agent and downloader availability independently from binding', async () => {
+  const f = fixture();
+  await f.service.change('alice', 'generate', mutation(0), 'trace-status', 'en-US');
+  const device = f.bind('alice', 'device-a');
+  for (const [isAgentOnline, isAgentDownloaderOnline] of [[false, false], [true, false], [true, true]] as const) {
+    Object.assign(device, { isAgentOnline, isAgentDownloaderOnline });
+    const configuration = await f.service.get('alice');
+    assert.equal(configuration.devices[0]?.isAgentOnline, isAgentOnline);
+    assert.equal(configuration.devices[0]?.isAgentDownloaderOnline, isAgentDownloaderOnline);
+    assert.equal(configuration.devices[0]?.id, 'device-a');
+  }
+});
 
 test('one RCCK per user, encrypted storage plus digest; repeated owner reads and idempotent requests return the same key', async () => {
   const f = fixture();
@@ -437,4 +452,34 @@ test('HTTP owner isolation, repeatable no-store key reads, separate revoke and p
   } finally {
     await app.close();
   }
+});
+
+test('status refresh queries Gateway at most once a minute and fails closed without losing binding', async () => {
+  const f = fixture();
+  await f.service.change('alice', 'generate', mutation(0), 'trace-status', 'en-US');
+  const row = f.bind('alice', 'device-a');
+  let calls = 0;
+  let unavailable = false;
+  Object.assign(f.gateway, { async status() {
+    calls++;
+    if (unavailable) throw new Error('gateway unavailable');
+    return { isAgentOnline: true, isAgentDownloaderOnline: true,
+      agentStatus: { downloaderType: 'transmission', instanceId: 'nas-1', configured: true, reachable: true } };
+  } });
+  Object.assign(f.store, { async updateStatus(device: RemoteDeviceRecord) {
+    Object.assign(row, device);
+  } });
+  let configuration = await f.service.get('alice');
+  assert.equal(configuration.devices[0]?.isAgentOnline, true);
+  assert.equal(configuration.devices[0]?.downloaderType, 'transmission');
+  await f.service.get('alice');
+  assert.equal(calls, 1);
+  row.statusCheckedAt = new Date(Date.now() - 61_000);
+  unavailable = true;
+  configuration = await f.service.get('alice');
+  assert.equal(calls, 2);
+  assert.equal(configuration.devices[0]?.isAgentOnline, false);
+  assert.equal(configuration.devices[0]?.isAgentDownloaderOnline, false);
+  assert.equal(configuration.devices[0]?.id, 'device-a');
+  assert.equal(configuration.devices[0]?.downloaderInstanceId, 'nas-1');
 });

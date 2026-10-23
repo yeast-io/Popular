@@ -187,10 +187,16 @@ test('SIMULATED Mongo: monotonic status, identity conflict, reconnect snapshot, 
   assert.equal(f.store.downloads.get(input.downloadId).status.state, 'unreachable');
   await f.gateway.message(fresh.peer, message('__download_status__', { ...payload, sequence: 4, state: 'deleted' }));
   assert.equal(f.store.downloads.get(input.downloadId).status.state, 'deleted');
+  await f.gateway.message(fresh.peer, message('__download_status__', { ...payload, sequence: 5, state: 'downloading' }));
+  assert.equal(f.store.downloads.get(input.downloadId).status.state, 'deleted');
   await f.coordinator.close(input.commandId, 'owner-1', 'close-1');
   assert.equal(f.store.commands.get(input.commandId).state, 'closed');
   assert.equal(f.store.downloads.get(input.downloadId).result.outcome, 'succeeded');
   assert.equal(f.store.downloads.get(input.downloadId).association.executionId, 'execution-1');
+  // Expired command history must not block a durable deletion receipt after a long offline period.
+  f.store.commands.delete(input.commandId);
+  await f.gateway.message(fresh.peer, message('__download_status__', { ...payload, sequence: 6, state: 'deleted' }));
+  assert.equal(f.store.downloads.get(input.downloadId).status.sequence, 4);
 });
 
 test('SIMULATED Mongo: result retry repairs failed projection before ACK, without repeating URL or granting execution', async () => {
@@ -321,4 +327,27 @@ test('SIMULATED Mongo: key rotation revokes current operations without events; e
   assert.equal(live.closed(), true);
   await f.backend.sweep();
   assert.equal(f.store.commands.get(input.commandId).result.outcome, 'unknown');
+});
+
+test('queue metadata is readable without a downloader, stays bound to the authenticated device and does not dispatch', async () => {
+  const f = await createFixture();
+  const live = await f.connect(await newDevice());
+  live.peer.status = undefined;
+  live.peer.statusObservedAt = undefined;
+  const queried = [];
+  f.store.queued = async (context) => {
+    queried.push(context);
+    return { observedAt: f.backend.now(), total: 1, nextCursor: null, items: [{ commandId: 'queued-command',
+      resourceId: '991', source: 'mteam', title: 'Pending movie', enqueuedAt: f.backend.now() - 1,
+      expiresAt: f.backend.now() + 60000, reason: 'downloader_unavailable' }] };
+  };
+  const request = message('__queue_request__', {});
+  await f.gateway.message(live.peer, request);
+  const result = live.sent.at(-1);
+  assert.equal(result.command, '__queue_snapshot__');
+  assert.equal(result.replyTo, request.messageId);
+  assert.equal(result.payload.total, 1);
+  assert.equal(queried[0].deviceId, live.peer.session.deviceId);
+  assert.equal(f.store.commands.size, 0);
+  await assert.rejects(f.gateway.message(live.peer, message('__queue_request__', { ownerId: 'other-owner' })), { code: 'INVALID_REQUEST' });
 });

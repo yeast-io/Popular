@@ -1,3 +1,5 @@
+import { MISSING_DOWNLOAD_RETENTION_MS } from '../../../modules/downloads/movie-download.policy.js';
+import { REMOTE_HISTORY_RETENTION_MS } from '../../../modules/remote-downloads/remote-download.policy.js';
 import { randomUUID } from 'node:crypto';
 import { Types, type Model } from 'mongoose';
 import type {
@@ -7,15 +9,16 @@ import type {
   Authorization,
   DeviceKeys,
   StatusPayload,
+  AgentQueueSnapshot,
 } from '@movie-hub/contract';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
 import type { UserDocument } from '../users/user.schema.js';
 import type { RemoteDeviceDocument } from '../remote-clients/remote-device.schema.js';
 import type { MovieDownloadDocument } from '../downloads/movie-download.schema.js';
 import { remoteDeviceKeyFingerprint } from '../remote-clients/remote-device.domain.js';
-import type { RemoteControlStore } from '../../../modules/remote-downloads/remote-download.types.js';
+import type { RemoteControlStore, RemoteCommandScan, QueuedCommandDocument } from '../../../modules/remote-downloads/remote-download.types.js';
 import type { RemoteCommandModels } from './remote-command.schema.js';
-import { canonical, ensure, fingerprint } from '../../../modules/remote-downloads/remote-download.domain.js';
+import { canonical, ensure, fingerprint, queueReason } from '../../../modules/remote-downloads/remote-download.domain.js';
 
 export class MongoRemoteControlStore implements RemoteControlStore {
   constructor(
@@ -24,6 +27,38 @@ export class MongoRemoteControlStore implements RemoteControlStore {
     readonly downloads: Model<MovieDownloadDocument>,
     readonly models: RemoteCommandModels
   ) {}
+
+  async queued(context: Session, now: number, cursor?: string): Promise<AgentQueueSnapshot> {
+    const parts = cursor?.split(':');
+    if (parts) ensure(parts.length === 2 && Number.isSafeInteger(Number(parts[0])) && Number(parts[0]) > 0
+      && /^[A-Za-z0-9_-]+$/.test(parts[1]!), 'INVALID_QUEUE_CURSOR');
+    const after = parts
+      ? [{ $match: { $or: [{ queueExpiresAt: { $gt: Number(parts[0]) } },
+          { queueExpiresAt: Number(parts[0]), commandId: { $gt: parts[1] } }] } }]
+      : [];
+    const [page] = await this.models.commands.aggregate<{ count: Array<{ value: number }>; items: QueuedCommandDocument[] }>([
+      { $match: { ownerId: context.ownerId, deviceId: context.deviceId, authVersion: context.authVersion,
+        deviceVersion: context.deviceVersion, retiredAt: { $exists: false }, queueExpiresAt: { $gt: now },
+        state: { $in: ['accepted', 'delivered', 'received', 'granted', 'failed', 'unknown'] } } },
+      { $sort: { queueExpiresAt: 1, commandId: 1 } },
+      { $lookup: { from: 'movie_downloads', let: { id: { $convert: { input: '$downloadId', to: 'objectId', onError: null } }, command: '$commandId' },
+        pipeline: [{ $match: { $expr: { $and: [{ $eq: ['$_id', '$$id'] }, { $eq: ['$remoteRequest.commandId', '$$command'] }] } } },
+          { $project: { 'tmdbId': 1, 'remoteRequest.displayTitle': 1 } }], as: 'download' } },
+      { $unwind: '$download' },
+      { $facet: { count: [{ $count: 'value' }], items: [...after, { $limit: 51 },
+        { $lookup: { from: 'movies', localField: 'download.tmdbId', foreignField: 'tmdbId', as: 'movie' } },
+        { $project: { _id: 0, commandId: 1, resourceId: 1, source: 1, state: 1, lastErrorCode: 1,
+          enqueuedAt: '$createdAt', expiresAt: '$queueExpiresAt',
+          title: { $substrCP: [{ $ifNull: ['$download.remoteRequest.displayTitle',
+            { $ifNull: [{ $arrayElemAt: ['$movie.originalTitle', 0] }, ''] }] }, 0, 512] } } }] } },
+    ]).exec();
+    const items = (page?.items ?? []).slice(0, 50).map(({ state, lastErrorCode, ...item }) => ({
+      ...item, title: item.title || null, reason: queueReason({ state, ...(lastErrorCode ? { lastErrorCode } : {}) }),
+    }));
+    const last = items.at(-1);
+    return { observedAt: now, total: page?.count[0]?.value ?? 0, ...(cursor ? { cursor } : {}),
+      nextCursor: (page?.items.length ?? 0) > 50 && last ? `${last.expiresAt}:${last.commandId}` : null, items };
+  }
 
   async authorization(keyDigest: string, deviceId?: string): Promise<Authorization | null> {
     const user = await this.users
@@ -141,7 +176,7 @@ export class MongoRemoteControlStore implements RemoteControlStore {
           source: row.sourceProvider,
           resourceId: row.sourceReleaseId,
           executionMode: 'remote',
-          downloaderType: row.provider,
+          ...(row.provider ? { downloaderType: row.provider } : {}),
           ...(row.remoteRequest?.commandId ? { remoteCommandId: row.remoteRequest.commandId } : {}),
         }
       : null;
@@ -150,6 +185,7 @@ export class MongoRemoteControlStore implements RemoteControlStore {
   async createCommand(c: CommandRecord) {
     const old = await this.command(c.commandId);
     if (old) {
+      ensure(old.digest === c.digest, 'IDEMPOTENCY_CONFLICT');
       await this.registered(old);
       return old;
     }
@@ -164,6 +200,7 @@ export class MongoRemoteControlStore implements RemoteControlStore {
       digest: c.digest,
       createdAt: c.createdAt,
       expiresAt: c.expiresAt,
+      ...(c.queueExpiresAt ? { queueExpiresAt: c.queueExpiresAt } : {}),
       deliverySessionId: c.deliverySessionId,
       deliveryMessageId: c.deliveryMessageId,
     };
@@ -187,6 +224,11 @@ export class MongoRemoteControlStore implements RemoteControlStore {
     ensure(row?.remoteRequest && row.remoteRequest.digest === c.digest, 'IDEMPOTENCY_CONFLICT');
     const stable: CommandRecord = {
       ...c,
+      ...(row.remoteRequest.queueExpiresAt ? { queueExpiresAt: row.remoteRequest.queueExpiresAt } : {}),
+      ...(row.remoteRequest.targetDownloader?.instanceId && row.remoteRequest.targetDownloader.downloaderType
+        ? { targetDownloader: { instanceId: row.remoteRequest.targetDownloader.instanceId,
+            downloaderType: row.remoteRequest.targetDownloader.downloaderType as 'qbittorrent' | 'transmission' } }
+        : {}),
       createdAt: row.remoteRequest.createdAt!,
       expiresAt: row.remoteRequest.expiresAt!,
       deliverySessionId: row.remoteRequest.deliverySessionId!,
@@ -199,19 +241,26 @@ export class MongoRemoteControlStore implements RemoteControlStore {
     } catch (error) {
       if (!isDuplicate(error)) throw error;
       const found = await this.command(c.commandId);
-      ensure(found, 'IDEMPOTENCY_CONFLICT');
+      // A duplicate on another index is a database constraint failure, not a replay.
+      if (!found) throw error;
+      ensure(found.digest === c.digest, 'IDEMPOTENCY_CONFLICT');
       await this.registered(found);
       return found;
     }
   }
 
   private async registered(c: CommandRecord) {
-    await this.downloads
+    const result = await this.downloads
       .updateOne(
         { '_id': c.downloadId, 'ownerId': c.ownerId, 'remoteRequest.commandId': c.commandId },
         { $set: { remoteCommandRegistered: true } }
       )
       .exec();
+    if (result.matchedCount) {
+      await this.models.commands.updateMany({ downloadId: c.downloadId, commandId: { $ne: c.commandId },
+        state: 'succeeded', retiredAt: { $exists: false } },
+      { $set: { retiredAt: Date.now() }, $unset: { envelope: 1 } }).exec();
+    }
   }
 
   async recoverCommands() {
@@ -261,6 +310,7 @@ export class MongoRemoteControlStore implements RemoteControlStore {
         deliveryMessageId: intent.deliveryMessageId,
         revision: 0,
         state: 'accepted',
+        ...(intent.queueExpiresAt ? { queueExpiresAt: intent.queueExpiresAt, nextAttemptAt: 0, retryAttempt: 0 } : {}),
       });
     }
   }
@@ -270,9 +320,21 @@ export class MongoRemoteControlStore implements RemoteControlStore {
     return row ? plain(row) : null;
   }
 
+  async purgeExpiredQueue(now: number) {
+    await this.models.commands.deleteMany({ retiredAt: { $lte: now - REMOTE_HISTORY_RETENTION_MS },
+      state: { $in: ['succeeded', 'closed'] }, projected: true }).exec();
+    // Remove the parent first so crash recovery cannot resurrect an expired queue entry.
+    await this.downloads.deleteMany({ 'executionMode': 'remote', 'remoteRequest.queueExpiresAt': { $lte: now },
+      'remoteAssociation': { $exists: false }, 'remoteOutcome': { $nin: ['succeeded', 'duplicate'] } }).exec();
+    await this.models.commands.deleteMany({ 'queueExpiresAt': { $lte: now },
+      'state': { $nin: ['succeeded', 'duplicate'] }, 'result.outcome': { $nin: ['succeeded', 'duplicate'] } }).exec();
+  }
+
   async compareCommand(previous: CommandRecord, next: CommandRecord) {
+    const unset = Object.fromEntries(Object.keys(previous).filter((key) => !(key in next)).map((key) => [key, 1]));
     const result = await this.models.commands
-      .updateOne({ commandId: previous.commandId, revision: previous.revision }, { $set: next })
+      .updateOne({ commandId: previous.commandId, revision: previous.revision }, { $set: next,
+        ...(Object.keys(unset).length ? { $unset: unset } : {}) })
       .exec();
     return result.modifiedCount === 1;
   }
@@ -288,12 +350,16 @@ export class MongoRemoteControlStore implements RemoteControlStore {
     }
   }
 
-  async* scanCommands(filter: { deviceId?: string; pendingOnly?: boolean } = {}) {
+  async* scanCommands(filter: RemoteCommandScan = {}) {
     const query = {
+      ...(filter.retryBefore !== undefined
+        ? { queueExpiresAt: { $gt: filter.retryBefore },
+            nextAttemptAt: { $lte: filter.retryBefore }, state: { $in: ['accepted', 'delivered', 'received', 'failed'] } }
+        : {}),
       ...(filter.deviceId ? { deviceId: filter.deviceId } : {}),
       ...(filter.pendingOnly
         ? {
-            $or: [{ state: { $in: ['accepted', 'delivered', 'received', 'granted'] } }, { projected: { $ne: true } }],
+            $or: [{ state: { $in: ['accepted', 'delivered', 'received', 'granted', 'failed'] } }, { projected: { $ne: true } }],
           }
         : {}),
     };
@@ -318,6 +384,17 @@ export class MongoRemoteControlStore implements RemoteControlStore {
     if (!row) return false;
     if ((row.remoteProjectionRevision ?? -1) >= c.revision) return true;
     const update: Record<string, unknown> = { remoteRequestState: c.state, remoteProjectionRevision: c.revision };
+    if (c.queueExpiresAt && !row.remoteAssociation) {
+      update.remoteQueueExpiresAt = new Date(c.queueExpiresAt);
+      update.remoteRetryAttempt = c.retryAttempt ?? 0;
+      update.lastErrorCode = c.lastErrorCode ?? '';
+      if (c.targetDownloader) update.provider = c.targetDownloader.downloaderType;
+      if (c.state === 'failed') update.status = 'failed';
+      if (['accepted', 'delivered', 'received'].includes(c.state)) {
+        update.status = 'submitting';
+        update.remoteOutcome = '';
+      }
+    }
     if (c.result) {
       if (row.remoteOutcome !== 'succeeded') update.remoteOutcome = c.result.outcome;
       if (c.result.outcome === 'succeeded') {
@@ -361,7 +438,13 @@ export class MongoRemoteControlStore implements RemoteControlStore {
     return true;
   }
 
+  private async retire(c: CommandRecord) {
+    await this.models.commands.updateOne({ commandId: c.commandId, retiredAt: { $exists: false } },
+      { $set: { retiredAt: Date.now() }, $unset: { envelope: 1 } }).exec();
+  }
+
   async applyStatus(c: CommandRecord, status: StatusPayload) {
+    if (c.retiredAt !== undefined) return 'stale' as const;
     const e = status.evidence;
     const filter = {
       ...this.filter(c),
@@ -376,8 +459,21 @@ export class MongoRemoteControlStore implements RemoteControlStore {
       'remoteAssociation.taskId': e.taskId,
       'remoteAssociation.marker': e.marker,
     };
-    const row = await this.downloads.findOne(filter).select('remoteStatusSequence status').lean().exec();
-    if (!row) return 'conflict' as const;
+    const row = await this.downloads.findOne(filter).select('remoteStatusSequence remoteStatusState status').lean().exec();
+    if (!row) {
+      // The service already verified the old command's execution and evidence.
+      // ACK superseded progress so the Agent's durable outbox can advance.
+      const replacement = await this.downloads.findOne({
+        _id: c.downloadId, ownerId: c.ownerId,
+        $or: [{ executionMode: { $ne: 'remote' } }, { 'remoteRequest.commandId': { $exists: true, $ne: c.commandId } }],
+      }).select('_id').lean().exec();
+      if (replacement) await this.retire(c);
+      return replacement ? 'stale' as const : 'conflict' as const;
+    }
+    if (row.remoteStatusState === 'deleted') {
+      await this.retire(c);
+      return 'stale' as const;
+    }
     if ((row.remoteStatusSequence ?? 0) >= status.sequence) return 'stale' as const;
     const state = status.state === 'deleted' ? 'missing' : status.state === 'unreachable' ? undefined : status.state;
     const update: Record<string, unknown> = {
@@ -396,15 +492,22 @@ export class MongoRemoteControlStore implements RemoteControlStore {
             ? 'DOWNLOAD_TORRENT_MISSING'
             : '',
     };
+    const now = Date.now();
+    if (status.state === 'deleted') {
+      update.missingSince = new Date(now);
+      update.expiresAt = new Date(now + MISSING_DOWNLOAD_RETENTION_MS);
+    }
     const result = await this.downloads
       .updateOne(
         {
           ...filter,
+          remoteStatusState: { $ne: 'deleted' },
           $or: [{ remoteStatusSequence: { $exists: false } }, { remoteStatusSequence: { $lt: status.sequence } }],
         },
         { $set: update }
       )
       .exec();
+    if (status.state === 'deleted') await this.retire(c);
     return result.modifiedCount ? ('applied' as const) : ('stale' as const);
   }
 }

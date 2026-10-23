@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { fingerprint } from '../../../modules/remote-downloads/remote-download.domain.js';
+import { REMOTE_QUEUE_RETENTION_MS, REMOTE_DELIVERY_TTL_MS } from '../../../modules/remote-downloads/remote-download.policy.js';
+import type { RemoteDownloadTarget } from '../../../modules/downloads/movie-download.types.js';
 import { MISSING_DOWNLOAD_RETENTION_MS } from '../../../modules/downloads/movie-download.policy.js';
 import { Types, type Model, type UpdateWithAggregationPipeline } from 'mongoose';
 import type { DownloadProvider, DownloadSource, MovieDownloadStatus } from '@movie-hub/contract';
@@ -29,12 +33,24 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
     ownerId: string,
     tmdbId: number,
     releaseId: string,
-    provider: DownloadProvider,
+    provider: DownloadProvider | undefined,
     sourceProvider: DownloadSource = 'mteam',
     downloaderInstanceId?: string,
-    downloaderName?: string
+    downloaderName?: string,
+    remote?: RemoteDownloadTarget
   ): Promise<DownloadClaim> {
     const id = new Types.ObjectId();
+    const now = Date.now();
+    const input = remote
+      ? { commandId: randomUUID(), downloadId: id.toHexString(), ownerId,
+          deviceId: remote.deviceId, authVersion: remote.authVersion, deviceVersion: remote.deviceVersion,
+          source: sourceProvider, resourceId: releaseId, correlationId: remote.correlationId }
+      : undefined;
+    const remoteRequest = input
+      ? { ...input, digest: fingerprint(input), createdAt: now, ...(remote?.displayTitle ? { displayTitle: remote.displayTitle } : {}),
+          expiresAt: now + REMOTE_DELIVERY_TTL_MS, queueExpiresAt: now + REMOTE_QUEUE_RETENTION_MS,
+          deliverySessionId: 'queued', deliveryMessageId: randomUUID(), ...(remote?.targetDownloader ? { targetDownloader: remote.targetDownloader } : {}) }
+      : undefined;
     try {
       const row = await this.downloads.create({
         _id: id,
@@ -48,6 +64,10 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
         lookupTag: `movie-hub-${id.toHexString()}`,
         status: 'submitting',
         progress: 0,
+        ...(remoteRequest
+          ? { executionMode: 'remote', remoteRequest, remoteRequestState: 'accepted',
+              remoteQueueExpiresAt: new Date(remoteRequest.queueExpiresAt) }
+          : {}),
       });
       return { record: toMovieDownloadRecord(row.toObject()), claimed: true };
     } catch (error) {
@@ -89,6 +109,52 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
     const existing = await this.downloads.findById(id).lean().exec();
     if (!existing) throw new Error('Movie download disappeared during retry');
     return { record: toMovieDownloadRecord(existing), claimed: false };
+  }
+
+  async claimMissing(record: MovieDownloadRecord, provider: DownloadProvider | undefined,
+    downloaderInstanceId?: string, downloaderName?: string, remote?: RemoteDownloadTarget): Promise<DownloadClaim> {
+    const now = Date.now();
+    const input = remote
+      ? { commandId: randomUUID(), downloadId: record.id, ownerId: record.ownerId,
+          deviceId: remote.deviceId, authVersion: remote.authVersion, deviceVersion: remote.deviceVersion,
+          source: record.sourceProvider, resourceId: record.sourceReleaseId, correlationId: remote.correlationId }
+      : undefined;
+    const remoteRequest = input
+      ? { ...input, digest: fingerprint(input), createdAt: now, ...(remote?.displayTitle ? { displayTitle: remote.displayTitle } : {}),
+          expiresAt: now + REMOTE_DELIVERY_TTL_MS, queueExpiresAt: now + REMOTE_QUEUE_RETENTION_MS,
+          deliverySessionId: 'queued', deliveryMessageId: randomUUID(),
+          ...(remote?.targetDownloader ? { targetDownloader: remote.targetDownloader } : {}) }
+      : undefined;
+    const filter = {
+      _id: record.id, ownerId: record.ownerId, status: 'missing',
+      ...(record.executionMode === 'remote'
+        ? { 'executionMode': 'remote', 'remoteRequest.commandId': record.remoteCommandId,
+            'remoteRequestState': 'succeeded', 'remoteStatusState': 'deleted' }
+        : { executionMode: { $ne: 'remote' }, lookupTag: record.lookupTag }),
+    };
+    const unset: Record<string, number> = { remoteAssociation: 1, remoteOutcome: 1, remoteRetryAttempt: 1,
+      remoteProjectionRevision: 1, remoteStatusSequence: 1, remoteStatusState: 1, missingSince: 1, expiresAt: 1,
+      downloadedBytes: 1, totalBytes: 1, downloadSpeed: 1, etaSeconds: 1, torrentHash: 1, name: 1,
+      lastErrorCode: 1, addedAt: 1, lastSyncedAt: 1, notificationIntent: 1, notificationTask: 1 };
+    if (!remoteRequest) Object.assign(unset, { remoteRequest: 1, remoteRequestState: 1,
+      remoteCommandRegistered: 1, remoteQueueExpiresAt: 1 });
+    if (!provider) unset.provider = 1;
+    if (!downloaderInstanceId) unset.downloaderInstanceId = 1;
+    if (!downloaderName) unset.downloaderName = 1;
+    const row = await this.downloads.findOneAndUpdate(filter, {
+      $set: { status: 'submitting', progress: 0, lookupTag: `movie-hub-${randomUUID()}`,
+        executionMode: remote ? 'remote' : 'local', ...(provider ? { provider } : {}),
+        ...(downloaderInstanceId ? { downloaderInstanceId } : {}), ...(downloaderName ? { downloaderName } : {}),
+        ...(remoteRequest
+          ? { remoteRequest, remoteRequestState: 'accepted', remoteCommandRegistered: false,
+              remoteQueueExpiresAt: new Date(remoteRequest.queueExpiresAt) }
+          : {}) },
+      $unset: unset,
+    }, { new: true }).lean().exec();
+    if (row) return { record: toMovieDownloadRecord(row), claimed: true };
+    const current = await this.findByRelease(record.ownerId, record.tmdbId, record.sourceReleaseId, record.sourceProvider);
+    if (!current) throw new Error('Movie download disappeared during redownload');
+    return { record: current, claimed: false };
   }
 
   async listForMovie(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]> {
@@ -144,11 +210,17 @@ export function toMovieDownloadRecord(row: MovieDownloadDocument & { _id: unknow
     tmdbId: row.tmdbId,
     sourceProvider: row.sourceProvider as DownloadSource,
     sourceReleaseId: row.sourceReleaseId,
-    provider: row.provider as DownloadProvider,
+    ...(row.provider ? { provider: row.provider as DownloadProvider } : {}),
     ...(row.downloaderInstanceId ? { downloaderInstanceId: row.downloaderInstanceId } : {}),
     ...(row.downloaderName ? { downloaderName: row.downloaderName } : {}),
     lookupTag: row.lookupTag,
     ...(row.executionMode ? { executionMode: row.executionMode as 'local' | 'remote' } : {}),
+    ...(row.remoteRequest?.deviceId ? { remoteDeviceId: row.remoteRequest.deviceId } : {}),
+    ...(row.remoteRequest?.commandId ? { remoteCommandId: row.remoteRequest.commandId } : {}),
+    ...(row.remoteRequest?.correlationId ? { remoteCorrelationId: row.remoteRequest.correlationId } : {}),
+    ...(row.remoteQueueExpiresAt ? { queueExpiresAt: row.remoteQueueExpiresAt } : {}),
+    ...(row.remoteRequestState ? { pushState: row.remoteRequestState } : {}),
+    ...(row.remoteRetryAttempt !== undefined && row.remoteRetryAttempt !== null ? { retryAttempt: row.remoteRetryAttempt } : {}),
     status: row.status as MovieDownloadStatus,
     progress: row.progress,
     ...(row.torrentHash ? { torrentHash: row.torrentHash } : {}),

@@ -1,5 +1,7 @@
 # Popular ↔ Gateway 双向 Socket RPC v1
 
+> 2026-10-23：新增 Popular 主动状态查询及 7 天推送队列。新队列、状态时效和 Agent 接入要求以[交接契约](agent-queued-push-handoff.md)为准；原短期命令接口继续保留，新 Web 下载流程使用持久队列。
+
 Popular 主动连接 `wss://gateway.example.com/service/v1/socket`，握手头 `Authorization: Bearer <independent-service-token>`。不使用 Socket.IO，不通过 URL 传凭据。公网 HTTPS/WSS 由 Nginx 终止，代理到 Gateway HTTP/WS；Popular 必须正常验证公网证书。本地测试才能显式开启不安全传输。
 
 ## 边界和数据所有权

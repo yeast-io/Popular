@@ -52,12 +52,23 @@ pub struct Record {
     pub correlation_id: String,
     pub delivery_digest: String,
     pub expires_at: u64,
+    #[serde(default)]
+    pub retry_attempt: Option<u64>,
+    #[serde(default)]
+    pub queue_expires_at: Option<u64>,
+    #[serde(default)]
+    pub intent_digest: String,
     pub phase: String,
     pub last_status: Value,
     pub evidence: Option<Value>,
     pub sequence: u64,
+    #[serde(default)]
+    pub monitoring_ended_at: Option<u64>,
 }
 impl Record {
+    pub fn monitoring_active(&self) -> bool {
+        self.monitoring_ended_at.is_none() && self.last_status["state"] != "deleted"
+    }
     pub fn marker(&self) -> String {
         format!("popular-{}", self.execution_id)
     }
@@ -86,6 +97,18 @@ pub struct Journal {
     pub events: Vec<Event>,
 }
 impl Journal {
+    pub fn prune(&mut self, now: u64) {
+        const RETENTION_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+        self.records.retain(|record| {
+            record
+                .monitoring_ended_at
+                .is_none_or(|ended| now < ended.saturating_add(RETENTION_MS))
+                || self
+                    .events
+                    .iter()
+                    .any(|event| event.wire.payload["commandId"] == record.command_id)
+        });
+    }
     pub fn event(
         &mut self,
         index: usize,
@@ -135,7 +158,7 @@ impl Journal {
         record.phase = phase.into();
         self.event(index, "__command_result__", data)
     }
-    pub fn acknowledge(&mut self, ack: &crate::protocol::Wire) -> bool {
+    pub fn acknowledge(&mut self, ack: &crate::protocol::Wire, now: u64) -> bool {
         let Some(index) = self
             .events
             .iter()
@@ -156,6 +179,13 @@ impl Journal {
             || ack.correlation_id != event.wire.correlation_id
         {
             return false;
+        }
+        if event.wire.command == "__download_status__" && data["state"] == "deleted" {
+            if let Some(record) = self.records.iter_mut().find(|record| {
+                record.command_id == data["commandId"] && record.execution_id == data["executionId"]
+            }) {
+                record.monitoring_ended_at = Some(now);
+            }
         }
         self.events.remove(index);
         true
@@ -204,9 +234,9 @@ mod tests {
             Some("trace".into()),
         );
         ack.reply_to = Some(event.wire.message_id);
-        assert!(!journal.acknowledge(&ack));
+        assert!(!journal.acknowledge(&ack, 1000));
         ack.payload["executionId"] = json!("execution");
-        assert!(journal.acknowledge(&ack));
+        assert!(journal.acknowledge(&ack, 1000));
         assert!(journal.events.is_empty());
     }
 }

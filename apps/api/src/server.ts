@@ -1,15 +1,17 @@
+import { MongoRemoteCommandIndexMigration } from './infrastructure/mongodb/remote-downloads/remote-command-index-migration.store.js';
 import { MongoSiteAccountMigrationStore } from './infrastructure/mongodb/resource-sites/site-account-migration.store.js';
 import { SiteAccountMigrationService } from './modules/resource-sites/site-account-migration.service.js';
 import { randomUUID } from 'node:crypto';
 import { GatewayPool } from './infrastructure/socket/gateway-pool.service.js';
 import { MongoRemoteControlStore } from './infrastructure/mongodb/remote-downloads/remote-control.store.js';
 import { RemoteDownloadService } from './modules/remote-downloads/remote-download.service.js';
+import { RemoteMovieDownloadService } from './modules/remote-downloads/remote-movie-download.service.js';
 import { RemoteDownloadCoordinator } from './modules/remote-downloads/remote-download-coordinator.service.js';
 import { RemoteDownloadWorker } from './modules/remote-downloads/remote-download.worker.js';
 import { readTorrentMetadata } from './modules/remote-downloads/torrent-metadata.schema.js';
 import { integrationSecretContext } from './modules/integrations/integration.service.js';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
-import { AiTrace, withAiTrace } from './infrastructure/logging/ai-trace.js';
+import { AiTrace, withAiTrace, currentAiTrace } from './infrastructure/logging/ai-trace.js';
 import { MongoRemoteAuthorizationMigration } from './infrastructure/mongodb/remote-clients/remote-authorization-migration.store.js';
 import { MongoRemoteAuthorizationStore } from './infrastructure/mongodb/remote-clients/remote-authorization.store.js';
 import { RemoteClientService } from './modules/remote-clients/remote-client.service.js';
@@ -130,6 +132,16 @@ try {
   await connectInfrastructure(infrastructure);
   shutdown.assertRunning();
   const models = createModels(infrastructure.mongodb.getConnection());
+  const commandIndexMigrationTrace = new AiTrace(loggers.error, {}, '', 'remote-command-index.migration', config.VERBOSE);
+  await withAiTrace(commandIndexMigrationTrace, async () => {
+    try {
+      await commandIndexMigrationTrace.step('remote-command-index.migration', () =>
+        new MongoRemoteCommandIndexMigration(models.remoteControl.commands, models.movieDownloads).migrate());
+    } catch (error) {
+      commandIndexMigrationTrace.fail(error);
+      throw error;
+    }
+  });
   const downloaderMigration = new MongoDownloaderInstanceMigration(
     models.qbittorrentConfigs,
     models.transmissionConfigs,
@@ -418,6 +430,7 @@ try {
     models.movieDownloads.init(),
   ]);
   const remoteDownloads = new RemoteDownloadService({
+    diagnostics: { logger: loggers.error, verbose: config.VERBOSE },
     store: new MongoRemoteControlStore(models.users, models.remoteDevices, models.movieDownloads, models.remoteControl),
     report: (err, fields) => loggers.error.error({ err, ...fields }, 'remote-download'),
     torrent: async (command, download) => {
@@ -439,11 +452,12 @@ try {
           command.resourceId
         );
       }
+      currentAiTrace()?.sensitive(url);
       return { url, torrentHash: await readTorrentMetadata(url) };
     },
   });
   const remoteDownloadCoordinator = new RemoteDownloadCoordinator(gatewayPool, remoteDownloads);
-  const remoteDownloadWorker = new RemoteDownloadWorker(remoteDownloads);
+  const remoteDownloadWorker = new RemoteDownloadWorker(remoteDownloads, remoteDownloadCoordinator);
   shutdown.register('remote_downloads', 32, () => remoteDownloadWorker.stop());
   await remoteDownloads.sweep();
   remoteDownloadWorker.start();
@@ -580,6 +594,8 @@ try {
     notificationService,
     { resources: movieSiteResourcesService, sites: resourceSiteService }
   );
+  movieDownloadService.remote = new RemoteMovieDownloadService(new MongoMovieDownloadStore(models.movieDownloads),
+    remoteClientService, remoteDownloadCoordinator);
   movieDownloadService.preferences = integrationPreferencesService;
   const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
   const conversationService = new ConversationService(authService, conversationStore);

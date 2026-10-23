@@ -85,7 +85,7 @@ function fixture() {
         id: 'manual',
         title: 'Movie',
         resourceName: row.name!,
-        provider: row.provider,
+        provider: row.provider!,
         totalBytes: row.totalBytes!,
         completedAt: new Date(),
         detailUrl: '/movies/7',

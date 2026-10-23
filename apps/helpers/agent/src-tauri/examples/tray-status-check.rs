@@ -90,7 +90,18 @@ fn main() {
             previous = Some((states, images));
             assert_eq!(menu.items()?.iter().map(|item| item.id().clone()).collect::<Vec<_>>(), original_ids);
         }
-        println!("Native menu: brand logo, grouping, template state icons, live updates and development application icon and light/dark switching and tray template preservation passed.");
+        for count in [1, 12, 100, 0] {
+            tray_presentation::apply_queue_badge(&tray, true, count)?;
+            let (title, width, template) = tray.with_inner_tray_icon(|inner| {
+                let button = inner.ns_status_item().unwrap().button(MainThreadMarker::new().unwrap()).unwrap();
+                let image = button.image().unwrap();
+                (button.title().to_string(), image.size().width, image.isTemplate())
+            })?;
+            assert!(title.is_empty(), "the badge must replace the separate menu bar number");
+            assert!(template);
+            if count == 0 { assert_eq!(width, 18.0); } else { assert!(width > 18.0); }
+        }
+        println!("Native menu: brand logo, grouping, template state icons, live updates, application icon, light/dark switching and queue badge replacement/removal passed.");
         app.handle().exit(0);
         Ok(())
     }).build(context).expect("isolated native menu check").run(|_, _| {});

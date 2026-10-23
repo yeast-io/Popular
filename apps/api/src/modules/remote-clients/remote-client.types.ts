@@ -1,4 +1,4 @@
-import type { RemoteClientMutation, RemoteClientUnbind, RemoteAuthorizationChange } from '@movie-hub/contract';
+import type { RemoteClientMutation, RemoteClientUnbind, RemoteAuthorizationChange, DeviceStatus } from '@movie-hub/contract';
 import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 
 export type RemoteClientOperation = 'generate' | 'regenerate' | 'revoke';
@@ -21,6 +21,11 @@ export interface RemoteDeviceRecord {
   authVersion: number;
   deviceVersion: number;
   status: 'bound' | 'unbound';
+  isAgentOnline: boolean;
+  isAgentDownloaderOnline: boolean;
+  statusCheckedAt?: Date;
+  downloaderType?: 'qbittorrent' | 'transmission';
+  downloaderInstanceId?: string;
   boundAt: Date;
   operations: Array<{ operationId: string; expectedAuthVersion: number; expectedDeviceVersion: number }>;
   pending?: RemoteAuthorizationChange;
@@ -30,6 +35,8 @@ export interface RemoteKeySecrets {
   encryptedKey: string;
 }
 export interface RemoteAuthorizationStore {
+  statusDevices?(): AsyncIterable<RemoteDeviceRecord>;
+  updateStatus?(device: RemoteDeviceRecord, checkedAt: Date): Promise<void>;
   account(ownerId: string): Promise<RemoteClientAccount>;
   changeKey(
     ownerId: string,
@@ -50,6 +57,7 @@ export interface RemoteAuthorizationStore {
   acknowledge(event: RemoteAuthorizationChange): Promise<void>;
 }
 export interface AuthorizationGateway {
+  status?(device: RemoteDeviceRecord, correlationId?: string): Promise<DeviceStatus>;
   notify(event: RemoteAuthorizationChange): Promise<void>;
 }
 export interface RemoteClientDiagnostics {

@@ -13,6 +13,19 @@ import type {
 export class MongoRemoteAuthorizationStore implements RemoteAuthorizationStore {
   constructor(private readonly users: Model<UserDocument>, private readonly bindings: Model<RemoteDeviceDocument>) {}
 
+  async* statusDevices() {
+    for await (const row of this.bindings.find({ status: 'bound' }).lean().cursor()) yield this.deviceRecord(row);
+  }
+
+  async updateStatus(device: RemoteDeviceRecord, checkedAt: Date) {
+    await this.bindings.updateOne({ ownerId: device.ownerId, deviceId: device.deviceId,
+      authVersion: device.authVersion, deviceVersion: device.deviceVersion, status: 'bound',
+      $or: [{ statusCheckedAt: { $exists: false } }, { statusCheckedAt: { $lte: checkedAt } }] },
+    { $set: { isAgentOnline: device.isAgentOnline, isAgentDownloaderOnline: device.isAgentDownloaderOnline,
+      statusCheckedAt: checkedAt, ...(device.downloaderType ? { downloaderType: device.downloaderType } : {}),
+      ...(device.downloaderInstanceId ? { downloaderInstanceId: device.downloaderInstanceId } : {}) } }).exec();
+  }
+
   async account(ownerId: string): Promise<RemoteClientAccount> {
     const row = await this.users.findById(ownerId).select('+rcck').lean().exec();
     const key = row?.rcck;
@@ -190,6 +203,11 @@ export class MongoRemoteAuthorizationStore implements RemoteAuthorizationStore {
       authVersion: row.authVersion,
       deviceVersion: row.deviceVersion,
       status: row.status,
+      isAgentOnline: row.isAgentOnline ?? false,
+      isAgentDownloaderOnline: row.isAgentDownloaderOnline ?? false,
+      ...(row.statusCheckedAt ? { statusCheckedAt: row.statusCheckedAt } : {}),
+      ...(row.downloaderType ? { downloaderType: row.downloaderType as 'qbittorrent' | 'transmission' } : {}),
+      ...(row.downloaderInstanceId ? { downloaderInstanceId: row.downloaderInstanceId } : {}),
       boundAt: row.boundAt,
       operations: row.operations.map((item) => {
         return {

@@ -42,14 +42,14 @@ export class NotificationTestService {
       channels: await this.notifications.listChannels(owner),
       page,
       hasMore: records.length > 30,
-      items: visible.map((record) => {
+      items: visible.filter((record) => Boolean(record.provider)).map((record) => {
         const movie = byId.get(record.tmdbId);
         return {
           id: record.id,
           tmdbId: record.tmdbId,
           title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
           resourceName: record.name ?? `TMDB ${record.tmdbId}`,
-          provider: record.provider,
+          provider: record.provider!,
           ...(record.downloaderInstanceId ? { downloaderInstanceId: record.downloaderInstanceId } : {}),
           ...(record.downloaderName ? { downloaderName: record.downloaderName } : {}),
           totalBytes: record.totalBytes ?? 0,

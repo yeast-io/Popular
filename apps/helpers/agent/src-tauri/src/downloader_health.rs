@@ -22,7 +22,7 @@ struct Probe {
 impl Probe {
     fn matches(&self, stored: &StoredSettings) -> bool {
         self.credential_id == stored.credential_id
-            && settings::same_downloader(&self.settings, &stored.settings)
+            && settings::same_downloader_credentials(&self.settings, &stored.settings)
     }
 }
 
@@ -82,6 +82,7 @@ async fn check(
         downloader::test(
             TestRequest {
                 provider: probe.settings.provider.clone(),
+                auth_mode: probe.settings.auth_mode.clone(),
                 downloader_url: probe.settings.downloader_url.clone(),
                 username: probe.settings.username.clone(),
                 password: SecretChange::Keep,

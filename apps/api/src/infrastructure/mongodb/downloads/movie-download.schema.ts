@@ -41,6 +41,8 @@ const movieDownloadSchema = new Schema(
     remoteCommandRegistered: Boolean,
     remoteRequestState: String,
     remoteOutcome: String,
+    remoteQueueExpiresAt: Date,
+    remoteRetryAttempt: Number,
     remoteProjectionRevision: Number,
     remoteStatusSequence: Number,
     remoteStatusState: String,
@@ -50,7 +52,7 @@ const movieDownloadSchema = new Schema(
     tmdbId: { type: Number, required: true, min: 1 },
     sourceProvider: { type: String, required: true, enum: ['mteam', 'hdarea'] },
     sourceReleaseId: { type: String, required: true },
-    provider: { type: String, required: true, enum: ['qbittorrent', 'transmission'] },
+    provider: { type: String, required: function () { return this.executionMode !== 'remote'; }, enum: ['qbittorrent', 'transmission'] },
     downloaderInstanceId: { type: String },
     downloaderName: { type: String },
     lookupTag: { type: String, required: true },
@@ -76,6 +78,7 @@ const movieDownloadSchema = new Schema(
 );
 
 movieDownloadSchema.index({ executionMode: 1, remoteCommandRegistered: 1 });
+movieDownloadSchema.index({ 'executionMode': 1, 'remoteRequest.queueExpiresAt': 1 });
 movieDownloadSchema.index(
   { 'remoteRequest.commandId': 1 },
   { unique: true, partialFilterExpression: { 'remoteRequest.commandId': { $type: 'string' } } }

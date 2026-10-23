@@ -10,7 +10,8 @@ FormatRegistry.Set('uuid', (value) => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f
 test('remote configuration lists independent devices and reports repeatable key availability without embedding secrets', () => {
   const configuration = { hasKey: true, canReadKey: true, authVersion: 1, deviceLimit: 3,
     devices: ['a', 'b', 'c'].map(
-      (id) => ({ id, authVersion: 1, deviceVersion: 1, boundAt: '2026-10-21T00:00:00Z' })
+      (id) => ({ id, authVersion: 1, deviceVersion: 1, boundAt: '2026-10-21T00:00:00Z',
+        isAgentOnline: false, isAgentDownloaderOnline: false })
     ), gatewayNotificationPending: false };
   assert.equal(Value.Check(RemoteClientConfigurationSchema, configuration), true);
   assert.equal(

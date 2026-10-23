@@ -13,6 +13,10 @@ export interface Session {
 export interface AgentStatus {
   downloaderType: 'qbittorrent' | 'transmission'; instanceId: string; configured: boolean; reachable: boolean;
 }
+export interface DeviceStatus {
+  online: boolean; isAgentOnline: boolean; isAgentDownloaderOnline: boolean;
+  checkedAt: number; statusObservedAt?: number; session?: Session; agentStatus?: AgentStatus | null;
+}
 export interface DownloadRequest {
   commandId: string; downloadId: string; ownerId: string; deviceId: string; authVersion: number;
   deviceVersion: number; source: string; resourceId: string; correlationId: string;
@@ -31,6 +35,9 @@ export interface StatusPayload {
   progress: number; downloadedBytes: number; totalBytes: number; downloadSpeed: number; uploadSpeed: number;
 }
 export interface CommandRecord extends DownloadRequest {
+  retiredAt?: number;
+  queueExpiresAt?: number; nextAttemptAt?: number; retryAttempt?: number; lastErrorCode?: string;
+  targetDownloader?: { downloaderType: AgentStatus['downloaderType']; instanceId: string };
   revision: number; digest: string; state: CommandState; createdAt: number; expiresAt: number;
   deliverySessionId: string; deliveryMessageId: string; envelope?: string; torrentHash?: string;
   executionId?: string; grantSessionId?: string; grantExpiresAt?: number;

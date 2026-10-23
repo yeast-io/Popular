@@ -34,6 +34,7 @@ pub fn binding(identity: &Identity, settings: &Settings) -> BindingState {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
+    pub page: String,
     pub service: String,
     pub downloader: String,
     pub device_id: Option<String>,
@@ -41,6 +42,8 @@ pub struct Status {
     pub preference_error: Option<String>,
 }
 pub struct Runtime {
+    pub queue: Mutex<crate::queue::State>,
+    pub queue_refresh: tokio::sync::Notify,
     pub status: Mutex<Status>,
     pub suspended: std::sync::atomic::AtomicBool,
     pub changed: tokio::sync::Notify,
@@ -49,7 +52,10 @@ pub struct Runtime {
 impl Default for Runtime {
     fn default() -> Self {
         Self {
+            queue: Default::default(),
+            queue_refresh: Default::default(),
             status: Mutex::new(Status {
+                page: "settings".into(),
                 service: "unconfigured".into(),
                 downloader: "disconnected".into(),
                 device_id: None,

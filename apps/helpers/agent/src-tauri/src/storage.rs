@@ -1,5 +1,5 @@
 use crate::{credentials::CredentialStore, errors::AgentError, settings::*};
-use std::{io::Write, path::Path};
+use std::path::Path;
 
 pub fn load(directory: &Path) -> Result<StoredSettings, AgentError> {
     match std::fs::read(directory.join("settings.json")) {
@@ -56,9 +56,25 @@ pub fn save(
         password: resolve_secret(
             &request.password,
             &previous.password,
-            same_downloader(&settings, &old.settings),
+            same_downloader_credentials(&settings, &old.settings),
         )?,
     };
+    // Identity and configuration share one atomic commit, including deletion while offline.
+    let previous_target = old
+        .downloader_identity
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(|| crate::device::target(directory, &old.settings))?;
+    let downloader_identity = Some(
+        if !settings.downloader_configured || same_downloader(&settings, &old.settings) {
+            previous_target
+        } else {
+            crate::protocol::DownloaderTarget {
+                downloader_type: settings.provider.clone(),
+                instance_id: uuid::Uuid::new_v4().to_string(),
+            }
+        },
+    );
     std::fs::create_dir_all(directory)?;
     let credential_id = if secrets.api_key.is_empty() && secrets.password.is_empty() {
         None
@@ -78,16 +94,10 @@ pub fn save(
     let stored = StoredSettings {
         settings,
         credential_id,
+        downloader_identity,
     };
     trace.stage("settings.file.write.started");
-    let commit = || -> Result<(), AgentError> {
-        let mut file = tempfile::NamedTempFile::new_in(directory)?;
-        file.write_all(&serde_json::to_vec_pretty(&stored)?)?;
-        file.as_file().sync_all()?;
-        file.persist(directory.join("settings.json"))
-            .map_err(|e| AgentError::from(e.error))?;
-        Ok(())
-    };
+    let commit = || crate::journal::atomic(directory, "settings.json", &stored);
     if let Err(error) = commit() {
         if let Some(id) = &stored.credential_id {
             let _ = store.delete(id);
@@ -177,6 +187,43 @@ mod tests {
             secrets(&load(dir.path()).unwrap(), &store).unwrap().api_key,
             "private-api-key"
         );
+    }
+    #[test]
+    fn downloader_api_key_stays_native_and_separate_from_gateway_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::default();
+        save(dir.path(), request(), &store).unwrap();
+        let before = load(dir.path()).unwrap();
+        let mut settings = before.settings.clone();
+        settings.auth_mode = DownloaderAuthMode::ApiKey;
+        assert!(save(
+            dir.path(),
+            SaveRequest {
+                settings: settings.clone(),
+                api_key: SecretChange::Keep,
+                password: SecretChange::Keep
+            },
+            &store
+        )
+        .is_err());
+        save(
+            dir.path(),
+            SaveRequest {
+                settings,
+                api_key: SecretChange::Keep,
+                password: SecretChange::Set("private-qbt-key".into()),
+            },
+            &store,
+        )
+        .unwrap();
+        let stored = load(dir.path()).unwrap();
+        assert!(stored.downloader_identity == before.downloader_identity);
+        let secrets = secrets(&stored, &store).unwrap();
+        assert_eq!(secrets.api_key, "private-api-key");
+        assert_eq!(secrets.password, "private-qbt-key");
+        let json = std::fs::read_to_string(dir.path().join("settings.json")).unwrap();
+        assert!(!json.contains("private-"));
+        assert!(json.contains("apiKey"));
     }
     #[test]
     fn keyring_failure_preserves_previous_file() {

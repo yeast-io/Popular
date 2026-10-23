@@ -1,3 +1,4 @@
+import { remoteDownloadMessages } from '../remote-downloads/remote-download.messages.js';
 import type { MessageKey } from './assistant.types.js';
 import type { DownloaderChoice, Locale, MovieDownload, MovieDownloadStatus } from '@movie-hub/contract';
 
@@ -89,7 +90,7 @@ export function downloadProvidersText(locale: Locale, title: string, providers: 
 export function downloadSubmittedText(locale: Locale, result: MovieDownload): string {
   return assistantText(locale, 'submitted', {
     id: result.id,
-    provider: result.downloaderName ?? result.provider,
+    provider: result.downloaderName ?? result.provider ?? remoteDownloadMessages[locale].agent,
     status: statuses[locale][result.status],
     progress: result.progress,
   });

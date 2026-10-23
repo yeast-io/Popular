@@ -8,7 +8,7 @@ local raw = redis.call('GET', KEYS[1])
 if not raw then return 0 end
 local old = cjson.decode(raw)
 if old.sessionId ~= ARGV[1] or old.instanceId ~= ARGV[2] then return 0 end
-if ARGV[3] ~= '' then old.status = cjson.decode(ARGV[3]) end
+if ARGV[3] ~= '' then old.status = cjson.decode(ARGV[3]); old.statusObservedAt = tonumber(ARGV[5]) end
 redis.call('SET', KEYS[1], cjson.encode(old), 'PX', ARGV[4])
 return 1`;
 const releaseScript = `
@@ -52,7 +52,7 @@ export class RedisRouter implements Router {
     return value ? (JSON.parse(value) as Route) : null;
   }
 
-  async renew(session: Session, status?: AgentStatus) {
+  async renew(session: Session, status?: AgentStatus, observedAt = Date.now()) {
     return (
       (await this.redis.eval(
         renewScript,
@@ -61,7 +61,8 @@ export class RedisRouter implements Router {
         session.sessionId,
         session.instanceId,
         status ? JSON.stringify(status) : '',
-        String(this.leaseMs)
+        String(this.leaseMs),
+        String(observedAt)
       )) === 1
     );
   }

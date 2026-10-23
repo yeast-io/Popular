@@ -87,7 +87,12 @@ export function registerMovieDownloadRoutes(
               request.body.sourceReleaseId,
               request.body.provider,
               request.body.sourceProvider,
-              request.body.downloaderInstanceId
+              request.body.downloaderInstanceId,
+              request.body.remoteDeviceId,
+              request.headers['accept-language']?.startsWith('zh')
+                ? 'zh-CN'
+                : request.headers['accept-language']?.startsWith('en') ? 'en-US' : config.TMDB_LANGUAGE,
+              request.body.sourceReleaseTitle
             );
           });
           trace.event('download.create.completed', {

@@ -79,19 +79,41 @@ struct Target {
     id: String,
 }
 pub fn target(directory: &Path, settings: &Settings) -> Result<DownloaderTarget, AgentError> {
-    let mut targets: Targets = journal::load(directory, "downloader-targets.json")?;
-    if let Some(target) = targets
-        .targets
-        .iter()
-        .find(|t| crate::settings::same_downloader(&t.settings, settings))
-    {
-        if !protocol::id(&target.id) {
-            return Err(AgentError::code("storageError"));
+    let stored = crate::storage::load(directory)?;
+    if crate::settings::same_downloader(&stored.settings, settings) {
+        if let Some(target) = stored.downloader_identity {
+            if !protocol::id(&target.instance_id) {
+                return Err(AgentError::code("storageError"));
+            }
+            return Ok(target);
         }
-        return Ok(DownloaderTarget {
-            downloader_type: settings.provider.clone(),
-            instance_id: target.id.clone(),
-        });
+    }
+    let mut targets: Targets = journal::load(directory, "downloader-targets.json")?;
+    // Preserve the active legacy association when migrating an existing installation.
+    let previous = if directory.join("settings.json").exists()
+        && crate::settings::same_downloader(&stored.settings, settings)
+        && settings.downloader_configured
+    {
+        targets
+            .targets
+            .iter()
+            .find(|t| crate::settings::same_downloader(&t.settings, settings))
+    } else {
+        targets.targets.last()
+    };
+    if let Some(target) = previous {
+        if !settings.downloader_configured
+            || crate::settings::same_downloader(&target.settings, settings)
+        {
+            if !protocol::id(&target.id) {
+                return Err(AgentError::code("storageError"));
+            }
+            let result = DownloaderTarget {
+                downloader_type: target.settings.provider.clone(),
+                instance_id: target.id.clone(),
+            };
+            return Ok(result);
+        }
     }
     let id = uuid::Uuid::new_v4().to_string();
     // Only non-secret downloader identity fields; no Gateway address or credentials.
@@ -205,12 +227,15 @@ mod tests {
     #[test]
     fn downloader_switch_preserves_old_target_identity() {
         let dir = tempfile::tempdir().unwrap();
-        let mut settings = Settings::default();
+        let mut settings = Settings {
+            downloader_configured: true,
+            ..Settings::default()
+        };
         let old = target(dir.path(), &settings).unwrap();
         settings.provider = crate::settings::Provider::Transmission;
         let new = target(dir.path(), &settings).unwrap();
         assert!(old != new);
         settings.provider = crate::settings::Provider::Qbittorrent;
-        assert!(target(dir.path(), &settings).unwrap() == old);
+        assert!(target(dir.path(), &settings).unwrap() != old);
     }
 }

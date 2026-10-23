@@ -2,7 +2,7 @@ use crate::{diagnostics::Trace, runtime::Runtime, storage, AgentState};
 use tauri::{
     menu::{CheckMenuItem, IconMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Manager,
+    Emitter, Manager,
 };
 use tauri_plugin_autostart::ManagerExt;
 pub fn text(locale: &str, key: &str) -> String {
@@ -97,6 +97,9 @@ struct TrayMenu {
     header: IconMenuItem<tauri::Wry>,
     statuses: [IconMenuItem<tauri::Wry>; 2],
     section: MenuItem<tauri::Wry>,
+    queue: MenuItem<tauri::Wry>,
+    queue_label: String,
+    queue_count: Option<u64>,
     #[cfg(target_os = "macos")]
     menu: Menu<tauri::Wry>,
     online: Option<[bool; 2]>,
@@ -167,6 +170,13 @@ impl TrayMenu {
             MenuItem::with_id(app, "quit", &applied[3], true, None::<&str>)?,
         ];
         let section = MenuItem::with_id(app, "connections", &applied[6], false, None::<&str>)?;
+        let queue = MenuItem::with_id(
+            app,
+            "queue",
+            text("en-US", "queueTitle"),
+            true,
+            None::<&str>,
+        )?;
         let enabled = storage::load(&app.state::<AgentState>().directory)
             .map(|stored| stored.settings.autostart)
             .unwrap_or(true);
@@ -184,6 +194,7 @@ impl TrayMenu {
                 &statuses[0],
                 &statuses[1],
                 &settings_separator,
+                &queue,
                 &items[0],
                 &startup,
                 &quit_separator,
@@ -196,6 +207,9 @@ impl TrayMenu {
                 header,
                 statuses,
                 section,
+                queue,
+                queue_label: String::new(),
+                queue_count: None,
                 #[cfg(target_os = "macos")]
                 menu: menu.clone(),
                 online: None,
@@ -208,6 +222,21 @@ impl TrayMenu {
     }
     fn refresh(&mut self, app: &tauri::AppHandle) -> tauri::Result<()> {
         let labels = Self::labels(app);
+        let state = app.state::<AgentState>();
+        let locale = storage::load(&state.directory)
+            .map(|s| s.settings.locale)
+            .unwrap_or_else(|_| "en-US".into());
+        let view = crate::queue::view(&state.directory, &app.state::<Runtime>());
+        let count = view.snapshot.as_ref().map(|snapshot| snapshot.total);
+        let count_label = count.map(|v| v.to_string()).unwrap_or_else(|| "—".into());
+        let mut queue_label = text(&locale, "queueMenu").replace("{count}", &count_label);
+        if view.stale {
+            queue_label.push_str(&format!(" · {}", text(&locale, "queueCached")));
+        }
+        if self.queue_label != queue_label {
+            self.queue.set_text(&queue_label)?;
+            self.queue_label = queue_label;
+        }
         for (index, item) in [2, 3].into_iter().zip(self.items.iter()) {
             if self.applied[index] != labels[index] {
                 item.set_text(&labels[index])?;
@@ -245,8 +274,14 @@ impl TrayMenu {
             #[cfg(target_os = "macos")]
             crate::tray_presentation::apply(app, &self.menu, online, dark)?;
         }
-        if self.online.map(|previous| previous[0]) != Some(online[0]) || header_changed {
+        if self.online.map(|previous| previous[0]) != Some(online[0])
+            || header_changed
+            || self.queue_count != count
+        {
             if let Some(tray) = app.tray_by_id("main") {
+                #[cfg(target_os = "macos")]
+                crate::tray_presentation::apply_queue_badge(&tray, online[0], count.unwrap_or(0))?;
+                #[cfg(not(target_os = "macos"))]
                 // set_icon alone resets AppKit's template flag; update both atomically.
                 tray.set_icon_with_as_template(
                     Some(tray_icon(online[0])?),
@@ -254,6 +289,7 @@ impl TrayMenu {
                 )?;
             }
         }
+        self.queue_count = count;
         if let Some(tray) = app.tray_by_id("main") {
             if self.applied[0] != labels[0] || header_changed {
                 tray.set_tooltip(Some(format!("{} — {}", labels[4], labels[0])))?;
@@ -383,7 +419,26 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
         .icon_as_template(cfg!(target_os = "macos"))
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id.as_ref() {
-            "settings" | "brand" => open(app),
+            "settings" | "brand" => {
+                app.state::<Runtime>()
+                    .status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .page = "settings".into();
+                let _ = app.emit("agent-page", "settings");
+                open(app);
+            }
+            "queue" => {
+                let runtime = app.state::<Runtime>();
+                runtime
+                    .status
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .page = "queue".into();
+                runtime.queue_refresh.notify_one();
+                let _ = app.emit("agent-page", "queue");
+                open(app);
+            }
             "quit" => app.exit(0),
             "autostart" => {
                 let app = app.clone();

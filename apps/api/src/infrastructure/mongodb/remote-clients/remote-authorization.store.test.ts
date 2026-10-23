@@ -48,6 +48,24 @@ function models() {
   return { userWrites, deviceWrites, store: new MongoRemoteAuthorizationStore(users, devices) };
 }
 
+test('device reads preserve independent status reports and default legacy lean rows to false', async () => {
+  for (const report of [{}, { isAgentOnline: true, isAgentDownloaderOnline: false },
+    { isAgentOnline: true, isAgentDownloaderOnline: true }]) {
+    const devices = {
+      findOne() {
+        return { lean: () => ({ exec: async () => ({
+          ownerId: 'owner', deviceId: 'device-a', authVersion: 1, deviceVersion: 1,
+          status: 'bound', boundAt: new Date(), operations: [], ...report,
+        }) }) };
+      },
+    } as unknown as Model<RemoteDeviceDocument>;
+    const store = new MongoRemoteAuthorizationStore({} as Model<UserDocument>, devices);
+    const device = await store.device('owner', 'device-a');
+    assert.equal(device?.isAgentOnline, report.isAgentOnline ?? false);
+    assert.equal(device?.isAgentDownloaderOnline, report.isAgentDownloaderOnline ?? false);
+  }
+});
+
 test('device unbind changes only the named owner/device binding and never writes user RCCK fields', async () => {
   const f = models();
   assert.equal(

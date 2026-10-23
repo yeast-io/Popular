@@ -1,6 +1,20 @@
 import type { TranslationMessages } from '../translation-messages.types.js';
 
 const enUS = {
+  'remoteClient.agentStatus': 'Agent',
+  'remoteClient.downloaderStatus': 'Agent downloader',
+  'remoteClient.online': 'Online',
+  'remoteClient.offline': 'Offline or unavailable',
+  'movie.download.agentName': 'Popular Link Agent',
+  'movie.download.agentTarget': 'Agent',
+  'movie.download.agentDeviceTooltip': 'Device ID: {device}',
+  'movie.download.pushAgent': 'Push to Agent',
+  'movie.download.agentQueuePolicy': 'Offline or failed pushes stay queued for 7 days from the first submission, then are automatically deleted. Popular retries when both Agent and its original downloader are online. Uncertain execution results are reconciled before retrying.',
+  'movie.download.agentQueued': 'Queued for Agent',
+  'movie.download.agentRetry': 'Push failed or unavailable · retry queued',
+  'movie.download.agentUnknown': 'Checking whether the downloader accepted the task',
+  'movie.download.agentClosed': 'Push stopped',
+  'movie.download.agentExpires': 'Queued push expires and is deleted at {date}.',
   'remoteClient.revokeConfirm': 'Revoke RCCK? This key and all bound device authorizations will become invalid. You do not need to revoke the key to unbind one device.',
   'remoteClient.revoke': 'Revoke RCCK',
   'remoteClient.devices': 'Bound devices ({count}/{limit})',

@@ -171,13 +171,16 @@ test('REAL Agent WebSocket with SIMULATED Mongo/downloader: proof, encrypted del
     authVersion: 1, deviceVersion: 1, source: 'mteam', resourceId: 'resource-1', correlationId: 'tcp-agent' };
   f.store.downloads.set(input.downloadId, { ...input, tmdbId: 1, executionMode: 'remote' });
   const delivery = once(socket, 'message');
-  await new RemoteDownloadCoordinator(pool, f.backend).dispatch(input);
+  await new RemoteDownloadCoordinator(pool, f.backend).enqueue(input);
   const delivered = JSON.parse((await delivery)[0].toString());
   assert.equal(delivered.command, '__add_download__');
   const publicKey = await importJWK(f.options.signing.publicKey, 'EdDSA');
   const verified = await compactVerify(delivered.payload.envelope, publicKey);
   const wrapper = JSON.parse(new TextDecoder().decode(verified.payload));
   const clear = await compactDecrypt(wrapper.jwe, d.encryption.privateKey);
+  const queuedPayload = JSON.parse(new TextDecoder().decode(clear.plaintext));
+  assert.equal(queuedPayload.retryAttempt, 1);
+  assert.equal(queuedPayload.queueExpiresAt - f.store.commands.get(input.commandId).createdAt, 7 * 86400000);
   assert.equal(JSON.parse(new TextDecoder().decode(clear.plaintext)).commandId, input.commandId);
   socket.send(
     JSON.stringify(

@@ -65,6 +65,9 @@ pub fn apply_tasks(
     tasks: &[Value],
 ) -> Result<(), AgentError> {
     let record = &journal.records[index];
+    if !record.monitoring_active() {
+        return Ok(());
+    }
     let task = tasks
         .iter()
         .find(|task| downloads::matches_hash(task, &record.info_hash));
@@ -81,7 +84,7 @@ pub fn apply_tasks(
         return unavailable(journal, index, "failed", force);
     }
     let snapshot = downloads::status(task, &record.target.provider)?;
-    if record.phase == "unknown" {
+    if matches!(record.phase.as_str(), "unknown" | "abandoned") {
         journal.records[index].evidence = Some(found);
         journal.result(index, "succeeded")?;
     }
@@ -103,20 +106,92 @@ async fn lookup(
 ) -> Result<Vec<Value>, AgentError> {
     let mut downloader =
         Downloader::connect(settings.clone(), secrets.password.clone(), trace).await?;
+    downloader.probe().await?;
     downloader.tasks_many(hashes).await
+}
+// Independent of command execution: a slow add or verification cannot starve health reports.
+pub async fn report_status(
+    sender: Sender<Wire>,
+    settings: &Settings,
+    secrets: &Secrets,
+    target: &DownloaderTarget,
+) -> Result<(), AgentError> {
+    let mut interval = tokio::time::interval(Duration::from_secs(20));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        interval.tick().await;
+        let trace = Trace::new();
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            lookup(settings, secrets, &[], &trace),
+        )
+        .await
+        .unwrap_or_else(|_| Err(AgentError::code("timeout")));
+        if let Err(error) = &result {
+            if settings.downloader_configured {
+                diagnostics::failure("downloader.health.report", &trace.id, error, 0);
+            }
+        }
+        outgoing(&sender,protocol::message("__agent_status__",json!({"downloaderType":target.downloader_type,"instanceId":target.instance_id,"configured":settings.downloader_configured,"reachable":settings.downloader_configured && result.is_ok()}),Some(trace.id))).await?;
+    }
 }
 struct Pending {
     index: usize,
     command: Command,
-    received: Wire,
     request: Wire,
 }
 fn redacted_digest(command: &Command) -> String {
     protocol::fingerprint(
         &json!({"protocolVersion":command.protocol_version,"command":command.command,"messageId":command.message_id,"commandId":command.command_id,"downloadId":command.download_id,
         "ownerId":command.owner_id,"deviceId":command.device_id,"authVersion":command.auth_version,"deviceVersion":command.device_version,"sessionId":command.session_id,"source":command.source,"resourceId":command.resource_id,
-        "correlationId":command.correlation_id,"expiresAt":command.expires_at,"torrentHash":command.torrent_hash}),
+        "correlationId":command.correlation_id,"expiresAt":command.expires_at,"torrentHash":command.torrent_hash,"torrentUrlDigest":protocol::fingerprint(&json!(command.torrent_url)),"queueExpiresAt":command.queue_expires_at,"retryAttempt":command.retry_attempt}),
     )
+}
+// Stable across delivery sessions, refreshed URLs and attempts; never persists a URL.
+fn intent_digest(command: &Command) -> String {
+    protocol::fingerprint(
+        &json!({"commandId":command.command_id,"downloadId":command.download_id,
+        "source":command.source,"resourceId":command.resource_id,"torrentHash":command.torrent_hash,
+        "queueExpiresAt":command.queue_expires_at}),
+    )
+}
+fn delivery(
+    journal: &Journal,
+    command: &Command,
+    context: &Context,
+    target: &DownloaderTarget,
+) -> Result<Option<usize>, AgentError> {
+    let Some((index, record)) = journal
+        .records
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, r)| r.command_id == command.command_id)
+    else {
+        return Ok(None);
+    };
+    if !record.context.same_authority(context) {
+        return Err(protocol::invalid());
+    }
+    let attempt = command.retry_attempt.unwrap_or(0);
+    let previous = record.retry_attempt.unwrap_or(0);
+    if attempt < previous {
+        return Err(protocol::invalid());
+    }
+    if attempt == previous {
+        if record.delivery_digest != redacted_digest(command) {
+            return Err(protocol::invalid());
+        }
+        return Ok(Some(index));
+    }
+    if record.phase != "failed"
+        || record.intent_digest != intent_digest(command)
+        || record.downloader != *target
+        || record.queue_expires_at != command.queue_expires_at
+    {
+        return Err(protocol::invalid());
+    }
+    Ok(None)
 }
 async fn outgoing(sender: &Sender<Wire>, wire: Wire) -> Result<(), AgentError> {
     sender
@@ -166,6 +241,20 @@ async fn execute(
     // The authorization receipt is durable before preflight. It will never resume an add after restart.
     journal.records[index].phase = "authorized".into();
     journal::atomic(directory, JOURNAL, journal)?;
+    // A saved deletion/switch may race a grant already queued on this session.
+    // Check the atomic configuration under the worker's settings lock before any add.
+    if directory.join("settings.json").exists() {
+        let current = crate::storage::load(directory)?;
+        if !current.settings.downloader_configured
+            || !settings::same_downloader(&current.settings, settings)
+            || crate::device::target(directory, &current.settings)?
+                != journal.records[index].downloader
+        {
+            journal.result(index, "failed")?;
+            journal::atomic(directory, JOURNAL, journal)?;
+            return Err(AgentError::code("targetChanged"));
+        }
+    }
     let preflight = async {
         let mut downloader =
             Downloader::connect(settings.clone(), secrets.password.clone(), trace).await?;
@@ -218,6 +307,7 @@ async fn execute(
             Err(error) => diagnostics::failure("downloader.verify", &trace.id, &error, 0),
         }
     }
+    diagnostics::command("command.execution.completed", &journal.records[index]);
     journal::atomic(directory, JOURNAL, journal)
 }
 #[derive(Deserialize)]
@@ -275,13 +365,24 @@ impl Session<'_> {
         let mut recover = VecDeque::new();
         let mut recovery_requests = HashMap::new();
         for record in &mut journal.records {
+            // Legacy journals with a deleted snapshot and no outbox event already received its ACK.
+            if record.last_status["state"] == "deleted"
+                && !journal
+                    .events
+                    .iter()
+                    .any(|event| event.wire.payload["commandId"] == record.command_id)
+            {
+                record.monitoring_ended_at.get_or_insert(clock.now());
+            }
             if !record.context.same_authority(context) {
                 continue;
             }
             if matches!(record.phase.as_str(), "prepared" | "authorized") {
                 record.phase = "abandoned".into();
             }
-            if matches!(record.phase.as_str(), "unknown" | "succeeded" | "abandoned") {
+            if record.monitoring_active()
+                && matches!(record.phase.as_str(), "unknown" | "succeeded" | "abandoned")
+            {
                 let request = protocol::message(
                     "__execution_recovery__",
                     json!({"commandId":record.command_id,"executionId":record.execution_id}),
@@ -313,16 +414,15 @@ impl Session<'_> {
                     pending.retain(|_,p| p.command.expires_at>clock.now());
                     let periodic=last_progress.elapsed()>=Duration::from_secs(30);
                     if periodic {last_progress=Instant::now();}
-                    let indices:Vec<_>=journal.records.iter().enumerate().filter(|(_,r)|r.context.same_authority(context) && r.downloader==*target && settings::same_downloader(&r.target,settings) && matches!(r.phase.as_str(),"unknown"|"succeeded")).map(|(i,_)|i).collect();
+                    if periodic && pending.is_empty() { journal.prune(clock.now()); }
+                    let indices:Vec<_>=journal.records.iter().enumerate().filter(|(_,r)|r.monitoring_active() && r.context.same_authority(context) && r.downloader==*target && settings::same_downloader(&r.target,settings) && matches!(r.phase.as_str(),"unknown"|"succeeded"|"abandoned")).map(|(i,_)|i).collect();
                     let hashes:Vec<_>=indices.iter().map(|i|journal.records[*i].info_hash.clone()).collect();
-                    let result=lookup(settings,secrets,&hashes,&trace).await;
-                    let reachable=result.is_ok();
+                    let result=if hashes.is_empty() {Ok(Vec::new())} else {tokio::time::timeout(Duration::from_secs(5),lookup(settings,secrets,&hashes,&trace)).await.unwrap_or_else(|_|Err(AgentError::code("timeout")))};
                     match result {
                         Ok(tasks)=>for index in indices {apply_tasks(&mut journal,index,periodic,refresh,&tasks)?;},
                         Err(error)=>{for index in indices {unavailable(&mut journal,index,"unreachable",refresh)?;}diagnostics::failure("downloader.poll",&trace.id,&error,0);},
                     }
                     refresh=false;
-                    outgoing(&sender,protocol::message("__agent_status__",json!({"downloaderType":target.downloader_type,"instanceId":target.instance_id,"configured":settings.downloader_configured,"reachable":reachable}),None)).await?;
                     for _ in 0..4 {if let Some(wire)=recover.pop_front() {outgoing(&sender,wire).await?;}}
                     journal::atomic(directory,JOURNAL,&journal)?;
                 },
@@ -333,24 +433,38 @@ impl Session<'_> {
                         "__add_download__"=>{
                             let command=protocol::command(&wire,keys,jwks,context,clock.now())?;
                             let digest=redacted_digest(&command);
-                            if let Some(index)=journal.records.iter().position(|r|r.command_id==command.command_id) {
-                                let record=&journal.records[index];
-                                if record.delivery_digest!=digest || !record.context.same_authority(context) {return Err(protocol::invalid());}
+                            if let Some(index)=delivery(&journal,&command,context,target)? {
+                                let received=protocol::message("__command_received__",json!({"commandId":command.command_id}),Some(command.correlation_id.clone()));
+                                outgoing(&sender,received).await?;
                                 if let Some(p)=pending.values().find(|p|p.index==index) {
-                                    outgoing(&sender,p.received.clone()).await?;outgoing(&sender,p.request.clone()).await?;
+                                    outgoing(&sender,p.request.clone()).await?;
+                                } else {
+                                    let record=&journal.records[index];
+                                    if matches!(record.phase.as_str(),"failed"|"unknown"|"succeeded"|"duplicate") {
+                                        let mut result=json!({"outcome":record.phase});
+                                        if record.phase=="succeeded" {result["evidence"]=json!(record.evidence);}
+                                        journal.event(index,"__command_result__",result)?;
+                                    }
                                 }
+                                journal::atomic(directory,JOURNAL,&journal)?;
                                 continue;
                             }
                             if pending.len()>=16 {return Err(AgentError::code("gatewayUnavailable"));}
+                            for old in &mut journal.records {
+                                if old.download_id == command.download_id && old.command_id != command.command_id
+                                    && old.context.same_authority(context) && old.phase == "succeeded" {
+                                    old.monitoring_ended_at.get_or_insert(clock.now());
+                                }
+                            }
                             let index=journal.records.len();
                             let execution_id=uuid::Uuid::new_v4().to_string();
-                            journal.records.push(Record {command_id:command.command_id.clone(),download_id:command.download_id.clone(),execution_id:execution_id.clone(),context:context.clone(),target:settings.clone(),downloader:target.clone(),info_hash:command.torrent_hash.clone(),correlation_id:command.correlation_id.clone(),delivery_digest:digest,expires_at:command.expires_at,phase:"prepared".into(),last_status:Value::Null,evidence:None,sequence:0});
+                            journal.records.push(Record {command_id:command.command_id.clone(),download_id:command.download_id.clone(),execution_id:execution_id.clone(),context:context.clone(),target:settings.clone(),downloader:target.clone(),info_hash:command.torrent_hash.clone(),correlation_id:command.correlation_id.clone(),delivery_digest:digest,intent_digest:intent_digest(&command),retry_attempt:command.retry_attempt,queue_expires_at:command.queue_expires_at,expires_at:command.expires_at,phase:"prepared".into(),last_status:Value::Null,evidence:None,sequence:0,monitoring_ended_at:None});
                             journal::atomic(directory,JOURNAL,&journal)?;
                             let received=protocol::message("__command_received__",json!({"commandId":command.command_id}),Some(command.correlation_id.clone()));
                             let request=protocol::message("__request_execution__",json!({"commandId":command.command_id,"executionId":execution_id}),Some(command.correlation_id.clone()));
-                            let trace=Trace::with_id(command.correlation_id.clone());trace.stage("command.persisted");
+                            let trace=Trace::with_id(command.correlation_id.clone());trace.stage("command.persisted");diagnostics::command("command.persisted",&journal.records[index]);
                             outgoing(&sender,received.clone()).await?;outgoing(&sender,request.clone()).await?;
-                            pending.insert(request.message_id.clone(),Pending {index,command,received,request});
+                            pending.insert(request.message_id.clone(),Pending {index,command,request});
                         },
                         "__execution_granted__"=>{
                             let Some(p)=wire.reply_to.as_ref().and_then(|id|pending.remove(id)) else {continue;};
@@ -360,7 +474,7 @@ impl Session<'_> {
                             validate_grant(&grant,&p,&journal.records[p.index],context,target,now)?;
                             if wire.correlation_id.as_deref()!=Some(&p.command.correlation_id) {return Err(protocol::invalid());}
                             if journal.records[p.index].phase!="prepared" {continue;}
-                            let trace=Trace::with_id(p.command.correlation_id.clone());trace.stage("command.execution-granted");
+                            let trace=Trace::with_id(p.command.correlation_id.clone());trace.stage("command.execution-granted");diagnostics::command("command.execution-granted",&journal.records[p.index]);
                             if let Err(error)=execute(directory,&mut journal,p,(clock,grant.expires_at),settings,secrets,&trace).await {
                                 diagnostics::failure("command.execute",&trace.id,&error,0);
                                 if error.code == "storageError" { return Err(error); }
@@ -371,7 +485,7 @@ impl Session<'_> {
                             let error=crate::connection::remote_error(&wire)?;diagnostics::failure("command.execution-denied",wire.correlation_id.as_deref().unwrap_or(&trace.id),&error,0);
                         },
                         "__command_result_ack__"|"__download_status_ack__"=>{
-                            if journal.acknowledge(&wire) {last_sent=None;}
+                            if journal.acknowledge(&wire, clock.now()) {last_sent=None;}
                         },
                         "__execution_recovery_result__"=>{
                             let Some(expected)=wire.reply_to.as_ref().and_then(|id|recovery_requests.remove(id)) else {continue;};
@@ -387,11 +501,15 @@ impl Session<'_> {
                     journal::atomic(directory,JOURNAL,&journal)?;
                 },
             }
-            if let Some(event) = journal
-                .events
-                .iter()
-                .find(|event| event.eligible(context, target))
-            {
+            if let Some(event) = journal.events.iter().find(|event| {
+                event.eligible(context, target)
+                    && journal
+                        .records
+                        .iter()
+                        .rev()
+                        .find(|r| r.command_id == event.wire.payload["commandId"])
+                        .is_none_or(|r| event.wire.payload["executionId"] == r.execution_id)
+            }) {
                 if last_sent.as_ref().is_none_or(|(id, when)| {
                     id != &event.wire.message_id || when.elapsed() >= Duration::from_secs(5)
                 }) {
@@ -407,6 +525,207 @@ impl Session<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn authentication_failure_reports_configured_but_unreachable_for_both_providers() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for provider in [
+            settings::Provider::Qbittorrent,
+            settings::Provider::Transmission,
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let config = Settings {
+                downloader_configured: true,
+                provider: provider.clone(),
+                downloader_url: format!("http://{}", listener.local_addr().unwrap()),
+                ..Settings::default()
+            };
+            let target = DownloaderTarget {
+                downloader_type: provider,
+                instance_id: "target".into(),
+            };
+            let secrets = Secrets::default();
+            let (sender, mut receiver) = tokio::sync::mpsc::channel::<Wire>(2);
+            let server = async {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut buffer = [0; 4096];
+                assert!(socket.read(&mut buffer).await.unwrap() > 0);
+                socket.write_all(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+                let report = receiver.recv().await.unwrap();
+                assert_eq!(report.payload["configured"], true);
+                assert_eq!(report.payload["reachable"], false);
+                assert_eq!(report.payload["instanceId"], "target");
+            };
+            tokio::select! { result=report_status(sender,&config,&secrets,&target)=>panic!("unexpected exit: {}",result.unwrap_err().code), result=tokio::time::timeout(Duration::from_secs(3),server)=>{result.unwrap();} }
+        }
+    }
+    #[tokio::test]
+    async fn deletion_or_replacement_saved_before_a_queued_grant_prevents_http_add() {
+        for replacement in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let command = queued();
+            let settings = Settings {
+                downloader_configured: true,
+                ..Settings::default()
+            };
+            let mut record = queued_record(&command);
+            record.phase = "prepared".into();
+            record.target = settings.clone();
+            let stored = crate::settings::StoredSettings {
+                settings: if replacement {
+                    settings.clone()
+                } else {
+                    Settings::default()
+                },
+                downloader_identity: Some(DownloaderTarget {
+                    downloader_type: settings::Provider::Qbittorrent,
+                    instance_id: "replacement".into(),
+                }),
+                ..Default::default()
+            };
+            journal::atomic(directory.path(), "settings.json", &stored).unwrap();
+            let mut journal = Journal {
+                records: vec![record],
+                events: vec![],
+            };
+            let pending = Pending {
+                index: 0,
+                command,
+                request: protocol::message("__request_execution__", json!({}), None),
+            };
+            let clock = Clock {
+                server_ms: 1000,
+                anchor: Instant::now(),
+                wall_anchor: std::time::SystemTime::now(),
+            };
+            let result = execute(
+                directory.path(),
+                &mut journal,
+                pending,
+                (&clock, 5000),
+                &settings,
+                &Secrets::default(),
+                &Trace::new(),
+            )
+            .await;
+            assert_eq!(result.unwrap_err().code, "targetChanged");
+            let saved: Journal = journal::load(directory.path(), JOURNAL).unwrap();
+            assert_eq!(saved.records[0].phase, "failed");
+            assert!(saved.records[0].evidence.is_none());
+            assert_eq!(saved.events.len(), 1);
+            assert_eq!(saved.events[0].wire.payload["outcome"], "failed");
+        }
+    }
+    fn queued() -> Command {
+        protocol::parse(&json!({"protocolVersion":1,"command":"__add_download__","messageId":"delivery","commandId":"command","downloadId":"download","ownerId":"owner","deviceId":"device","authVersion":1,"deviceVersion":2,"sessionId":"session","source":"mteam","resourceId":"resource","correlationId":"trace","expiresAt":5000,"queueExpiresAt":600000,"retryAttempt":1,"torrentHash":"a".repeat(40),"torrentUrl":"https://tracker.invalid/secret"})).unwrap()
+    }
+    fn queued_record(command: &Command) -> Record {
+        protocol::parse(&json!({"commandId":command.command_id,"downloadId":command.download_id,"executionId":"first-execution",
+            "context":{"ownerId":"owner","deviceId":"device","authVersion":1,"deviceVersion":2,"sessionId":"session","instanceId":"gateway"},
+            "target":Settings::default(),"downloader":{"downloaderType":"qbittorrent","instanceId":"original"},"infoHash":command.torrent_hash,
+            "correlationId":"trace","deliveryDigest":redacted_digest(command),"intentDigest":intent_digest(command),"retryAttempt":1,"queueExpiresAt":600000,
+            "expiresAt":5000,"phase":"failed","lastStatus":null,"evidence":null,"sequence":0})).unwrap()
+    }
+    #[test]
+    fn queued_attempts_are_durable_and_only_definite_failure_allows_a_new_execution() {
+        let command = queued();
+        let record = queued_record(&command);
+        let context = record.context.clone();
+        let target = record.downloader.clone();
+        let mut journal = Journal {
+            records: vec![record],
+            events: vec![],
+        };
+        let dir = tempfile::tempdir().unwrap();
+        journal::atomic(dir.path(), JOURNAL, &journal).unwrap();
+        journal = journal::load(dir.path(), JOURNAL).unwrap();
+        assert_eq!(
+            delivery(&journal, &command, &context, &target).unwrap(),
+            Some(0)
+        );
+        let mut next = command.clone();
+        next.retry_attempt = Some(2);
+        next.message_id = "new-delivery".into();
+        next.torrent_url.push_str("?refreshed=1");
+        assert_eq!(delivery(&journal, &next, &context, &target).unwrap(), None);
+        for phase in [
+            "unknown",
+            "authorized",
+            "prepared",
+            "abandoned",
+            "succeeded",
+            "duplicate",
+        ] {
+            journal.records[0].phase = phase.into();
+            assert!(
+                delivery(&journal, &next, &context, &target).is_err(),
+                "{phase}"
+            );
+        }
+        journal.records[0].phase = "failed".into();
+        for field in ["hash", "resource", "deadline", "download"] {
+            let mut changed = next.clone();
+            match field {
+                "hash" => changed.torrent_hash = "b".repeat(40),
+                "resource" => changed.resource_id = "other".into(),
+                "deadline" => changed.queue_expires_at = Some(700000),
+                _ => changed.download_id = "other".into(),
+            };
+            assert!(delivery(&journal, &changed, &context, &target).is_err());
+        }
+        let mut changed = command.clone();
+        changed.torrent_url.push_str("changed");
+        assert!(delivery(&journal, &changed, &context, &target).is_err());
+        changed = command.clone();
+        changed.retry_attempt = Some(0);
+        assert!(delivery(&journal, &changed, &context, &target).is_err());
+        let mut replacement = target.clone();
+        replacement.instance_id = "replacement".into();
+        assert!(delivery(&journal, &next, &context, &replacement).is_err());
+        let mut rebound = context.clone();
+        rebound.auth_version += 1;
+        assert!(delivery(&journal, &next, &rebound, &target).is_err());
+        let mut second = queued_record(&next);
+        second.retry_attempt = Some(2);
+        second.execution_id = "second-execution".into();
+        journal.records.push(second);
+        journal::atomic(dir.path(), JOURNAL, &journal).unwrap();
+        let restored: Journal = journal::load(dir.path(), JOURNAL).unwrap();
+        assert_eq!(restored.records.len(), 2);
+        assert!(delivery(&restored, &command, &context, &target).is_err());
+        let disk = std::fs::read_to_string(dir.path().join(JOURNAL)).unwrap();
+        assert!(!disk.contains("tracker.invalid") && !disk.contains("refreshed"));
+    }
+    #[test]
+    fn queued_fields_remain_strict_and_deadlines_never_extend_delivery() {
+        let command = queued();
+        assert!(command.valid_deadlines(1000));
+        for (expires, queue, attempt) in [
+            (61001, Some(600000), Some(1)),
+            (5000, Some(4999), Some(1)),
+            (5000, Some(0), Some(1)),
+            (5000, Some(600000), Some(protocol::MAX_INTEGER + 1)),
+        ] {
+            let mut changed = command.clone();
+            changed.expires_at = expires;
+            changed.queue_expires_at = queue;
+            changed.retry_attempt = attempt;
+            assert!(!changed.valid_deadlines(1000));
+        }
+        let mut value = json!({"protocolVersion":1});
+        assert!(protocol::parse::<Command>(&value).is_err());
+        value = serde_json::json!({"protocolVersion":1,"command":"__add_download__","messageId":"delivery","commandId":"command","downloadId":"download","ownerId":"owner","deviceId":"device","authVersion":1,"deviceVersion":2,"sessionId":"session","source":"mteam","resourceId":"resource","correlationId":"trace","expiresAt":5000,"torrentHash":"a".repeat(40),"torrentUrl":"https://tracker.invalid/secret"});
+        assert!(protocol::parse::<Command>(&value).is_ok());
+        value["queueExpiresAt"] = Value::Null;
+        assert!(protocol::parse::<Command>(&value).is_err());
+        value.as_object_mut().unwrap().remove("queueExpiresAt");
+        value["retryAttempt"] = json!(-1);
+        assert!(protocol::parse::<Command>(&value).is_err());
+        value["retryAttempt"] = json!(1.5);
+        assert!(protocol::parse::<Command>(&value).is_err());
+        value["retryAttempt"] = json!(1);
+        value["unexpected"] = json!(true);
+        assert!(protocol::parse::<Command>(&value).is_err());
+    }
     #[test]
     fn manual_tasks_are_not_adopted_and_missing_markers_are_not_misreported_as_deletion() {
         let record:Record=protocol::parse(&json!({"commandId":"command","downloadId":"download","executionId":"execution",
@@ -432,6 +751,40 @@ mod tests {
         apply_tasks(&mut journal, 0, false, false, &[]).unwrap();
         assert_eq!(journal.records[0].last_status["state"], "deleted");
         assert_eq!(journal.records[0].sequence, 3);
+        assert!(!journal.records[0].monitoring_active());
+        assert!(journal.records[0].monitoring_ended_at.is_none());
+        let deletion = journal.events.last().unwrap().wire.clone();
+        // A restart with a pending deletion keeps its original event and never resumes polling.
+        let directory = tempfile::tempdir().unwrap();
+        journal
+            .events
+            .retain(|event| event.wire.message_id == deletion.message_id);
+        journal::atomic(directory.path(), JOURNAL, &journal).unwrap();
+        journal = journal::load(directory.path(), JOURNAL).unwrap();
+        let before = journal.events.len();
+        apply_tasks(&mut journal, 0, true, true, &[]).unwrap();
+        assert_eq!(journal.events.len(), before);
+        let mut ack = protocol::message(
+            "__download_status_ack__",
+            json!({
+                "persisted":true,"commandId":"command","executionId":"execution","sequence":2
+            }),
+            Some("trace".into()),
+        );
+        ack.reply_to = Some(deletion.message_id.clone());
+        assert!(!journal.acknowledge(&ack, 1000));
+        assert!(journal.records[0].monitoring_ended_at.is_none());
+        ack.payload["sequence"] = json!(3);
+        assert!(journal.acknowledge(&ack, 1000));
+        assert_eq!(journal.records[0].monitoring_ended_at, Some(1000));
+        assert!(journal.events.is_empty());
+        journal::atomic(directory.path(), JOURNAL, &journal).unwrap();
+        journal = journal::load(directory.path(), JOURNAL).unwrap();
+        assert!(!journal.records[0].monitoring_active());
+        journal.prune(1000 + 30 * 86400000 - 1);
+        assert_eq!(journal.records.len(), 1);
+        journal.prune(1000 + 30 * 86400000);
+        assert!(journal.records.is_empty());
     }
     #[test]
     fn a_grant_is_bound_to_every_execution_identity_and_original_downloader() {
@@ -459,15 +812,18 @@ mod tests {
             correlation_id: "trace".into(),
             delivery_digest: "digest".into(),
             expires_at: 5000,
+            retry_attempt: None,
+            queue_expires_at: None,
+            intent_digest: String::new(),
             phase: "prepared".into(),
             last_status: Value::Null,
             evidence: None,
             sequence: 0,
+            monitoring_ended_at: None,
         };
         let pending = Pending {
             index: 0,
             command,
-            received: protocol::message("__command_received__", json!({}), None),
             request: protocol::message("__request_execution__", json!({}), None),
         };
         let valid = json!({"protocolVersion":1,"command":"__execution_granted__","commandId":"command","downloadId":"download","ownerId":"owner","deviceId":"device","authVersion":1,"deviceVersion":2,"sessionId":"session","executionId":"execution","expiresAt":2000,"correlationId":"trace","torrentHash":"a".repeat(40),"downloader":{"downloaderType":"qbittorrent","instanceId":"original"}});

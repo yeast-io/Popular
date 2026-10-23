@@ -1,3 +1,6 @@
+import { toResponse } from './movie-download.presentation.js';
+import type { RemoteMovieDownloadService } from '../remote-downloads/remote-movie-download.service.js';
+import type { Locale } from '@movie-hub/contract';
 import { siteAccountIdentityPending } from '../resource-sites/site-account.errors.js';
 import type { MovieSiteResourcesService } from '../integrations/movie-site-resources.service.js';
 import type { ResourceSiteService } from '../resource-sites/resource-site.service.js';
@@ -42,6 +45,7 @@ import type { NotificationService } from '../notifications/notification.service.
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class MovieDownloadService {
+  remote?: RemoteMovieDownloadService;
   preferences?: Pick<IntegrationPreferencesService, 'get'>;
   private readonly syncs = new Map<string, Promise<MovieDownloadRecord[]>>();
 
@@ -97,7 +101,10 @@ export class MovieDownloadService {
     releaseId: string,
     requestedProvider?: DownloadProvider,
     sourceProvider: DownloadSource = 'mteam',
-    requestedInstanceId?: string
+    requestedInstanceId?: string,
+    remoteDeviceId?: string,
+    locale: Locale = 'en-US',
+    sourceReleaseTitle?: string
   ): Promise<MovieDownload> {
     return this.createForOwner(
       await this.auth.requireOwnerId(token),
@@ -105,7 +112,10 @@ export class MovieDownloadService {
       releaseId,
       requestedProvider,
       sourceProvider,
-      requestedInstanceId
+      requestedInstanceId,
+      remoteDeviceId,
+      locale,
+      sourceReleaseTitle
     );
   }
 
@@ -116,19 +126,27 @@ export class MovieDownloadService {
     releaseId: string,
     requestedProvider?: DownloadProvider,
     sourceProvider: DownloadSource = 'mteam',
-    requestedInstanceId?: string
+    requestedInstanceId?: string,
+    remoteDeviceId?: string,
+    locale: Locale = 'en-US',
+    sourceReleaseTitle?: string
   ): Promise<MovieDownload> {
+    if (remoteDeviceId) {
+      if (!this.remote || requestedInstanceId || requestedProvider)
+        throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', '');
+      return this.remote.create(ownerId, tmdbId, releaseId, sourceProvider, remoteDeviceId, locale, sourceReleaseTitle);
+    }
     const existing = await this.downloads.findByRelease(ownerId, tmdbId, releaseId, sourceProvider);
-    if (existing?.executionMode === 'remote') return toResponse(existing);
-    if (existing && requestedProvider && existing.provider !== requestedProvider) {
+    if (existing?.executionMode === 'remote' && existing.status !== 'missing') return toResponse(existing);
+    if (existing && existing.status !== 'missing' && requestedProvider && existing.provider !== requestedProvider) {
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'This release already belongs to another downloader');
     }
-    if (existing?.downloaderInstanceId && requestedInstanceId && existing.downloaderInstanceId !== requestedInstanceId)
+    if (existing && existing.status !== 'missing' && existing.downloaderInstanceId && requestedInstanceId && existing.downloaderInstanceId !== requestedInstanceId)
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'This release already belongs to another downloader');
     if (existing && !['failed', 'missing'].includes(existing.status)) return toResponse(existing);
     const choices = await this.instancesFor(ownerId);
-    const pinnedId = requestedInstanceId ?? existing?.downloaderInstanceId;
-    const selectedType = requestedProvider ?? existing?.provider;
+    const pinnedId = requestedInstanceId ?? (existing?.status === 'missing' ? undefined : existing?.downloaderInstanceId);
+    const selectedType = requestedProvider ?? (existing?.status === 'missing' ? undefined : existing?.provider);
     const candidates = pinnedId
       ? choices.filter((choice) => choice.downloaderInstanceId === pinnedId)
       : choices.filter((choice) => !selectedType || choice.provider === selectedType);
@@ -148,7 +166,9 @@ export class MovieDownloadService {
     if (requestedProvider && requestedProvider !== provider)
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'Selected downloader type differs');
     const client = await aiStep('download.client.load', () => this.clientFor(ownerId, provider, selected.downloaderInstanceId));
-    if (existing) {
+    if (existing && (existing.status !== 'missing'
+      || (existing.executionMode !== 'remote' && existing.provider === provider
+        && (!existing.downloaderInstanceId || existing.downloaderInstanceId === selected.downloaderInstanceId)))) {
       // Do not retry if recovery cannot reach the original downloader: an earlier add may have succeeded.
       let added: TorrentSnapshot | null;
       try {
@@ -181,13 +201,16 @@ export class MovieDownloadService {
       { sourceProvider, releaseId }
     );
     const claim = existing
-      ? await aiStep('download.task.retry', () => this.downloads.retry(existing.id))
+      ? existing.status === 'missing'
+        ? await aiStep('download.task.redownload', () => this.downloads.claimMissing(existing, provider, selected.downloaderInstanceId, selected.name),
+            { downloadId: existing.id, provider })
+        : await aiStep('download.task.retry', () => this.downloads.retry(existing.id))
       : await aiStep('download.task.claim', () => {
           return this.downloads.createSubmitting(ownerId, tmdbId, releaseId, provider, sourceProvider, selected.downloaderInstanceId, selected.name);
         });
     let record = claim.record;
     // A different request or instance may have won the unique release claim.
-    if (record.provider !== provider || (record.downloaderInstanceId && record.downloaderInstanceId !== selected.downloaderInstanceId))
+    if (record.executionMode === 'remote' || record.provider !== provider || (record.downloaderInstanceId && record.downloaderInstanceId !== selected.downloaderInstanceId))
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'This release already belongs to another downloader');
     if (!claim.claimed) return toResponse(record);
     let torrentUrl: string;
@@ -304,6 +327,7 @@ export class MovieDownloadService {
         ...(record.addedAt ? { addedAt: record.addedAt } : {}),
       };
     }
+    if (!record.provider) throw new AppError(409, 'DOWNLOAD_NOT_CONFIGURED', '');
     const client = await this.clientFor(record.ownerId, record.provider, record.downloaderInstanceId);
     const torrent = record.torrentHash
       ? (await client.list([record.torrentHash]))[0]
@@ -383,6 +407,7 @@ export class MovieDownloadService {
       const owned = syncable.filter((record) => `${record.provider}:${record.downloaderInstanceId ?? ''}` === key);
       if (!owned.length) continue;
       const provider = owned[0]!.provider;
+      if (!provider) continue;
       const downloaderInstanceId = owned[0]!.downloaderInstanceId;
       try {
         const client = await aiStep('download.sync.client', () => this.clientFor(ownerId, provider, downloaderInstanceId), { provider, downloaderInstanceId });
@@ -447,27 +472,6 @@ function statusOf(torrent: QBittorrentTorrent): MovieDownloadStatus {
   if (torrent.progress >= 1 || /complete/i.test(torrent.state)) return 'completed';
   if (/paused|stopped/i.test(torrent.state)) return 'paused';
   return 'downloading';
-}
-
-function toResponse(record: MovieDownloadRecord): MovieDownload {
-  return {
-    id: record.id,
-    tmdbId: record.tmdbId,
-    sourceProvider: record.sourceProvider,
-    sourceReleaseId: record.sourceReleaseId,
-    provider: record.provider,
-    ...(record.downloaderInstanceId ? { downloaderInstanceId: record.downloaderInstanceId } : {}),
-    ...(record.downloaderName ? { downloaderName: record.downloaderName } : {}),
-    status: record.status,
-    progress: record.progress,
-    ...(record.downloadedBytes !== undefined ? { downloadedBytes: record.downloadedBytes } : {}),
-    ...(record.totalBytes !== undefined ? { totalBytes: record.totalBytes } : {}),
-    ...(record.downloadSpeed !== undefined ? { downloadSpeed: record.downloadSpeed } : {}),
-    ...(record.etaSeconds !== undefined ? { etaSeconds: record.etaSeconds } : {}),
-    ...(record.lastErrorCode ? { lastErrorCode: record.lastErrorCode } : {}),
-    ...(record.addedAt ? { addedAt: record.addedAt.toISOString() } : {}),
-    ...(record.lastSyncedAt ? { lastSyncedAt: record.lastSyncedAt.toISOString() } : {}),
-  };
 }
 
 function transmissionSnapshot(torrent: TransmissionTorrent): TorrentSnapshot {

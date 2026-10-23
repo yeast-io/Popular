@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, onBeforeUnmount, ref } from 'vue';
 import type { RemoteClientConfiguration, RemoteClientMutationResult, RemoteClientKey, ApiError } from '@movie-hub/contract';
 import type { RemoteClientAction, RemoteClientConfirmation } from './remote-client.types';
 import { loadWebConfig } from '../../config/env';
@@ -19,7 +19,14 @@ const errorMessage = ref('');
 const saved = ref(false);
 const copied = ref(false);
 const expanded = ref(false);
-onMounted(refresh);
+let poll: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  void refresh();
+  poll = setInterval(() => {
+    if (!busy.value && !loading.value) void refresh(true);
+  }, 60_000);
+});
+onBeforeUnmount(() => clearInterval(poll));
 
 function applyConfiguration(next: RemoteClientConfiguration) {
   if (configuration.value.authVersion !== next.authVersion || !next.hasKey) {
@@ -41,13 +48,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
-async function refresh() {
-  loading.value = true;
+async function refresh(silent = false) {
+  if (!silent) loading.value = true;
   errorMessage.value = '';
   try {
     applyConfiguration(await request<RemoteClientConfiguration>(''));
     loaded.value = true;
-  } catch (error) { errorMessage.value = localizedErrorMessage(error, 'remoteClient.failed'); } finally {
+  } catch (error) {
+    configuration.value = { ...configuration.value, devices: configuration.value.devices.map((device) => ({
+      ...device, isAgentOnline: false, isAgentDownloaderOnline: false,
+    })) };
+    errorMessage.value = localizedErrorMessage(error, 'remoteClient.failed');
+  } finally {
     loading.value = false;
   }
 }
@@ -189,6 +201,8 @@ async function confirmChange() {
           <div v-for="device in configuration.devices" :key="device.id" class="remote-client-device">
             <dl class="integration-summary">
               <div><dt>{{ t('remoteClient.device') }}</dt><dd>{{ device.id }}</dd></div>
+              <div><dt>{{ t('remoteClient.agentStatus') }}</dt><dd>{{ t(device.isAgentOnline ? 'remoteClient.online' : 'remoteClient.offline') }}</dd></div>
+              <div><dt>{{ t('remoteClient.downloaderStatus') }}</dt><dd>{{ t(device.isAgentOnline && device.isAgentDownloaderOnline ? 'remoteClient.online' : 'remoteClient.offline') }}</dd></div>
               <div><dt>{{ t('remoteClient.boundAt') }}</dt><dd>{{ formatDate(device.boundAt, { dateStyle: 'medium', timeStyle: 'short' }) }}</dd></div>
             </dl>
             <button data-action="unbind" :data-device-id="device.id" type="button" class="secondary danger" :disabled="busy" @click="confirmation = { kind: 'unbind', device }">{{ t('remoteClient.unbind') }}</button>
@@ -206,7 +220,7 @@ async function confirmChange() {
           <p v-else-if="saved && !configuration.gatewayNotificationPending" role="status" class="success settings-message">{{ t('remoteClient.changed') }}</p>
         </div>
         <div class="integration-actions">
-          <button type="button" class="secondary" :disabled="busy || loading" @click="refresh">{{ t('remoteClient.refresh') }}</button>
+          <button type="button" class="secondary" :disabled="busy || loading" @click="refresh()">{{ t('remoteClient.refresh') }}</button>
           <template v-if="loaded && !loading">
             <template v-if="confirmation">
               <button type="button" class="secondary" :disabled="busy" @click="confirmation = null">{{ t('remoteClient.cancel') }}</button>

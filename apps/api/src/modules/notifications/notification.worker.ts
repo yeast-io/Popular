@@ -1,3 +1,4 @@
+import { remoteDownloadMessages } from '../remote-downloads/remote-download.messages.js';
 import { loadTmdbPoster as loadPoster } from '../../infrastructure/tmdb/poster.js';
 import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
 import type { Locale } from '@movie-hub/contract';
@@ -170,7 +171,7 @@ export async function buildDownloadNotification(
     id,
     title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
     resourceName: record.name ?? `TMDB ${record.tmdbId}`,
-    provider: record.downloaderName ?? record.provider,
+    provider: record.downloaderName ?? record.provider ?? remoteDownloadMessages[locale].agent,
     totalBytes: record.totalBytes ?? 0,
     completedAt,
     detailUrl: `${webOrigin.replace(/\/$/, '')}/movies/${record.tmdbId}`,

@@ -194,6 +194,17 @@ pub fn event(stage: &str, event: &crate::journal::Event) {
     }
 }
 
+pub fn command(stage: &str, record: &crate::journal::Record) {
+    if SETTINGS
+        .get()
+        .is_some_and(|s| s.verbose && matches!(s.level.as_str(), "trace" | "debug" | "info"))
+    {
+        emit(
+            serde_json::json!({"level":"info","stage":stage,"correlationId":record.correlation_id,"commandId":record.command_id,"downloadId":record.download_id,"executionId":record.execution_id,"retryAttempt":record.retry_attempt.unwrap_or(0),"outcome":record.phase}),
+        );
+    }
+}
+
 pub fn retry(attempt: u64, delay_ms: u64) {
     if SETTINGS
         .get()

@@ -3,6 +3,10 @@ import { Type, type Static } from '@sinclair/typebox';
 export const RemoteClientDeviceSchema = Type.Object({
   id: Type.String(), authVersion: Type.Integer({ minimum: 1 }), deviceVersion: Type.Integer({ minimum: 1 }),
   boundAt: Type.String({ format: 'date-time' }),
+  isAgentOnline: Type.Boolean(), isAgentDownloaderOnline: Type.Boolean(),
+  downloaderInstanceId: Type.Optional(Type.String()),
+  statusCheckedAt: Type.Optional(Type.String({ format: 'date-time' })),
+  downloaderType: Type.Optional(Type.Union([Type.Literal('qbittorrent'), Type.Literal('transmission')])),
 }, { additionalProperties: false });
 export const RemoteClientConfigurationSchema = Type.Object({
   hasKey: Type.Boolean(), canReadKey: Type.Boolean(), authVersion: Type.Integer({ minimum: 0 }),

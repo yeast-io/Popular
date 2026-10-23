@@ -49,6 +49,12 @@ export const remoteDeviceSchema = new Schema(
     },
     slot: { type: Number, required: true, min: 1, max: Number.MAX_SAFE_INTEGER, validate: Number.isSafeInteger },
     status: { type: String, enum: ['bound', 'unbound'], required: true, default: 'bound' },
+    // Conservative placeholders until Gateway/Agent status reporting is integrated.
+    isAgentOnline: { type: Boolean, required: true, default: false },
+    isAgentDownloaderOnline: { type: Boolean, required: true, default: false },
+    statusCheckedAt: Date,
+    downloaderType: { type: String, enum: ['qbittorrent', 'transmission'] },
+    downloaderInstanceId: String,
     keys: { type: deviceKeysSchema, required: true, select: false },
     boundAt: { type: Date, required: true },
     unboundAt: Date,

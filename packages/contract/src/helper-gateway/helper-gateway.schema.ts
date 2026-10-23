@@ -1,4 +1,4 @@
-import { Type } from '@sinclair/typebox';
+import { Type, type Static } from '@sinclair/typebox';
 import { RpcIdSchema as id } from './socket-rpc.schema.js';
 import { RemoteAuthorizationChangeSchema } from '../remote-client.schema.js';
 
@@ -13,6 +13,11 @@ export const GatewaySessionSchema = Type.Object({ ownerId: id, deviceId: id, aut
   sessionId: id, instanceId: id }, object);
 export const GatewayAgentStatusSchema = Type.Object({ downloaderType: Type.Union([Type.Literal('qbittorrent'), Type.Literal('transmission')]),
   instanceId: id, configured: Type.Boolean(), reachable: Type.Boolean() }, object);
+export const GatewayDeviceStatusSchema = Type.Object({
+  online: Type.Boolean(), isAgentOnline: Type.Boolean(), isAgentDownloaderOnline: Type.Boolean(),
+  checkedAt: Type.Number({ minimum: 0 }), statusObservedAt: Type.Optional(Type.Number({ minimum: 0 })),
+  session: Type.Optional(GatewaySessionSchema), agentStatus: Type.Optional(Type.Union([GatewayAgentStatusSchema, Type.Null()])),
+}, object);
 export const GatewayDownloadSchema = Type.Object({ commandId: id, downloadId: id, ownerId: id, deviceId: id,
   authVersion: integer, deviceVersion: integer, source: Type.Union([Type.Literal('mteam'), Type.Literal('hdarea')]),
   resourceId: id, correlationId: id }, object);
@@ -28,8 +33,27 @@ export const GatewayStatusSchema = Type.Object({ commandId: id, executionId: id,
   })),
   progress: Type.Number({ minimum: 0, maximum: 1 }), downloadedBytes: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
   totalBytes: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }), downloadSpeed: Type.Number({ minimum: 0 }), uploadSpeed: Type.Number({ minimum: 0 }) }, object);
+export const AgentQueueRequestSchema = Type.Object({
+  cursor: Type.Optional(Type.String({ maxLength: 200, pattern: '^[0-9]+:[A-Za-z0-9_-]+$' })),
+}, object);
+export const AgentQueueItemSchema = Type.Object({
+  commandId: id, resourceId: id, source: Type.Union([Type.Literal('mteam'), Type.Literal('hdarea')]),
+  title: Type.Union([Type.String({ maxLength: 512 }), Type.Null()]),
+  enqueuedAt: integer, expiresAt: integer,
+  reason: Type.Union(['queued', 'agent_offline', 'downloader_unavailable', 'target_changed', 'gateway_unavailable',
+    'retrying', 'verifying', 'executing'].map((value) => Type.Literal(value))),
+}, object);
+export const AgentQueueSnapshotSchema = Type.Object({
+  observedAt: integer, total: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+  cursor: Type.Optional(AgentQueueRequestSchema.properties.cursor),
+  nextCursor: Type.Union([Type.String({ maxLength: 200 }), Type.Null()]),
+  items: Type.Array(AgentQueueItemSchema, { maxItems: 50 }),
+}, object);
+export type AgentQueueItem = Static<typeof AgentQueueItemSchema>;
+export type AgentQueueSnapshot = Static<typeof AgentQueueSnapshotSchema>;
 const event = { context: GatewaySessionSchema, agentMessageId: id, agentDigest: Type.String({ pattern: '^[a-f0-9]{64}$' }) };
 export const PopularRpcSchemas = {
+  __list_queued_downloads__: Type.Object({ context: GatewaySessionSchema, ...AgentQueueRequestSchema.properties }, object),
   __resolve_client_authorization__: Type.Object({ keyDigest: Type.String({ pattern: '^[a-f0-9]{64}$' }), deviceId: Type.Optional(id) }, object),
   __bind_device__: Type.Object({ keyDigest: Type.String({ pattern: '^[a-f0-9]{64}$' }), authVersion: integer, operationId: id, keys: GatewayDeviceKeysSchema }, object),
   __validate_session__: Type.Object({ context: GatewaySessionSchema }, object),

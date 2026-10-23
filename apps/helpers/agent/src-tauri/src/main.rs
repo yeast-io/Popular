@@ -13,6 +13,7 @@ mod gateway;
 mod journal;
 mod preferences;
 mod protocol;
+mod queue;
 mod runtime;
 mod settings;
 mod storage;
@@ -153,6 +154,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             desktop::runtime_status,
+            queue::queue_status,
+            queue::queue_page,
+            queue::select_page,
             desktop::open_documentation,
             desktop::connect_device,
             load_settings,
@@ -170,6 +174,10 @@ fn main() {
                 directory: app.path().app_config_dir()?,
                 lock: Default::default(),
             });
+            queue::initialize(
+                &app.state::<AgentState>().directory,
+                &app.state::<runtime::Runtime>(),
+            );
             desktop::setup(app.handle())?;
             if !cfg!(debug_assertions) {
                 let result = storage::load(&app.state::<AgentState>().directory)

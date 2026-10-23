@@ -1,0 +1,4 @@
+export const REMOTE_QUEUE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const REMOTE_QUEUE_RETRY_MS = 60_000;
+export const REMOTE_DELIVERY_TTL_MS = 60_000;
+export const REMOTE_HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;

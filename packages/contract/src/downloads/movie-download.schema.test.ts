@@ -43,3 +43,12 @@ test('HDArea download requests accept only source identity and reject client sup
     );
   }
 });
+
+test('only remote queued downloads may omit a not-yet-reported downloader type', () => {
+  const record = { id: 'one', tmdbId: 603, sourceProvider: 'mteam', sourceReleaseId: '991',
+    status: 'submitting', progress: 0 };
+  assert.equal(Value.Check(MovieDownloadSchema, record), false);
+  assert.equal(Value.Check(MovieDownloadSchema, { ...record, executionMode: 'local' }), false);
+  assert.equal(Value.Check(MovieDownloadSchema, { ...record, executionMode: 'remote' }), true);
+  assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceReleaseId: '991', remoteDeviceId: 'device-a' }), true);
+});

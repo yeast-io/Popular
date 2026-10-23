@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import messages from './locales/messages.json';
 import documentation from './documentation.resources.json';
 import SecretInput from './SecretInput.vue';
+import PendingTasks from './PendingTasks.vue';
 import applicationLogo from './assets/popular-link-agent-white-ui.png';
 import darkApplicationLogo from './assets/popular-link-agent-black-ui.png';
 import { defaultPort, parseDownloaderAddress, downloaderAddressUrl } from './downloader-address.domain';
@@ -19,6 +21,7 @@ const form = reactive<Settings>({
   provider: 'qbittorrent',
   downloaderUrl: 'http://127.0.0.1:8080',
   username: '',
+  authMode: 'password',
   autostart: true,
   gatewayEnabled: true,
   downloaderConfigured: false,
@@ -38,6 +41,7 @@ watch(address, () => {
   form.downloaderUrl = downloaderAddressUrl(address, form.provider);
 }, { flush: 'sync' });
 watch(() => form.provider, (provider, previous) => {
+  if (provider === 'transmission') form.authMode = 'password';
   if (address.port === defaultPort(previous)) address.port = defaultPort(provider);
   if (provider === 'qbittorrent' && address.host.endsWith('/transmission/rpc')) {
     address.host = address.host.slice(0, -17);
@@ -49,6 +53,9 @@ const hasApiKey = ref(false);
 const hasPassword = ref(false);
 const apiKey = ref('');
 const password = ref('');
+watch(() => form.authMode, () => {
+  password.value = '';
+}, { flush: 'sync' });
 const busy = ref(true);
 const loaded = ref(false);
 const gatewayError = ref('');
@@ -59,11 +66,13 @@ const savedGateway = ref('');
 const savedDownloader = ref('');
 const savedDownloaderUrl = ref('');
 const savedUsername = ref('');
+const savedAuthMode = ref<Settings['authMode']>('password');
 const savedProvider = ref<Settings['provider']>('qbittorrent');
 const editingGateway = ref(false);
 const editingDownloader = ref(false);
 const confirmReset = ref(false);
 const runtime = ref<RuntimeStatus>({
+  page: 'settings',
   service: 'unconfigured',
   downloader: 'disconnected',
   deviceId: null,
@@ -71,6 +80,12 @@ const runtime = ref<RuntimeStatus>({
   preferenceError: null,
 });
 const t = computed(() => messages[form.locale]);
+async function selectPage(page: RuntimeStatus['page']) {
+  try {
+    await invoke('select_page', { page });
+    runtime.value.page = page;
+  } catch (cause) { settingsError.value = errorCode(cause); }
+}
 function text(key: string): string {
   return (t.value as Record<string, string>)[key] ?? t.value.unknownError;
 }
@@ -118,7 +133,7 @@ function downloaderTarget(settings: Settings) {
   } catch {
     address = settings.downloaderUrl;
   }
-  return JSON.stringify([settings.provider, address, settings.username]);
+  return JSON.stringify([settings.provider, address, settings.username, settings.authMode]);
 }
 const gatewayChanged = computed(() => endpoint(form.gatewayUrl) !== endpoint(savedGateway.value));
 const downloaderChanged = computed(
@@ -182,6 +197,7 @@ async function connectDownloader() {
     provider: form.provider,
     downloaderUrl: downloaderAddressUrl(address, form.provider),
     username: form.username,
+    authMode: form.authMode,
     // A new target with a blank password uses no password; never forward the old target's secret.
     password: !password.value && downloaderTarget(form) !== savedDownloader.value
       ? { action: 'clear' }
@@ -190,6 +206,7 @@ async function connectDownloader() {
   try {
     const snapshot = await invoke<Snapshot>('test_downloader', { request });
     form.provider = snapshot.settings.provider;
+    form.authMode = snapshot.settings.authMode;
     form.downloaderUrl = snapshot.settings.downloaderUrl;
     loadAddress(snapshot.settings.downloaderUrl || 'http://127.0.0.1:8080');
     form.username = snapshot.settings.username;
@@ -197,6 +214,7 @@ async function connectDownloader() {
     savedDownloader.value = downloaderTarget(snapshot.settings);
     savedDownloaderUrl.value = snapshot.settings.downloaderUrl;
     savedProvider.value = snapshot.settings.provider;
+    savedAuthMode.value = snapshot.settings.authMode;
     savedUsername.value = snapshot.settings.username;
     form.downloaderConfigured = snapshot.settings.downloaderConfigured;
     editingDownloader.value = false;
@@ -229,6 +247,7 @@ async function resetDownloader() {
     const snapshot = await invoke<Snapshot>('reset_downloader');
     form.downloaderConfigured = false;
     form.provider = snapshot.settings.provider;
+    form.authMode = snapshot.settings.authMode;
     form.username = '';
     loadAddress('http://127.0.0.1:8080');
     savedDownloader.value = downloaderTarget(snapshot.settings);
@@ -244,6 +263,7 @@ async function resetDownloader() {
 }
 function closeDownloaderEditor() {
   form.provider = savedProvider.value;
+  form.authMode = savedAuthMode.value;
   loadAddress(savedDownloaderUrl.value);
   form.username = savedUsername.value;
   password.value = '';
@@ -277,6 +297,7 @@ watch(
   { immediate: true }
 );
 let timer: ReturnType<typeof setInterval>;
+let stopPageListener: UnlistenFn | undefined;
 let refreshing = false;
 async function refreshRuntime() {
   if (refreshing) return;
@@ -292,6 +313,9 @@ async function refreshRuntime() {
 onMounted(async () => {
   document.addEventListener('pointerdown', closeLocaleOnOutside);
   try {
+    if (isTauri()) stopPageListener = await listen<string>('agent-page', ({ payload }) => {
+      if (payload === 'queue' || payload === 'settings') runtime.value.page = payload;
+    });
     const snapshot = await invoke<Snapshot>('load_settings');
     Object.assign(form, snapshot.settings);
     loadAddress(snapshot.settings.downloaderUrl || 'http://127.0.0.1:8080');
@@ -301,6 +325,7 @@ onMounted(async () => {
     savedDownloader.value = downloaderTarget(snapshot.settings);
     savedDownloaderUrl.value = snapshot.settings.downloaderUrl;
     savedProvider.value = snapshot.settings.provider;
+    savedAuthMode.value = snapshot.settings.authMode;
     savedUsername.value = snapshot.settings.username;
     form.downloaderConfigured = snapshot.settings.downloaderConfigured;
     editingDownloader.value = false;
@@ -318,6 +343,7 @@ onMounted(async () => {
   }, 2000);
 });
 onUnmounted(() => {
+  stopPageListener?.();
   clearInterval(timer);
   document.removeEventListener('pointerdown', closeLocaleOnOutside);
 });
@@ -326,7 +352,7 @@ onUnmounted(() => {
 <template>
   <main>
     <header>
-      <div class="brand"><picture><source media="(prefers-color-scheme: dark)" :srcset="darkApplicationLogo" /><img :src="applicationLogo" alt="" /></picture><h1>{{ t.settingsTitle }}</h1></div>
+      <div class="brand"><picture><source media="(prefers-color-scheme: dark)" :srcset="darkApplicationLogo" /><img :src="applicationLogo" alt="" /></picture><h1>{{ runtime.page === 'queue' ? t.queueTitle : t.settingsTitle }}</h1></div>
       <details ref="localeMenu" class="locale-switcher" @keydown.esc.prevent="closeLocaleMenu">
         <summary :aria-label="`${t.language}: ${form.locale === 'zh-CN' ? t.chineseLanguage : t.englishLanguage}`"
           :title="t.language" :aria-disabled="busy || !loaded" @click="guardLocaleToggle">
@@ -343,16 +369,25 @@ onUnmounted(() => {
         </div>
       </details>
     </header>
+    <nav class="page-navigation" :aria-label="t.navigation">
+      <button type="button" :class="{ selected: runtime.page === 'queue' }" :aria-current="runtime.page === 'queue' ? 'page' : undefined" @click="selectPage('queue')">{{ t.queueTitle }}</button>
+      <button type="button" :class="{ selected: runtime.page !== 'queue' }" :aria-current="runtime.page !== 'queue' ? 'page' : undefined" @click="selectPage('settings')">{{ t.settingsTitle }}</button>
+    </nav>
+    <PendingTasks v-if="runtime.page === 'queue'" :locale="form.locale" />
+    <section v-show="runtime.page !== 'queue'">
     <form novalidate @submit.prevent="connect">
       <fieldset :disabled="busy || !loaded">
         <legend>{{ t.gateway }}</legend>
         <div class="card-summary">
           <div class="summary-details">
-            <p class="connection-status" role="status"><span :class="['status-dot', { online: runtime.service === 'online', failed: form.gatewayEnabled && runtime.service === 'disconnected' }]" />{{ text(runtime.service) }}</p>
+            <p class="connection-status" role="status"><span :class="['status-dot', { online: runtime.service === 'online', failed: form.gatewayEnabled && runtime.service === 'disconnected' }]" />{{ text(runtime.service) }}<span v-if="runtime.binding === 'bound'" class="binding-state">{{ t.bound }}</span></p>
             <p v-if="savedGateway" class="saved-address">{{ savedGateway }}</p>
           </div>
-          <button v-if="gatewayConfigured && !showGatewayForm" type="button" class="quiet" @click="editingGateway = true">{{ t.editConfig }}</button>
-          <span v-if="runtime.binding === 'bound'" class="binding-state">{{ t.bound }}</span>
+          <div v-if="gatewayConfigured && !showGatewayForm" class="summary-actions">
+            <button type="button" class="quiet" @click="editingGateway = true">{{ t.editConfig }}</button>
+            <button v-if="canDisconnect" type="button" @click="disconnect">{{ t.disconnect }}</button>
+            <button v-else type="submit" class="primary" :disabled="!canConnect">{{ text(connectLabel) }}</button>
+          </div>
         </div>
         <template v-if="showGatewayForm">
         <label
@@ -374,7 +409,7 @@ onUnmounted(() => {
             :placeholder="hasApiKey && !gatewayChanged ? t.keepSecret : t.newApiKey"
         /></label>
         </template>
-        <div class="section-actions">
+        <div v-if="showGatewayForm" class="section-actions">
           <button v-if="canDisconnect" type="button" @click="disconnect">{{ t.disconnect }}</button>
           <button v-else type="submit" class="primary" :disabled="!canConnect">{{ text(connectLabel) }}</button>
           <button v-if="canDisconnect && editingGateway && hasGatewayChanges" type="submit" class="primary" :disabled="!canConnect">{{ t.applyAndConnect }}</button>
@@ -391,7 +426,10 @@ onUnmounted(() => {
             <p class="connection-status" role="status"><span :class="['status-dot', { online: downloaderStatus === 'online', failed: downloaderStatus === 'unreachable' }]" /><template v-if="form.downloaderConfigured"><img class="tool-icon" :src="savedProvider === 'qbittorrent' ? qbittorrentIcon : transmissionIcon" alt="" />{{ savedProvider === 'qbittorrent' ? 'qBittorrent' : 'Transmission' }} · </template>{{ text(downloaderStatus) }}</p>
             <p v-if="savedDownloaderUrl" class="saved-address">{{ savedDownloaderUrl }}</p>
           </div>
-          <button v-if="form.downloaderConfigured && !showDownloaderForm" type="button" class="quiet" @click="editingDownloader = true">{{ t.editConfig }}</button>
+          <div v-if="form.downloaderConfigured && !showDownloaderForm && !confirmReset" class="summary-actions">
+            <button type="button" class="quiet" @click="editingDownloader = true">{{ t.editConfig }}</button>
+            <button type="button" @click="confirmReset = true">{{ t.resetConfig }}</button>
+          </div>
         </div>
         <template v-if="showDownloaderForm">
         <div class="provider-options" role="radiogroup" :aria-label="t.provider">
@@ -426,7 +464,13 @@ onUnmounted(() => {
         </div>
         <p class="hint">{{ form.provider === 'qbittorrent' ? t.qbHint : t.transmissionHint }}</p>
         <div class="credentials">
-          <label
+          <label v-if="form.provider === 'qbittorrent'">{{ t.authMode }}
+            <select v-model="form.authMode">
+              <option value="password">{{ t.passwordAuth }}</option>
+              <option value="apiKey">{{ t.apiKeyAuth }}</option>
+            </select>
+          </label>
+          <label v-if="form.authMode === 'password'"
             >{{ t.username
             }}<input
               v-model="form.username"
@@ -436,20 +480,21 @@ onUnmounted(() => {
               spellcheck="false"
           /></label>
           <label
-            >{{ t.password
+            >{{ form.authMode === 'apiKey' ? t.downloaderApiKey : t.password
             }}<SecretInput
               v-model="password"
               :saved="passwordSaved"
-              :placeholder="passwordSaved ? t.keepSecret : t.newSecret"
+              :placeholder="passwordSaved ? t.keepSecret : form.authMode === 'apiKey' ? t.apiKeyPlaceholder : t.newSecret"
           /></label>
         </div>
+        <p v-if="form.authMode === 'apiKey'" class="hint">{{ t.apiKeyHint }}</p>
         <p v-if="hasPassword && downloaderChanged" class="hint">{{ t.targetHint }}</p>
         </template>
         <div v-if="confirmReset" class="reset-confirmation" role="alert">
           <p class="hint">{{ t.resetHint }}</p>
           <div class="section-actions"><button type="button" class="danger" @click="resetDownloader">{{ t.confirmReset }}</button><button type="button" @click="confirmReset = false">{{ t.cancel }}</button></div>
         </div>
-        <div v-else class="section-actions">
+        <div v-else-if="showDownloaderForm" class="section-actions">
           <button v-if="showDownloaderForm" type="submit" class="primary" :disabled="busy">{{ busy ? t.busy : t.connect }}</button>
           <button v-if="form.downloaderConfigured" type="button" @click="confirmReset = true">{{ t.resetConfig }}</button>
           <button v-if="editingDownloader" type="button" class="quiet" @click="closeDownloaderEditor">{{ t.cancel }}</button>
@@ -457,8 +502,8 @@ onUnmounted(() => {
         <p v-if="downloaderError" class="error" role="alert">{{ text(downloaderError) }}</p>
       </fieldset>
     </form>
-    <aside class="connection-guide" :aria-label="t.connectionGuide">
-      <h2>{{ t.connectionGuide }}</h2>
+    <details class="connection-guide">
+      <summary>{{ t.connectionGuide }}</summary>
       <p>{{ t.gatewayExplanation }}</p>
       <p>{{ t.downloaderExplanation }}</p>
       <details>
@@ -471,7 +516,8 @@ onUnmounted(() => {
         </div>
         <p v-if="documentationError" class="error" role="alert">{{ t.documentationError }}</p>
       </details>
-    </aside>
+    </details>
+    </section>
     <p v-if="settingsError || runtime.preferenceError" class="error" role="alert">
       {{ text(settingsError || runtime.preferenceError || 'unknownError') }}
     </p>

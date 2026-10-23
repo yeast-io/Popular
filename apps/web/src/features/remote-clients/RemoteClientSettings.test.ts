@@ -12,6 +12,7 @@ const devices = ['device-a', 'device-b', 'device-c'].map((id) => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 it.each(['en-US', 'zh-CN'] as const)('generates and displays a reusable RCCK with Agent instructions (%s)', async (locale) => {
@@ -214,4 +215,25 @@ it('does not offer mutations after initial read fails', async () => {
   expect(wrapper.find('[data-action="generate"]').exists()).toBe(false);
   expect(wrapper.find('[role="alert"]').exists()).toBe(true);
   wrapper.unmount();
+});
+
+it.each(['en-US', 'zh-CN'] as const)('polls independent Agent/downloader states every minute and stops after unmount (%s)', async (locale) => {
+  vi.useFakeTimers();
+  setLocale(locale);
+  let online = false;
+  const fetchMock = vi.fn(async () => Response.json({ ...configured, devices: [{ ...devices[0],
+    isAgentOnline: true, isAgentDownloaderOnline: online }] }));
+  vi.stubGlobal('fetch', fetchMock);
+  const wrapper = mount(RemoteClientSettings);
+  await flushPromises();
+  await wrapper.get('.integration-disclosure').trigger('click');
+  expect(wrapper.text()).toContain(locale === 'zh-CN' ? '离线或不可用' : 'Offline or unavailable');
+  online = true;
+  await vi.advanceTimersByTimeAsync(60_000);
+  await flushPromises();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(wrapper.text()).not.toContain(locale === 'zh-CN' ? '离线或不可用' : 'Offline or unavailable');
+  wrapper.unmount();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });

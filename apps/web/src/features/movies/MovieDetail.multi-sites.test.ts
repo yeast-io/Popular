@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
-import { flushPromises, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { IntegrationPreferences, MovieDownload } from '@movie-hub/contract';
 import { setLocale } from '../../i18n';
 import MovieDetail from './MovieDetail.vue';
+
+enableAutoUnmount(afterEach);
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -97,11 +99,10 @@ it.each(['en-US', 'zh-CN'] as const)('groups selected sources, expands the prima
     expect(text).toContain(releaseGroup);
     for (const value of ['2026-10-05 23:05:14', 'WEB-DL', 'H.265', 'E-AC-3 5.1 Atmos']) expect(text).toContain(value);
   }
-  expect(document.body.querySelector('.release-downloader-option.is-selected')?.getAttribute('aria-label')).toBe(
-    'Transmission'
-  );
-  expect(document.body.querySelector('.release-downloader-option.is-selected img')?.getAttribute('src')).toBeTruthy();
+  expect(document.body.querySelector('.release-downloader-select')).toBeNull();
   groups[0]!.querySelector<HTMLButtonElement>('.release-download-button')!.click();
+  await flushPromises();
+  document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
   await flushPromises();
   expect(f.posts).toEqual([{ sourceReleaseId: '42', provider: 'transmission', downloaderInstanceId: 'transmission' }]);
   expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
@@ -292,10 +293,14 @@ it.each(['en-US', 'zh-CN'] as const)('downloads HDArea independently of an ident
   groups[1]!.open = true;
   groups[1]!.querySelector<HTMLButtonElement>('.release-download-button')!.click();
   await flushPromises();
+  document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
+  await flushPromises();
   expect(f.posts).toEqual([{ sourceReleaseId: '42', provider: 'transmission', downloaderInstanceId: 'transmission', sourceProvider: 'hdarea' }]);
   expect(groups[1]!.querySelector('[role="status"]')?.textContent).toContain('12%');
   expect(groups[0]!.querySelector('.release-download-progress')).toBeNull();
   groups[0]!.querySelector<HTMLButtonElement>('.release-download-button')!.click();
+  await flushPromises();
+  document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
   await flushPromises();
   expect(f.posts).toHaveLength(2);
   expect(groups[0]!.querySelector('[role="status"]')?.textContent).toContain('12%');

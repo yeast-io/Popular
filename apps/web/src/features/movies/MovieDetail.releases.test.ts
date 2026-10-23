@@ -192,7 +192,7 @@ describe('Movie Detail live releases', () => {
     wrapper.unmount();
   });
 
-  it('submits directly with one downloader and polls only while the release dialog is open', async () => {
+  it('selects in a dialog with one downloader and polls only while the release dialog is open', async () => {
     vi.useFakeTimers();
     setLocale('zh-CN');
     let downloadGets = 0;
@@ -296,6 +296,9 @@ describe('Movie Detail live releases', () => {
 
     const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
     dialog.querySelector<HTMLButtonElement>('.release-download-button')!.click();
+    await flushPromises();
+    expect(downloadPosts).toBe(0);
+    document.body.querySelector<HTMLButtonElement>('[role=alertdialog] .primary')!.click();
     await flushPromises();
     expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
     expect(downloadPosts).toBe(1);

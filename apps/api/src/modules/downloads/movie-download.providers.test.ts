@@ -76,6 +76,16 @@ function fixture(
     },
   } as TransmissionConfigStore;
   const downloads: MovieDownloadStore = {
+    async claimMissing(previous, provider, downloaderInstanceId, downloaderName) {
+      const current = records.get(previous.id)!;
+      if (current.status !== 'missing') return { record: current, claimed: false };
+      const record: MovieDownloadRecord = { id: current.id, ownerId: current.ownerId, tmdbId: current.tmdbId,
+        sourceProvider: current.sourceProvider, sourceReleaseId: current.sourceReleaseId,
+        lookupTag: `redownload-${current.id}`, status: 'submitting', progress: 0, executionMode: 'local', provider,
+        ...(downloaderInstanceId ? { downloaderInstanceId } : {}), ...(downloaderName ? { downloaderName } : {}) };
+      records.set(record.id, record);
+      return { record, claimed: true };
+    },
     async findByRelease(owner, tmdbId, releaseId, source: DownloadSource = 'mteam') {
       return (
         [...records.values()].find((record) => {
@@ -748,4 +758,23 @@ test('remote original records never retry or query a local downloader, and notif
   const completed = { ...remote, status: 'completed' as const, progress: 100 };
   assert.equal((await f.service.inspect(completed))!.progress, 100);
   assert.equal(f.lookups.length, 0);
+});
+
+test('a deleted Agent task can be explicitly downloaded to public Transmission without querying the old Agent', async () => {
+  for (const source of ['mteam', 'hdarea'] as const) {
+    const f = fixture(['transmission']);
+    f.records.set('deleted-agent-task', {
+      id: 'deleted-agent-task', ownerId: '507f1f77bcf86cd799439011', tmdbId: 603,
+      sourceProvider: source, sourceReleaseId: '991', lookupTag: 'old-agent-tag',
+      executionMode: 'remote', remoteDeviceId: 'old-agent', remoteCommandId: 'old-command',
+      pushState: 'succeeded', status: 'missing', progress: 50, provider: 'qbittorrent',
+    });
+    const result = await f.service.create('owner', 603, '991', 'transmission', source, 'transmission');
+    assert.equal(result.executionMode, 'local');
+    assert.equal(result.provider, 'transmission');
+    assert.equal(result.id, 'deleted-agent-task');
+    assert.equal(result.remoteDeviceId, undefined);
+    assert.deepEqual(f.adds, ['transmission']);
+    assert.equal(f.lookups.includes('qbittorrent'), false);
+  }
 });
