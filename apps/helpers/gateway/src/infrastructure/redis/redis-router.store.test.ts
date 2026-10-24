@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { Redis } from 'ioredis';
 import { RedisRouter } from './redis-router.store.js';
-import type { Session } from '../gateway.types.js';
+import type { Session } from '../../gateway.types.js';
 
 test(
   'REAL Redis: cross-instance routing, Pub/Sub wake, old cleanup, rate limit and expiry',
@@ -29,6 +29,10 @@ test(
       if (keys.length) await redis1.del(...keys);
       await one.close();
       await two.close();
+      // Router shutdown must leave the injected command connections available to other users.
+      await Promise.all([redis1.ping(), redis2.ping()]);
+      redis1.disconnect();
+      redis2.disconnect();
     });
     await Promise.all([one.ready(), two.ready()]);
     const old: Session = {

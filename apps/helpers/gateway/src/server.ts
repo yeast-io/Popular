@@ -1,12 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { Redis } from 'ioredis';
 import { configSchema } from './gateway.schema.js';
 import { signingIdentity } from './gateway-crypto.service.js';
 import { GatewayService } from './gateway.service.js';
 import { createGatewayApp } from './gateway.routes.js';
-import { RedisRouter } from './infrastructure/redis-router.store.js';
-import { RedisGatewayBus } from './infrastructure/gateway-bus.service.js';
+import { createGatewayRedis } from './infrastructure/redis/gateway-redis.service.js';
 import { GatewayBridge } from './infrastructure/gateway-bridge.service.js';
 import { gatewayLogger } from './gateway-logging.service.js';
 import { requireCondition } from './gateway.errors.js';
@@ -16,16 +14,14 @@ const logger = gatewayLogger(config.LOG_LEVEL, [config.INTERNAL_INBOUND_TOKEN, c
 const proxyTls = config.TLS_TERMINATION === 'proxy';
 const allowHttp = config.NODE_ENV !== 'production' && config.ALLOW_INSECURE_DEV;
 requireCondition(proxyTls || (config.TLS_CERT_FILE && config.TLS_KEY_FILE) || allowHttp, 'HTTPS_REQUIRED', 500);
-const redis = new Redis(config.REDIS_URL, {
-  maxRetriesPerRequest: 1,
-  connectTimeout: 5000,
-  commandTimeout: 5000,
-  enableOfflineQueue: false,
-});
-redis.on('error', (err) => logger.error({ err, stage: 'redis.connection' }, 'gateway'));
 const instanceId = randomUUID();
-const router = new RedisRouter(redis, 'popular:gateway:v1:', 45_000, logger);
-const bus = new RedisGatewayBus(redis, instanceId, config.INTERNAL_INBOUND_TOKEN, logger);
+const redis = createGatewayRedis({
+  url: config.REDIS_URL,
+  instanceId,
+  token: config.INTERNAL_INBOUND_TOKEN,
+  logger,
+});
+const { router, bus } = redis;
 const bridge = new GatewayBridge(bus);
 let app: Awaited<ReturnType<typeof createGatewayApp>> | undefined;
 try {
@@ -68,10 +64,15 @@ try {
     const deadline = setTimeout(() => process.exit(1), 10_000);
     deadline.unref();
     try {
-      await app?.close();
-      await bridge.close();
-      await bus.close();
-      await router.close();
+      try {
+        await app?.close();
+      } finally {
+        try {
+          await bridge.close();
+        } finally {
+          await redis.close();
+        }
+      }
     } catch (err) {
       logger.error({ err, stage: 'shutdown' }, 'gateway');
       process.exitCode = 1;
@@ -87,9 +88,14 @@ try {
   });
 } catch (err) {
   logger.error({ err, stage: 'startup' }, 'gateway');
-  await app?.close();
-  await bridge.close();
-  await bus.close();
-  await router.close();
   process.exitCode = 1;
+  try {
+    await app?.close();
+  } finally {
+    try {
+      await bridge.close();
+    } finally {
+      await redis.close();
+    }
+  }
 }

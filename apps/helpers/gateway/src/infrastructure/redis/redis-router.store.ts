@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { once } from 'node:events';
-import { gatewayLogger } from '../gateway-logging.service.js';
-import type { AgentStatus, Route, Router, Session } from '../gateway.types.js';
+import { gatewayLogger } from '../../gateway-logging.service.js';
+import type { AgentStatus, Route, Router, Session } from '../../gateway.types.js';
 
 const renewScript = `
 local raw = redis.call('GET', KEYS[1])
@@ -95,9 +95,8 @@ export class RedisRouter implements Router {
   }
 
   async close() {
-    // disconnect() is bounded even when Redis is unavailable; pending callers fail closed.
+    // Only close owned Pub/Sub connections; the shared command connection belongs to the factory.
     this.subscriber.disconnect();
     this.publisher.disconnect();
-    this.redis.disconnect();
   }
 }

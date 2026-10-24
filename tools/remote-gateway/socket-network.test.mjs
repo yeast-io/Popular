@@ -10,8 +10,8 @@ import { RemoteDownloadCoordinator } from '../../apps/api/src/modules/remote-dow
 import { createGatewayApp } from '../../apps/helpers/gateway/src/gateway.routes.ts';
 import { GatewayService } from '../../apps/helpers/gateway/src/gateway.service.ts';
 import { GatewayBridge } from '../../apps/helpers/gateway/src/infrastructure/gateway-bridge.service.ts';
-import { RedisGatewayBus } from '../../apps/helpers/gateway/src/infrastructure/gateway-bus.service.ts';
-import { RedisRouter } from '../../apps/helpers/gateway/src/infrastructure/redis-router.store.ts';
+import { RedisGatewayBus } from '../../apps/helpers/gateway/src/infrastructure/redis/gateway-bus.service.ts';
+import { RedisRouter } from '../../apps/helpers/gateway/src/infrastructure/redis/redis-router.store.ts';
 import { Redis } from '../../apps/helpers/gateway/node_modules/ioredis/built/index.js';
 
 const diagnostics = { verbose: false, info() {}, error() {} };
@@ -102,6 +102,8 @@ test('REAL Redis + WebSocket, SIMULATED Mongo: service pool on one Gateway route
     if (keys.length) await redis1.del(...keys);
     await router1.close();
     await router2.close();
+    redis1.disconnect();
+    redis2.disconnect();
   });
   await bus1.subscriber.unsubscribe();
   await bus2.subscriber.unsubscribe();

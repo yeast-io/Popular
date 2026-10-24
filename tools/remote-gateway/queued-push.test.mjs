@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFixture, newDevice, message } from './fixture.mjs';
+import { RemoteDownloadCoordinator } from '../../apps/api/src/modules/remote-downloads/remote-download-coordinator.service.ts';
+import { RpcError } from '../../packages/contract/dist/helper-gateway/socket-rpc.service.js';
 
 async function fixture() {
   const f = await createFixture();
@@ -13,6 +15,101 @@ async function fixture() {
   f.store.downloads.set(input.downloadId, { ...input, tmdbId: 1, executionMode: 'remote', downloaderType: 'qbittorrent' });
   return { ...f, device, live, input };
 }
+
+for (const verbose of [false, true]) {
+  test(`queue waiting logs transitions once and repeats only with VERBOSE=${verbose}`, async () => {
+    const f = await fixture();
+    const events = [];
+    const errors = [];
+    f.backend.options.diagnostics = { verbose, logger: {
+      info: (fields) => events.push(fields),
+      error: (fields) => errors.push(fields),
+    } };
+    f.backend.options.report = (error, fields) => errors.push({ error, ...fields });
+    await f.gateway.dropped(f.live.peer);
+    await f.coordinator.enqueue(f.input);
+    const first = await f.backend.get(f.input.commandId);
+    assert.equal(first.nextAttemptAt - first.lastAttemptAt, 60000);
+    // A fresh coordinator must use persisted state, not a process-local suppression cache.
+    const restarted = new RemoteDownloadCoordinator(f.coordinator.gateway, f.backend);
+    f.tick(61000);
+    await restarted.retryQueued();
+    let waits = events.filter((event) => event.stage === 'remote-queue.waiting');
+    assert.equal(waits.length, verbose ? 2 : 1);
+    assert.ok(waits.every((event) => event.reason === 'DEVICE_OFFLINE'));
+    assert.equal(errors.length, 0);
+    f.tick(61000);
+    const live = await f.connect(f.device, f.gateway, false);
+    await f.gateway.message(live.peer, message('__agent_status__', {
+      downloaderType: 'qbittorrent', instanceId: 'downloader-1', configured: false, reachable: false,
+    }));
+    await restarted.retryQueued();
+    waits = events.filter((event) => event.stage === 'remote-queue.waiting');
+    assert.equal(waits.length, verbose ? 3 : 2);
+    assert.equal(waits.at(-1).reason, 'DOWNLOADER_UNAVAILABLE');
+    assert.equal(waits.at(-1).previousReason, 'DEVICE_OFFLINE');
+    assert.equal(waits.at(-1).correlationId, f.input.correlationId);
+    assert.equal(waits.at(-1).commandId, f.input.commandId);
+    assert.ok(waits.every((event) => !event.err && !event.error && !event.stack));
+    f.tick(61000);
+    await f.connect(f.device, f.gateway, false);
+    await restarted.retryQueued();
+    assert.equal((await f.backend.get(f.input.commandId)).state, 'delivered');
+    assert.equal((await f.backend.get(f.input.commandId)).queueExpiresAt, first.queueExpiresAt);
+    const resumed = events.filter((event) => event.stage === 'remote-queue.resumed');
+    assert.equal(resumed.length, 1);
+    assert.equal(resumed[0].previousReason, 'DOWNLOADER_UNAVAILABLE');
+    assert.equal(errors.length, 0);
+  });
+}
+
+test('unexpected queue failures retain their original error and correlation even without verbose diagnostics', async () => {
+  const f = await fixture();
+  const errors = [];
+  f.backend.options.diagnostics = { verbose: false, logger: { error() {} } };
+  f.backend.options.report = (error, fields) => errors.push({ error, ...fields });
+  const cause = new Error('transport failed');
+  const failures = [new Error('database unavailable', { cause }), new RpcError('GATEWAY_UNAVAILABLE', 'not_applied'),
+    new RpcError('DEVICE_OFFLINE', 'unknown')];
+  for (const error of failures) {
+    f.coordinator.gateway.call = async () => {
+      throw error;
+    };
+    if (!f.store.commands.size) await f.coordinator.enqueue(f.input);
+    else {
+      f.tick(61000);
+      await f.coordinator.retryQueued();
+    }
+    assert.equal(errors.at(-1).error, error);
+    assert.equal(errors.at(-1).stage, 'remote-queue.dispatch');
+    assert.equal(errors.at(-1).correlationId, f.input.correlationId);
+  }
+  assert.equal(errors.length, failures.length);
+  assert.equal(errors[0].error.cause, cause);
+});
+
+test('multiple waiting tasks log independently and concurrent workers do not repeat their unchanged reasons', async () => {
+  const f = await fixture();
+  const events = [];
+  const errors = [];
+  f.backend.options.diagnostics = { verbose: false, logger: {
+    info: (fields) => events.push(fields), error: (fields) => errors.push(fields),
+  } };
+  f.backend.options.report = (error) => errors.push(error);
+  await f.gateway.dropped(f.live.peer);
+  const other = { ...f.input, commandId: 'other-command', downloadId: 'other-download' };
+  f.store.downloads.set(other.downloadId, { ...other, tmdbId: 1, executionMode: 'remote' });
+  await f.coordinator.enqueue(f.input);
+  await f.coordinator.enqueue(other);
+  f.tick(61000);
+  const otherWorker = new RemoteDownloadCoordinator(f.coordinator.gateway, f.backend);
+  await Promise.all([f.coordinator.retryQueued(), otherWorker.retryQueued()]);
+  assert.deepEqual(events.filter((event) => event.stage === 'remote-queue.waiting')
+    .map((event) => event.commandId).sort(), [other.commandId, f.input.commandId].sort());
+  assert.equal(errors.length, 0);
+  assert.equal((await f.backend.get(other.commandId)).lastErrorCode, 'DEVICE_OFFLINE');
+  assert.equal((await f.backend.get(f.input.commandId)).lastErrorCode, 'DEVICE_OFFLINE');
+});
 
 test('queued push survives offline, reconnects automatically, and never extends its seven day deadline', async () => {
   const f = await fixture();

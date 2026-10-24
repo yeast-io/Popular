@@ -1,8 +1,8 @@
 import { Value } from '@sinclair/typebox/value';
 import { GatewayDeviceStatusSchema } from '@movie-hub/contract';
 import { randomUUID } from 'node:crypto';
-import { AiTrace, withAiTrace, aiStep } from '../../infrastructure/logging/ai-trace.js';
-import { REMOTE_DELIVERY_TTL_MS, REMOTE_QUEUE_RETRY_MS } from './remote-download.policy.js';
+import { AiTrace, withAiTrace, aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import { REMOTE_DELIVERY_TTL_MS, REMOTE_QUEUE_RETRY_MS, REMOTE_QUEUE_WAIT_CODES } from './remote-download.policy.js';
 import type { CommandRecord, DeviceStatus, DownloadRequest, PublicCommand, Session, AgentStatus } from '@movie-hub/contract';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
 import type { RpcCaller } from '@movie-hub/contract/socket-rpc';
@@ -66,6 +66,7 @@ export class RemoteDownloadCoordinator {
       ensure(!c.targetDownloader || (c.targetDownloader.instanceId === target.instanceId
         && c.targetDownloader.downloaderType === target.downloaderType), 'DOWNLOADER_INSTANCE_MISMATCH');
       await this.downloads.authorized(status.session);
+      const previousErrorCode = c.lastErrorCode;
       c = await this.downloads.change(commandId, async (latest) => {
         if (!['accepted', 'delivered', 'received', 'failed'].includes(latest.state)) return latest;
         ensure(latest.queueExpiresAt! > this.downloads.now(), 'DELIVERY_EXPIRED');
@@ -86,16 +87,43 @@ export class RemoteDownloadCoordinator {
         authVersion: c.authVersion, deviceVersion: c.deviceVersion, source: c.source,
         resourceId: c.resourceId, correlationId: c.correlationId,
       }, c.correlationId));
+      if (previousErrorCode && REMOTE_QUEUE_WAIT_CODES.includes(previousErrorCode) && !c.lastErrorCode) {
+        this.downloads.options.diagnostics?.logger.info?.({
+          stage: 'remote-queue.resumed', outcome: 'dispatched', correlationId: c.correlationId,
+          commandId, retryAttempt: c.retryAttempt ?? 0, previousReason: previousErrorCode,
+        }, 'remote-download');
+      }
     } catch (error) {
-      this.downloads.options.report(error, { stage: 'remote-queue.dispatch', correlationId: c.correlationId,
-        commandId, retryAttempt: c.retryAttempt ?? 0 });
+      const waiting = error instanceof RpcError && error.effect === 'not_applied'
+        && REMOTE_QUEUE_WAIT_CODES.includes(error.code);
+      if (!waiting) {
+        this.downloads.options.report(error, { stage: 'remote-queue.dispatch', correlationId: c.correlationId,
+          commandId, retryAttempt: c.retryAttempt ?? 0 });
+      }
+      let previousReason: string | undefined;
+      let waitChanged = false;
       const failed = await this.downloads.change(commandId, async (latest) => {
+        waitChanged = false;
         if (latest.executionId || ['succeeded', 'duplicate', 'closed', 'cancelled'].includes(latest.state)) return latest;
+        previousReason = latest.lastErrorCode;
+        waitChanged = waiting && previousReason !== error.code;
         return { ...latest,
           state: error instanceof RpcError && error.effect === 'not_applied' && error.code !== 'DEVICE_OFFLINE' ? 'failed' : latest.state,
           lastErrorCode: error instanceof RpcError ? error.code : 'GATEWAY_UNAVAILABLE', projected: false };
       });
       await this.downloads.project(failed);
+      if (waiting) {
+        currentAiTrace()?.clearFailure();
+        const diagnostics = this.downloads.options.diagnostics;
+        if (!failed.executionId && ['accepted', 'delivered', 'received', 'failed'].includes(failed.state)
+          && failed.lastErrorCode === error.code && (waitChanged || diagnostics?.verbose)) {
+          diagnostics?.logger.info?.({
+            stage: 'remote-queue.waiting', outcome: 'waiting', correlationId: failed.correlationId,
+            commandId, retryAttempt: failed.retryAttempt ?? 0, reason: error.code,
+            previousReason, nextAttemptAt: failed.nextAttemptAt,
+          }, 'remote-download');
+        }
+      }
     }
   }
 

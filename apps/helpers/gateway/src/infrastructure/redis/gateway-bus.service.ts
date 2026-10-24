@@ -1,11 +1,11 @@
 import { randomBytes, randomUUID, hkdfSync, createCipheriv, createDecipheriv } from 'node:crypto';
 import { Redis } from 'ioredis';
 import { once } from 'node:events';
-import { GatewayError } from '../gateway.errors.js';
+import { GatewayError } from '../../gateway.errors.js';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
 import type { RpcFrame } from '@movie-hub/contract/socket-rpc';
 import type { Logger } from 'pino';
-import type { GatewayBus, RelayPending, RelayRequest } from '../gateway.types.js';
+import type { GatewayBus, RelayPending, RelayRequest } from '../../gateway.types.js';
 
 const enqueue = `
 if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
