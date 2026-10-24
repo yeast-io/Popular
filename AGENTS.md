@@ -39,6 +39,7 @@
 - Keep shared, independently consumed type/interface definitions in `*.types.ts`, without executable values or initialization. Schema-derived types such as `Static<typeof Schema>`, `z.infer<typeof Schema>`, Mongoose document types, and model factory return types may stay beside the schema they describe; do not duplicate the schema's source of truth just to separate these dependent types.
 - Schema modules may compose other schema modules but must not execute business workflows, access credentials, perform queries, or import store implementations. Business initialization and pure domain operations belong in `*.domain.ts`; provider errors and other executable classes must use an appropriate implementation module rather than `*.types.ts`.
 - When correcting these boundaries, preserve model and collection names, fields, defaults, indexes, validation behavior, and persisted data formats. Update every consumer and split schema-focused tests from store-operation tests where necessary. Scan first and change actual responsibility violations; retain framework entrypoints and dependency-driven composition modules such as `models.ts`.
+- The `markdown` files are only allowed to create in directory `docs`.
 
 ## Localization
 
