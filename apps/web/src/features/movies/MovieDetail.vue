@@ -790,7 +790,7 @@ function syncedAtLabel(syncedAt: string): string {
             <span>{{ t('movie.posterUnavailable') }}</span>
           </div>
           <span
-            v-if="posterDownloadState"
+            v-if="authenticated && posterDownloadState"
             class="poster-resource-badge"
             :class="`is-${posterDownloadState}`"
             :title="t(`movie.download.badge.${posterDownloadState}`)"
@@ -799,7 +799,7 @@ function syncedAtLabel(syncedAt: string): string {
             <span>{{ t(`movie.download.badge.${posterDownloadState}`) }}</span>
           </span>
           <button
-            v-else-if="resourceCheck?.availability === 'available' && !resourceCheck.checking"
+            v-else-if="authenticated && resourceCheck?.availability === 'available' && !resourceCheck.checking"
             class="poster-resource-badge"
             :class="`is-${posterResourceState()}`"
             type="button"
@@ -812,7 +812,7 @@ function syncedAtLabel(syncedAt: string): string {
             <span>{{ posterResourceLabel() }}</span>
           </button>
           <span
-            v-else
+            v-else-if="authenticated"
             class="poster-resource-badge"
             :class="`is-${posterResourceState()}`"
             :title="resourceStatusLabel()"
@@ -877,7 +877,7 @@ function syncedAtLabel(syncedAt: string): string {
               <span :id="`${statusTooltipId}-watched`" class="detail-state-tooltip" role="tooltip">{{ t(movie.userStatus === 'watched' ? 'movie.status.watched' : 'movie.status.unwatched') }}</span>
             </button>
           </div>
-          <div class="resource-check-panel">
+          <div v-if="authenticated" class="resource-check-panel">
             <span
               class="poster-resource-badge resource-toolbar-badge"
               :class="`is-${posterDownloadState ?? posterResourceState()}`"
@@ -888,7 +888,7 @@ function syncedAtLabel(syncedAt: string): string {
               <span>{{ posterDownloadState ? t(`movie.download.badge.${posterDownloadState}`) : posterResourceLabel() }}</span>
             </span>
             <ResourceSiteSelector
-              v-if="authenticated" :disabled="Boolean(resourceCheck?.checking)" :check="resourceCheck"
+              :disabled="Boolean(resourceCheck?.checking)" :check="resourceCheck"
               @loaded="preferencesLoaded" @changed="preferencesChanged"
             >
               <template #actions>
@@ -903,10 +903,9 @@ function syncedAtLabel(syncedAt: string): string {
                 </div>
               </template>
             </ResourceSiteSelector>
-            <button v-else class="resource-check-button" type="button" @click="recheckResource">{{ t('movie.resource.check') }}</button>
           </div>
           </div>
-          <p v-if="resourceError" class="browse-error" role="alert">{{ resourceError }}</p>
+          <p v-if="authenticated && resourceError" class="browse-error" role="alert">{{ resourceError }}</p>
           <p v-if="errorMessage" class="browse-error" role="alert">{{ errorMessage }}</p>
         </div>
       </div>

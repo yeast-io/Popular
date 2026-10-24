@@ -83,6 +83,7 @@ const atTop = ref(true);
 const atBottom = ref(true);
 let scrollUpdateFrame: number | undefined;
 let contentObserver: MutationObserver | undefined;
+let pageScrollContainer: HTMLElement | null = null;
 let previousScrollRestoration: ScrollRestoration | undefined;
 
 const avatarSource = computed(() => {
@@ -109,6 +110,8 @@ onMounted(async () => {
   window.history.scrollRestoration = 'manual';
   window.addEventListener('popstate', syncPageFromLocation);
   window.addEventListener('scroll', scheduleScrollControlsUpdate, { passive: true });
+  pageScrollContainer = document.getElementById('app');
+  pageScrollContainer?.addEventListener('scroll', scheduleScrollControlsUpdate, { passive: true });
   window.addEventListener('resize', scheduleScrollControlsUpdate);
   document.addEventListener('pointerdown', closeMenusOnOutside);
   contentObserver = new MutationObserver(scheduleScrollControlsUpdate);
@@ -329,6 +332,7 @@ onBeforeUnmount(() => {
   clearPreview();
   window.removeEventListener('popstate', syncPageFromLocation);
   window.removeEventListener('scroll', scheduleScrollControlsUpdate);
+  pageScrollContainer?.removeEventListener('scroll', scheduleScrollControlsUpdate);
   window.removeEventListener('resize', scheduleScrollControlsUpdate);
   document.removeEventListener('pointerdown', closeMenusOnOutside);
   contentObserver?.disconnect();
@@ -379,7 +383,7 @@ function openTvShow(tmdbId: number) {
   window.history.pushState({ tvShowOrigin: ['watchlist', 'viewing-preferences'].includes(currentPage.value) ? currentPage.value : 'tv-shows' }, '', `/tv-shows/${tmdbId}`);
   selectedTvShowId.value = tmdbId;
   currentPage.value = 'tv-show-detail';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  scrollPageTo({ top: 0, behavior: 'smooth' });
 }
 
 function backFromTvShowDetail() {
@@ -421,7 +425,7 @@ function openMovie(tmdbId: number) {
   window.history.pushState({ movieOrigin }, '', `/movies/${tmdbId}`);
   selectedMovieId.value = tmdbId;
   currentPage.value = 'movie-detail';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  scrollPageTo({ top: 0, behavior: 'smooth' });
 }
 
 function backFromMovieDetail() {
@@ -454,7 +458,7 @@ function navigate(page: Page) {
   errorMessage.value = '';
   successMessage.value = '';
   if (page === 'movies' || page === 'tv-shows' || page === 'viewing-preferences' || page === 'watchlist') restoreListScroll(page);
-  else window.scrollTo({ top: 0, behavior: 'smooth' });
+  else scrollPageTo({ top: 0, behavior: 'smooth' });
 }
 
 function openAuth(nextMode: 'login' | 'register', replace = false) {
@@ -467,7 +471,7 @@ function openAuth(nextMode: 'login' | 'register', replace = false) {
   errorMessage.value = '';
   successMessage.value = '';
   authFieldErrors.value = {};
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  scrollPageTo({ top: 0, behavior: 'smooth' });
 }
 
 function navigateToPath(path: string, replace = false) {
@@ -478,7 +482,7 @@ function navigateToPath(path: string, replace = false) {
   selectedTvShowId.value = tvShowIdFromPath();
   errorMessage.value = '';
   successMessage.value = '';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  scrollPageTo({ top: 0, behavior: 'smooth' });
 }
 
 function historyState(): Record<string, unknown> {
@@ -487,10 +491,21 @@ function historyState(): Record<string, unknown> {
     : {};
 }
 
+function activeScrollContainer() {
+  const container = document.getElementById('app');
+  return container && window.getComputedStyle(container).overflowY === 'auto' ? container : null;
+}
+
+function scrollPageTo(options: ScrollToOptions) {
+  const container = activeScrollContainer();
+  if (container) container.scrollTo(options);
+  else window.scrollTo(options);
+}
+
 function rememberListScroll() {
   const page = currentPage.value;
   if (page !== 'movies' && page !== 'tv-shows' && page !== 'viewing-preferences' && page !== 'watchlist') return;
-  listScrollPositions[page] = Math.max(0, window.scrollY);
+  listScrollPositions[page] = Math.max(0, activeScrollContainer()?.scrollTop ?? window.scrollY);
   window.history.replaceState({ ...historyState(), listPage: page, scrollY: listScrollPositions[page] }, '');
 }
 
@@ -502,7 +517,7 @@ function restoreListScroll(page: ListPage) {
       : listScrollPositions[page];
   listScrollPositions[page] = savedScrollY;
   void nextTick(() => {
-    window.requestAnimationFrame(() => window.scrollTo({ top: savedScrollY, behavior: 'auto' }));
+    window.requestAnimationFrame(() => scrollPageTo({ top: savedScrollY, behavior: 'auto' }));
   });
 }
 
@@ -510,16 +525,18 @@ function scheduleScrollControlsUpdate() {
   if (scrollUpdateFrame !== undefined) return;
   scrollUpdateFrame = window.requestAnimationFrame(() => {
     scrollUpdateFrame = undefined;
-    const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    atTop.value = window.scrollY <= 8;
-    atBottom.value = maxScroll <= 8 || window.scrollY >= maxScroll - 8;
+    const container = activeScrollContainer();
+    const maxScroll = Math.max(0, (container?.scrollHeight ?? document.documentElement.scrollHeight) - (container?.clientHeight ?? window.innerHeight));
+    const scrollTop = container?.scrollTop ?? window.scrollY;
+    atTop.value = scrollTop <= 8;
+    atBottom.value = maxScroll <= 8 || scrollTop >= maxScroll - 8;
   });
 }
 
 function scrollToEdge(edge: 'top' | 'bottom') {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  window.scrollTo({
-    top: edge === 'top' ? 0 : document.documentElement.scrollHeight,
+  scrollPageTo({
+    top: edge === 'top' ? 0 : (activeScrollContainer()?.scrollHeight ?? document.documentElement.scrollHeight),
     behavior: reduceMotion ? 'auto' : 'smooth',
   });
 }

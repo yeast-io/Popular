@@ -21,6 +21,27 @@ describe('localized movie page flows', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['en-US', 'zh-CN'] as const)('hides poster preferences for guests and restores them after login (%s)', async (locale) => {
+    setLocale(locale);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      items: [{ tmdbId: 42, title: 'Film', userStatus: 'unwatched' }],
+      page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete',
+      fetchedAt, generation: trendingGeneration, locale,
+    })));
+    const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
+    try {
+      await flushPromises();
+      expect(wrapper.find('.movie-card').exists()).toBe(true);
+      expect(wrapper.find('.preference-control').exists()).toBe(false);
+      await wrapper.setProps({ authenticated: true });
+      expect(wrapper.findAll('.preference-button')).toHaveLength(2);
+      await wrapper.setProps({ authenticated: false });
+      expect(wrapper.findAll('.preference-button')).toHaveLength(0);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it('reloads Trending and Search in the selected locale', async () => {
     const urls: string[] = [];
     vi.stubGlobal(

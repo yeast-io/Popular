@@ -30,6 +30,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe('movie detail icon actions', () => {
+  it.each(['en-US', 'zh-CN'] as const)('shows resource badges and queries only while signed in (%s)', async (locale) => {
+    setLocale(locale);
+    const { wrapper } = setup(false);
+    await flushPromises();
+    expect(wrapper.find('.detail-poster').exists()).toBe(true);
+    expect(wrapper.find('.trailer-button').exists()).toBe(true);
+    expect(wrapper.findAll('.poster-resource-badge')).toHaveLength(0);
+    expect(wrapper.find('.resource-check-panel').exists()).toBe(false);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/me/movies/'))).toBe(false);
+
+    await wrapper.setProps({ authenticated: true });
+    await flushPromises();
+    expect(wrapper.find('.detail-poster .poster-resource-badge').exists()).toBe(true);
+    expect(wrapper.find('.resource-check-panel .resource-toolbar-badge').exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'ResourceSiteSelector' }).exists()).toBe(true);
+
+    await wrapper.setProps({ authenticated: false });
+    expect(wrapper.findAll('.poster-resource-badge')).toHaveLength(0);
+    expect(wrapper.find('.resource-check-panel').exists()).toBe(false);
+    expect(wrapper.find('.trailer-button').exists()).toBe(true);
+  });
   it.each([
     ['en-US', 'Add to watch list', 'Remove from watch list', 'Mark as watched', 'Mark as unwatched'],
     ['zh-CN', '加入想看清单', '移出想看清单', '标记为已看', '标记为未看'],
@@ -102,5 +123,5 @@ it.each(['en-US', 'zh-CN'] as const)('combines cast and directors once per perso
   expect(cards[1]!.text()).toContain('Friend / Narrator');
   expect(wrapper.findAll('.people-list')).toHaveLength(1);
   expect(wrapper.findAll('.detail-sections h2')).toHaveLength(0);
-  expect(wrapper.find('.detail-action-toolbar > .resource-check-panel').exists()).toBe(true);
+  expect(wrapper.find('.detail-action-toolbar > .resource-check-panel').exists()).toBe(false);
 });

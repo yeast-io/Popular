@@ -146,7 +146,7 @@ onBeforeUnmount(() => {
       <p>{{ error }}</p><button class="outline-button" type="button" @click="load(page === 0)">{{ t('actions.retry') }}</button>
     </div>
     <div v-if="shows.length" class="movie-grid">
-      <TvShowCard v-for="show in shows" :key="show.tmdbId" :show="show" :updating="updating.has(show.tmdbId)" @preference="setPreference(show, $event)" @open="emit('openTvShow', $event)" />
+      <TvShowCard v-for="show in shows" :key="show.tmdbId" :show="show" :authenticated="authenticated" :updating="updating.has(show.tmdbId)" @preference="setPreference(show, $event)" @open="emit('openTvShow', $event)" />
     </div>
     <p v-if="loading" class="movie-state" role="status">{{ t(searching ? 'tv.searching' : 'tv.loading') }}</p>
     <p v-else-if="!error && !shows.length" class="movie-state">{{ t(searching ? 'tv.searchEmpty' : 'tv.empty') }}</p>

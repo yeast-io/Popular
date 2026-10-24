@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n';
 
 const props = defineProps<{
   show: TvShowSummary;
+  authenticated?: boolean;
   updating?: boolean;
 }>();
 const emit = defineEmits<{
@@ -37,6 +38,7 @@ watch(() => props.show.posterUrl, () => {
       </span>
     </button>
             <div
+              v-if="authenticated"
               class="preference-control"
               role="group"
               :aria-label="t('a11y.moviePreference', { title: show.name })"

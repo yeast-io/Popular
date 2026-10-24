@@ -260,6 +260,7 @@ function messageFor(error: unknown): string {
               <span aria-hidden="true">{{ t('movie.posterUnavailable') }}</span>
             </div>
             <div
+              v-if="authenticated"
               class="preference-control"
               role="group"
               :aria-label="t('a11y.moviePreference', { title: movie.title })"

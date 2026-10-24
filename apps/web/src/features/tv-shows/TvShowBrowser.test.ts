@@ -184,8 +184,8 @@ it.each(['en-US', 'zh-CN'] as const)('saves, restores and clears mutually exclus
   expect(writes.map((write) => write.method)).toEqual(['PUT', 'PUT', 'DELETE']);
   expect(writes[0]?.body).toBe('{"preference":"disliked"}');
 });
-it('asks guests to sign in and disables both controls while a save is pending', async () => {
-  setLocale('en-US');
+it.each(['en-US', 'zh-CN'] as const)('hides preferences for guests and disables both controls while a save is pending (%s)', async (locale) => {
+  setLocale(locale);
   let finish!: (response: Response) => void;
   let writes = 0;
   vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, options?: RequestInit) => {
@@ -200,8 +200,8 @@ it('asks guests to sign in and disables both controls while a save is pending', 
   const wrapper = mount(TvShowBrowser);
   wrappers.push(wrapper);
   await flushPromises();
-  await wrapper.get('.preference-button').trigger('click');
-  expect(wrapper.emitted('requireLogin')).toEqual([[]]);
+  expect(wrapper.find('.tv-show-card').exists()).toBe(true);
+  expect(wrapper.find('.preference-control').exists()).toBe(false);
   expect(writes).toBe(0);
   await wrapper.setProps({ authenticated: true });
   await wrapper.get('.preference-button').trigger('click');
@@ -213,4 +213,6 @@ it('asks guests to sign in and disables both controls while a save is pending', 
   finish(Response.json({ tmdbId: 42, preference: 'liked' }));
   await flushPromises();
   expect(wrapper.get('.preference-button').attributes('disabled')).toBeUndefined();
+  await wrapper.setProps({ authenticated: false });
+  expect(wrapper.findAll('.preference-button')).toHaveLength(0);
 });
