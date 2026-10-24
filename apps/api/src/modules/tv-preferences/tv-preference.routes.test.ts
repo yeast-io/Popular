@@ -14,6 +14,10 @@ test('TV preferences isolate owners, decorate trending/search, toggle/clear and 
   const saved = new Map<string, TrackedMoviePreference>();
   const item = { mediaType: 'tv' as const, tmdbId: 42, name: 'Series' };
   const service = new TvPreferenceService({
+    list: async (ownerId, preference, page, pageSize) => {
+      const ids = [...saved].filter(([key, value]) => key.startsWith(`${ownerId}:`) && value === preference).map(([key]) => Number(key.split(':')[1]));
+      return { ids: ids.slice((page - 1) * pageSize, page * pageSize), total: ids.length };
+    },
     read: async (ownerId, ids) => ids.flatMap((tmdbId) => {
       const preference = saved.get(`${ownerId}:${tmdbId}`);
       return preference ? [{ tmdbId, preference }] : [];
@@ -58,6 +62,20 @@ test('TV preferences isolate owners, decorate trending/search, toggle/clear and 
     const liked = await app.inject({ method: 'PUT', url, headers: { cookie: 'sid=a' }, payload: { preference: 'liked' } });
     assert.equal(liked.statusCode, 200);
     assert.equal(liked.json().preference, 'liked');
+    assert.equal((await app.inject('/me/tv-shows/preferences?preference=liked')).statusCode, 401);
+    for (const query of ['preference=watched', 'preference=neutral', 'preference=liked&page=0', 'preference=liked&pageSize=51', 'preference=liked&locale=fr-FR', '']) {
+      assert.equal((await app.inject({ url: `/me/tv-shows/preferences?${query}`, headers: { cookie: 'sid=a' } })).statusCode, 400);
+    }
+    for (const locale of ['en-US', 'zh-CN']) {
+      const listing = await app.inject({ url: `/me/tv-shows/preferences?preference=liked&locale=${locale}&pageSize=1`, headers: { cookie: 'sid=a' } });
+      assert.equal(listing.statusCode, 200);
+      assert.equal(listing.headers['cache-control'], 'private, no-store');
+      assert.equal(listing.json().locale, locale);
+      assert.deepEqual(listing.json().items, [{ mediaType: 'tv', tmdbId: 42, title: 'Series' }]);
+      assert.deepEqual(listing.json().pagination, { page: 1, pageSize: 1, total: 1, hasMore: false });
+    }
+    assert.deepEqual((await app.inject({ url: '/me/tv-shows/preferences?preference=liked', headers: { cookie: 'sid=b' } })).json().items, []);
+    assert.deepEqual((await app.inject({ url: '/me/tv-shows/preferences?preference=liked&page=2&pageSize=1', headers: { cookie: 'sid=a' } })).json().items, []);
     for (const path of ['/tv-shows/trending', '/tv-shows/search?query=Series']) {
       const own = await app.inject({ url: path, headers: { cookie: 'sid=a' } });
       assert.equal(own.json().items[0].userPreference, 'liked');
@@ -68,6 +86,8 @@ test('TV preferences isolate owners, decorate trending/search, toggle/clear and 
     assert.ok(!('userPreference' in item));
     await app.inject({ method: 'PUT', url, headers: { cookie: 'sid=a' }, payload: { preference: 'disliked' } });
     assert.equal(saved.get('a:42'), 'disliked');
+    assert.equal((await app.inject({ url: '/me/tv-shows/preferences?preference=liked', headers: { cookie: 'sid=a' } })).json().pagination.total, 0);
+    assert.equal((await app.inject({ url: '/me/tv-shows/preferences?preference=disliked', headers: { cookie: 'sid=a' } })).json().items[0].tmdbId, 42);
     assert.equal((await app.inject({ method: 'DELETE', url, headers: { cookie: 'sid=a' } })).json().preference, 'neutral');
     assert.equal(saved.size, 0);
     assert.equal((await app.inject({ method: 'DELETE', url, headers: { cookie: 'sid=a' } })).statusCode, 200);

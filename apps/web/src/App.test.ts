@@ -750,6 +750,7 @@ describe('Watch list account navigation', () => {
         const filter = new URL(url, 'http://localhost').searchParams.get('status');
         return Response.json({ items: [{ tmdbId: 42, title: `${filter} saved film`, overview: 'Saved overview' }], pagination: { page: 1, pageSize: 20, total: 1, hasMore: false }, locale: 'en-US' });
       }
+      if (url.includes('/me/tv-shows/preferences?')) return Response.json({ items: [{ tmdbId: 42, mediaType: 'tv', title: 'Liked series' }], pagination: { page: 1, pageSize: 20, total: 1, hasMore: false }, locale: 'en-US' });
       if (url.includes('/movies/42?')) return Response.json({ tmdbId: 42, title: 'Saved detail', genres: [], cast: [], directors: [], userStatus: 'watched', stale: false, detailSyncedAt: fetchedAt });
       if (url.includes('/me/watchlist?')) {
         const tv = url.includes('mediaType=tv');
@@ -794,6 +795,26 @@ describe('Watch list account navigation', () => {
     await flushPromises();
     expect(window.location.pathname).toBe('/viewing-preferences');
     expect(wrapper.find('.viewing-preferences-page').exists()).toBe(true);
+    wrapper.unmount();
+  });
+  it('opens TV details from viewing preferences and retains both navigation levels on return', async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper.get('.account-library-group button:nth-child(2)').trigger('click');
+    await flushPromises();
+    await wrapper.get('.viewing-preferences-media button:nth-child(2)').trigger('click');
+    await flushPromises();
+    await wrapper.get('.watchlist-entry').trigger('click');
+    await flushPromises();
+    expect(window.location.pathname).toBe('/tv-shows/42');
+    expect(window.history.state.tvShowOrigin).toBe('viewing-preferences');
+    expect(wrapper.text()).toContain('Back to viewing preferences');
+    window.history.replaceState({}, '', '/viewing-preferences');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await flushPromises();
+    expect(wrapper.get('.viewing-preferences-media button:nth-child(2)').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.findAll('.watchlist-filters button')).toHaveLength(2);
+    expect(wrapper.get('.watchlist-entry').text()).toContain('Liked series');
     wrapper.unmount();
   });
   it('opens the read-only list from the avatar and retains TV category after returning from detail', async () => {

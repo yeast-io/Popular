@@ -6,6 +6,14 @@ import type { TvPreferenceStore } from '../../../modules/tv-preferences/tv-prefe
 export class MongoTvPreferenceStore implements TvPreferenceStore {
   constructor(private readonly model: Model<TvPreferenceDocument>) {}
 
+  async list(ownerId: string, preference: TrackedMoviePreference, page: number, pageSize: number) {
+    const [rows, total] = await Promise.all([
+      this.model.find({ ownerId, preference }).sort({ updatedAt: -1, _id: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean().exec(),
+      this.model.countDocuments({ ownerId, preference }).exec(),
+    ]);
+    return { ids: rows.map((row) => row.tmdbId), total };
+  }
+
   async read(ownerId: string, ids: number[]) {
     const rows = await this.model.find({ ownerId, tmdbId: { $in: ids } }).lean().exec();
     return rows.map((row) => ({ tmdbId: row.tmdbId, preference: row.preference }));

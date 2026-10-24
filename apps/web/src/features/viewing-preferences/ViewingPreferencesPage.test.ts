@@ -89,3 +89,68 @@ it('shows localized errors, supports retry, then reloads when the locale changes
   expect(wrapper.text()).toContain('No movies in this category yet.');
   expect(urls.some((url) => url.includes('locale=en-US'))).toBe(true);
 });
+
+it.each(['en-US', 'zh-CN'] as const)('switches media with two TV filters, restores movie selection and opens TV details (%s)', async (language) => {
+  setLocale(language);
+  const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), 'http://localhost');
+    const tv = url.pathname.endsWith('/tv-shows/preferences');
+    const status = url.searchParams.get(tv ? 'preference' : 'status')!;
+    return Response.json({ ...result(`${tv ? 'tv' : 'movie'} ${status}`), pagination: { page: 1, pageSize: 20, total: tv ? 7 : 3, hasMore: false } });
+  });
+  vi.stubGlobal('fetch', fetch);
+  const wrapper = host();
+  await flushPromises();
+  const page = wrapper.getComponent(ViewingPreferencesPage);
+  expect(page.get('.viewing-preferences-media').text()).toContain(language === 'en-US' ? 'TV Shows' : '电视剧');
+  await page.get('.viewing-preferences-media button:nth-child(2)').trigger('click');
+  await flushPromises();
+  expect(page.findAll('.watchlist-filters button')).toHaveLength(2);
+  expect(page.get('.watchlist-entry').text()).toContain('tv liked');
+  expect(page.findAll('.watchlist-count').map((badge) => badge.text())).toEqual(['7', '7']);
+  await page.get('.watchlist-entry').trigger('click');
+  expect(page.emitted('openTvShow')).toEqual([[1]]);
+  expect(page.emitted('openMovie')).toBeUndefined();
+  await page.get('.watchlist-filters button:nth-child(2)').trigger('click');
+  await flushPromises();
+  expect(page.get('.watchlist-entry').text()).toContain('tv disliked');
+  await page.get('.viewing-preferences-media button:first-child').trigger('click');
+  await flushPromises();
+  expect(page.get('.watchlist-entry').text()).toContain('movie watched');
+  for (const [index, status] of [[2, 'liked'], [3, 'disliked']] as const) {
+    await page.get(`.watchlist-filters button:nth-child(${index})`).trigger('click');
+    await page.get('.viewing-preferences-media button:nth-child(2)').trigger('click');
+    await flushPromises();
+    expect(page.get('.watchlist-entry').text()).toContain(`tv ${status}`);
+    await wrapper.setData({ visible: false });
+    await wrapper.setData({ visible: true });
+    await flushPromises();
+    expect(page.get('.watchlist-entry').text()).toContain(`tv ${status}`);
+    await page.get('.viewing-preferences-media button:first-child').trigger('click');
+    await flushPromises();
+    expect(page.get('.watchlist-entry').text()).toContain(`movie ${status}`);
+  }
+  expect(fetch.mock.calls.filter(([url]) => String(url).includes('/tv-shows/preferences')).every(([url]) => !String(url).includes('watched'))).toBe(true);
+});
+
+it('ignores a delayed movie response after switching to TV and localizes TV empty states', async () => {
+  setLocale('zh-CN');
+  let resolveMovies!: (response: Response) => void;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/me/movies?status=watched') && url.includes('pageSize=20')) return new Promise<Response>((resolve) => {
+      resolveMovies = resolve;
+    });
+    return Response.json({ items: [], pagination: { page: 1, pageSize: 20, total: 0, hasMore: false } });
+  }));
+  const wrapper = host();
+  await wrapper.get('.viewing-preferences-media button:nth-child(2)').trigger('click');
+  await flushPromises();
+  resolveMovies(Response.json(result('watched')));
+  await flushPromises();
+  expect(wrapper.find('.watchlist-entry').exists()).toBe(false);
+  expect(wrapper.text()).toContain('此分类暂无电视剧');
+  setLocale('en-US');
+  await flushPromises();
+  expect(wrapper.text()).toContain('No TV shows in this category yet.');
+});

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { WatchlistItem, MyMoviesResponse } from '@movie-hub/contract';
-import { onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
+import type { WatchlistItem, WatchlistMediaType, WatchlistResponse, TrackedMoviePreference } from '@movie-hub/contract';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
 import { useI18n } from '../../i18n';
 import { localizedErrorMessage } from '../../i18n/api-error';
 import MediaList from '../media/MediaList.vue';
@@ -8,19 +8,33 @@ import { loadWebConfig } from '../../config/env';
 import { localizedResponseError } from '../../i18n/api-error';
 import type { ViewingPreferenceFilter } from './viewing-preferences.types';
 
-const emit = defineEmits<{ openMovie: [tmdbId: number] }>();
+const emit = defineEmits<{ openMovie: [tmdbId: number]; openTvShow: [tmdbId: number] }>();
 const { apiBaseUrl } = loadWebConfig();
-const filters = ['watched', 'liked', 'disliked'] as const;
-async function requestMovies(filter: ViewingPreferenceFilter, number: number, pageSize: number, signal: AbortSignal): Promise<MyMoviesResponse> {
-  const response = await fetch(`${apiBaseUrl}/me/movies?status=${filter}&page=${number}&pageSize=${pageSize}&locale=${locale.value}`, { signal, credentials: 'include' });
+const mediaType = ref<WatchlistMediaType>('movie');
+const filters = computed<readonly ViewingPreferenceFilter[]>(() => mediaType.value === 'movie' ? ['watched', 'liked', 'disliked'] : ['liked', 'disliked']);
+async function requestPreferences(media: WatchlistMediaType, selected: ViewingPreferenceFilter, number: number, pageSize: number, signal: AbortSignal): Promise<WatchlistResponse> {
+  const path = media === 'movie' ? `/me/movies?status=${selected}` : `/me/tv-shows/preferences?preference=${selected}`;
+  const response = await fetch(`${apiBaseUrl}${path}&page=${number}&pageSize=${pageSize}&locale=${locale.value}`, { signal, credentials: 'include' });
   if (!response.ok) throw await localizedResponseError(response, 'viewingPreferences.error');
-  return response.json() as Promise<MyMoviesResponse>;
+  return response.json() as Promise<WatchlistResponse>;
 }
 const { t, locale, formatNumber } = useI18n();
-const filter = ref<ViewingPreferenceFilter>('watched');
+const movieFilter = ref<ViewingPreferenceFilter>('watched');
+const tvFilter = ref<TrackedMoviePreference>('liked');
+const filter = computed(() => mediaType.value === 'movie' ? movieFilter.value : tvFilter.value);
+function selectFilter(selected: ViewingPreferenceFilter) {
+  if (mediaType.value === 'movie') movieFilter.value = selected;
+  else if (selected !== 'watched') tvFilter.value = selected;
+}
+function selectMedia(selected: WatchlistMediaType) {
+  if (selected === mediaType.value) return;
+  if (selected === 'tv') tvFilter.value = movieFilter.value === 'watched' ? 'liked' : movieFilter.value;
+  mediaType.value = selected;
+}
 const items = ref<WatchlistItem[]>([]);
 const page = ref(0);
-const totals = ref<Partial<Record<ViewingPreferenceFilter, number>>>({});
+const mediaTotals = ref<Record<WatchlistMediaType, Partial<Record<ViewingPreferenceFilter, number>>>>({ movie: {}, tv: {} });
+const totals = computed(() => mediaTotals.value[mediaType.value]);
 const hasMore = ref(false);
 const loading = ref(false);
 const error = ref('');
@@ -34,17 +48,19 @@ async function load(append = false) {
   const request = new AbortController();
   controller = request;
   const version = ++generation;
+  const selectedMedia = mediaType.value;
+  const selectedFilter = filter.value;
   const nextPage = append ? page.value + 1 : Math.max(1, page.value);
   failedAppend.value = append;
   loading.value = true;
   error.value = '';
   try {
     const pages = append ? [nextPage] : Array.from({ length: nextPage }, (_, index) => index + 1);
-    const selectedPages = Promise.all(pages.map((number) => requestMovies(filter.value, number, 20, request.signal)));
+    const selectedPages = Promise.all(pages.map((number) => requestPreferences(selectedMedia, selectedFilter, number, 20, request.signal)));
     if (!append) {
-      for (const other of filters.filter((value) => value !== filter.value)) {
-        void requestMovies(other, 1, 1, request.signal).then((result) => {
-          if (!request.signal.aborted && version === generation) totals.value[other] = result.pagination.total;
+      for (const other of filters.value.filter((value) => value !== selectedFilter)) {
+        void requestPreferences(selectedMedia, other, 1, 1, request.signal).then((result) => {
+          if (!request.signal.aborted && version === generation) mediaTotals.value[selectedMedia][other] = result.pagination.total;
         }).catch(() => { /* The category request provides its own error and retry when selected. */ });
       }
     }
@@ -52,7 +68,7 @@ async function load(append = false) {
     const result = results[results.length - 1]!;
     if (request.signal.aborted || version !== generation) return;
     const existing = new Set(append ? items.value.map((item) => `${item.mediaType}:${item.tmdbId}`) : []);
-    const incoming = results.flatMap((result) => result.items.map((item) => ({ ...item, mediaType: 'movie' as const }))).filter((item) => {
+    const incoming = results.flatMap((result) => result.items.map((item) => ({ ...item, mediaType: selectedMedia }))).filter((item) => {
       const key = `${item.mediaType}:${item.tmdbId}`;
       if (existing.has(key)) return false;
       existing.add(key);
@@ -81,9 +97,10 @@ function stop() {
   loading.value = false;
 }
 function open(item: WatchlistItem) {
-  emit('openMovie', item.tmdbId);
+  if (item.mediaType === 'movie') emit('openMovie', item.tmdbId);
+  else emit('openTvShow', item.tmdbId);
 }
-watch([filter, locale], reset);
+watch([mediaType, filter, locale], reset);
 onActivated(() => {
   active = true;
   void load();
@@ -97,15 +114,20 @@ onBeforeUnmount(stop);
 
 <template>
   <section class="movie-section viewing-preferences-page" :aria-label="t('viewingPreferences.title')">
-    <div class="watchlist-filters" role="group" :aria-label="t('viewingPreferences.title')">
-      <button v-for="category in filters" :key="category" type="button" :class="{ active: filter === category }" :aria-pressed="filter === category" @click="filter = category">
+    <div class="viewing-preferences-media" role="group" :aria-label="t('watchlist.category')">
+      <button v-for="category in (['movie', 'tv'] as const)" :key="category" type="button" :class="{ active: mediaType === category }" :aria-pressed="mediaType === category" @click="selectMedia(category)">
+        {{ t(category === 'movie' ? 'nav.movies' : 'nav.tvShows') }}
+      </button>
+    </div>
+    <div class="watchlist-filters viewing-preferences-filters" role="group" :aria-label="t('viewingPreferences.filter')">
+      <button v-for="category in filters" :key="category" type="button" :class="{ active: filter === category }" :aria-pressed="filter === category" @click="selectFilter(category)">
         {{ t(category === 'watched' ? 'movie.status.watched' : category === 'liked' ? 'movie.preference.liked' : 'movie.preference.disliked') }}
         <span v-if="totals[category] !== undefined" class="watchlist-count">{{ formatNumber(totals[category]!) }}</span>
       </button>
     </div>
     <div v-if="error" class="movie-state" role="alert"><p>{{ error }}</p><button class="outline-button" type="button" @click="load(failedAppend)">{{ t('actions.retry') }}</button></div>
     <p v-if="loading && !items.length" class="movie-state" role="status">{{ t('viewingPreferences.loading') }}</p>
-    <p v-else-if="!loading && !error && !items.length" class="movie-state">{{ t('viewingPreferences.empty') }}</p>
+    <p v-else-if="!loading && !error && !items.length" class="movie-state">{{ t(mediaType === 'movie' ? 'viewingPreferences.empty' : 'viewingPreferences.emptyTv') }}</p>
     <MediaList :items="items" @open="open" />
     <div v-if="hasMore" class="tv-load-more"><button type="button" class="outline-button" :disabled="loading" @click="load(true)">{{ t(loading ? 'viewingPreferences.loading' : 'watchlist.loadMore') }}</button></div>
   </section>

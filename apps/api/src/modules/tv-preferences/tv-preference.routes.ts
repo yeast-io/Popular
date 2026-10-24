@@ -7,6 +7,8 @@ import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import type { TvPreferenceService } from './tv-preference.service.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import { AiTrace, withAiTrace, aiStep } from '../../infrastructure/logging/ai-trace.js';
+import { TvPreferencesQuerySchema, WatchlistResponseSchema } from '@movie-hub/contract';
+import type { TvPreferencesQuery } from '@movie-hub/contract';
 
 export function registerTvPreferenceRoutes(app: FastifyInstance, service: TvPreferenceService, auth: AuthService, config: AppConfig, logger: AiLogger) {
   async function run<T>(request: FastifyRequest, stage: string, action: (ownerId: string) => Promise<T>) {
@@ -20,6 +22,12 @@ export function registerTvPreferenceRoutes(app: FastifyInstance, service: TvPref
       }
     });
   }
+  app.get<{ Querystring: TvPreferencesQuery }>('/me/tv-shows/preferences', {
+    schema: { querystring: TvPreferencesQuerySchema, response: { 200: WatchlistResponseSchema, 401: ApiErrorSchema } },
+  }, (request, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
+    return run(request, 'tv.preference.list.api', (ownerId) => service.list(ownerId, request.query.preference, request.query.page ?? 1, request.query.pageSize ?? 20, request.query.locale ?? config.TMDB_LANGUAGE));
+  });
   app.put<{ Params: TvShowParams; Querystring: TvLocaleQuery; Body: SetMoviePreferenceRequest }>('/me/tv-shows/:tmdbId/preference', {
     schema: { params: TvShowParamsSchema, querystring: TvLocaleQuerySchema, body: SetMoviePreferenceRequestSchema, response: { 200: MoviePreferenceResponseSchema, 401: ApiErrorSchema, 404: ApiErrorSchema } },
   }, (request) => run(request, 'tv.preference.set', (ownerId) => service.set(ownerId, request.params.tmdbId, request.body.preference, request.query.locale ?? config.TMDB_LANGUAGE)));

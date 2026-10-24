@@ -30,6 +30,11 @@ test('real Mongo TV preferences persist, isolate users and serialize concurrent 
     await store.set(second, 42, 'liked');
     await store.set(first, 42, 'disliked');
     assert.deepEqual(await store.read(first, [42]), [{ tmdbId: 42, preference: 'disliked' }]);
+    await store.set(first, 43, 'disliked');
+    assert.deepEqual(await store.list(first, 'liked', 1, 20), { ids: [], total: 0 });
+    assert.deepEqual(await store.list(first, 'disliked', 1, 1), { ids: [43], total: 2 });
+    assert.deepEqual(await store.list(first, 'disliked', 2, 1), { ids: [42], total: 2 });
+    assert.deepEqual(await store.list(second, 'liked', 1, 20), { ids: [42], total: 1 });
     assert.deepEqual(await new MongoTvPreferenceStore(model).read(second, [42]), [{ tmdbId: 42, preference: 'liked' }]);
     await store.clear(first, 42);
     await store.clear(first, 42);

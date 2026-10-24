@@ -31,7 +31,7 @@ const { apiBaseUrl } = loadWebConfig();
 const { locale, setLocale, t } = useI18n();
 const localeMenu = ref<HTMLDetailsElement | null>(null);
 const accountMenu = ref<HTMLDetailsElement | null>(null);
-const tvDetailBackLabel = computed(() => t(currentPage.value === 'tv-show-detail' && window.history.state?.tvShowOrigin === 'watchlist' ? 'watchlist.back' : 'actions.backTvShows'));
+const tvDetailBackLabel = computed(() => t(currentPage.value === 'tv-show-detail' && window.history.state?.tvShowOrigin === 'viewing-preferences' ? 'viewingPreferences.back' : currentPage.value === 'tv-show-detail' && window.history.state?.tvShowOrigin === 'watchlist' ? 'watchlist.back' : 'actions.backTvShows'));
 const mode = ref<'login' | 'register'>(window.location.pathname === '/register' ? 'register' : 'login');
 const email = ref('');
 const password = ref('');
@@ -376,14 +376,14 @@ function tvShowIdFromPath(): number | null {
 
 function openTvShow(tmdbId: number) {
   rememberListScroll();
-  window.history.pushState({ tvShowOrigin: currentPage.value === 'watchlist' ? 'watchlist' : 'tv-shows' }, '', `/tv-shows/${tmdbId}`);
+  window.history.pushState({ tvShowOrigin: ['watchlist', 'viewing-preferences'].includes(currentPage.value) ? currentPage.value : 'tv-shows' }, '', `/tv-shows/${tmdbId}`);
   selectedTvShowId.value = tmdbId;
   currentPage.value = 'tv-show-detail';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function backFromTvShowDetail() {
-  if (['tv-shows', 'watchlist'].includes(window.history.state?.tvShowOrigin)) window.history.back();
+  if (['tv-shows', 'watchlist', 'viewing-preferences'].includes(window.history.state?.tvShowOrigin)) window.history.back();
   else navigate('tv-shows');
 }
 
@@ -721,7 +721,7 @@ function closeAccountMenu() {
       <TvShowBrowser v-if="currentPage === 'tv-shows'" :key="user?.id ?? 'anonymous'" :authenticated="Boolean(user)" @require-login="openAuth('login')" @open-tv-show="openTvShow" />
     </KeepAlive>
     <KeepAlive :max="2">
-      <ViewingPreferencesPage v-if="currentPage === 'viewing-preferences' && user" :key="user.id" @open-movie="openMovie" />
+      <ViewingPreferencesPage v-if="currentPage === 'viewing-preferences' && user" :key="user.id" @open-movie="openMovie" @open-tv-show="openTvShow" />
     </KeepAlive>
     <KeepAlive :max="1">
       <WatchlistPage v-if="currentPage === 'watchlist' && user" :key="user.id" @open-movie="openMovie" @open-tv-show="openTvShow" />

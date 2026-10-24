@@ -4451,6 +4451,13 @@ body:has(.settings-page)::after {
 .watchlist-filters { display: flex; gap: 24px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
 .watchlist-filters button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 0; border-bottom: 2px solid transparent; padding: 8px 2px 12px; background: transparent; color: #b4b8bf; font: inherit; font-weight: 600; }
 .watchlist-filters button.active { border-bottom-color: var(--brand); color: #fff; }
+.viewing-preferences-media { display: flex; gap: 28px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.viewing-preferences-media button { min-height: 48px; padding: 8px 2px 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: #b4b8bf; font: inherit; font-size: 1.1rem; font-weight: 700; cursor: pointer; }
+.viewing-preferences-media button.active { border-bottom-color: var(--brand); color: #fff; }
+.viewing-preferences-media button:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
+.viewing-preferences-filters { flex-wrap: wrap; gap: 8px; border-bottom: 0; }
+.viewing-preferences-filters button { padding: 8px 12px; border: 0; border-radius: 8px; font-size: .85rem; cursor: pointer; }
+.viewing-preferences-filters button.active { background: #303237; }
 .watchlist-entries { display: grid; gap: 18px; }
 .watchlist-entry { display: grid; grid-template-columns: 120px minmax(0, 1fr); width: 100%; min-width: 0; border: 1px solid #35383b; border-radius: 8px; overflow: hidden; padding: 0; background: rgba(19, 21, 23, .8); color: #eee; text-align: left; font: inherit; cursor: pointer; transition: border-color .2s ease, background .2s ease; }
 .watchlist-entry:hover { border-color: #786057; background: rgba(27, 28, 30, .95); }
