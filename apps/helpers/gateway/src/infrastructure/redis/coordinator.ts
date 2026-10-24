@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { once } from 'node:events';
 import { gatewayLogger } from '../../gateway-logging.service.js';
-import type { AgentStatus, Route, Router, Session } from '../../gateway.types.js';
+import type { AgentStatus, Route, GatewayCoordinator, Session } from '../../gateway.types.js';
 
 const renewScript = `
 local raw = redis.call('GET', KEYS[1])
@@ -22,7 +22,7 @@ local count = redis.call('INCR', KEYS[1])
 if count == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
 return count`;
 
-export class RedisRouter implements Router {
+export class RedisCoordinator implements GatewayCoordinator {
   private readonly publisher: Redis;
   private readonly subscriber: Redis;
 

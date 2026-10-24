@@ -11,7 +11,7 @@ import { createGatewayApp } from '../../apps/helpers/gateway/src/gateway.routes.
 import { GatewayService } from '../../apps/helpers/gateway/src/gateway.service.ts';
 import { GatewayBridge } from '../../apps/helpers/gateway/src/infrastructure/gateway-bridge.service.ts';
 import { RedisGatewayBus } from '../../apps/helpers/gateway/src/infrastructure/redis/gateway-bus.service.ts';
-import { RedisRouter } from '../../apps/helpers/gateway/src/infrastructure/redis/redis-router.store.ts';
+import { RedisCoordinator } from '../../apps/helpers/gateway/src/infrastructure/redis/coordinator.ts';
 import { Redis } from '../../apps/helpers/gateway/node_modules/ioredis/built/index.js';
 
 const diagnostics = { verbose: false, info() {}, error() {} };
@@ -77,16 +77,16 @@ test('REAL Redis + WebSocket, SIMULATED Mongo: service pool on one Gateway route
   const prefix = 'gateway-network-test:' + crypto.randomUUID() + ':';
   const redis1 = new Redis(process.env.GATEWAY_TEST_REDIS_URL, { enableOfflineQueue: false, maxRetriesPerRequest: 1 });
   const redis2 = new Redis(process.env.GATEWAY_TEST_REDIS_URL, { enableOfflineQueue: false, maxRetriesPerRequest: 1 });
-  const router1 = new RedisRouter(redis1, prefix, 45_000);
-  const router2 = new RedisRouter(redis2, prefix, 45_000);
-  await Promise.all([router1.ready(), router2.ready()]);
+  const gatewayCoordinator1 = new RedisCoordinator(redis1, prefix, 45_000);
+  const gatewayCoordinator2 = new RedisCoordinator(redis2, prefix, 45_000);
+  await Promise.all([gatewayCoordinator1.ready(), gatewayCoordinator2.ready()]);
   const token = 'independent-test-service-credential-123456';
   const bus1 = new RedisGatewayBus(redis1, 'one', token, f.options.logger, prefix + 'relay:');
   const bus2 = new RedisGatewayBus(redis2, 'two', token, f.options.logger, prefix + 'relay:');
   const bridge1 = new GatewayBridge(bus1);
   const bridge2 = new GatewayBridge(bus2);
-  const one = new GatewayService({ ...f.options, instanceId: 'one', router: router1, bus: bus1, popular: bridge1 });
-  const two = new GatewayService({ ...f.options, instanceId: 'two', router: router2, bus: bus2, popular: bridge2 });
+  const one = new GatewayService({ ...f.options, instanceId: 'one', gatewayCoordinator: gatewayCoordinator1, bus: bus1, popular: bridge1 });
+  const two = new GatewayService({ ...f.options, instanceId: 'two', gatewayCoordinator: gatewayCoordinator2, bus: bus2, popular: bridge2 });
   await bus1.start(
     (kind, frame) => kind === 'popular' ? bridge1.relay(frame) : one.handleRpc(frame.command, frame.payload, frame)
   );
@@ -100,8 +100,8 @@ test('REAL Redis + WebSocket, SIMULATED Mongo: service pool on one Gateway route
     await bus2.close();
     const keys = await redis1.keys(prefix + '*');
     if (keys.length) await redis1.del(...keys);
-    await router1.close();
-    await router2.close();
+    await gatewayCoordinator1.close();
+    await gatewayCoordinator2.close();
     redis1.disconnect();
     redis2.disconnect();
   });
@@ -118,7 +118,7 @@ test('REAL Redis + WebSocket, SIMULATED Mongo: service pool on one Gateway route
   assert.equal(f.store.commands.get(input.commandId).state, 'delivered');
   const fresh = await f.connect(d, one, false);
   await two.dropped(live.peer);
-  assert.equal((await router2.get(d.deviceId)).sessionId, fresh.peer.session.sessionId);
+  assert.equal((await gatewayCoordinator2.get(d.deviceId)).sessionId, fresh.peer.session.sessionId);
 });
 
 test('REAL Agent WebSocket with SIMULATED Mongo/downloader: proof, encrypted delivery, grant, durable result and status ACK', {

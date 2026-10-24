@@ -183,7 +183,7 @@ test('Gateway ages downloader reports independently of Agent connection renewals
   assert.equal((await status()).isAgentDownloaderOnline, true);
   for (let i = 0; i < 3; i++) {
     f.tick(31000);
-    await f.router.renew(session);
+    await f.gatewayCoordinator.renew(session);
   }
   const stale = await status();
   assert.equal(stale.isAgentOnline, true);

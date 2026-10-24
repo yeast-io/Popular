@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { Redis } from 'ioredis';
-import { RedisRouter } from './redis-router.store.js';
+import { RedisCoordinator } from './coordinator.js';
 import type { Session } from '../../gateway.types.js';
 
 test(
@@ -21,15 +21,15 @@ test(
       enableOfflineQueue: false,
       maxRetriesPerRequest: 1,
     });
-    const one = new RedisRouter(redis1, prefix, 1000);
-    const two = new RedisRouter(redis2, prefix, 1000);
+    const one = new RedisCoordinator(redis1, prefix, 1000);
+    const two = new RedisCoordinator(redis2, prefix, 1000);
     t.after(async () => {
       // Isolated random prefix; never flush the shared database.
       const keys = await redis1.keys(prefix + '*');
       if (keys.length) await redis1.del(...keys);
       await one.close();
       await two.close();
-      // Router shutdown must leave the injected command connections available to other users.
+      // GatewayCoordinator shutdown must leave the injected command connections available to other users.
       await Promise.all([redis1.ping(), redis2.ping()]);
       redis1.disconnect();
       redis2.disconnect();

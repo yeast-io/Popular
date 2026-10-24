@@ -4,7 +4,7 @@ import { configSchema } from './gateway.schema.js';
 import { signingIdentity } from './gateway-crypto.service.js';
 import { GatewayService } from './gateway.service.js';
 import { createGatewayApp } from './gateway.routes.js';
-import { createGatewayRedis } from './infrastructure/redis/gateway-redis.service.js';
+import { createRedisClient } from './infrastructure/redis/client.js';
 import { GatewayBridge } from './infrastructure/gateway-bridge.service.js';
 import { gatewayLogger } from './gateway-logging.service.js';
 import { requireCondition } from './gateway.errors.js';
@@ -15,20 +15,20 @@ const proxyTls = config.TLS_TERMINATION === 'proxy';
 const allowHttp = config.NODE_ENV !== 'production' && config.ALLOW_INSECURE_DEV;
 requireCondition(proxyTls || (config.TLS_CERT_FILE && config.TLS_KEY_FILE) || allowHttp, 'HTTPS_REQUIRED', 500);
 const instanceId = randomUUID();
-const redis = createGatewayRedis({
+const redisClient = createRedisClient({
   url: config.REDIS_URL,
   instanceId,
   token: config.INTERNAL_INBOUND_TOKEN,
   logger,
 });
-const { router, bus } = redis;
+const { coordinator: gatewayCoordinator, bus } = redisClient;
 const bridge = new GatewayBridge(bus);
 let app: Awaited<ReturnType<typeof createGatewayApp>> | undefined;
 try {
-  await router.ready();
+  await gatewayCoordinator.ready();
   const service = new GatewayService({
     instanceId,
-    router,
+    gatewayCoordinator,
     bus,
     popular: bridge,
     signing: await signingIdentity(
@@ -70,7 +70,7 @@ try {
         try {
           await bridge.close();
         } finally {
-          await redis.close();
+          await redisClient.close();
         }
       }
     } catch (err) {
@@ -95,7 +95,7 @@ try {
     try {
       await bridge.close();
     } finally {
-      await redis.close();
+      await redisClient.close();
     }
   }
 }

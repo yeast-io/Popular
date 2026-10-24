@@ -98,12 +98,12 @@ export async function createGatewayApp(
   await app.register(websocket, { options: { maxPayload: 65_536, perMessageDeflate: false } });
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async () => {
-    await Promise.all([options.bridge?.ready(), service.options.router.ready()]);
+    await Promise.all([options.bridge?.ready(), service.options.gatewayCoordinator.ready()]);
     return { status: 'ok' };
   });
   app.get('/client/v1/signing-keys', async (request) => {
     requireCondition(
-      await service.options.router.rateLimit(`keys:${keyDigest(request.ip ?? 'unknown')}`, 120, 60_000),
+      await service.options.gatewayCoordinator.rateLimit(`keys:${keyDigest(request.ip ?? 'unknown')}`, 120, 60_000),
       'RATE_LIMITED',
       429
     );
@@ -260,7 +260,7 @@ export async function createGatewayApp(
       preValidation: async (request) => {
         requireCondition(!request.url.includes('?'), 'SOCKET_QUERY_NOT_ALLOWED', 400);
         requireCondition(
-          await service.options.router.rateLimit(`auth:${keyDigest(request.ip ?? 'unknown')}`, 30, 60_000),
+          await service.options.gatewayCoordinator.rateLimit(`auth:${keyDigest(request.ip ?? 'unknown')}`, 30, 60_000),
           'RATE_LIMITED',
           429
         );
@@ -336,7 +336,7 @@ export async function createGatewayApp(
           .then(async () => {
             if (closed) return;
             requireCondition(
-              await service.options.router.rateLimit(`messages:${peer.id}`, 120, 1000),
+              await service.options.gatewayCoordinator.rateLimit(`messages:${peer.id}`, 120, 1000),
               'RATE_LIMITED',
               429
             );
@@ -423,7 +423,7 @@ export async function createGatewayApp(
       sweeping = false;
     }
   };
-  await service.options.router.subscribe((deviceId) => {
+  await service.options.gatewayCoordinator.subscribe((deviceId) => {
     if (stopping) return;
     const active = service.pump(deviceId).catch((err) => {
       service.options.logger.error({ err, stage: 'routing.wake' }, 'gateway');

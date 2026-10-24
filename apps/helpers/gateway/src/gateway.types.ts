@@ -20,7 +20,7 @@ export interface Route extends Session {
   status?: AgentStatus;
   statusObservedAt?: number;
 }
-export interface Router {
+export interface GatewayCoordinator {
   claim(session: Session): Promise<void>;
   get(deviceId: string): Promise<Route | null>;
   renew(session: Session, status?: AgentStatus, observedAt?: number): Promise<boolean>;
@@ -63,7 +63,7 @@ export interface GatewayBus {
 }
 export interface GatewayOptions {
   instanceId: string;
-  router: Router;
+  gatewayCoordinator: GatewayCoordinator;
   popular: RpcCaller;
   signing: SigningIdentity;
   logger: Logger;

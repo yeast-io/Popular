@@ -9,7 +9,7 @@ export type {
   ResultPayload,
   TaskEvidence,
   StatusPayload,
-  Router,
+  GatewayCoordinator,
   SigningIdentity,
   GatewayOptions,
   WireMessage,

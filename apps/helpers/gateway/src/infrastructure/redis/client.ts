@@ -1,9 +1,9 @@
 import { Redis } from 'ioredis';
-import { RedisRouter } from './redis-router.store.js';
+import { RedisCoordinator } from './coordinator.js';
 import { RedisGatewayBus } from './gateway-bus.service.js';
-import type { GatewayRedisOptions } from './gateway-redis.types.js';
+import type { RedisClient, RedisClientOptions } from './client.types.js';
 
-export function createGatewayRedis(options: GatewayRedisOptions) {
+export function createRedisClient(options: RedisClientOptions): RedisClient {
   const connection = new Redis(options.url, {
     maxRetriesPerRequest: 1,
     connectTimeout: 5000,
@@ -12,11 +12,11 @@ export function createGatewayRedis(options: GatewayRedisOptions) {
   });
   connection.on('error', (err) => options.logger.error({ err, stage: 'redis.connection' }, 'gateway'));
   const prefix = options.prefix ?? 'popular:gateway:v1:';
-  const router = new RedisRouter(connection, prefix, 45_000, options.logger);
+  const coordinator = new RedisCoordinator(connection, prefix, 45_000, options.logger);
   const bus = new RedisGatewayBus(connection, options.instanceId, options.token, options.logger, prefix + 'relay:');
 
   return {
-    router,
+    coordinator,
     bus,
     async close() {
       try {
@@ -24,7 +24,7 @@ export function createGatewayRedis(options: GatewayRedisOptions) {
         await bus.close();
       } finally {
         try {
-          await router.close();
+          await coordinator.close();
         } finally {
           connection.disconnect();
         }

@@ -1,7 +1,7 @@
 import { generateKeyPair, exportJWK, CompactSign } from '../../apps/helpers/gateway/node_modules/jose/dist/webapi/index.js';
 import { GatewayService } from '../../apps/helpers/gateway/src/gateway.service.ts';
 import { GatewayBridge } from '../../apps/helpers/gateway/src/infrastructure/gateway-bridge.service.ts';
-import { MemoryRouter } from '../../apps/helpers/gateway/src/testing/memory-router.store.ts';
+import { MemoryCoordinator } from '../../apps/helpers/gateway/src/testing/memory-coordinator.fake.ts';
 import { gatewayLogger } from '../../apps/helpers/gateway/src/gateway-logging.service.ts';
 import { signingIdentity } from '../../apps/helpers/gateway/src/gateway-crypto.service.ts';
 import { keyDigest, message } from '../../apps/helpers/gateway/src/gateway.domain.ts';
@@ -12,7 +12,7 @@ import { MemoryControlStore } from '../../apps/api/src/modules/remote-downloads/
 export async function createFixture() {
   let now = Date.now();
   const store = new MemoryControlStore();
-  const router = new MemoryRouter(() => now);
+  const gatewayCoordinator = new MemoryCoordinator(() => now);
   store.accounts.set('owner-1', { ownerId: 'owner-1', keyDigest: keyDigest('fixture-api-key'), authVersion: 1, active: true });
   let urlCalls = 0;
   const backend = new RemoteDownloadService({ store, now: () => now, report() {},
@@ -21,7 +21,7 @@ export async function createFixture() {
       return { url: 'https://tracker.invalid/download?passkey=SECRET', torrentHash: 'a'.repeat(40) };
     } });
   const signing = await generateKeyPair('EdDSA', { extractable: true });
-  const options = { instanceId: 'gateway-1', router, signing: await signingIdentity('key-1', await exportJWK(signing.privateKey)),
+  const options = { instanceId: 'gateway-1', gatewayCoordinator, signing: await signingIdentity('key-1', await exportJWK(signing.privateKey)),
     logger: gatewayLogger('silent'), verbose: false, now: () => now,
     popular: { call: async (command, payload) => backend.handle(command, payload) } };
   const gateway = new GatewayService(options);
@@ -85,7 +85,7 @@ export async function createFixture() {
     );
   };
   const evidence = { downloaderType: 'qbittorrent', instanceId: 'downloader-1', torrentHash: 'a'.repeat(40), taskId: 'task-1', marker: 'popular-execution-1' };
-  return { store, router, backend, gateway, options, coordinator, call, connect, prepare, grant, evidence, bridge,
+  return { store, gatewayCoordinator, backend, gateway, options, coordinator, call, connect, prepare, grant, evidence, bridge,
     tick: (ms) => { now += ms; }, urlCalls: () => urlCalls };
 }
 export async function newDevice() {

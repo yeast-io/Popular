@@ -48,7 +48,7 @@ export class GatewayService {
   }
 
   async active(session: Session) {
-    const route = await this.options.router.get(session.deviceId);
+    const route = await this.options.gatewayCoordinator.get(session.deviceId);
     requireCondition(route && sameSession(session, route), 'SESSION_REVOKED', 401);
   }
 
@@ -92,7 +92,7 @@ export class GatewayService {
       }
       if (wire.command === '__agent_status__') {
         const status = agentStatusSchema.parse(wire.payload);
-        requireCondition(await this.options.router.renew(peer.session, status, this.now()), 'SESSION_REVOKED', 401);
+        requireCondition(await this.options.gatewayCoordinator.renew(peer.session, status, this.now()), 'SESSION_REVOKED', 401);
         peer.status = status;
         peer.statusObservedAt = this.now();
         return;
@@ -293,11 +293,11 @@ export class GatewayService {
       sessionId: randomUUID(),
       instanceId: this.options.instanceId,
     };
-    await this.options.router.claim(session);
+    await this.options.gatewayCoordinator.claim(session);
     peer.session = session;
     this.peers.set(peer.id, peer);
     await this.current(session, wire.correlationId ?? peer.id);
-    await this.options.router.wake(session.deviceId);
+    await this.options.gatewayCoordinator.wake(session.deviceId);
     this.respond(
       peer,
       wire,
@@ -326,7 +326,7 @@ export class GatewayService {
     requireCondition(schema && Value.Check(schema, payload), 'INVALID_REQUEST', 400);
     if (command === '__get_device_status__') {
       const p = payload as { ownerId: string; deviceId: string; authVersion: number; deviceVersion: number };
-      const route = await this.options.router.get(p.deviceId);
+      const route = await this.options.gatewayCoordinator.get(p.deviceId);
       const online
         = route
           && route.ownerId === p.ownerId
@@ -343,7 +343,7 @@ export class GatewayService {
     }
     if (command === '__dispatch_download__') {
       const p = payload as DownloadRequest;
-      const route = await this.options.router.get(p.deviceId);
+      const route = await this.options.gatewayCoordinator.get(p.deviceId);
       requireCondition(route, 'DEVICE_OFFLINE');
       requireCondition(
         route.ownerId === p.ownerId && route.authVersion === p.authVersion && route.deviceVersion === p.deviceVersion,
@@ -360,12 +360,12 @@ export class GatewayService {
     }
     if (command === '__authorization_changed__') {
       const event = payload as RemoteAuthorizationChange;
-      await this.options.router.wake(`owner:${event.ownerId}`);
+      await this.options.gatewayCoordinator.wake(`owner:${event.ownerId}`);
       await this.pump(`owner:${event.ownerId}`);
       return { applied: true, eventId: event.eventId };
     }
     const p = payload as { eventId: string; ownerId: string };
-    await this.options.router.wake(`owner:${p.ownerId}`);
+    await this.options.gatewayCoordinator.wake(`owner:${p.ownerId}`);
     return { applied: true, eventId: p.eventId };
   }
 
@@ -458,7 +458,7 @@ export class GatewayService {
           if (!p.session) return;
           try {
             await this.current(p.session);
-            requireCondition(await this.options.router.renew(p.session), 'SESSION_REVOKED', 401);
+            requireCondition(await this.options.gatewayCoordinator.renew(p.session), 'SESSION_REVOKED', 401);
           } catch (error) {
             this.options.logger.error(
               { err: error, stage: 'session.validate', sessionId: p.session.sessionId },
@@ -482,13 +482,13 @@ export class GatewayService {
       peer.send(message('__session_revoked__', { code: 'SESSION_REVOKED' }));
     } finally {
       peer.close(4001);
-      if (peer.session) await this.options.router.release(peer.session);
+      if (peer.session) await this.options.gatewayCoordinator.release(peer.session);
     }
   }
 
   async dropped(peer: Peer) {
     this.peers.delete(peer.id);
-    if (peer.session) await this.options.router.release(peer.session);
+    if (peer.session) await this.options.gatewayCoordinator.release(peer.session);
   }
 
   async signingKeys(apiKey: string, correlationId?: string) {

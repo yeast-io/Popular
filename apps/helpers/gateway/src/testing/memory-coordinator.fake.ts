@@ -1,8 +1,8 @@
 // TEST DOUBLE ONLY. An injected clock makes lease expiry deterministic.
-import type { AgentStatus, Route, Router, Session } from '../gateway.types.js';
+import type { AgentStatus, Route, GatewayCoordinator, Session } from '../gateway.types.js';
 import { sameSession } from '../gateway.domain.js';
 
-export class MemoryRouter implements Router {
+export class MemoryCoordinator implements GatewayCoordinator {
   readonly routes = new Map<string, { route: Route; expiry: number }>();
   readonly handlers = new Set<(id: string) => void>();
   readonly rates = new Map<string, { count: number; until: number }>();

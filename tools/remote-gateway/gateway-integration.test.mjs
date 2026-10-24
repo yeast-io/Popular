@@ -47,17 +47,17 @@ test('SIMULATED Mongo: session takeover, old cleanup, revocation without notific
     { code: 'SESSION_REVOKED' }
   );
   await f.gateway.dropped(old.peer);
-  assert.equal((await f.router.get(d.deviceId)).sessionId, fresh.peer.session.sessionId);
+  assert.equal((await f.gatewayCoordinator.get(d.deviceId)).sessionId, fresh.peer.session.sessionId);
   await nextGateway.pump(d.deviceId);
   assert.equal(fresh.sent.some((m) => m.command === '__add_download__'), false);
-  await f.router.release(fresh.peer.session);
+  await f.gatewayCoordinator.release(fresh.peer.session);
   const count = f.store.commands.size;
   await assert.rejects(
     f.coordinator.dispatch({ ...input, commandId: 'offline', downloadId: 'offline-download' }),
     { code: 'DEVICE_OFFLINE' }
   );
   assert.equal(f.store.commands.size, count);
-  await f.router.claim(fresh.peer.session);
+  await f.gatewayCoordinator.claim(fresh.peer.session);
   f.store.devices.get(d.deviceId).status = 'unbound';
   await nextGateway.sweep();
   assert.equal(fresh.closed(), true);

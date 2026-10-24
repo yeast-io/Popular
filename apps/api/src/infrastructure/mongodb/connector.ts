@@ -1,6 +1,9 @@
 import mongoose, { type Connection } from 'mongoose';
 import type { HealthDependency } from '../health/health-dependency.types.js';
 import { timedHealthCheck } from '../health/health-check.service.js';
+import { createPrettyLoggers } from '../logging/logger.js';
+
+const logger = createPrettyLoggers();
 
 export class MongoDbConnector implements HealthDependency {
   readonly name = 'mongodb' as const;
@@ -12,15 +15,22 @@ export class MongoDbConnector implements HealthDependency {
     if (this.connection?.readyState === 1) return this.connection;
     const connection = mongoose.createConnection(this.uri, {
       dbName: this.databaseName,
-      serverSelectionTimeoutMS: 5_000,
+      serverSelectionTimeoutMS: 10_000,
       maxPoolSize: 20,
     });
+    connection.on('connected', () => logger.info('mongodb connected'));
+    connection.on('disconnected', () => logger.info('disconnected from mongodb'));
+    connection.on('reconnected', () => logger.info('reconnected to mongodb'));
+    connection.on('disconnecting', () => logger.info('mongodb connection is disconnecting'));
+    connection.on('close', () => logger.info('connection is closed'));
     this.connection = await connection.asPromise();
     return this.connection;
   }
 
   getConnection(): Connection {
-    if (!this.connection || this.connection.readyState !== 1) throw new Error('MongoDB is not connected');
+    if (!this.connection || this.connection.readyState !== 1) {
+      throw new Error('MongoDB is not connected');
+    }
     return this.connection;
   }
 
