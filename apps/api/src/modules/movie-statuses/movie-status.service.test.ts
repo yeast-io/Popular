@@ -229,3 +229,18 @@ test('My Movies exposes a failed refresh while preserving the last successful av
   }
   );
 });
+
+for (const locale of ['en-US', 'zh-CN'] as const) {
+  test(`saved lists retain missing catalog records in saved order without losing status (${locale})`, async () => {
+    rows.length = 0;
+    rows.push({ tmdbId: 999, status: 'watched', preference: 'liked', updatedAt: new Date() },
+      { tmdbId: 7, status: 'watched', preference: 'neutral', updatedAt: new Date() });
+    const result = await new MovieStatusService(store, catalog, locale).list('owner-a', 'watched', 1, 20, locale);
+    assert.equal(result.pagination.total, 2);
+    assert.deepEqual(result.items.map((item) => item.tmdbId), [999, 7]);
+    assert.equal(result.items[0]?.userStatus, 'watched');
+    assert.equal(result.items[0]?.userPreference, 'liked');
+    assert.match(result.items[0]!.title, /TMDB 999/);
+    assert.match(result.items[0]!.title, locale === 'zh-CN' ? /资料暂不可用/ : /Information unavailable/);
+  });
+}

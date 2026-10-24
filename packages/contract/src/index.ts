@@ -36,3 +36,9 @@ export * from './remote-client.schema.js';
 export * from './helper-gateway/helper-gateway.schema.js';
 export type { DeviceKeys, Authorization, Session, AgentStatus, DeviceStatus, DownloadRequest, CommandState, CommandRecord,
   TaskEvidence, ResultPayload, StatusPayload, PreparedDelivery, PublicCommand, WireMessage } from './helper-gateway/helper-gateway.types.js';
+
+export * from './tv-shows/tv-show.schema.js';
+export * from './tv-shows/tv-season.schema.js';
+export * from './tv-shows/tv-episode.schema.js';
+
+export * from './watchlist/watchlist.schema.js';

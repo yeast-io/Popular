@@ -1,3 +1,16 @@
+import { TvPreferenceService } from './modules/tv-preferences/tv-preference.service.js';
+import { MongoTvPreferenceStore } from './infrastructure/mongodb/tv-preferences/tv-preference.store.js';
+import { WatchlistService } from './modules/watchlist/watchlist.service.js';
+import { MongoTvWatchlistStore } from './infrastructure/mongodb/watchlist/tv-watchlist.store.js';
+import { tvShowPolicy } from './modules/tv-shows/tv-show.policy.js';
+import { TmdbHttpClient } from './infrastructure/tmdb/tmdb-http.client.js';
+import { TmdbTvClient } from './infrastructure/tmdb/tmdb-tv.client.js';
+import { MongoTvShowStore } from './infrastructure/mongodb/tv-shows/tv-show.store.js';
+import { MongoTvSeasonStore } from './infrastructure/mongodb/tv-shows/tv-season.store.js';
+import { MongoTvTrendingStore } from './infrastructure/mongodb/tv-shows/tv-trending.store.js';
+import { TvShowService } from './modules/tv-shows/tv-show.service.js';
+import { TvSeasonService } from './modules/tv-shows/tv-season.service.js';
+import { TvTrendingSyncService } from './modules/tv-shows/tv-trending-sync.service.js';
 import OpenAI from 'openai';
 import './config/load-env.js';
 import { randomUUID } from 'node:crypto';
@@ -269,6 +282,16 @@ try {
       error: (bindings, message) => loggers.error.error(bindings, message),
     }
   );
+  await Promise.all([models.tvPreferences, models.tvWatchlist, models.tvShows, models.tvShowLocalizations, models.tvSeasons, models.tvSeasonLocalizations,
+    models.tvEpisodes, models.tvEpisodeLocalizations, models.tvShowResultSets, models.tvShowTrendingStates].map((model) => model.init()));
+  const tvProvider = new TmdbTvClient(new TmdbHttpClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS, undefined, externalUsageStore));
+  const tvLock = new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED && config.VERBOSE, loggers.app);
+  const tvSeasonStore = new MongoTvSeasonStore(models);
+  const tvCatalog = new MongoTvShowStore(models, tvSeasonStore);
+  const tvShowService = new TvShowService(tvCatalog, tvProvider, tvLock);
+  const tvSeasonService = new TvSeasonService(tvSeasonStore, tvProvider, tvLock);
+  const tvTrendingService = new TvTrendingSyncService(tvProvider, new MongoTvTrendingStore(models, tvCatalog), tvLock,
+    { freshnessMs: tvShowPolicy.trendingTtlMs });
   const movieService = new MovieService(trendingStore, trendingSync, tmdb, trendingStore, movieStatusStore);
   await Promise.all([models.integrationConfigs.init(), models.resourceSiteCredentials.init()]);
   const hdarea = new HDAreaAdapter(config.HDAREA_BASE_URL);
@@ -730,6 +753,11 @@ try {
     authService,
     userService,
     movieService,
+    tvPreferenceService: new TvPreferenceService(new MongoTvPreferenceStore(models.tvPreferences), tvCatalog),
+    watchlistService: new WatchlistService(movieStatusService, tvCatalog, new MongoTvWatchlistStore(models.tvWatchlist), movieStatusStore),
+    tvShowService,
+    tvSeasonService,
+    tvTrendingService,
     movieStatusService,
     integrationService,
     movieResourceSyncService,

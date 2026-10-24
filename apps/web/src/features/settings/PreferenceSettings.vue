@@ -185,9 +185,6 @@ onBeforeUnmount(() => {
       </label>
 
       <div v-if="!profile.entries.length" class="preference-empty">
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" aria-hidden="true">
-          <path d="M4 7h16M4 17h16M8 4v6m8 4v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-        </svg>
         <h3>{{ t('preferences.emptyTitle') }}</h3>
         <p>{{ t('preferences.empty') }}</p>
       </div>
@@ -526,14 +523,9 @@ onBeforeUnmount(() => {
   justify-items: center;
   gap: 10px;
   padding: 28px 20px;
-  border: 1px dashed #ffffff18;
-  border-radius: 9px;
-  background: #ffffff02;
+  border: 0;
+  background: transparent;
   text-align: center;
-}
-.preference-empty svg {
-  margin-bottom: 4px;
-  color: #999b95;
 }
 .preference-empty p {
   max-width: 420px;

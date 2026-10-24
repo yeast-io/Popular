@@ -1,3 +1,6 @@
+import { registerTvPreferenceRoutes } from './modules/tv-preferences/tv-preference.routes.js';
+import { registerWatchlistRoutes } from './modules/watchlist/watchlist.routes.js';
+import { registerTvShowRoutes } from './modules/tv-shows/tv-show.routes.js';
 import { registerRemoteClientRoutes } from './modules/remote-clients/remote-client.routes.js';
 import { registerIntegrationPreferencesRoutes } from './modules/integrations/integration-preferences.routes.js';
 import { registerResourceSearchRoutes } from './modules/resource-search/resource-search.routes.js';
@@ -57,6 +60,11 @@ export async function buildApp({
   authService,
   userService,
   movieService,
+  tvPreferenceService,
+  watchlistService,
+  tvShowService,
+  tvSeasonService,
+  tvTrendingService,
   movieStatusService,
   integrationService,
   movieResourceSyncService,
@@ -112,6 +120,9 @@ export async function buildApp({
       if (authService) registerAuthRoutes(api, authService, config);
       if (preferenceService && authService) registerPreferenceRoutes(api, preferenceService, authService, config);
       if (userService) registerUserRoutes(api, userService, config);
+      if (tvShowService && tvSeasonService && tvTrendingService) registerTvShowRoutes(api, tvShowService, tvSeasonService, tvTrendingService, config, { logger: loggers.error, verbose: config.VERBOSE }, authService, tvPreferenceService);
+      if (tvPreferenceService && authService) registerTvPreferenceRoutes(api, tvPreferenceService, authService, config, loggers.error);
+      if (watchlistService && authService) registerWatchlistRoutes(api, watchlistService, authService, config, loggers.error);
       if (movieService) registerMovieRoutes(api, movieService, authService, config);
       if (movieStatusService && authService)
         registerMovieStatusRoutes(

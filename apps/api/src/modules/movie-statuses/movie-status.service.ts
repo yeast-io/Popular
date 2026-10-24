@@ -9,6 +9,8 @@ import type {
   TrackedMoviePreference,
   TrackedMovieStatus,
 } from '@movie-hub/contract';
+import { aiStep } from '../../infrastructure/logging/ai-trace.js';
+import { unavailableSavedMovieTitle } from './movie-status.presentation.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { MovieCatalogStore, MovieStatusStore } from '../movies/movie.types.js';
 import { toMovieSummary } from '../movies/movie.service.js';
@@ -78,11 +80,11 @@ export class MovieStatusService {
     pageSize: number,
     locale: Locale = this.defaultLocale
   ): Promise<MyMoviesResponse> {
-    const result = await this.statuses.list(ownerId, status, page, pageSize);
+    const result = await aiStep('movie-library.states.read', () => this.statuses.list(ownerId, status, page, pageSize), { page, pageSize, locale });
     for (const item of result.items) {
       if (item.status === 'interested') this.resourceChecks?.schedule(ownerId, item.tmdbId);
     }
-    const [movies, resourceChecks] = await Promise.all([
+    const [movies, resourceChecks] = await aiStep('movie-library.catalog.read', () => Promise.all([
       this.movies.readMovies(
         result.items.map(({ tmdbId }) => tmdbId),
         locale
@@ -93,8 +95,8 @@ export class MovieStatusService {
           return tmdbId;
         })
       ) ?? [],
-    ]);
-    const stateById = new Map(result.items.map((item) => [item.tmdbId, item]));
+    ]), { page, pageSize, locale });
+    const movieById = new Map(movies.map((movie) => [movie.tmdbId, movie]));
     const resourceCheckById = new Map(
       resourceChecks
         .filter((check) => {
@@ -109,24 +111,25 @@ export class MovieStatusService {
       result.items.map((item) => item.tmdbId)
     );
     return {
-      items: movies.flatMap((movie) => {
-        const state = stateById.get(movie.tmdbId);
-        const storedResourceCheck = resourceCheckById.get(movie.tmdbId);
+      items: result.items.map((state) => {
+        const movie = movieById.get(state.tmdbId);
+        const storedResourceCheck = resourceCheckById.get(state.tmdbId);
         const resourceCheck
-          = summaries?.get(movie.tmdbId)
+          = summaries?.get(state.tmdbId)
             ?? (storedResourceCheck
               ? toResourceCheckResponse(storedResourceCheck)
               : state?.status === 'interested'
                 ? emptyResourceCheck()
                 : undefined);
-        return state
-          ? [
-              {
-                ...toMovieSummary(movie, state.status, state.preference),
-                ...(resourceCheck ? { resourceCheck } : {}),
-              },
-            ]
-          : [];
+        return {
+          ...(movie
+            ? toMovieSummary(movie, state.status, state.preference)
+            : {
+                tmdbId: state.tmdbId, title: unavailableSavedMovieTitle(locale, state.tmdbId),
+                userStatus: state.status, userPreference: state.preference,
+              }),
+          ...(resourceCheck ? { resourceCheck } : {}),
+        };
       }),
       pagination: { page, pageSize, total: result.total, hasMore: page * pageSize < result.total },
       locale,

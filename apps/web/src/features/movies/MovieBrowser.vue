@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { ApiError, MoviePreference, MovieStatus, MovieSummary, SearchMoviesResponse, TrackedMoviePreference, TrackedMovieStatus, TrendingMoviesResponse } from '@movie-hub/contract';
+import type { ApiError, MoviePreference, MovieSummary, SearchMoviesResponse, TrackedMoviePreference, TrendingMoviesResponse } from '@movie-hub/contract';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import MediaSearchBox from '../media/MediaSearchBox.vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
@@ -16,7 +17,6 @@ const hasMore = ref(false);
 const loading = ref(true);
 const loadingMore = ref(false);
 const errorMessage = ref('');
-const fetchedAt = ref('');
 const trendingGeneration = ref('');
 const skeletons = Array.from({ length: 10 }, (_, index) => index);
 const failedPosters = ref(new Set<number>());
@@ -37,21 +37,6 @@ const canLoadMore = computed(() => {
     && loadedQuery.value === query.value.trim()
   );
 });
-const freshness = computed(() => {
-  return fetchedAt.value && !searching.value
-    ? formatDate(fetchedAt.value, { dateStyle: 'medium', timeStyle: 'short' })
-    : '';
-});
-const statusOptions = computed(() => {
-  return [
-    ['watched', t('movie.status.watched')],
-    ['interested', t('movie.status.interested')],
-  ] as const;
-});
-const browserTitle = computed(() => {
-  return searching.value ? t('discover.searchTitle', { query: query.value.trim() }) : t('discover.trendingTitle');
-});
-
 onMounted(() => void loadFirstPage());
 onBeforeUnmount(() => {
   requestGeneration += 1;
@@ -71,7 +56,6 @@ watch(
     loading.value = true;
     loadingMore.value = false;
     errorMessage.value = '';
-    fetchedAt.value = '';
     trendingGeneration.value = '';
     loadedLocale.value = null;
     loadedQuery.value = '';
@@ -147,36 +131,6 @@ async function loadMore() {
   }
 }
 
-async function setStatus(movie: MovieSummary, status: TrackedMovieStatus) {
-  if (!props.authenticated) {
-    emit('requireLogin');
-    return;
-  }
-  if (updating.value.has(movie.tmdbId)) return;
-  const previous = movie.userStatus;
-  const next: MovieStatus = previous === status ? 'unwatched' : status;
-  movie.userStatus = next;
-  updating.value = new Set(updating.value).add(movie.tmdbId);
-  errorMessage.value = '';
-  try {
-    const response = await fetch(`${apiBaseUrl}/me/movies/${movie.tmdbId}/status`, {
-      method: next === 'unwatched' ? 'DELETE' : 'PUT',
-      credentials: 'include',
-      ...(next === 'unwatched'
-        ? {}
-        : { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: next }) }),
-    });
-    if (!response.ok) throw await localizedResponseError(response);
-  } catch (error) {
-    movie.userStatus = previous;
-    errorMessage.value = localizedErrorMessage(error, 'errors.saveMovieStatus');
-  } finally {
-    const pending = new Set(updating.value);
-    pending.delete(movie.tmdbId);
-    updating.value = pending;
-  }
-}
-
 async function setPreference(movie: MovieSummary, preference: TrackedMoviePreference) {
   if (!props.authenticated) {
     emit('requireLogin');
@@ -221,14 +175,12 @@ function applyTrending(result: TrendingMoviesResponse, append: boolean) {
   movies.value = append ? mergeUniqueMovies(movies.value, result.items) : result.items;
   page.value = result.page;
   hasMore.value = result.hasMore;
-  fetchedAt.value = result.fetchedAt;
   trendingGeneration.value = result.generation;
 }
 function applySearch(result: SearchMoviesResponse, append: boolean) {
   movies.value = append ? mergeUniqueMovies(movies.value, result.items) : result.items;
   page.value = result.page;
   hasMore.value = result.hasMore;
-  fetchedAt.value = '';
   trendingGeneration.value = '';
 }
 function mergeUniqueMovies(current: MovieSummary[], incoming: MovieSummary[]): MovieSummary[] {
@@ -258,24 +210,8 @@ function messageFor(error: unknown): string {
 </script>
 
 <template>
-  <section class="movie-section" aria-labelledby="movie-browser-title">
-    <div class="browser-toolbar">
-      <div>
-        <p class="eyebrow">{{ t('discover.eyebrow') }}</p>
-        <h2 id="movie-browser-title">{{ browserTitle }}</h2>
-      </div>
-      <label class="search-box">
-        <span class="sr-only">{{ t('discover.searchLabel') }}</span>
-        <input
-          v-model="query"
-          type="search"
-          maxlength="100"
-          :placeholder="t('discover.searchPlaceholder')"
-          autocomplete="off"
-        />
-      </label>
-    </div>
-    <p v-if="freshness" class="freshness">{{ t('status.updatedAt', { date: freshness }) }}</p>
+  <section class="movie-section media-browser" :aria-label="t('nav.movies')">
+    <MediaSearchBox v-model="query" :label="t('movies.searchLabel')" :placeholder="t('movies.searchPlaceholder')" />
     <div
       v-if="loading"
       class="skeleton-grid"
@@ -298,9 +234,9 @@ function messageFor(error: unknown): string {
       <p v-if="errorMessage" class="browse-error" role="alert">{{ errorMessage }}</p>
       <div class="movie-grid">
         <article
-          v-for="(movie, index) in movies"
+          v-for="movie in movies"
           :key="movie.tmdbId"
-          class="movie-card clickable"
+          class="movie-card catalog-card clickable"
           tabindex="0"
           :aria-label="t('a11y.viewMovieDetails', { title: movie.title })"
           @click="emit('openMovie', movie.tmdbId)"
@@ -323,7 +259,6 @@ function messageFor(error: unknown): string {
             >
               <span aria-hidden="true">{{ t('movie.posterUnavailable') }}</span>
             </div>
-            <span v-if="!searching" class="rank">{{ String(index + 1).padStart(2, '0') }}</span>
             <div
               class="preference-control"
               role="group"
@@ -362,28 +297,9 @@ function messageFor(error: unknown): string {
                 </svg>
               </button>
             </div>
-            <div class="poster-interface" aria-hidden="true">
-              <span class="interface-code">PM / {{ movie.tmdbId }}</span>
-              <div class="interface-meta">
-                <span>{{ releaseDateLabel(movie.releaseDate) }}</span
-                ><span
-                  v-if="movie.voteAverage !== undefined"
-                  :aria-label="t('movie.rating', { rating: ratingLabel(movie.voteAverage) })"
-                  ><span aria-hidden="true">★ {{ ratingLabel(movie.voteAverage) }}</span></span
-                >
-              </div>
-              <span class="interface-action">{{ t('movie.openDetails') }} <b>↗</b></span>
-            </div>
           </div>
           <div class="movie-copy">
-            <h3>{{ movie.title }}</h3>
-            <p
-              class="original-title"
-              :class="{ placeholder: !movie.originalTitle || movie.originalTitle === movie.title }"
-              :aria-hidden="!movie.originalTitle || movie.originalTitle === movie.title"
-            >
-              {{ movie.originalTitle && movie.originalTitle !== movie.title ? movie.originalTitle : '\u00a0' }}
-            </p>
+            <h3 :title="movie.title">{{ movie.title }}</h3>
             <div class="movie-meta">
               <span>{{ releaseDateLabel(movie.releaseDate) }}</span
               ><span
@@ -392,19 +308,6 @@ function messageFor(error: unknown): string {
                 :aria-label="t('movie.rating', { rating: ratingLabel(movie.voteAverage) })"
                 ><span aria-hidden="true">★ {{ ratingLabel(movie.voteAverage) }}</span></span
               ><span v-else class="rating rating-missing" :aria-label="t('movie.ratingUnavailable')">—</span>
-            </div>
-            <div class="status-control" :aria-label="t('a11y.movieStatus', { title: movie.title })">
-              <button
-                v-for="option in statusOptions"
-                :key="option[0]"
-                type="button"
-                :class="{ active: movie.userStatus === option[0] }"
-                :aria-pressed="movie.userStatus === option[0]"
-                :disabled="updating.has(movie.tmdbId)"
-                @click.stop="setStatus(movie, option[0])"
-              >
-                {{ option[1] }}
-              </button>
             </div>
           </div>
         </article>

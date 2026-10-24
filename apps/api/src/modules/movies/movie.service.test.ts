@@ -409,7 +409,7 @@ test('detail fetches, persists, and returns cast and director metadata', async (
     genres: [{ tmdbId: 18, name: '剧情' }],
     runtimeMinutes: 120,
     cast: [{ person: { tmdbId: 1, name: '演员' }, creditId: 'cast-1', type: 'cast' as const, character: '角色' }],
-    directors: [{ person: { tmdbId: 2, name: '导演' }, creditId: 'director-1', type: 'director' as const }],
+    directors: [{ person: { tmdbId: 2, name: '导演', originalName: 'Director Name' }, creditId: 'director-1', type: 'director' as const }],
     trailer: {
       tmdbVideoId: 'video-1',
       provider: 'youtube' as const,
@@ -451,6 +451,7 @@ test('detail fetches, persists, and returns cast and director metadata', async (
   const result = await service.detail(42, 'zh-CN', null);
   assert.equal(persisted, true);
   assert.equal(result.runtimeMinutes, 120);
+  assert.equal(result.directors[0]?.originalName, 'Director Name');
   assert.deepEqual(
     result.cast.map(({ name, character }) => ({ name, character })),
     [{ name: '演员', character: '角色' }]

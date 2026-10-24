@@ -1,3 +1,13 @@
+import { createTvPreferenceModel } from './tv-preferences/tv-preference.schema.js';
+import { createTvWatchlistModel } from './watchlist/tv-watchlist.schema.js';
+import { createTvShowModel } from './tv-shows/tv-show.schema.js';
+import { createTvShowLocalizationModel } from './tv-shows/tv-show-localization.schema.js';
+import { createTvSeasonModel } from './tv-shows/tv-season.schema.js';
+import { createTvSeasonLocalizationModel } from './tv-shows/tv-season-localization.schema.js';
+import { createTvEpisodeModel } from './tv-shows/tv-episode.schema.js';
+import { createTvEpisodeLocalizationModel } from './tv-shows/tv-episode-localization.schema.js';
+import { createTvShowResultSetModel } from './tv-shows/tv-show-result-set.schema.js';
+import { createTvShowTrendingStateModel } from './tv-shows/tv-show-trending-state.schema.js';
 import { createRemoteCommandModels } from './remote-downloads/remote-command.schema.js';
 import { createRemoteDeviceModel } from './remote-clients/remote-authorization.schema.js';
 import { createIntegrationPreferencesModel } from './integrations/integration-preferences.schema.js';
@@ -33,6 +43,17 @@ import { createConversationMessageModel } from './conversations/conversation-mes
 
 export function createModels(connection: Connection) {
   return {
+    tvPreferences: createTvPreferenceModel(connection),
+    tvWatchlist: createTvWatchlistModel(connection),
+    tvShows: createTvShowModel(connection),
+    tvShowLocalizations: createTvShowLocalizationModel(connection),
+    tvSeasons: createTvSeasonModel(connection),
+    tvSeasonLocalizations: createTvSeasonLocalizationModel(connection),
+    tvEpisodes: createTvEpisodeModel(connection),
+    tvEpisodeLocalizations: createTvEpisodeLocalizationModel(connection),
+    tvShowResultSets: createTvShowResultSetModel(connection),
+    tvShowTrendingStates: createTvShowTrendingStateModel(connection),
+
     remoteControl: createRemoteCommandModels(connection),
     remoteDevices: createRemoteDeviceModel(connection),
     integrationPreferences: createIntegrationPreferencesModel(connection),

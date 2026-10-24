@@ -75,6 +75,7 @@ describe('movie detail navigation', () => {
     const wrapper = mount(App);
     await flushPromises();
 
+    await wrapper.get('.floating-search-toggle').trigger('click');
     const search = wrapper.get('input[type="search"]');
     await search.setValue('galaxy');
     await new Promise((resolve) => window.setTimeout(resolve, 310));
@@ -85,9 +86,9 @@ describe('movie detail navigation', () => {
     await wrapper.get('.movie-card').trigger('click');
     await flushPromises();
     expect(window.location.pathname).toBe('/movies/42');
-    expect(replaceState).toHaveBeenLastCalledWith(expect.objectContaining({ listPage: 'home', scrollY: 640 }), '');
+    expect(replaceState).toHaveBeenLastCalledWith(expect.objectContaining({ listPage: 'movies', scrollY: 640 }), '');
 
-    window.history.replaceState({ listPage: 'home', scrollY: 640 }, '', '/');
+    window.history.replaceState({ listPage: 'movies', scrollY: 640 }, '', '/');
     window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
     await flushPromises();
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
@@ -115,7 +116,7 @@ describe('account routes', () => {
     vi.unstubAllGlobals();
   });
 
-  it('redirects a signed-out settings visit to login and opens Discover after authentication', async () => {
+  it('redirects a signed-out settings visit to login and opens Movies after authentication', async () => {
     window.history.replaceState({}, '', '/settings');
     vi.stubGlobal(
       'fetch',
@@ -138,7 +139,7 @@ describe('account routes', () => {
     await flushPromises();
 
     expect(window.location.pathname).toBe('/');
-    expect(wrapper.text()).toContain('Trending this week');
+    expect(wrapper.get('input[type="search"]').attributes('placeholder')).toBe('Search movies…');
     wrapper.unmount();
   });
 
@@ -241,7 +242,7 @@ describe('account routes', () => {
     expect(menu.get('.account-identity-copy strong').text()).toBe('Daniel');
     expect(menu.get('.account-identity-copy small').text()).toBe('daniel@example.com');
     menu.element.open = true;
-    await menu.get('.account-options button:nth-child(2)').trigger('click');
+    await menu.findAll('.account-options button').find((button) => button.text() === 'Usage')!.trigger('click');
     await flushPromises();
 
     expect(window.location.pathname).toBe('/usage');
@@ -732,6 +733,90 @@ describe('account language', () => {
     expect(f.saves).toEqual(['zh-CN']);
     expect(useI18n().locale.value).toBe('en-US');
     expect(wrapper.get('[role="alert"]').text()).toBe('The request failed. Please try again.');
+    wrapper.unmount();
+  });
+});
+
+describe('Watch list account navigation', () => {
+  beforeEach(() => {
+    setLocale('en-US');
+    window.history.replaceState({}, '', '/movies');
+    vi.stubGlobal('scrollTo', vi.fn());
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return Response.json({ user: { id: 'owner', displayName: 'Owner', email: 'owner@example.com' } });
+      if (url.endsWith('/config')) return Response.json({});
+      if (url.includes('/me/movies?')) {
+        const filter = new URL(url, 'http://localhost').searchParams.get('status');
+        return Response.json({ items: [{ tmdbId: 42, title: `${filter} saved film`, overview: 'Saved overview' }], pagination: { page: 1, pageSize: 20, total: 1, hasMore: false }, locale: 'en-US' });
+      }
+      if (url.includes('/movies/42?')) return Response.json({ tmdbId: 42, title: 'Saved detail', genres: [], cast: [], directors: [], userStatus: 'watched', stale: false, detailSyncedAt: fetchedAt });
+      if (url.includes('/me/watchlist?')) {
+        const tv = url.includes('mediaType=tv');
+        return Response.json({ items: [{ tmdbId: 42, mediaType: tv ? 'tv' : 'movie', title: tv ? 'Saved series' : 'Saved film' }], pagination: { page: 1, pageSize: 20, total: 1, hasMore: false }, locale: 'en-US' });
+      }
+      if (url.includes('/tv-shows/42')) return Response.json({ tmdbId: 42, mediaType: 'tv', name: 'Series detail', genres: [], seasons: [], locale: 'en-US', stale: false, detailSyncedAt: fetchedAt });
+      if (url.includes('/me/watchlist/tv-shows/')) return Response.json({ inWatchlist: true });
+      return Response.json({ items: [], page: 1, hasMore: false, source: 'cache', resultCompleteness: 'complete', generation: trendingGeneration, fetchedAt });
+    }));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+  it('orders usage, separated watch list and viewing preferences without a My Movies navigation item', async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const actions = wrapper.findAll('.account-action-group button').map((button) => button.text());
+    expect(actions.slice(0, 4)).toEqual(['Settings', 'Usage', 'Watch list', 'Viewing preferences']);
+    expect(wrapper.get('.account-library-group').findAll('button').map((button) => button.text())).toEqual(['Watch list', 'Viewing preferences']);
+    expect(wrapper.get('.site-nav').text()).not.toContain('My Movies');
+    await wrapper.get('.account-library-group button:nth-child(2)').trigger('click');
+    await flushPromises();
+    expect(window.location.pathname).toBe('/viewing-preferences');
+    expect(wrapper.get('.watchlist-entry').text()).toContain('watched saved film');
+    await wrapper.get('.watchlist-filters button:nth-child(2)').trigger('click');
+    await flushPromises();
+    await wrapper.get('.watchlist-entry').trigger('click');
+    await flushPromises();
+    expect(window.history.state.movieOrigin).toBe('viewing-preferences');
+    window.history.replaceState({}, '', '/viewing-preferences');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await flushPromises();
+    expect(wrapper.get('.watchlist-filters button:nth-child(2)').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('.watchlist-entry').text()).toContain('liked saved film');
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/resources/sync'))).toBe(false);
+    wrapper.unmount();
+  });
+  it('redirects the retired My Movies URL to viewing preferences', async () => {
+    window.history.replaceState({}, '', '/my-movies');
+    const wrapper = mount(App);
+    await flushPromises();
+    expect(window.location.pathname).toBe('/viewing-preferences');
+    expect(wrapper.find('.viewing-preferences-page').exists()).toBe(true);
+    wrapper.unmount();
+  });
+  it('opens the read-only list from the avatar and retains TV category after returning from detail', async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const menu = wrapper.get<HTMLDetailsElement>('.account-menu');
+    menu.element.open = true;
+    await menu.findAll('button').find((button) => button.text() === 'Watch list')!.trigger('click');
+    await flushPromises();
+    expect(window.location.pathname).toBe('/watchlist');
+    expect(menu.element.open).toBe(false);
+    expect(wrapper.text()).toContain('Saved film');
+    await wrapper.get('.watchlist-filters button:nth-child(2)').trigger('click');
+    await flushPromises();
+    await wrapper.get('.watchlist-entry').trigger('click');
+    await flushPromises();
+    expect(window.location.pathname).toBe('/tv-shows/42');
+    expect(window.history.state.tvShowOrigin).toBe('watchlist');
+    window.history.replaceState({}, '', '/watchlist');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await flushPromises();
+    expect(wrapper.get('.watchlist-filters button:nth-child(2)').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.text()).toContain('Saved series');
     wrapper.unmount();
   });
 });

@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '../../i18n';
 import MovieBrowser from './MovieBrowser.vue';
 import MovieDetail from './MovieDetail.vue';
-import MyMovies from './MyMovies.vue';
+import { KeepAlive } from 'vue';
+import ViewingPreferencesPage from '../viewing-preferences/ViewingPreferencesPage.vue';
 
 const fetchedAt = '2026-10-12T00:00:00.000Z';
 const trendingGeneration = '00000000-0000-4000-8000-000000000001';
@@ -67,6 +68,7 @@ describe('localized movie page flows', () => {
     expect(wrapper.get('input[type="search"]').attributes('placeholder')).toBe('Search movies…');
     expect(urls.at(-1)).toContain('locale=en-US');
 
+    await wrapper.get('.floating-search-toggle').trigger('click');
     await wrapper.get('input[type="search"]').setValue('galaxy');
     await vi.advanceTimersByTimeAsync(300);
     await flushPromises();
@@ -269,6 +271,7 @@ describe('localized movie page flows', () => {
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
     await flushPromises();
+    await wrapper.get('.floating-search-toggle').trigger('click');
     await wrapper.get('input[type="search"]').setValue('galaxy');
     await vi.advanceTimersByTimeAsync(300);
     await flushPromises();
@@ -299,7 +302,7 @@ describe('localized movie page flows', () => {
           );
         }
         return Response.json({
-          items: [{ tmdbId: 42, title: '偏好测试', userStatus: 'unwatched', userPreference: 'neutral' }],
+          items: [{ tmdbId: 42, title: '偏好测试', userStatus: 'watched', userPreference: 'neutral' }],
           page: 1,
           hasMore: false,
           source: 'cache',
@@ -314,6 +317,9 @@ describe('localized movie page flows', () => {
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: true } });
     await flushPromises();
+    expect(wrapper.find('.status-control').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('已看');
+    expect(wrapper.text()).not.toContain('想看');
     const buttons = wrapper.findAll('button.preference-button');
 
     await buttons[0]!.trigger('click');
@@ -352,6 +358,7 @@ describe('localized movie page flows', () => {
           tmdbId: 42,
           title: english ? 'English detail title' : '中文详情标题',
           overview: english ? 'English story' : '中文剧情',
+          tagline: english ? 'English tagline' : '中文宣传语',
           genres: [],
           cast: [],
           directors: [],
@@ -367,16 +374,21 @@ describe('localized movie page flows', () => {
     const wrapper = mount(MovieDetail, { props: { tmdbId: 42, authenticated: false } });
     await flushPromises();
     expect(wrapper.text()).toContain('中文详情标题');
+    expect(wrapper.get('.detail-copy .overview').text()).toBe('中文剧情');
+    expect(wrapper.find('.tagline + .overview + .dossier-data').exists()).toBe(true);
+    expect(wrapper.find('.detail-sections .overview').exists()).toBe(false);
 
     setLocale('en-US');
     await flushPromises();
     expect(wrapper.text()).toContain('English detail title');
+    expect(wrapper.get('.detail-copy .overview').text()).toBe('English story');
+    expect(wrapper.find('.tagline + .overview + .dossier-data').exists()).toBe(true);
     expect(wrapper.text()).not.toContain('中文详情标题');
     expect(urls).toEqual(['/api/v1/movies/42?locale=zh-CN', '/api/v1/movies/42?locale=en-US']);
     wrapper.unmount();
   });
 
-  it('reloads My Movies in English while retaining the saved status', async () => {
+  it('reloads viewing preferences in English while retaining the saved status', async () => {
     const urls: string[] = [];
     vi.stubGlobal(
       'fetch',
@@ -399,20 +411,16 @@ describe('localized movie page flows', () => {
       })
     );
 
-    const wrapper = mount(MyMovies);
+    const wrapper = mount({ components: { KeepAlive, ViewingPreferencesPage }, template: '<KeepAlive><ViewingPreferencesPage /></KeepAlive>' });
     await flushPromises();
     expect(wrapper.text()).toContain('已保存中文标题');
 
     setLocale('en-US');
     await flushPromises();
     expect(wrapper.text()).toContain('Saved English title');
-    expect(wrapper.text()).toContain('Interested');
-    expect(urls).toEqual([
-      '/api/v1/me/integration-preferences',
-      '/api/v1/me/movies?status=interested&page=1&pageSize=50&locale=zh-CN',
-      '/api/v1/me/movies?status=interested&page=1&pageSize=50&locale=en-US',
-    ]
-    );
+    expect(wrapper.get('.watchlist-filters').text()).toContain('Watched');
+    expect(urls.some((url) => url.includes('status=watched') && url.includes('locale=en-US'))).toBe(true);
+    expect(urls.every((url) => !url.includes('/sync') && !url.includes('integration-preferences'))).toBe(true);
     wrapper.unmount();
   });
 });

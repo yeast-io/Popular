@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { RemoteClientDevice, RemoteClientConfiguration, IntegrationPreferences, ApiError, DownloadProvider, DownloaderChoice, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MoviePreference, MovieResourceCheckResponse, MovieStatus, TrackedMoviePreference, TrackedMovieStatus } from '@movie-hub/contract';
+import type { RemoteClientDevice, RemoteClientConfiguration, IntegrationPreferences, ApiError, DownloadProvider, DownloaderChoice, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MovieResourceCheckResponse, MovieStatus, TrackedMovieStatus } from '@movie-hub/contract';
 import { getIntegrationLogo } from '../settings/integration-logos';
 import ResourceSiteSelector from './ResourceSiteSelector.vue';
 import type { MovieSiteReleaseGroup } from './movie-site-releases.types';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
@@ -13,8 +13,27 @@ const emit = defineEmits<{ back: []; requireLogin: [] }>();
 const { apiBaseUrl } = loadWebConfig();
 const { formatDate, formatDuration, formatNumber, locale, t } = useI18n();
 const movie = ref<MovieDetail | null>(null);
+const people = computed(() => {
+  const combined = new Map((movie.value?.directors ?? []).map((person) => [person.tmdbId, {
+    tmdbId: person.tmdbId, name: person.name, originalName: person.originalName, profileUrl: person.profileUrl,
+    isDirector: true, characters: [] as string[],
+  }]));
+  for (const person of movie.value?.cast ?? []) {
+    const existing = combined.get(person.tmdbId);
+    if (existing) {
+      if (!existing.originalName) existing.originalName = person.originalName;
+      if (!existing.profileUrl) existing.profileUrl = person.profileUrl;
+      if (person.character && !existing.characters.includes(person.character)) existing.characters.push(person.character);
+    } else {
+      combined.set(person.tmdbId, { tmdbId: person.tmdbId, name: person.name, originalName: person.originalName, profileUrl: person.profileUrl,
+        isDirector: false, characters: person.character ? [person.character] : [] });
+    }
+  }
+  return [...combined.values()];
+});
 const loading = ref(true);
 const updating = ref(false);
+const statusTooltipId = useId();
 const errorMessage = ref('');
 const resourceCheck = ref<MovieResourceCheckResponse | null>(null);
 const resourceError = ref('');
@@ -57,12 +76,6 @@ let pageScrollLocked = false;
 const detailStyle = computed(() => {
   const hue = 14 + (props.tmdbId % 4) * 11;
   return { '--movie-accent': `hsl(${hue} 88% 58%)`, '--movie-accent-rgb': hue < 30 ? '242, 82, 45' : '242, 151, 45' };
-});
-const statusOptions = computed(() => {
-  return [
-    ['watched', t('movie.status.watched')],
-    ['interested', t('movie.status.interested')],
-  ] as const;
 });
 function downloadKey(releaseId: string, site = 'mteam'): string {
   return `${site}:${releaseId}`;
@@ -739,34 +752,6 @@ async function setStatus(status: TrackedMovieStatus) {
   }
 }
 
-async function setPreference(preference: TrackedMoviePreference) {
-  if (!props.authenticated) {
-    emit('requireLogin');
-    return;
-  }
-  if (!movie.value || updating.value) return;
-  const previous = movie.value.userPreference;
-  const next: MoviePreference = previous === preference ? 'neutral' : preference;
-  movie.value.userPreference = next;
-  updating.value = true;
-  errorMessage.value = '';
-  try {
-    const response = await fetch(`${apiBaseUrl}/me/movies/${props.tmdbId}/preference`, {
-      method: next === 'neutral' ? 'DELETE' : 'PUT',
-      credentials: 'include',
-      ...(next === 'neutral'
-        ? {}
-        : { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ preference: next }) }),
-    });
-    if (!response.ok) throw await localizedResponseError(response);
-  } catch (error) {
-    movie.value.userPreference = previous;
-    errorMessage.value = localizedErrorMessage(error, 'errors.saveMoviePreference');
-  } finally {
-    updating.value = false;
-  }
-}
-
 function releaseDateLabel(releaseDate?: string): string {
   return releaseDate ? formatDate(releaseDate, { dateStyle: 'long', timeZone: 'UTC' }) : t('movie.detail.missing');
 }
@@ -844,6 +829,7 @@ function syncedAtLabel(syncedAt: string): string {
             {{ movie.originalTitle }}
           </p>
           <p v-if="movie.tagline" class="tagline">“{{ movie.tagline }}”</p>
+          <p class="overview detail-overview">{{ movie.overview || t('movie.detail.overviewMissing') }}</p>
           <dl class="dossier-data">
             <div>
               <dt>{{ t('movie.detail.release') }}</dt>
@@ -870,47 +856,25 @@ function syncedAtLabel(syncedAt: string): string {
             <span v-for="genre in movie.genres" :key="genre.tmdbId">{{ genre.name }}</span>
             <span v-if="!movie.genres.length" class="genre-missing">{{ t('movie.detail.genresMissing') }}</span>
           </div>
-          <button v-if="movie.trailer" class="trailer-button" type="button" @click="showTrailer">
-            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7 8 5-8 5V7Z" /></svg>
-            {{ t('movie.trailer.play') }}
-          </button>
-          <div
-            class="status-control detail-status"
-            role="group"
-            :aria-label="t('a11y.movieStatus', { title: movie.title })"
-          >
-            <button
-              v-for="option in statusOptions"
-              :key="option[0]"
-              type="button"
-              :class="{ active: movie.userStatus === option[0] }"
-              :aria-pressed="movie.userStatus === option[0]"
-              :disabled="updating"
-              @click="setStatus(option[0])"
-            >
-              {{ option[1] }}
+          <div class="detail-action-toolbar">
+          <div class="detail-media-actions" role="group" :aria-label="t('a11y.movieStatus', { title: movie.title })">
+            <button v-if="movie.trailer" class="trailer-button" type="button" @click="showTrailer">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7 8 5-8 5V7Z" /></svg>
+              {{ t('movie.trailer.play') }}
             </button>
-          </div>
-          <div class="detail-preference" role="group" :aria-label="t('a11y.moviePreference', { title: movie.title })">
-            <button
-              type="button"
-              class="liked"
-              :class="{ active: movie.userPreference === 'liked' }"
-              :aria-pressed="movie.userPreference === 'liked'"
-              :disabled="updating"
-              @click="setPreference('liked')"
-            >
-              <span aria-hidden="true">♥</span>{{ t('movie.preference.liked') }}
+            <button class="detail-state-icon watchlist-icon" type="button" :class="{ active: movie.userStatus === 'interested' }"
+              :aria-pressed="movie.userStatus === 'interested'" :disabled="updating"
+              :aria-label="t(movie.userStatus === 'interested' ? 'watchlist.remove' : 'watchlist.add')"
+              :aria-describedby="`${statusTooltipId}-watchlist`" @click="setStatus('interested')">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4V3Z" /><path v-if="movie.userStatus === 'interested'" d="m9 9 2 2 4-4" /><path v-else d="M9 10h6m-3-3v6" /></svg>
+              <span :id="`${statusTooltipId}-watchlist`" class="detail-state-tooltip" role="tooltip">{{ t(movie.userStatus === 'interested' ? 'watchlist.joined' : 'watchlist.notJoined') }}</span>
             </button>
-            <button
-              type="button"
-              class="disliked"
-              :class="{ active: movie.userPreference === 'disliked' }"
-              :aria-pressed="movie.userPreference === 'disliked'"
-              :disabled="updating"
-              @click="setPreference('disliked')"
-            >
-              <span aria-hidden="true">👎</span>{{ t('movie.preference.disliked') }}
+            <button class="detail-state-icon watched-icon" type="button" :class="{ active: movie.userStatus === 'watched' }"
+              :aria-pressed="movie.userStatus === 'watched'" :disabled="updating"
+              :aria-label="t(movie.userStatus === 'watched' ? 'movie.status.markUnwatched' : 'movie.status.markWatched')"
+              :aria-describedby="`${statusTooltipId}-watched`" @click="setStatus('watched')">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /><path v-if="movie.userStatus !== 'watched'" d="m3 3 18 18" /></svg>
+              <span :id="`${statusTooltipId}-watched`" class="detail-state-tooltip" role="tooltip">{{ t(movie.userStatus === 'watched' ? 'movie.status.watched' : 'movie.status.unwatched') }}</span>
             </button>
           </div>
           <div class="resource-check-panel">
@@ -941,39 +905,27 @@ function syncedAtLabel(syncedAt: string): string {
             </ResourceSiteSelector>
             <button v-else class="resource-check-button" type="button" @click="recheckResource">{{ t('movie.resource.check') }}</button>
           </div>
+          </div>
           <p v-if="resourceError" class="browse-error" role="alert">{{ resourceError }}</p>
           <p v-if="errorMessage" class="browse-error" role="alert">{{ errorMessage }}</p>
         </div>
       </div>
       <div class="detail-sections">
-        <section>
-          <p class="eyebrow">{{ t('movie.detail.storyEyebrow') }}</p>
-          <h2>{{ t('movie.detail.story') }}</h2>
-          <p class="overview">{{ movie.overview || t('movie.detail.overviewMissing') }}</p>
-        </section>
-        <section>
-          <p class="eyebrow">{{ t('movie.detail.directorsEyebrow') }}</p>
-          <h2>{{ t('movie.detail.directors') }}</h2>
+        <section :aria-label="t('movie.detail.people')">
+          <p class="eyebrow">{{ t('movie.detail.people') }}</p>
           <div class="people-list">
-            <div v-for="person in movie.directors" :key="person.tmdbId" class="person-card">
-              <img v-if="person.profileUrl" :src="person.profileUrl" :alt="person.name" />
-              <div v-else class="person-placeholder">{{ person.name.slice(0, 1) }}</div>
+            <div v-for="person in people" :key="person.tmdbId" class="person-card">
+              <div class="person-photo">
+                <img v-if="person.profileUrl" :src="person.profileUrl" :alt="person.name" />
+                <div v-else class="person-placeholder">{{ person.name.slice(0, 1) }}</div>
+                <span v-if="person.isDirector" class="person-role">{{ t('movie.detail.directorRole') }}</span>
+              </div>
               <strong>{{ person.name }}</strong>
+              <span v-if="person.isDirector && person.originalName && person.originalName !== person.name" class="person-original">{{ person.originalName }}</span>
+              <span v-if="person.characters.length">{{ person.characters.join(' / ') }}</span>
+              <span v-else-if="!person.isDirector">{{ t('movie.detail.characterMissing') }}</span>
             </div>
-            <p v-if="!movie.directors.length" class="muted-copy">{{ t('movie.detail.directorsMissing') }}</p>
-          </div>
-        </section>
-        <section class="cast-section">
-          <p class="eyebrow">{{ t('movie.detail.castEyebrow') }}</p>
-          <h2>{{ t('movie.detail.cast') }}</h2>
-          <div class="people-list">
-            <div v-for="person in movie.cast" :key="`${person.tmdbId}-${person.character}`" class="person-card">
-              <img v-if="person.profileUrl" :src="person.profileUrl" :alt="person.name" />
-              <div v-else class="person-placeholder">{{ person.name.slice(0, 1) }}</div>
-              <strong>{{ person.name }}</strong
-              ><span>{{ person.character || t('movie.detail.characterMissing') }}</span>
-            </div>
-            <p v-if="!movie.cast.length" class="muted-copy">{{ t('movie.detail.castMissing') }}</p>
+            <p v-if="!people.length" class="muted-copy">{{ t('movie.detail.peopleMissing') }}</p>
           </div>
         </section>
       </div>

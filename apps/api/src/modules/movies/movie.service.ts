@@ -235,7 +235,7 @@ function toMovieDetail(
       return {
         tmdbId: person.tmdbId,
         name: person.name,
-        ...(character ? { character } : {}),
+        ...(person.originalName ? { originalName: person.originalName } : {}), ...(character ? { character } : {}),
         ...(person.profilePath ? { profileUrl: imageUrl(person.profilePath, 'w185') } : {}),
       };
     }),
@@ -243,7 +243,7 @@ function toMovieDetail(
       return {
         tmdbId: person.tmdbId,
         name: person.name,
-        ...(person.profilePath ? { profileUrl: imageUrl(person.profilePath, 'w185') } : {}),
+        ...(person.originalName ? { originalName: person.originalName } : {}), ...(person.profilePath ? { profileUrl: imageUrl(person.profilePath, 'w185') } : {}),
       };
     }),
     detailSyncedAt: movie.detailSyncedAt!.toISOString(),

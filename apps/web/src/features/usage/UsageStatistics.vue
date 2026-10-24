@@ -58,6 +58,10 @@ function providerLabel(provider: string): string {
 
 function operationLabel(operation: string): string {
   const known = {
+    'tv.search': 'usage.operation.tvSearch',
+    'tv.trending': 'usage.operation.tvTrending',
+    'tv.details': 'usage.operation.tvDetails',
+    'tv.season': 'usage.operation.tvSeason',
     'movie.search': 'usage.operation.movieSearch',
     'movie.details': 'usage.operation.movieDetails',
     'movie.trending': 'usage.operation.movieTrending',
@@ -160,7 +164,6 @@ function tokens(usage: TokenUsage | undefined, field: 'inputTokens' | 'outputTok
       </section>
 
       <div v-if="usage.totals.requests === 0" class="usage-empty">
-        <span aria-hidden="true">∅</span>
         <h2>{{ t('usage.emptyTitle') }}</h2>
         <p>{{ t('usage.emptyDescription') }}</p>
       </div>

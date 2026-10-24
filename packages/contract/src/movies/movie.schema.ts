@@ -21,6 +21,7 @@ export const MoviePersonSchema = Type.Object(
   {
     tmdbId: Type.Integer({ minimum: 1 }),
     name: Type.String({ minLength: 1 }),
+    originalName: Type.Optional(Type.String()),
     character: Type.Optional(Type.String()),
     profileUrl: Type.Optional(Type.String({ format: 'uri' })),
   },

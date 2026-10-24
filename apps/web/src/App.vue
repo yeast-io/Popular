@@ -3,7 +3,10 @@ import type { ApiError, AuthResponse, AuthUser, LoginRequest, PublicConfig, Regi
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { loadWebConfig } from './config/env';
 import MovieBrowser from './features/movies/MovieBrowser.vue';
-import MyMovies from './features/movies/MyMovies.vue';
+import TvShowBrowser from './features/tv-shows/TvShowBrowser.vue';
+import TvShowDetail from './features/tv-shows/TvShowDetail.vue';
+import ViewingPreferencesPage from './features/viewing-preferences/ViewingPreferencesPage.vue';
+import WatchlistPage from './features/watchlist/WatchlistPage.vue';
 import MovieDetail from './features/movies/MovieDetail.vue';
 import { useI18n } from './i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
@@ -22,12 +25,13 @@ import RemoteClientSettings from './features/remote-clients/RemoteClientSettings
 import DownloaderSettings from './features/integrations/DownloaderSettings.vue';
 import UsageStatistics from './features/usage/UsageStatistics.vue';
 import AiChat from './features/ai/AiChat.vue';
-import type { AuthField, Page, SettingsSection } from './app.types.js';
+import type { AuthField, Page, ListPage, SettingsSection } from './app.types.js';
 
 const { apiBaseUrl } = loadWebConfig();
 const { locale, setLocale, t } = useI18n();
 const localeMenu = ref<HTMLDetailsElement | null>(null);
 const accountMenu = ref<HTMLDetailsElement | null>(null);
+const tvDetailBackLabel = computed(() => t(currentPage.value === 'tv-show-detail' && window.history.state?.tvShowOrigin === 'watchlist' ? 'watchlist.back' : 'actions.backTvShows'));
 const mode = ref<'login' | 'register'>(window.location.pathname === '/register' ? 'register' : 'login');
 const email = ref('');
 const password = ref('');
@@ -50,6 +54,7 @@ const profileNameError = ref('');
 const notificationTestEnabled = ref(false);
 const aiAssistantEnabled = ref(false);
 const currentPage = ref<Page>(pageFromPath());
+const listScrollPositions: Record<ListPage, number> = { 'movies': 0, 'tv-shows': 0, 'viewing-preferences': 0, 'watchlist': 0 };
 const notificationSettings = ref<InstanceType<typeof NotificationSettings>>();
 const downloaderSettings = ref<InstanceType<typeof DownloaderSettings>>();
 const settingsSection = ref<SettingsSection>(settingsSectionFromSearch(window.location.search));
@@ -73,6 +78,7 @@ function openAISettings() {
 }
 
 const selectedMovieId = ref(movieIdFromPath());
+const selectedTvShowId = ref(tvShowIdFromPath());
 const atTop = ref(true);
 const atBottom = ref(true);
 let scrollUpdateFrame: number | undefined;
@@ -121,7 +127,7 @@ onMounted(async () => {
     loading.value = false;
     if (
       !user.value
-      && ['settings', 'usage', 'my-movies', 'ai', 'notification-tests'].includes(currentPage.value)
+      && ['settings', 'usage', 'viewing-preferences', 'watchlist', 'ai', 'notification-tests'].includes(currentPage.value)
     ) {
       openAuth('login', true);
     }
@@ -337,7 +343,7 @@ async function logout() {
     const response = await fetch(`${apiBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
     if (response.ok) {
       user.value = null;
-      navigate('home');
+      navigate('movies');
     } else errorMessage.value = localizedErrorMessage(await localizedResponseError(response), 'errors.requestFailed');
   } catch {
     errorMessage.value = t('errors.serviceUnavailable');
@@ -346,13 +352,39 @@ async function logout() {
 
 function pageFromPath(): Page {
   if (movieIdFromPath()) return 'movie-detail';
+  if (tvShowIdFromPath()) return 'tv-show-detail';
+  if (window.location.pathname === '/tv-shows') return 'tv-shows';
   if (window.location.pathname === '/login') return 'login';
   if (window.location.pathname === '/register') return 'register';
-  if (window.location.pathname === '/my-movies') return 'my-movies';
+  if (window.location.pathname === '/watchlist') return 'watchlist';
+  if (window.location.pathname === '/my-movies') {
+    window.history.replaceState({}, '', '/viewing-preferences');
+    return 'viewing-preferences';
+  }
+  if (window.location.pathname === '/viewing-preferences') return 'viewing-preferences';
   if (window.location.pathname === '/ai') return 'ai';
   if (window.location.pathname === '/dev/notification-tests') return 'notification-tests';
   if (window.location.pathname === '/settings') return 'settings';
-  return window.location.pathname === '/usage' ? 'usage' : 'home';
+  return window.location.pathname === '/usage' ? 'usage' : 'movies';
+}
+
+function tvShowIdFromPath(): number | null {
+  const match = window.location.pathname.match(/^\/tv-shows\/([1-9]\d*)$/);
+  const id = match ? Number(match[1]) : null;
+  return id && Number.isSafeInteger(id) ? id : null;
+}
+
+function openTvShow(tmdbId: number) {
+  rememberListScroll();
+  window.history.pushState({ tvShowOrigin: currentPage.value === 'watchlist' ? 'watchlist' : 'tv-shows' }, '', `/tv-shows/${tmdbId}`);
+  selectedTvShowId.value = tmdbId;
+  currentPage.value = 'tv-show-detail';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function backFromTvShowDetail() {
+  if (['tv-shows', 'watchlist'].includes(window.history.state?.tvShowOrigin)) window.history.back();
+  else navigate('tv-shows');
 }
 
 function movieIdFromPath(): number | null {
@@ -377,14 +409,15 @@ function syncPageFromLocation() {
   }
   if (nextPage === 'login' || nextPage === 'register') mode.value = nextPage;
   selectedMovieId.value = movieIdFromPath();
+  selectedTvShowId.value = tvShowIdFromPath();
   errorMessage.value = '';
   successMessage.value = '';
-  if (nextPage === 'home' || nextPage === 'my-movies') restoreListScroll(nextPage);
+  if (nextPage === 'movies' || nextPage === 'tv-shows' || nextPage === 'viewing-preferences' || nextPage === 'watchlist') restoreListScroll(nextPage);
 }
 
 function openMovie(tmdbId: number) {
-  const movieOrigin = currentPage.value === 'my-movies' ? 'my-movies' : 'home';
-  window.history.replaceState({ ...historyState(), listPage: movieOrigin, scrollY: window.scrollY }, '');
+  const movieOrigin = currentPage.value === 'watchlist' ? 'watchlist' : currentPage.value === 'viewing-preferences' ? 'viewing-preferences' : 'movies';
+  rememberListScroll();
   window.history.pushState({ movieOrigin }, '', `/movies/${tmdbId}`);
   selectedMovieId.value = tmdbId;
   currentPage.value = 'movie-detail';
@@ -393,12 +426,13 @@ function openMovie(tmdbId: number) {
 
 function backFromMovieDetail() {
   const movieOrigin = window.history.state?.movieOrigin;
-  if (movieOrigin === 'home' || movieOrigin === 'my-movies') window.history.back();
-  else navigate('home');
+  if (movieOrigin === 'movies' || movieOrigin === 'viewing-preferences' || movieOrigin === 'watchlist') window.history.back();
+  else navigate('movies');
 }
 
 function navigate(page: Page) {
   if (page === 'ai' && !aiAssistantEnabled.value) return;
+  rememberListScroll();
   const path
     = page === 'notification-tests'
       ? '/dev/notification-tests'
@@ -406,16 +440,21 @@ function navigate(page: Page) {
         ? `/settings?section=${settingsSectionSlug(settingsSection.value)}`
         : page === 'usage'
           ? '/usage'
-          : page === 'my-movies'
-            ? '/my-movies'
-            : page === 'ai'
-              ? '/ai'
-              : '/';
+          : page === 'watchlist'
+            ? '/watchlist'
+            : page === 'viewing-preferences'
+              ? '/viewing-preferences'
+              : page === 'ai'
+                ? '/ai'
+                : page === 'tv-shows'
+                  ? '/tv-shows'
+                  : '/movies';
   if (`${window.location.pathname}${window.location.search}` !== path) window.history.pushState({}, '', path);
   currentPage.value = page;
   errorMessage.value = '';
   successMessage.value = '';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (page === 'movies' || page === 'tv-shows' || page === 'viewing-preferences' || page === 'watchlist') restoreListScroll(page);
+  else window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function openAuth(nextMode: 'login' | 'register', replace = false) {
@@ -436,6 +475,7 @@ function navigateToPath(path: string, replace = false) {
   else window.history.pushState({}, '', path);
   currentPage.value = pageFromPath();
   selectedMovieId.value = movieIdFromPath();
+  selectedTvShowId.value = tvShowIdFromPath();
   errorMessage.value = '';
   successMessage.value = '';
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -447,12 +487,20 @@ function historyState(): Record<string, unknown> {
     : {};
 }
 
-function restoreListScroll(page: 'home' | 'my-movies') {
+function rememberListScroll() {
+  const page = currentPage.value;
+  if (page !== 'movies' && page !== 'tv-shows' && page !== 'viewing-preferences' && page !== 'watchlist') return;
+  listScrollPositions[page] = Math.max(0, window.scrollY);
+  window.history.replaceState({ ...historyState(), listPage: page, scrollY: listScrollPositions[page] }, '');
+}
+
+function restoreListScroll(page: ListPage) {
   const state = historyState();
   const savedScrollY
     = state.listPage === page && typeof state.scrollY === 'number' && Number.isFinite(state.scrollY)
       ? Math.max(0, state.scrollY)
-      : 0;
+      : listScrollPositions[page];
+  listScrollPositions[page] = savedScrollY;
   void nextTick(() => {
     window.requestAnimationFrame(() => window.scrollTo({ top: savedScrollY, behavior: 'auto' }));
   });
@@ -503,7 +551,7 @@ function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
   });
 }
 
-function navigateFromAccount(page: 'settings' | 'usage' | 'notification-tests') {
+function navigateFromAccount(page: 'settings' | 'usage' | 'notification-tests' | 'watchlist' | 'viewing-preferences') {
   accountMenu.value?.removeAttribute('open');
   navigate(page);
 }
@@ -526,21 +574,17 @@ function closeAccountMenu() {
 <template>
   <main class="app-shell">
     <header class="site-header">
-      <button class="brand brand-button" type="button" aria-label="Popular Movie AI Studio" @click="navigate('home')">
+      <button class="brand brand-button" type="button" aria-label="Popular Movie AI Studio" @click="navigate('movies')">
         <span class="brand-mark" aria-hidden="true">P</span>
         <span class="brand-copy">Popular Movie<small>AI Studio</small></span>
       </button>
       <nav class="site-nav" :aria-label="t('nav.ariaLabel')">
-        <button type="button" :class="{ active: currentPage === 'home' }" @click="navigate('home')">
-          {{ t('nav.discover') }}
+        <div id="header-media-search" class="header-media-search"></div>
+        <button type="button" :class="{ active: currentPage === 'movies' || currentPage === 'movie-detail' }" :aria-current="currentPage === 'movies' || currentPage === 'movie-detail' ? 'page' : undefined" @click="navigate('movies')">
+          {{ t('nav.movies') }}
         </button>
-        <button
-          v-if="user"
-          type="button"
-          :class="{ active: currentPage === 'my-movies' }"
-          @click="navigate('my-movies')"
-        >
-          {{ t('nav.myMovies') }}
+        <button type="button" :class="{ active: currentPage === 'tv-shows' || currentPage === 'tv-show-detail' }" :aria-current="currentPage === 'tv-shows' || currentPage === 'tv-show-detail' ? 'page' : undefined" @click="navigate('tv-shows')">
+          {{ t('nav.tvShows') }}
         </button>
         <button
           v-if="user && aiAssistantEnabled"
@@ -618,6 +662,16 @@ function closeAccountMenu() {
                 <span>{{ t('nav.usage') }}</span>
               </button>
             </div>
+            <div class="account-action-group account-library-group">
+              <button type="button" :class="{ active: currentPage === 'watchlist' }" @click="navigateFromAccount('watchlist')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3Z" /></svg>
+                <span>{{ t('watchlist.title') }}</span>
+              </button>
+              <button type="button" :class="{ active: currentPage === 'viewing-preferences' }" @click="navigateFromAccount('viewing-preferences')">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 6 1 1 2-2M10 6h10M4 12l1 1 2-2M10 12h10M4 18l1 1 2-2M10 18h10" /></svg>
+                <span>{{ t('viewingPreferences.title') }}</span>
+              </button>
+            </div>
             <div v-if="notificationTestEnabled" class="account-action-group">
               <button
                 type="button"
@@ -656,16 +710,23 @@ function closeAccountMenu() {
 
     <KeepAlive :max="2">
       <MovieBrowser
-        v-if="currentPage === 'home'"
+        v-if="currentPage === 'movies'"
         :key="user?.id ?? 'anonymous'"
         :authenticated="Boolean(user)"
         @require-login="openAuth('login')"
         @open-movie="openMovie"
       />
     </KeepAlive>
-    <KeepAlive :max="2">
-      <MyMovies v-if="currentPage === 'my-movies' && user" :key="user.id" @open-movie="openMovie" />
+    <KeepAlive :max="1">
+      <TvShowBrowser v-if="currentPage === 'tv-shows'" :key="user?.id ?? 'anonymous'" :authenticated="Boolean(user)" @require-login="openAuth('login')" @open-tv-show="openTvShow" />
     </KeepAlive>
+    <KeepAlive :max="2">
+      <ViewingPreferencesPage v-if="currentPage === 'viewing-preferences' && user" :key="user.id" @open-movie="openMovie" />
+    </KeepAlive>
+    <KeepAlive :max="1">
+      <WatchlistPage v-if="currentPage === 'watchlist' && user" :key="user.id" @open-movie="openMovie" @open-tv-show="openTvShow" />
+    </KeepAlive>
+    <TvShowDetail :back-label="tvDetailBackLabel" :authenticated="Boolean(user)" @require-login="openAuth('login')" v-if="currentPage === 'tv-show-detail' && selectedTvShowId" :tmdb-id="selectedTvShowId" @back="backFromTvShowDetail" />
     <MovieDetail
       v-if="currentPage === 'movie-detail' && selectedMovieId"
       :tmdb-id="selectedMovieId"
@@ -682,7 +743,7 @@ function closeAccountMenu() {
 
     <section v-if="currentPage === 'login' || currentPage === 'register'" class="auth-page">
       <div class="page-toolbar">
-        <button class="back-button" type="button" @click="navigate('home')">{{ t('actions.backHome') }}</button>
+        <button class="back-button" type="button" @click="navigate('movies')">{{ t('actions.backHome') }}</button>
       </div>
       <div class="auth-layout">
         <div class="auth-card" :aria-busy="submitting">
@@ -771,7 +832,7 @@ function closeAccountMenu() {
 
     <section v-if="currentPage === 'settings' && (loading || user)" class="settings-page">
       <div class="page-toolbar">
-        <button class="back-button" type="button" @click="navigate('home')">{{ t('actions.backHome') }}</button>
+        <button class="back-button" type="button" @click="navigate('movies')">{{ t('actions.backHome') }}</button>
       </div>
       <div v-if="loading" class="loading">{{ t('status.checkingAuthentication') }}</div>
       <template v-else-if="user">
@@ -952,7 +1013,7 @@ function closeAccountMenu() {
 
     <nav
       v-if="
-        (currentPage === 'home' || currentPage === 'my-movies' || currentPage === 'movie-detail') &&
+        (currentPage === 'movies' || currentPage === 'tv-shows' || currentPage === 'viewing-preferences' || currentPage === 'watchlist' || currentPage === 'movie-detail' || currentPage === 'tv-show-detail') &&
         (!atTop || !atBottom)
       "
       class="scroll-controls"
