@@ -4282,14 +4282,45 @@ body:has(.settings-page)::after {
 .tv-episode-copy { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .tv-episode-copy strong { font-size: 1.15rem; }
 .tv-episode-excerpt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.7; opacity: .75; }
-.tv-episode-dialog { width: min(760px,calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid #555; border-radius: 12px; color: #eee; background: #191919; }
-.tv-episode-dialog::backdrop { background: rgba(0,0,0,.8); backdrop-filter: blur(5px); }
+.tv-episode-dialog {
+  width: min(680px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #303132;
+  border-radius: 8px;
+  color: #f7f4ed;
+  background: #0f1011;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .68);
+  scrollbar-width: thin;
+  scrollbar-color: #454647 #0f1011;
+}
+.tv-episode-dialog::backdrop { background: rgba(3, 4, 5, .86); backdrop-filter: blur(7px); }
 .tv-dialog-content { padding: 28px; }
-.tv-dialog-close { display: block; margin: 0 0 20px auto; }
-.tv-dialog-image { display: block; width: 100%; border-radius: 6px; margin-bottom: 24px; }
+.tv-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+.tv-dialog-heading > div { min-width: 0; }
+.tv-dialog-heading .eyebrow { margin: 0 0 8px; color: var(--brand); font-size: .7rem; line-height: 1.6; }
+.tv-dialog-heading h2 { margin: 0; font-family: Georgia, serif; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 400; line-height: 1.35; overflow-wrap: anywhere; }
+.tv-dialog-close { display: grid; flex: 0 0 36px; place-items: center; width: 36px; height: 36px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: #babbb5; }
+.tv-dialog-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.tv-dialog-close:hover { border-color: var(--brand); color: #f7f4ed; background: rgba(240, 82, 45, .08); }
+.tv-dialog-close:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.tv-dialog-image { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: #191919; }
+.tv-dialog-facts { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); gap: 16px; margin: 24px 0 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.tv-dialog-facts > div { min-width: 0; }
+.tv-dialog-facts dt { margin-bottom: 7px; color: #94958f; font-size: .72rem; line-height: 1.5; }
+.tv-dialog-facts dd { margin: 0; font-size: .9rem; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.tv-dialog-facts .tv-dialog-rating { color: var(--amber); }
+.tv-episode-dialog .tv-overview { margin: 0; color: #babbb5; font-size: .9rem; line-height: 1.85; white-space: pre-line; overflow-wrap: anywhere; }
 @media (max-width: 640px) {
   .tv-episode-card { grid-template-columns: 1fr; gap: 16px; }
   .tv-dialog-content { padding: 20px; }
+  .tv-dialog-heading { gap: 12px; margin-bottom: 18px; }
+  .tv-dialog-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; margin-top: 20px; }
+  .tv-dialog-facts > div:first-child { grid-column: 1 / -1; }
 }
 
 /* Catalog cards keep artwork primary and reveal secondary actions on desktop. */
