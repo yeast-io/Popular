@@ -1,3 +1,5 @@
+import { AppError } from '../../infrastructure/http/app-error.js';
+import { resourceSearchMessages } from './resource-search.messages.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   ApiErrorSchema,
@@ -49,6 +51,8 @@ export function registerResourceSearchRoutes(
         return await aiStep(`resource-search.api.${operation}`, () => action(ownerId, abort.signal));
       } catch (error) {
         trace.fail(error);
+        if (error instanceof AppError && error.code === 'INTEGRATION_DEFAULT_INVALID' && request.headers['accept-language']?.startsWith('zh'))
+          error.message = resourceSearchMessages.zh.disabledSource;
         if (error instanceof ResourceSiteError && request.headers['accept-language']?.startsWith('zh'))
           error.message = resourceSiteMessages.zh[error.reason];
         throw error;

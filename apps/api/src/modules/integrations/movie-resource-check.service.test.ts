@@ -12,6 +12,8 @@ import type {
   MovieResourceCheckStore,
 } from './movie-resource-check.types.js';
 import { SecretCrypto } from './secret-crypto.js';
+import { MovieReleaseCacheService } from './movie-release-cache.service.js';
+import type { MovieReleaseCacheEntry } from './movie-release-cache.types.js';
 
 const now = new Date('2026-10-13T00:00:00.000Z');
 const secrets = new SecretCrypto('test-resource-secret-key-at-least-32-characters');
@@ -112,6 +114,23 @@ function harness(identity: { title: string; imdbId?: string } | null = { title: 
     directors: [],
   };
   const tmdb = { fetchDetails: async () => detail } as unknown as MovieSearchProvider;
+  const cacheRows = new Map<string, MovieReleaseCacheEntry>();
+  const revisions = new Map<string, string>();
+  const releaseCache = new MovieReleaseCacheService({
+    async read(key) {
+      const entry = cacheRows.get(key);
+      return entry && Date.parse(entry.expiresAt) > Date.now() ? entry : null;
+    },
+    async write(key, value, ttlMs) {
+      const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+      cacheRows.set(key, { value, expiresAt });
+      return expiresAt;
+    },
+    async readRevision(scopeKey) { return revisions.get(scopeKey) ?? null; },
+    async activateRevision(scopeKey, revision) {
+      revisions.set(scopeKey, revision);
+    },
+  }, 120_000);
   const service = new MovieResourceCheckService(
     checks,
     configs,
@@ -126,9 +145,9 @@ function harness(identity: { title: string; imdbId?: string } | null = { title: 
       retryDelayMs: 900_000,
       leaseMs: 120_000,
       minimumIntervalMs: 0,
-      releaseListTtlMs: 120_000,
     },
     { info: () => undefined, error: () => undefined },
+    releaseCache,
     () => now
   );
   return { checks, detail, mteam, service, writes };
@@ -279,7 +298,7 @@ test('active release predicate rejects hidden, banned, and dead torrents', () =>
   assert.equal(isActiveRelease({ visible: true, banned: false, seeders: 0 }), false);
 });
 
-test('live release queries return only active exact matches and reuse the short-lived cache', async () => {
+test('live release queries return only active exact matches and reuse the shared cache', async () => {
   const { checks, mteam, service } = harness();
   mteam.releases = [
     {

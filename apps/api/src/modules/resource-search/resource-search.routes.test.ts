@@ -23,7 +23,7 @@ const config = loadConfig({
 });
 
 test('source search endpoints authenticate, isolate failed sources, validate input, and retain source pagination', async () => {
-  const calls: Array<{ owner: string; source: string; page: number }> = [];
+  const calls: Array<{ owner: string; source: string; page: number; mediaType?: string }> = [];
   const auth = {
     requireOwnerId: async (token?: string) => {
       if (!token) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -39,7 +39,7 @@ test('source search endpoints authenticate, isolate failed sources, validate inp
         return 'configured_valid';
       },
       search: async (owner, input) => {
-        calls.push({ owner, source: 'mteam', page: input.page ?? 1 });
+        calls.push({ owner, source: 'mteam', page: input.page ?? 1, ...(input.mediaType ? { mediaType: input.mediaType } : {}) });
         return { releases: [{ id: 'same-id', title: 'M-Team Film' }], nextPage: 3 };
       },
     },
@@ -84,6 +84,10 @@ test('source search endpoints authenticate, isolate failed sources, validate inp
       { owner: 'owner-A', source: 'hdarea', page: 1 },
     ]
     );
+    const tv = await app.inject({ method: 'GET', url: `${base}/mteam/releases?query=MobLand%20S01&mediaType=tv`, headers });
+    assert.equal(tv.statusCode, 200);
+    assert.equal(calls.at(-1)?.mediaType, 'tv');
+    assert.equal((await app.inject({ method: 'GET', url: `${base}/mteam/releases?query=Film&mediaType=invalid`, headers })).statusCode, 400);
     assert.equal(
       (await app.inject({ method: 'GET', url: `${base}/unknown/releases?query=Film`, headers })).statusCode,
       404

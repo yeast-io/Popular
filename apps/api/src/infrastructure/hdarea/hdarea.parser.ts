@@ -66,9 +66,13 @@ export function parseSearch(
     const publishedAt = parsePublishedAt(timeCell.find('span[title]').attr('title') ?? timeCell.text());
     const titleCell = cells.filter((_index, cell) => $(cell).find('.torrentname').length > 0).first();
     const tags = releaseTags(title, ...tagEvidence($, titleCell));
+    const subtitle = titleCell.find('.torrentname').clone();
+    subtitle.find('a, img, script, style').remove();
+    const description = subtitle.text().replace(/\s+/g, ' ').trim();
     releases.push({
       id,
       title,
+      ...(description ? { description } : {}),
       ...(tags.length ? { tags } : {}),
       ...releaseTitleMetadata(title),
       ...(publishedAt ? { publishedAt } : {}),

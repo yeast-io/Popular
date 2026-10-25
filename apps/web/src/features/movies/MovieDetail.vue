@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { RemoteClientDevice, RemoteClientConfiguration, IntegrationPreferences, ApiError, DownloadProvider, DownloaderChoice, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MovieResourceCheckResponse, MovieStatus, TrackedMovieStatus } from '@movie-hub/contract';
 import { getIntegrationLogo } from '../settings/integration-logos';
-import ResourceSiteSelector from './ResourceSiteSelector.vue';
 import type { MovieSiteReleaseGroup } from './movie-site-releases.types';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
@@ -43,6 +42,7 @@ const releaseGroups = ref<MovieSiteReleaseGroup[]>([]);
 const expandedSites = ref<string[]>([]);
 let releaseGeneration = 0;
 let resourceGeneration = 0;
+let preferencesGeneration = 0;
 let releaseController: AbortController | undefined;
 const releasesOpen = ref(false);
 const releasesLoading = ref(false);
@@ -100,7 +100,9 @@ const posterDownloadState = computed<'downloaded' | 'downloading' | null>(() => 
 
 onMounted(() => {
   void load();
+  window.addEventListener('integration-preferences-changed', preferencesChanged);
   if (props.authenticated) {
+    void loadIntegrationPreferences();
     void loadResourceCheck();
     void loadDownloadSnapshot();
   }
@@ -110,6 +112,8 @@ onMounted(() => {
   document.addEventListener('visibilitychange', handleVisibilityChange);
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('integration-preferences-changed', preferencesChanged);
+  ++preferencesGeneration;
   ++resourceGeneration;
   ++releaseGeneration;
   releaseController?.abort();
@@ -138,12 +142,15 @@ watch(
   () => props.authenticated,
   (authenticated) => {
     if (authenticated) {
+      void loadIntegrationPreferences();
       void loadResourceCheck();
       void loadDownloadSnapshot();
     } else {
       ++resourceGeneration;
       closeReleases(false);
       resourceCheck.value = null;
+      ++preferencesGeneration;
+      integrationPreferences.value = null;
       downloads.value = [];
       stopResourcePolling();
       stopDownloadPolling();
@@ -263,13 +270,27 @@ function posterResourceLabel(): string {
   return t(`movie.resource.badge.${posterResourceState()}`);
 }
 
-function preferencesLoaded(preferences: IntegrationPreferences) {
-  integrationPreferences.value = preferences;
+async function loadIntegrationPreferences() {
+  const generation = ++preferencesGeneration;
+  try {
+    const response = await fetch(`${apiBaseUrl}/me/integration-preferences`, {
+      credentials: 'include', signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw await localizedResponseError(response);
+    const preferences = await response.json() as IntegrationPreferences;
+    if (generation === preferencesGeneration && props.authenticated) integrationPreferences.value = preferences;
+  } catch (error) {
+    if (generation === preferencesGeneration && props.authenticated)
+      resourceError.value = localizedErrorMessage(error, 'errors.requestFailed');
+  }
 }
-function preferencesChanged(preferences: IntegrationPreferences) {
-  integrationPreferences.value = preferences;
+function preferencesChanged() {
+  integrationPreferences.value = null;
   closeReleases(false);
-  void loadResourceCheck();
+  if (props.authenticated) {
+    void loadIntegrationPreferences();
+    void loadResourceCheck();
+  }
 }
 function groupToggled(site: string, event: Event) {
   const open = (event.target as HTMLDetailsElement).open;
@@ -313,7 +334,13 @@ async function refreshReleaseGroup(group: MovieSiteReleaseGroup) {
   await loadReleaseGroup(group, false, true);
   if (generation === releaseGeneration && releasesOpen.value) await loadResourceCheck();
 }
+function resourceActionLabel() {
+  return t(resourceCheck.value?.checking
+    ? 'movie.resource.checking'
+    : resourceCheck.value?.availability === 'available' ? 'resourceSelection.viewResources' : 'resourceSelection.query');
+}
 function resourceAction() {
+  if (releasesLoading.value || resourceCheck.value?.checking) return;
   if (resourceCheck.value?.availability === 'available') void showReleases();
   else void recheckResource();
 }
@@ -338,7 +365,9 @@ async function showReleases() {
     if (!integrationPreferences.value) {
       const response = await fetch(`${apiBaseUrl}/me/integration-preferences`, { credentials: 'include', signal: releaseController.signal });
       if (!response.ok) throw await localizedResponseError(response);
-      integrationPreferences.value = await response.json();
+      const preferences = await response.json() as IntegrationPreferences;
+      if (generation !== releaseGeneration || !props.authenticated) return;
+      integrationPreferences.value = preferences;
     }
     if (generation !== releaseGeneration) return;
     const preferences = integrationPreferences.value!;
@@ -789,37 +818,13 @@ function syncedAtLabel(syncedAt: string): string {
           <div v-else class="poster-placeholder">
             <span>{{ t('movie.posterUnavailable') }}</span>
           </div>
-          <span
-            v-if="authenticated && posterDownloadState"
-            class="poster-resource-badge"
-            :class="`is-${posterDownloadState}`"
-            :title="t(`movie.download.badge.${posterDownloadState}`)"
-          >
+          <button v-if="authenticated" class="poster-resource-badge"
+            :class="`is-${posterDownloadState ?? posterResourceState()}`" type="button"
+            :aria-label="`${resourceStatusLabel()} · ${resourceActionLabel()}`" :title="resourceActionLabel()"
+            :disabled="releasesLoading || resourceCheck?.checking" @click="resourceAction">
             <span class="poster-resource-dot" aria-hidden="true"></span>
-            <span>{{ t(`movie.download.badge.${posterDownloadState}`) }}</span>
-          </span>
-          <button
-            v-else-if="authenticated && resourceCheck?.availability === 'available' && !resourceCheck.checking"
-            class="poster-resource-badge"
-            :class="`is-${posterResourceState()}`"
-            type="button"
-            :aria-label="resourceStatusLabel()"
-            :title="resourceStatusLabel()"
-            :disabled="releasesLoading"
-            @click="showReleases"
-          >
-            <span class="poster-resource-dot" aria-hidden="true"></span>
-            <span>{{ posterResourceLabel() }}</span>
+            <span>{{ posterDownloadState ? t(`movie.download.badge.${posterDownloadState}`) : posterResourceLabel() }}</span>
           </button>
-          <span
-            v-else-if="authenticated"
-            class="poster-resource-badge"
-            :class="`is-${posterResourceState()}`"
-            :title="resourceStatusLabel()"
-          >
-            <span class="poster-resource-dot" aria-hidden="true"></span>
-            <span>{{ posterResourceLabel() }}</span>
-          </span>
           <span class="poster-index">FILE {{ String(movie.tmdbId).padStart(6, '0') }}</span>
         </div>
         <div class="detail-copy">
@@ -830,7 +835,7 @@ function syncedAtLabel(syncedAt: string): string {
           </p>
           <p v-if="movie.tagline" class="tagline">“{{ movie.tagline }}”</p>
           <p class="overview detail-overview">{{ movie.overview || t('movie.detail.overviewMissing') }}</p>
-          <dl class="dossier-data">
+          <dl class="dossier-data" :class="{ 'has-resource-status': authenticated }">
             <div>
               <dt>{{ t('movie.detail.release') }}</dt>
               <dd>{{ releaseDateLabel(movie.releaseDate) }}</dd>
@@ -850,6 +855,17 @@ function syncedAtLabel(syncedAt: string): string {
             <div>
               <dt>{{ t('movie.detail.votes') }}</dt>
               <dd>{{ movie.voteCount === undefined ? t('movie.detail.missing') : formatNumber(movie.voteCount) }}</dd>
+            </div>
+            <div v-if="authenticated" class="dossier-resource">
+              <dt>{{ t('movie.detail.resources') }}</dt>
+              <dd>
+                <button class="poster-resource-badge dossier-resource-button resource-status-button" type="button"
+                  :class="`is-${posterResourceState()}`" :disabled="releasesLoading || resourceCheck?.checking"
+                  :aria-label="`${resourceStatusLabel()} · ${resourceActionLabel()}`" :title="resourceActionLabel()"
+                  @click="resourceAction">
+                  <span class="poster-resource-dot" aria-hidden="true"></span><span>{{ posterResourceLabel() }}</span>
+                </button>
+              </dd>
             </div>
           </dl>
           <div class="genre-list">
@@ -876,33 +892,6 @@ function syncedAtLabel(syncedAt: string): string {
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /><path v-if="movie.userStatus !== 'watched'" d="m3 3 18 18" /></svg>
               <span :id="`${statusTooltipId}-watched`" class="detail-state-tooltip" role="tooltip">{{ t(movie.userStatus === 'watched' ? 'movie.status.watched' : 'movie.status.unwatched') }}</span>
             </button>
-          </div>
-          <div v-if="authenticated" class="resource-check-panel">
-            <span
-              class="poster-resource-badge resource-toolbar-badge"
-              :class="`is-${posterDownloadState ?? posterResourceState()}`"
-              :title="posterDownloadState ? t(`movie.download.badge.${posterDownloadState}`) : resourceStatusLabel()"
-              role="status"
-            >
-              <span class="poster-resource-dot" aria-hidden="true"></span>
-              <span>{{ posterDownloadState ? t(`movie.download.badge.${posterDownloadState}`) : posterResourceLabel() }}</span>
-            </span>
-            <ResourceSiteSelector
-              :disabled="Boolean(resourceCheck?.checking)" :check="resourceCheck"
-              @loaded="preferencesLoaded" @changed="preferencesChanged"
-            >
-              <template #actions>
-                <div class="resource-toolbar-actions">
-                  <button
-                    class="resource-status resource-status-button" type="button"
-                    :disabled="releasesLoading || resourceCheck?.checking"
-                    :title="resourceStatusLabel()" @click="resourceAction"
-                  >
-                    {{ t(resourceCheck?.checking ? 'movie.resource.checking' : resourceCheck?.availability === 'available' ? 'resourceSelection.viewResources' : 'resourceSelection.query') }}
-                  </button>
-                </div>
-              </template>
-            </ResourceSiteSelector>
           </div>
           </div>
           <p v-if="authenticated && resourceError" class="browse-error" role="alert">{{ resourceError }}</p>
@@ -975,6 +964,7 @@ function syncedAtLabel(syncedAt: string): string {
         <section
           ref="releaseDialog"
           class="release-panel"
+          :style="{ '--resource-artwork': movie?.backdropUrl || movie?.posterUrl ? `url(${JSON.stringify(movie?.backdropUrl || movie?.posterUrl)})` : undefined }"
           role="dialog"
           aria-modal="true"
           aria-labelledby="release-dialog-title"
@@ -1011,7 +1001,10 @@ function syncedAtLabel(syncedAt: string): string {
               <div class="release-site-content" :aria-busy="group.loading">
                 <p v-if="group.loading && !group.result" role="status">{{ t('movie.releases.loading') }}</p>
                 <p v-if="group.error" class="browse-error" role="alert">{{ group.error }} <button type="button" class="text-button" :disabled="group.loading" @click="refreshReleaseGroup(group)">{{ t('actions.retry') }}</button></p>
-                <p v-if="group.result" class="release-query-time">{{ t(group.error ? 'resourceSelection.staleResults' : group.result.cached ? 'resourceSelection.cachedAt' : 'resourceSelection.queriedAt', { date: formatDate(group.result.queriedAt, { dateStyle: 'short', timeStyle: 'short' }) }) }}</p>
+                <p v-if="group.result" class="release-query-time">
+                  {{ t(group.error ? 'resourceSelection.staleResults' : group.result.cached ? 'resourceSelection.cachedAt' : 'resourceSelection.queriedAt', { date: formatDate(group.result.queriedAt, { dateStyle: 'short', timeStyle: 'short' }) }) }}
+                  <span v-if="group.result.cacheExpiresAt"> · {{ t('resourceSelection.cacheExpiresAt', { date: formatDate(group.result.cacheExpiresAt, { dateStyle: 'short', timeStyle: 'short' }) }) }}</span>
+                </p>
                 <p v-if="group.result && !group.result.releases.length && !group.loading" class="muted-copy">{{ t(group.result.availability === 'unmatchable' ? 'movie.resource.unmatchable' : 'movie.releases.empty') }}</p>
             <ol v-if="group.result?.releases.length" class="release-list">
               <li

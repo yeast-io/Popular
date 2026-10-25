@@ -46,8 +46,23 @@ test('M-Team uses the authenticated owner key, keyword/IMDb query and native sou
     { imdbId: 'tt0816692', query: 'ignored', page: 3 },
     new AbortController().signal
   );
-  assert.deepEqual(result, { releases: [{ id: '42', title: 'Film', seeders: 2 }], nextPage: 4 });
+  assert.deepEqual(result, { releases: [{ id: '42', title: 'Film', seeders: 2, detailsUrl: 'https://kp.m-team.cc/detail/42' }], nextPage: 4 });
   assert.equal(JSON.stringify(result).includes('key-A'), false);
+});
+
+test('TV queries propagate the media mode and preserve resource metadata for the season dialog', async () => {
+  const source = new MTeamSearchSource(configs, secrets, {
+    searchMoviePage: async (_base, _key, query, _context, options) => {
+      assert.deepEqual(query, { title: 'MobLand S01' });
+      assert.equal(options?.mediaType, 'tv');
+      return { releases: [{ id: '933887', title: 'MobLand S01E01', description: '第一季 第1集',
+        visible: true, banned: false, seeders: 5, medium: 'WEB-DL', videoCodec: 'H.265', tags: ['中字'] }] };
+    },
+  }, 0);
+  const result = await source.search('A', { query: 'MobLand S01', mediaType: 'tv' }, new AbortController().signal);
+  assert.equal(result.releases[0]?.description, '第一季 第1集');
+  assert.equal(result.releases[0]?.videoCodec, 'H.265');
+  assert.equal(result.releases[0]?.detailsUrl, 'https://kp.m-team.cc/detail/933887');
 });
 test('M-Team protects each account from concurrent searches and cancellation never starts a call', async () => {
   let calls = 0;

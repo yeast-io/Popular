@@ -27,11 +27,11 @@ import type {
 } from './movie-resource-check.types.js';
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 import type { SecretCrypto } from './secret-crypto.js';
+import type { MovieReleaseCacheService } from './movie-release-cache.service.js';
+import { isMTeamReleaseCacheValue } from './movie-release-cache.schema.js';
 
 export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   private readonly queue = new Map<string, QueuedCheck>();
-  private readonly releaseCache = new Map<string, { expiresAt: number; value: MovieReleaseListResponse }>();
-  private readonly releaseRequests = new Map<string, Promise<MovieReleaseListResponse>>();
   private draining = false;
   private drainingTask: Promise<void> | undefined;
   private stopped = false;
@@ -50,6 +50,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     private readonly locale: Locale,
     private readonly options: MovieResourceCheckOptions,
     private readonly logger: CheckLogger,
+    private readonly releaseCache: MovieReleaseCacheService,
     private readonly now: () => Date = () => new Date(),
     private readonly wait: (milliseconds: number) => Promise<void> = (milliseconds) => {
       return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -94,31 +95,18 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       throw new AppError(409, 'MTEAM_NOT_CONFIGURED', 'Configure M-Team before querying releases.');
     }
     if (!config.externalUserId) throw siteAccountIdentityPending();
-    const wallTime = Date.now();
-    for (const [key, value] of this.releaseCache) {
-      if (value.expiresAt <= wallTime) this.releaseCache.delete(key);
-    }
-    const cacheKey = `${taskKey(ownerId, tmdbId, 'mteam')}:${config.verifiedAt?.getTime() ?? 0}`;
-    const cached = this.releaseCache.get(cacheKey);
-    if (cached && !options.force) return { ...cached.value, cached: true };
-    if (options.force) this.releaseCache.delete(cacheKey);
-
-    const pending = this.releaseRequests.get(cacheKey);
-    if (pending) return pending;
-    const request = this.fetchReleases(
-      ownerId,
-      tmdbId,
-      config.baseUrl,
-      config.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,
-      config.encryptedApiKey
-    )
-      .then((value) => {
-        this.releaseCache.set(cacheKey, { expiresAt: Date.now() + this.options.releaseListTtlMs, value });
-        return value;
-      })
-      .finally(() => this.releaseRequests.delete(cacheKey));
-    this.releaseRequests.set(cacheKey, request);
-    return request;
+    return this.releaseCache.getOrFetch({
+      identity: {
+        ownerId, tmdbId, site: 'mteam', page: 1, locale: this.locale,
+        credentialVersion: String(config.verifiedAt?.getTime() ?? 0),
+      },
+      force: options.force === true,
+      validate: isMTeamReleaseCacheValue,
+      fetch: () => this.fetchReleases(
+        ownerId, tmdbId, config.baseUrl,
+        config.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL, config.encryptedApiKey
+      ),
+    });
   }
 
   private async fetchReleases(
@@ -312,9 +300,8 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     this.stopped = true;
     await Promise.allSettled(this.enqueuing);
     await this.drainingTask;
-    await Promise.allSettled(this.releaseRequests.values());
+    await this.releaseCache.waitForIdle();
     await this.requestGate;
-    this.releaseCache.clear();
   }
 
   private async drain(): Promise<void> {

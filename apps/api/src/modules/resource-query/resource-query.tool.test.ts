@@ -66,7 +66,7 @@ const defaults: ResourcePlan = {
   question: null,
   unsupported: [],
 };
-function fixture(sources?: ResourceProvider[]) {
+function fixture(sources?: ResourceProvider[], enabledSites?: () => string[]) {
   const store = new MemoryStore();
   let searches = 0,
     queries = 0,
@@ -109,7 +109,8 @@ function fixture(sources?: ResourceProvider[]) {
       persisted++;
     },
   } as unknown as MovieCatalogStore;
-  const tool = new ResourceQueryTool(store, sources ?? [provider], movies, catalog, 'zh-CN');
+  const tool = new ResourceQueryTool(store, sources ?? [provider], movies, catalog, 'zh-CN', { verbose: false },
+    enabledSites ? { get: async () => ({ defaults: {}, selectedSites: enabledSites(), effectiveSites: enabledSites(), choices: [] }) } : undefined);
   const run = (plan: Partial<ResourcePlan> = {}, eventId = 'm1', ownerId = 'alice', conversation = 'web:thread') => {
     return tool.run(ownerId, conversation, eventId, 'query', [], { plan: async () => ({ ...defaults, ...plan }) });
   };
@@ -589,3 +590,28 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     assert.equal(state?.releases[10]?.id, '11');
   });
 }
+
+test('assistant searches only enabled account sites and invalidates numbered results when a source is disabled', async () => {
+  let enabled = ['mteam'];
+  const queried: string[] = [];
+  const sources: ResourceProvider[] = ['mteam', 'hdarea'].map((id) => ({
+    id, name: id,
+    query: async () => {
+      queried.push(id);
+      return { provider: id, status: 'available', releases: [{ provider: id, id: '1', title: `${id} movie` }] };
+    },
+  }));
+  const f = fixture(sources, () => enabled);
+  const first = await f.run();
+  assert.deepEqual(queried, ['mteam']);
+  assert.doesNotMatch(first.replyText, /hdarea/);
+  enabled = ['mteam', 'hdarea'];
+  await f.run({ title: null, refresh: true }, 'm2');
+  assert.deepEqual(queried, ['mteam', 'mteam', 'hdarea']);
+  enabled = ['mteam'];
+  const stale = await f.run({ title: null, releaseIndex: 1 }, 'm3');
+  assert.match(stale.replyText, /无效或已过期/);
+  const rejected = await f.run({ title: null, providers: ['hdarea'] }, 'm4');
+  assert.match(rejected.replyText, /未开启或尚未接入/);
+  assert.deepEqual(queried, ['mteam', 'mteam', 'hdarea']);
+});

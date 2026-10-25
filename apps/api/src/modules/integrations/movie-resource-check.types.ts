@@ -65,6 +65,7 @@ export interface MovieResourceCheckStore {
 export interface MTeamRelease {
   id?: string;
   title?: string;
+  description?: string;
   imdbId?: string;
   visible: boolean;
   banned: boolean;
@@ -107,7 +108,6 @@ export interface MovieResourceCheckOptions {
   retryDelayMs: number;
   leaseMs: number;
   minimumIntervalMs: number;
-  releaseListTtlMs: number;
 }
 
 export interface QueuedCheck {
@@ -125,4 +125,5 @@ export interface MTeamSearchPage {
 export interface MTeamSearchOptions {
   page?: number;
   signal?: AbortSignal;
+  mediaType?: 'movie' | 'tv';
 }

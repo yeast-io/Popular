@@ -71,3 +71,9 @@ export function compactField(value: string, maxLength: number): string {
 export function releaseNumberLabel(index: number): string {
   return `【${index}】`;
 }
+
+export function resourceSourceUnavailable(locale: 'en-US' | 'zh-CN', names: string[]): string {
+  return locale === 'zh-CN'
+    ? `该资源来源未开启或尚未接入。当前可用来源：${names.join('、')}`
+    : `This source is disabled or unavailable. Enabled sources: ${names.join(', ')}`;
+}

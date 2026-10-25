@@ -7,7 +7,7 @@ import { resourceSearchMessages } from './resource-search.messages.js';
 export class ResourceSearchService {
   private readonly sources: ReadonlyMap<string, ResourceSearchSource>;
 
-  constructor(sources: ResourceSearchSource[]) {
+  constructor(sources: ResourceSearchSource[], private readonly enabledSites?: (ownerId: string) => Promise<string[]>) {
     this.sources = new Map(sources.map((s) => [s.id, s]));
   }
 
@@ -28,10 +28,14 @@ export class ResourceSearchService {
   async search(ownerId: string, id: string, input: ResourceSiteSearch, signal: AbortSignal) {
     currentAiTrace()?.sensitive(input.query ?? '');
     signal.throwIfAborted();
+    const source = this.source(id);
+    if (this.enabledSites && !(await aiStep('resource-search.preferences.read', () => this.enabledSites!(ownerId))).includes(id))
+      throw new AppError(400, 'INTEGRATION_DEFAULT_INVALID', resourceSearchMessages.en.disabledSource);
+    signal.throwIfAborted();
     return aiStep(
       'resource-search.source.search',
       () => {
-        return this.source(id).search(ownerId, input, signal);
+        return source.search(ownerId, input, signal);
       },
       { source: id, page: input.page ?? 1 }
     );

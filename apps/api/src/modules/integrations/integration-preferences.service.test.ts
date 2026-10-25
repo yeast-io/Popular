@@ -35,7 +35,7 @@ function harness() {
       rows.set(owner, row);
     },
   };
-  return { service: new IntegrationPreferencesService(store, async () => choices), choices };
+  return { service: new IntegrationPreferencesService(store, async () => choices), choices, rows };
 }
 test('defaults and explicit selections are owner scoped; clearing a selection restores the primary site', async () => {
   const { service } = harness();
@@ -46,7 +46,7 @@ test('defaults and explicit selections are owner scoped; clearing a selection re
   }
   );
   await service.setDefault('alice', 'resource', 'hdarea');
-  assert.deepEqual((await service.get('alice')).effectiveSites, ['hdarea']);
+  assert.deepEqual((await service.get('alice')).effectiveSites, ['mteam', 'hdarea']);
   assert.deepEqual((await service.get('bob')).effectiveSites, ['mteam']);
   await service.selectSites('alice', ['mteam', 'hdarea']);
   assert.deepEqual((await service.get('alice')).effectiveSites, ['mteam', 'hdarea']);
@@ -78,4 +78,16 @@ test('deleting a primary requires an explicit replacement; deleting the last con
   choices[1]!.status = 'unconfigured';
   await service.deleted('alice', 'resource', 'hdarea');
   assert.deepEqual((await service.get('alice')).effectiveSites, []);
+});
+
+test('the default stays enabled for legacy rows, explicit exclusions and newly selected defaults', async () => {
+  const { service, rows } = harness();
+  rows.set('alice', { defaults: { resource: 'mteam' }, selectedSites: ['hdarea'] });
+  assert.deepEqual((await service.get('alice')).effectiveSites, ['hdarea', 'mteam']);
+  const selected = await service.selectSites('alice', ['hdarea']);
+  assert.ok(selected.selectedSites.includes('mteam'));
+  const changed = await service.setDefault('alice', 'resource', 'hdarea');
+  assert.ok(changed.effectiveSites.includes('hdarea'));
+  assert.ok(changed.effectiveSites.includes('mteam'));
+  assert.deepEqual((await service.selectSites('alice', [])).effectiveSites, ['hdarea']);
 });

@@ -4,8 +4,30 @@ import type { IntegrationPreferences, MovieSiteReleaseList, ResourceSiteRelease 
 import type { MovieResourceCheckRecord, MovieResourceCheckStore } from './movie-resource-check.types.js';
 import { MovieSiteResourcesService } from './movie-site-resources.service.js';
 import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
+import { MovieReleaseCacheService } from './movie-release-cache.service.js';
+import type { MovieReleaseCacheEntry } from './movie-release-cache.types.js';
+import { MovieReleaseCacheError } from './movie-release-cache.errors.js';
 
 function harness() {
+  const cacheRows = new Map<string, MovieReleaseCacheEntry>();
+  const revisions = new Map<string, string>();
+  let cacheFailure = false;
+  const releaseCache = new MovieReleaseCacheService({
+    async read(key) {
+      if (cacheFailure) throw new Error('Redis unavailable');
+      const entry = cacheRows.get(key);
+      return entry && Date.parse(entry.expiresAt) > Date.now() ? entry : null;
+    },
+    async write(key, value, ttlMs) {
+      const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+      cacheRows.set(key, { value, expiresAt });
+      return expiresAt;
+    },
+    async readRevision(scopeKey) { return revisions.get(scopeKey) ?? null; },
+    async activateRevision(scopeKey, revision) {
+      revisions.set(scopeKey, revision);
+    },
+  }, 60_000);
   const rows = new Map<string, MovieResourceCheckRecord>();
   const calls: Array<{ owner: string; page: number }> = [];
   const mteamCalls: string[] = [];
@@ -142,6 +164,7 @@ function harness() {
     },
     'en-US',
     { logger: { error() {} }, verbose: false },
+    releaseCache,
     60_000
   );
   return {
@@ -164,12 +187,22 @@ function harness() {
     setFailure: (value: boolean) => {
       fail = value;
     },
+    setCacheFailure: (value: boolean) => {
+      cacheFailure = value;
+    },
     setResults: (value: ResourceSiteRelease[], next?: number) => {
       releases = value;
       nextPage = next;
     },
   };
 }
+test('a Redis read failure does not mark the resource site as failed', async () => {
+  const f = harness();
+  f.setCacheFailure(true);
+  await assert.rejects(f.service.listReleases('alice', 603, 'hdarea'), MovieReleaseCacheError);
+  assert.equal(await f.checks.readOne({ ownerId: 'alice', tmdbId: 603, provider: 'hdarea' }), null);
+  await f.service.stop();
+});
 test('release snapshots are separated by owner, site and credential version; source capability stays explicit', async () => {
   const f = harness();
   const first = await f.service.listReleases('alice', 603, 'hdarea');

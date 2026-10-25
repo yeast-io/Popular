@@ -70,17 +70,11 @@ describe('Movie Detail live releases', () => {
     const badge = wrapper.get('.poster-resource-badge');
     expect(badge.text()).toBe('已下载');
     expect(badge.classes()).toContain('is-downloaded');
-    expect(badge.element.tagName).toBe('SPAN');
+    expect(badge.element.tagName).toBe('BUTTON');
     expect(wrapper.get('.detail-poster .poster-resource-badge').text()).toBe('已下载');
-    expect(wrapper.get('.resource-toolbar-badge').text()).toBe('已下载');
-    expect(wrapper.get('.resource-toolbar-badge').classes()).toContain('is-downloaded');
-    expect(wrapper.get('.resource-check-panel').text()).not.toContain('资源状态');
-    expect(
-      wrapper.get('.resource-check-panel').element.firstElementChild?.classList.contains('resource-toolbar-badge')
-    ).toBe(
-      true
-    );
-    expect(wrapper.get('.resource-status').text()).toBe('查看资源');
+    expect(wrapper.get('.dossier-resource-button').text()).toBe('有资源');
+    expect(wrapper.get('.dossier-resource-button').attributes('title')).toBe('查看资源');
+    expect(wrapper.find('.resource-check-panel').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -113,6 +107,7 @@ describe('Movie Detail live releases', () => {
             availability: 'available',
             queriedAt: '2026-10-13T00:00:00.000Z',
             cached: false,
+            cacheExpiresAt: '2026-10-13T00:30:00.000Z',
             releases: [
               {
                 id: '991',
@@ -169,6 +164,7 @@ describe('Movie Detail live releases', () => {
     expect(dialog?.textContent).toContain('免费');
     expect(dialog?.textContent).toContain('DTS-HD MA');
     expect(dialog?.textContent).toContain('中字');
+    expect(dialog?.textContent).toContain('缓存到期');
     const detailLink = dialog?.querySelector<HTMLAnchorElement>('.release-detail-link');
     expect(detailLink?.href).toBe('https://kp.m-team.cc/detail/991');
     expect(detailLink?.target).toBe('_blank');

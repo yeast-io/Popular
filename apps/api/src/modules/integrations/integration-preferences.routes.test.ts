@@ -81,6 +81,7 @@ test('preference and generic resource routes authenticate, retain multi-site res
         availability: 'available',
         queriedAt: new Date().toISOString(),
         cached: false,
+        cacheExpiresAt: '2026-10-25T00:30:00.000Z',
         releases: [
           {
             id: '42',
@@ -129,6 +130,7 @@ test('preference and generic resource routes authenticate, retain multi-site res
       );
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().site, site);
+      assert.equal(response.json().cacheExpiresAt, '2026-10-25T00:30:00.000Z');
       assert.equal(response.json().releases[0].seedersKnown, false);
     }
     assert.equal(

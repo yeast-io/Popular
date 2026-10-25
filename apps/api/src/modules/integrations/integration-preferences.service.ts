@@ -22,11 +22,11 @@ export class IntegrationPreferencesService {
         (choice) => choice.category === 'resource' && choice.id === id && choice.status !== 'unconfigured'
       );
     });
-    const effectiveSites = selectedSites.length
-      ? selectedSites
-      : current.defaults.resource
-        ? [current.defaults.resource]
-        : [];
+    // The primary site participates even when an older selection omitted it.
+    const effectiveSites = [...new Set([
+      ...selectedSites,
+      ...(current.defaults.resource ? [current.defaults.resource] : []),
+    ])];
     return { ...current, selectedSites, effectiveSites, choices };
   }
 
@@ -34,6 +34,12 @@ export class IntegrationPreferencesService {
     const choice = (await this.choices(ownerId)).find((item) => item.category === category && item.id === id);
     if (choice?.status !== 'configured_valid')
       throw new AppError(400, 'INTEGRATION_DEFAULT_INVALID', messages.en.invalid);
+    if (category === 'resource') {
+      const previous = await this.get(ownerId);
+      await aiStep('integration-preferences.selection.save', () => {
+        return this.store.selectSites(ownerId, [...new Set([...previous.effectiveSites, id])]);
+      });
+    }
     await aiStep('integration-preferences.default.save', () => this.store.setDefault(ownerId, category, id));
     return this.get(ownerId);
   }
@@ -48,7 +54,9 @@ export class IntegrationPreferencesService {
       })
     )
       throw new AppError(400, 'INTEGRATION_DEFAULT_INVALID', messages.en.invalid);
-    await aiStep('integration-preferences.selection.save', () => this.store.selectSites(ownerId, sites));
+    const current = await this.get(ownerId);
+    const enabled = [...new Set([...sites, ...(current.defaults.resource ? [current.defaults.resource] : [])])];
+    await aiStep('integration-preferences.selection.save', () => this.store.selectSites(ownerId, enabled));
     return this.get(ownerId);
   }
 

@@ -123,18 +123,14 @@ it('opens the first selected site when the primary is outside the selected scope
   wrapper.unmount();
 });
 
-it('changing the account selection refreshes status without issuing resource searches', async () => {
+it('loads the enabled account sites and removes per-movie site controls', async () => {
   setLocale('en-US');
   const f = fixture();
   const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
   await flushPromises();
-  const mteam = wrapper.findAll('.resource-site-toggle').find((node) => node.attributes('aria-pressed') === 'true');
-  await mteam!.trigger('click');
-  await flushPromises();
-  expect(wrapper.findAll('.resource-site-toggle')[0]!.classes()).not.toContain('is-selected');
-  expect(f.calls.some((url) => url.endsWith('/integration-preferences/resource-sites'))).toBe(true);
+  expect(wrapper.find('.resource-site-toggle').exists()).toBe(false);
+  expect(f.calls.some((url) => url.endsWith('/integration-preferences'))).toBe(true);
   expect(f.calls.some((url) => url.endsWith('/releases') || url.endsWith('/refresh'))).toBe(false);
-  wrapper.unmount();
 });
 
 it('keeps successful releases when another site fails and retries that site independently', async () => {
@@ -181,7 +177,7 @@ it('ignores an earlier summary that arrives after the user changes the selected 
   );
   const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
   await flushPromises();
-  await wrapper.findAll('.resource-site-toggle')[0]!.trigger('click');
+  window.dispatchEvent(new Event('integration-preferences-changed'));
   await flushPromises();
   expect(wrapper.find('.resource-status-button').exists()).toBe(true);
   resolveOld(Response.json({ provider: 'all', availability: 'unavailable', checking: false }));
@@ -190,45 +186,17 @@ it('ignores an earlier summary that arrives after the user changes the selected 
   wrapper.unmount();
 });
 
-it.each(['en-US', 'zh-CN'] as const)('keeps icon clicks for selection and opens resources through the separate action in %s', async (locale) => {
+it.each(['en-US', 'zh-CN'] as const)('opens enabled sources through the resource action without site icons in %s', async (locale) => {
   setLocale(locale);
   const f = fixture();
-  const baseFetch = globalThis.fetch;
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (String(input).endsWith('/resources')) return Response.json({
-      provider: 'all', checking: false, availability: 'available',
-      sources: [
-        { provider: 'mteam', checking: false, availability: 'available', checkedAt: '2026-10-20T00:00:00Z' },
-        { provider: 'hdarea', checking: false, availability: 'unavailable' },
-      ],
-    }
-    );
-    return baseFetch(input, init);
-  })
-  );
   const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
   await flushPromises();
-  const tiles = wrapper.findAll('.resource-site-tile');
-  const mteam = tiles.find((tile) => tile.text().includes('M-Team'))!;
-  const hdarea = tiles.find((tile) => tile.text().includes('HDArea'))!;
-  expect(mteam.get('button').attributes('aria-pressed')).toBe('true');
-  expect(hdarea.get<HTMLButtonElement>('button').element.disabled).toBe(false);
-  expect(wrapper.find('.resource-site-fill').exists()).toBe(false);
-  expect(wrapper.find('.resource-site-name').exists()).toBe(false);
-  expect(wrapper.find('input[type=checkbox]').exists()).toBe(false);
-  expect(mteam.attributes('title')).toContain(locale === 'en-US' ? 'Resources available' : '有资源');
-  expect(mteam.attributes('title')).toContain(locale === 'en-US' ? 'Checked:' : '查询时间：');
-  await mteam.get('button').trigger('click');
-  await flushPromises();
-  expect(document.body.querySelectorAll('.release-site-group')).toHaveLength(0);
-  expect(f.calls.some((url) => url.endsWith('/releases'))).toBe(false);
-  expect(f.calls.some((url) => url.endsWith('/integration-preferences/resource-sites'))).toBe(true);
-  expect(mteam.get('button').attributes('aria-pressed')).toBe('false');
+  expect(wrapper.find('.resource-site-selector').exists()).toBe(false);
+  expect(wrapper.find('.resource-site-toggle').exists()).toBe(false);
   await wrapper.get('.resource-status-button').trigger('click');
   await flushPromises();
-  expect(document.body.querySelectorAll('.release-site-group')).toHaveLength(1);
-  expect(document.body.querySelector('.release-site-group summary')?.textContent).toContain('HDArea');
-  wrapper.unmount();
+  expect(document.body.querySelectorAll('.release-site-group')).toHaveLength(2);
+  expect(f.calls.some((url) => url.endsWith('/integration-preferences/resource-sites'))).toBe(false);
 });
 
 it.each(['en-US', 'zh-CN'] as const)('queries unavailable resources without opening a dialog in %s', async (locale) => {
@@ -252,13 +220,15 @@ it.each(['en-US', 'zh-CN'] as const)('queries unavailable resources without open
   );
   const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
   await flushPromises();
-  expect(wrapper.get('.resource-status-button').text()).toBe(locale === 'en-US' ? 'Query resources' : '查询资源');
+  expect(wrapper.get('.resource-status-button').text()).toBe(locale === 'en-US' ? 'Unavailable' : '暂无资源');
+  expect(wrapper.get('.resource-status-button').attributes('title')).toBe(locale === 'en-US' ? 'Query resources' : '查询资源');
   expect(wrapper.find('.resource-refresh-button').exists()).toBe(false);
   await wrapper.get('.resource-status-button').trigger('click');
   await flushPromises();
   expect(queries).toBe(1);
   expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-  expect(wrapper.get('.resource-status-button').text()).toBe(locale === 'en-US' ? 'View resources' : '查看资源');
+  expect(wrapper.get('.resource-status-button').text()).toBe(locale === 'en-US' ? 'Available' : '有资源');
+  expect(wrapper.get('.resource-status-button').attributes('title')).toBe(locale === 'en-US' ? 'View resources' : '查看资源');
   wrapper.unmount();
 });
 
@@ -307,4 +277,34 @@ it.each(['en-US', 'zh-CN'] as const)('downloads HDArea independently of an ident
   expect(groups[1]!.querySelector('[role="status"]')?.textContent).toContain('12%');
   expect(JSON.stringify(f.posts)).not.toMatch(/passkey|download\.php|cookie/i);
   wrapper.unmount();
+});
+
+it.each(['unchecked', 'unavailable', 'error'] as const)('checks from both resource buttons for %s and disables both while checking', async (state) => {
+  setLocale('en-US');
+  fixture();
+  const base = globalThis.fetch;
+  let complete!: (response: Response) => void;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/resources')) return Response.json({ provider: 'all', checking: false,
+      availability: state === 'error' ? 'unchecked' : state, ...(state === 'error' ? { lastAttemptStatus: 'error' } : {}) });
+    if (url.endsWith('/resources/refresh')) return new Promise<Response>((resolve) => {
+      complete = resolve;
+    });
+    return base(input, init);
+  }));
+  const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
+  await flushPromises();
+  expect(wrapper.get('.dossier-data > div:last-child').classes()).toContain('dossier-resource');
+  const poster = wrapper.get<HTMLButtonElement>('.detail-poster button.poster-resource-badge');
+  await poster.trigger('click');
+  await flushPromises();
+  expect(poster.element.disabled).toBe(true);
+  expect(wrapper.get<HTMLButtonElement>('.dossier-resource-button').element.disabled).toBe(true);
+  expect(wrapper.get('.dossier-resource-button').text()).toBe('Checking');
+  complete(Response.json({ provider: 'all', availability: 'available', checking: false }));
+  await flushPromises();
+  expect(wrapper.get('.dossier-resource-button').text()).toBe('Available');
+  expect(wrapper.get<HTMLButtonElement>('.dossier-resource-button').element.disabled).toBe(false);
+  expect(document.body.querySelectorAll('.release-site-group')).toHaveLength(0);
 });

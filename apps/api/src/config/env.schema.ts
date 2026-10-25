@@ -137,7 +137,7 @@ export const EnvSchema = z
     MTEAM_RESOURCE_RETRY_DELAY_SECONDS: z.coerce.number().int().min(10).max(86_400).default(900),
     MTEAM_RESOURCE_CHECK_LEASE_SECONDS: z.coerce.number().int().min(30).max(3_600).default(120),
     MTEAM_SEARCH_MIN_INTERVAL_MS: z.coerce.number().int().min(0).max(60_000).default(2_500),
-    MTEAM_RELEASE_CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(300).default(120),
+    RESOURCE_RELEASE_CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(1_800),
     TRANSMISSION_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
     QBITTORRENT_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
     SCAN_TRACE_ENABLED: booleanString.default(false),

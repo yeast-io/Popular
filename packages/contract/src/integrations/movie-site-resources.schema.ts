@@ -11,6 +11,7 @@ export const MovieSiteReleaseListSchema = Type.Object({
   site: Type.String(), name: Type.String(), supportsDownload: Type.Boolean(),
   availability: MovieResourceAvailabilitySchema,
   queriedAt: Type.String({ format: 'date-time' }), cached: Type.Boolean(),
+  cacheExpiresAt: Type.Optional(Type.String({ format: 'date-time' })),
   releases: Type.Array(Type.Composite([MovieReleaseSchema, Type.Object({ seedersKnown: Type.Optional(Type.Boolean()) })])),
   nextPage: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 }, { additionalProperties: false });

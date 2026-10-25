@@ -22,13 +22,13 @@ import type {
   MovieResourceCheckStore,
 } from './movie-resource-check.types.js';
 import type { IntegrationPreferencesService } from './integration-preferences.service.js';
-import type { MovieSiteReleaseCache } from './movie-site-resources.types.js';
+import type { MovieReleaseCacheService } from './movie-release-cache.service.js';
+import { isSiteReleaseCacheValue } from './movie-release-cache.schema.js';
+import { MovieReleaseCacheError } from './movie-release-cache.errors.js';
 import { aggregateSiteChecks, completionForSiteCheck, siteCheckResponse } from './movie-site-resources.domain.js';
 
 export class MovieSiteResourcesService {
   private readonly tasks = new Set<Promise<unknown>>();
-  private readonly cache = new Map<string, MovieSiteReleaseCache>();
-  private readonly requests = new Map<string, Promise<MovieSiteReleaseList>>();
   private stopped = false;
   private readonly siteQueues = new Map<string, Promise<void>>();
   private readonly pendingChecks = new Map<string, Promise<void>>();
@@ -43,7 +43,8 @@ export class MovieSiteResourcesService {
     private readonly tmdb: Pick<MovieSearchProvider, 'fetchDetails'>,
     private readonly locale: Locale,
     private readonly diagnostics: ResourceSiteDiagnostics,
-    private readonly ttlMs: number
+    private readonly releaseCache: MovieReleaseCacheService,
+    private readonly availabilityTtlMs: number
   ) {}
 
   async selectedSites(ownerId: string): Promise<string[]> {
@@ -243,7 +244,7 @@ export class MovieSiteResourcesService {
         lastAttemptStatus: 'success',
         availability: result.availability === 'available' ? 'available' : 'unavailable',
         checkedAt,
-        expiresAt: new Date(checkedAt.getTime() + this.ttlMs),
+        expiresAt: new Date(checkedAt.getTime() + this.availabilityTtlMs),
         matchedBy: 'imdb',
       };
     } catch (error) {
@@ -279,7 +280,7 @@ export class MovieSiteResourcesService {
     try {
       return await this.queryReleases(ownerId, tmdbId, site, page, force);
     } catch (error) {
-      if (site !== 'mteam' && this.sites.registry.has(site)) {
+      if (!(error instanceof MovieReleaseCacheError) && site !== 'mteam' && this.sites.registry.has(site)) {
         try {
           await this.checks.recordAttempt({ ownerId, tmdbId, provider: site }, attemptedAt, this.failureResult(error));
         } catch (recordError) {
@@ -334,110 +335,103 @@ export class MovieSiteResourcesService {
       await this.movies.writeMovieDetail(detail, new Date(), this.locale);
       identity = detail;
     }
-    const key = JSON.stringify([
-      ownerId,
-      tmdbId,
-      site,
-      page,
-      identity.imdbId,
-      await this.sites.cacheVersion(ownerId, site),
-    ]);
-    for (const [id, entry] of this.cache) if (entry.expiresAt <= Date.now()) this.cache.delete(id);
-    const cached = this.cache.get(key);
-    if (!force && cached) return { ...cached.value, cached: true };
-    const pending = this.requests.get(key);
-    if (pending) return pending;
-    const operation = (async (): Promise<MovieSiteReleaseList> => {
-      const attemptedAt = new Date();
-      let releases: MovieSiteReleaseList['releases'] = [];
-      let nextPage: number | undefined;
-      if (identity?.imdbId) {
-        const deadline = AbortSignal.timeout(MOVIE_SITE_QUERY_TIMEOUT_MS);
-        let currentPage = page;
-        do {
-          const result = await aiStep(
-            'movie-resources.site.search',
-            () => {
-              return this.search.search(
-                ownerId,
-                site,
-                { imdbId: identity!.imdbId!, page: currentPage },
-                AbortSignal.any([deadline, AbortSignal.timeout(MOVIE_SITE_PAGE_TIMEOUT_MS)])
-              );
-            },
-            { site, page: currentPage }
+    return this.releaseCache.getOrFetch({
+      identity: {
+        ownerId, tmdbId, site, page, locale: this.locale,
+        ...(identity.imdbId ? { imdbId: identity.imdbId } : {}),
+        credentialVersion: await this.sites.cacheVersion(ownerId, site) ?? '',
+      },
+      force,
+      validate: isSiteReleaseCacheValue,
+      fetch: async (): Promise<MovieSiteReleaseList> => {
+        const attemptedAt = new Date();
+        let releases: MovieSiteReleaseList['releases'] = [];
+        let nextPage: number | undefined;
+        if (identity?.imdbId) {
+          const deadline = AbortSignal.timeout(MOVIE_SITE_QUERY_TIMEOUT_MS);
+          let currentPage = page;
+          do {
+            const result = await aiStep(
+              'movie-resources.site.search',
+              () => {
+                return this.search.search(
+                  ownerId,
+                  site,
+                  { imdbId: identity!.imdbId!, page: currentPage },
+                  AbortSignal.any([deadline, AbortSignal.timeout(MOVIE_SITE_PAGE_TIMEOUT_MS)])
+                );
+              },
+              { site, page: currentPage }
+            );
+            releases = result.releases
+              .filter((release) => {
+                return (
+                  (!release.imdbId || release.imdbId === identity!.imdbId)
+                  && (release.seeders === undefined || release.seeders > 0)
+                );
+              })
+              .map((release) => {
+                return {
+                  ...release,
+                  seeders: release.seeders ?? 0,
+                  seedersKnown: release.seeders !== undefined,
+                  tags: release.tags ?? [],
+                  detailsUrl: adapter.detailsUrl?.(release.id) ?? adapter.baseUrl,
+                };
+              });
+            nextPage = result.nextPage;
+            if (nextPage !== undefined && (nextPage <= currentPage || nextPage > 100))
+              throw new ResourceSiteError('invalidResponse');
+            if (releases.length || !nextPage) break;
+            if (this.stopped) throw new ResourceSiteError('timeout');
+            currentPage = nextPage;
+          } while (!this.stopped);
+        }
+        const queriedAt = new Date();
+        const availability = !identity?.imdbId
+          ? ('unmatchable' as const)
+          : releases.length
+            ? ('available' as const)
+            : ('unavailable' as const);
+        const value: MovieSiteReleaseList = {
+          site,
+          name: adapter.name,
+          supportsDownload: Boolean(adapter.torrentUrl),
+          queriedAt: queriedAt.toISOString(),
+          cached: false,
+          availability,
+          releases,
+          ...(nextPage ? { nextPage } : {}),
+        };
+        // Later pages must not overwrite the whole movie's positive availability with a page-local empty result.
+        if (page === 1)
+          await this.checks.recordAttempt(
+            { ownerId, tmdbId, provider: site },
+            attemptedAt,
+            availability === 'unmatchable'
+              ? {
+                  lastAttemptStatus: 'success',
+                  availability,
+                  checkedAt: queriedAt,
+                  identityFingerprint: JSON.stringify([identity?.title ?? '', null]),
+                }
+              : {
+                  lastAttemptStatus: 'success',
+                  availability,
+                  checkedAt: queriedAt,
+                  expiresAt: new Date(queriedAt.getTime() + this.availabilityTtlMs),
+                  matchedBy: 'imdb',
+                }
           );
-          releases = result.releases
-            .filter((release) => {
-              return (
-                (!release.imdbId || release.imdbId === identity!.imdbId)
-                && (release.seeders === undefined || release.seeders > 0)
-              );
-            })
-            .map((release) => {
-              return {
-                ...release,
-                seeders: release.seeders ?? 0,
-                seedersKnown: release.seeders !== undefined,
-                tags: release.tags ?? [],
-                detailsUrl: adapter.detailsUrl?.(release.id) ?? adapter.baseUrl,
-              };
-            });
-          nextPage = result.nextPage;
-          if (nextPage !== undefined && (nextPage <= currentPage || nextPage > 100))
-            throw new ResourceSiteError('invalidResponse');
-          if (releases.length || !nextPage) break;
-          if (this.stopped) throw new ResourceSiteError('timeout');
-          currentPage = nextPage;
-        } while (!this.stopped);
-      }
-      const queriedAt = new Date();
-      const availability = !identity?.imdbId
-        ? ('unmatchable' as const)
-        : releases.length
-          ? ('available' as const)
-          : ('unavailable' as const);
-      const value: MovieSiteReleaseList = {
-        site,
-        name: adapter.name,
-        supportsDownload: Boolean(adapter.torrentUrl),
-        queriedAt: queriedAt.toISOString(),
-        cached: false,
-        availability,
-        releases,
-        ...(nextPage ? { nextPage } : {}),
-      };
-      // Later pages must not overwrite the whole movie's positive availability with a page-local empty result.
-      if (page === 1)
-        await this.checks.recordAttempt(
-          { ownerId, tmdbId, provider: site },
-          attemptedAt,
-          availability === 'unmatchable'
-            ? {
-                lastAttemptStatus: 'success',
-                availability,
-                checkedAt: queriedAt,
-                identityFingerprint: JSON.stringify([identity?.title ?? '', null]),
-              }
-            : {
-                lastAttemptStatus: 'success',
-                availability,
-                checkedAt: queriedAt,
-                expiresAt: new Date(queriedAt.getTime() + this.ttlMs),
-                matchedBy: 'imdb',
-              }
-        );
-      this.cache.set(key, { expiresAt: Date.now() + this.ttlMs, value });
-      return value;
-    })().finally(() => this.requests.delete(key));
-    this.requests.set(key, operation);
-    return operation;
+        return value;
+      },
+    });
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
-    while (this.tasks.size || this.requests.size) await Promise.allSettled([...this.tasks, ...this.requests.values()]);
-    this.cache.clear();
+    while (this.tasks.size) await Promise.allSettled([...this.tasks]);
+    await this.releaseCache.waitForIdle();
   }
 
   private trace<T>(ownerId: string, tmdbId: number, action: () => Promise<T>): Promise<T> {

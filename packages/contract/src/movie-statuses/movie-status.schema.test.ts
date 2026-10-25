@@ -45,6 +45,7 @@ test('live M-Team releases contain display data without exposing credentials', (
       availability: 'available',
       queriedAt: '2026-10-13T00:00:00.000Z',
       cached: false,
+      cacheExpiresAt: '2026-10-13T00:30:00.000Z',
       releases: [
         {
           id: '991',

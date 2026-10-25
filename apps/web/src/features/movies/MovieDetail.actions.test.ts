@@ -43,8 +43,11 @@ describe('movie detail icon actions', () => {
     await wrapper.setProps({ authenticated: true });
     await flushPromises();
     expect(wrapper.find('.detail-poster .poster-resource-badge').exists()).toBe(true);
-    expect(wrapper.find('.resource-check-panel .resource-toolbar-badge').exists()).toBe(true);
-    expect(wrapper.findComponent({ name: 'ResourceSiteSelector' }).exists()).toBe(true);
+    expect(wrapper.find('.dossier-data > .dossier-resource button').exists()).toBe(true);
+    expect(wrapper.find('.resource-check-panel').exists()).toBe(false);
+    expect(wrapper.findAll('.dossier-data > div').at(-2)?.text()).toContain(locale === 'zh-CN' ? '票数' : 'Votes');
+    expect(wrapper.find('.resource-site-selector').exists()).toBe(false);
+    expect(wrapper.find('.resource-status-button').exists()).toBe(true);
 
     await wrapper.setProps({ authenticated: false });
     expect(wrapper.findAll('.poster-resource-badge')).toHaveLength(0);

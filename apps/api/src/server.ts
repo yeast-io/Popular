@@ -69,6 +69,8 @@ import { createLoggers } from './infrastructure/logging/logger.js';
 import { createModels } from './infrastructure/mongodb/models.js';
 import { MongoAuthUserStore } from './infrastructure/mongodb/users/user.store.js';
 import { RedisSessionStore } from './infrastructure/redis/session.store.js';
+import { RedisMovieReleaseCacheStore } from './infrastructure/redis/movie-resources/movie-release-cache.store.js';
+import { MovieReleaseCacheService } from './modules/integrations/movie-release-cache.service.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { MinioAvatarStore } from './infrastructure/minio/avatar.store.js';
 import { UserService } from './modules/users/user.service.js';
@@ -258,6 +260,10 @@ try {
     models.movieResourceChecks,
     models.movieResourceCheckTasks
   );
+  const movieReleaseCache = new MovieReleaseCacheService(
+    new RedisMovieReleaseCacheStore(infrastructure.redis.getClient()),
+    config.RESOURCE_RELEASE_CACHE_TTL_SECONDS * 1_000
+  );
   const movieResourceChecks = new MovieResourceCheckService(
     movieResourceCheckStore,
     integrationConfigStore,
@@ -272,12 +278,12 @@ try {
       retryDelayMs: config.MTEAM_RESOURCE_RETRY_DELAY_SECONDS * 1_000,
       leaseMs: config.MTEAM_RESOURCE_CHECK_LEASE_SECONDS * 1_000,
       minimumIntervalMs: config.MTEAM_SEARCH_MIN_INTERVAL_MS,
-      releaseListTtlMs: config.MTEAM_RELEASE_CACHE_TTL_SECONDS * 1_000,
     },
     {
       info: (bindings, message) => loggers.app.info(bindings, message),
       error: (bindings, message) => loggers.error.error(bindings, message),
-    }
+    },
+    movieReleaseCache
   );
   await Promise.all([models.tvPreferences, models.tvWatchlist, models.tvShows, models.tvShowLocalizations, models.tvSeasons, models.tvSeasonLocalizations,
     models.tvEpisodes, models.tvEpisodeLocalizations].map((model) => model.init()));
@@ -302,12 +308,12 @@ try {
     new HDAreaHttpClient(),
     { logger: loggers.error, verbose: config.VERBOSE }
   );
-  const resourceSearchService = new ResourceSearchService([
+  const resourceSearchService: ResourceSearchService = new ResourceSearchService([
     new MTeamSearchSource(integrationConfigStore, secrets, mteam),
     ...[...resourceSiteService.registry.values()].map((site) => {
       return new ResourceSiteSearchSource(site.id, site.name, resourceSiteService);
     }),
-  ]);
+  ], async (ownerId) => (await integrationPreferencesService.get(ownerId)).effectiveSites);
   const integrationService = new IntegrationService(
     authService,
     integrationConfigStore,
@@ -398,6 +404,7 @@ try {
     tmdb,
     config.TMDB_LANGUAGE,
     { logger: loggers.error, verbose: config.VERBOSE },
+    movieReleaseCache,
     config.MTEAM_RESOURCE_AVAILABLE_TTL_SECONDS * 1_000
   );
   await Promise.all([
@@ -642,7 +649,8 @@ try {
     tmdb,
     movieCatalog,
     config.TMDB_LANGUAGE,
-    { logger: loggers.error, verbose: config.VERBOSE }
+    { logger: loggers.error, verbose: config.VERBOSE },
+    integrationPreferencesService
   );
   const assistantSessionModel = createAssistantSessionModel(models.users.db);
   await assistantSessionModel.init();

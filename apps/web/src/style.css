@@ -1253,7 +1253,11 @@ label small {
   border: 1px solid #303132;
   padding: 22px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58);
-  background: #0f1011;
+  background-color: #0f1011;
+  background-image: linear-gradient(180deg, rgba(15, 16, 17, .76), rgba(15, 16, 17, .94) 55%, #0f1011), var(--resource-artwork, none);
+  background-position: center top;
+  background-size: cover;
+  background-repeat: no-repeat;
   outline: none;
 }
 .release-panel-heading {
@@ -4336,17 +4340,17 @@ body:has(.settings-page)::after {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
+  min-width: 0;
   padding: 10px 1px 0;
 }
 .catalog-card .movie-copy h3,
 .catalog-card .tv-card-name {
-  display: -webkit-box;
+  display: block;
   overflow: hidden;
   font-size: 0.9rem;
   line-height: 1.4;
-  white-space: normal;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .catalog-card .movie-meta {
   align-items: center;
@@ -4550,3 +4554,23 @@ body:has(.settings-page)::after {
 .detail-action-toolbar .resource-site-tooltip { left: auto; right: 0; }
 
 .tv-catalog-card { position: relative; }
+
+.dossier-data.has-resource-status { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.dossier-data .dossier-resource-button {
+  position: static;
+  max-width: 100%;
+  min-height: 28px;
+  margin: 0;
+  box-shadow: none;
+  font-size: .65rem;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.3;
+}
+@media (max-width: 900px) {
+  .dossier-data.has-resource-status { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dossier-data.has-resource-status > div:nth-child(n + 3) { border-top: 1px solid rgba(255, 255, 255, .1); }
+  .dossier-data.has-resource-status > div:nth-child(3),
+  .dossier-data.has-resource-status > .dossier-resource { border-left: 0; padding-left: 0; }
+  .dossier-data.has-resource-status > .dossier-resource { grid-column: 1 / -1; }
+}

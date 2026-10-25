@@ -42,7 +42,8 @@ export class HDAreaAdapter implements ResourceSiteAdapter {
       notnewword: '1',
       page: String(page - 1),
     });
-    return parseSearch(await session.get(`torrents.php?${params}`, signal), page, this.baseUrl);
+    const result = parseSearch(await session.get(`torrents.php?${params}`, signal), page, this.baseUrl);
+    return { ...result, releases: result.releases.map((release) => ({ ...release, detailsUrl: this.detailsUrl(release.id) })) };
   }
 
   async detail(session: ResourceSiteSession, id: string, signal?: AbortSignal) {

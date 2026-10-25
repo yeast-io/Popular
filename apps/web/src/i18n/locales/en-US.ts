@@ -1,6 +1,11 @@
 import type { TranslationMessages } from '../translation-messages.types.js';
 
 const enUS = {
+  'resourceQuery.loading': 'Searching resource sites…',
+  'resourceQuery.error': 'Could not search resources. Please try again.',
+  'resourceQuery.empty': 'No matching resources found.',
+  'resourceQuery.openDetails': 'Open release details',
+  'resourceQuery.hint': 'Results may include individual episodes or packs. Check the episode coverage in the release details.',
   'watchlist.loadMore': 'Load more',
   'watchlist.countOne': '1 title',
   'watchlist.back': '← Back to watch list',
@@ -129,6 +134,10 @@ const enUS = {
   'integrationDefaults.setDefault': 'Set as default',
   'integrationDefaults.replacementRequired': 'Set another default in Settings before deleting this configuration.',
   'integrationDefaults.invalid': 'Choose a configured, verified integration.',
+  'resourceSelection.enableSite': 'Enable {name} for resource searches',
+  'resourceSelection.defaultRequired': 'The default resource site must stay enabled.',
+  'resourceSelection.enabled': 'Enabled',
+  'resourceSelection.disabled': 'Disabled',
   'resourceSelection.more': 'More resource actions',
   'resourceSelection.query': 'Query resources',
   'resourceSelection.refresh': 'Refresh',
@@ -141,7 +150,7 @@ const enUS = {
   'resourceSelection.count': 'Sites: {count}',
   'resourceSelection.unconfigured': 'Not configured',
   'resourceSelection.invalid': 'Needs attention',
-  'resourceSelection.hint': 'Your selection applies to manual and automatic checks. Clear it to use your default site.',
+  'resourceSelection.hint': 'Enabled sites participate in resource searches throughout the app. The default site stays enabled.',
   'resourceSelection.reset': 'Use default site',
   'resourceSelection.configure': 'Configure sites',
   'resourceSelection.sources': 'Resource sites',
@@ -152,6 +161,7 @@ const enUS = {
   'resourceSelection.releaseCount': '{count} releases',
   'resourceSelection.queriedAt': 'Checked: {date}',
   'resourceSelection.cachedAt': 'Cached results: {date}',
+  'resourceSelection.cacheExpiresAt': 'Cache expires: {date}',
   'resourceSelection.staleResults': 'Previous results: {date} · Refresh failed',
   'resourceSelection.loadMore': 'Load more',
 
@@ -803,6 +813,7 @@ const enUS = {
   'movie.detail.release': 'Release',
   'movie.detail.runtime': 'Runtime',
   'movie.detail.score': 'Score',
+  'movie.detail.resources': 'Resources',
   'movie.detail.votes': 'Votes',
   'movie.detail.missing': 'Not available',
   'movie.detail.genresMissing': 'Genres unavailable',

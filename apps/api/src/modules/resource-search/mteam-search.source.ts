@@ -1,6 +1,7 @@
 import { siteAccountIdentityPending } from '../resource-sites/site-account.errors.js';
 import { MTEAM_SEARCH_MINIMUM_INTERVAL_MS } from './resource-search.policy.js';
 import type { ResourceSiteSearch, ResourceSiteRelease } from '@movie-hub/contract';
+import { MTEAM_DEFAULT_WEB_BASE_URL } from '@movie-hub/contract';
 import type { ResourceSearchSource } from './resource-search.types.js';
 import type { IntegrationConfigStore } from '../integrations/integration.types.js';
 import type { SecretCrypto } from '../integrations/secret-crypto.js';
@@ -64,7 +65,7 @@ export class MTeamSearchSource implements ResourceSearchSource {
           key,
           input.imdbId ? { imdbId: input.imdbId } : { title: input.query! },
           userExternalRequestContext(ownerId, 'api_request'),
-          { page: input.page ?? 1, signal }
+          { page: input.page ?? 1, signal, ...(input.mediaType ? { mediaType: input.mediaType } : {}) }
         );
       });
       signal.throwIfAborted();
@@ -76,11 +77,18 @@ export class MTeamSearchSource implements ResourceSearchSource {
           return {
             id: r.id!,
             title: r.title!,
+            detailsUrl: new URL(`/detail/${encodeURIComponent(r.id!)}`, config.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL).href,
+            ...(r.description ? { description: r.description } : {}),
             seeders: r.seeders,
             ...(r.sizeBytes !== undefined ? { sizeBytes: r.sizeBytes } : {}),
             ...(r.imdbId ? { imdbId: r.imdbId } : {}),
             ...(r.resolution ? { resolution: r.resolution } : {}),
             ...(r.releaseGroup ? { releaseGroup: r.releaseGroup } : {}),
+            ...(r.medium ? { medium: r.medium } : {}),
+            ...(r.videoCodec ? { videoCodec: r.videoCodec } : {}),
+            ...(r.audioCodec ? { audioCodec: r.audioCodec } : {}),
+            ...(r.publishedAt ? { publishedAt: r.publishedAt } : {}),
+            ...(r.tags ? { tags: r.tags } : {}),
           };
         });
       return { releases, ...(result.nextPage ? { nextPage: result.nextPage } : {}) };

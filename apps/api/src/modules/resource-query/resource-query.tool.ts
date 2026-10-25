@@ -1,4 +1,6 @@
+import type { IntegrationPreferencesService } from '../integrations/integration-preferences.service.js';
 import {
+  resourceSourceUnavailable,
   compactField,
   releaseNumberLabel,
   compareReleases,
@@ -36,7 +38,8 @@ export class ResourceQueryTool implements ResourceQueryCapability {
     private readonly movies: MovieSearchProvider,
     private readonly catalog: MovieCatalogStore,
     private readonly locale: Locale,
-    private readonly diagnostics: { logger?: AiLogger; verbose: boolean } = { verbose: false }
+    private readonly diagnostics: { logger?: AiLogger; verbose: boolean } = { verbose: false },
+    private readonly preferences?: Pick<IntegrationPreferencesService, 'get'>
   ) {
     this.sources = new Map(sources.map((source) => [source.id, source]));
     if (this.sources.size !== sources.length || sources.some((source) => !/^[a-z][a-z0-9_-]{0,31}$/.test(source.id)))
@@ -135,6 +138,18 @@ export class ResourceQueryTool implements ResourceQueryCapability {
     signal: AbortSignal,
     locale: Locale
   ): Promise<string> {
+    const enabled = this.preferences
+      ? (await aiStep('resources.preferences.read', () => this.preferences!.get(ownerId))).effectiveSites
+      : [...this.sources.keys()];
+    const enabledSources = new Map([...this.sources].filter(([id]) => enabled.includes(id)));
+    state.providers = state.providers.filter((id) => enabledSources.has(id));
+    if (state.snapshot?.results.some((result) => !enabledSources.has(result.provider))) {
+      // Source changes invalidate numbered results rather than silently renumbering them.
+      delete state.snapshot;
+      state.releases = [];
+      state.page = 1;
+    }
+    state.releases = state.releases.filter((release) => enabledSources.has(release.provider));
     const zh = locale === 'zh-CN';
     const plan = await aiStep('resources.plan', () => {
       return decisions.plan(
@@ -145,7 +160,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
           movie: state.movie,
           resolution: state.resolution,
           providers: state.providers,
-          sources: [...this.sources.values()].map(({ id, name }) => ({ id, name })),
+          sources: [...enabledSources.values()].map(({ id, name }) => ({ id, name })),
           releaseCount: state.releases.length,
           page: state.page ?? 1,
           pageCount: Math.ceil(state.releases.length / RESOURCE_PAGE_SIZE),
@@ -160,10 +175,8 @@ export class ResourceQueryTool implements ResourceQueryCapability {
         ? '目前可按资源来源和画质筛选，其他条件暂时无法可靠核实。请调整查询条件。'
         : 'I can filter by source and resolution. Other conditions cannot be verified yet. Please adjust the filters.';
     if (plan.question) return plan.question;
-    if (plan.providers?.some((id) => !this.sources.has(id)))
-      return zh
-        ? '该资源来源尚未接入。当前支持：' + [...this.sources.values()].map((s) => s.name).join('、')
-        : 'Unsupported source. Available sources: ' + [...this.sources.values()].map((s) => s.name).join(', ');
+    if (plan.providers?.some((id) => !enabledSources.has(id)))
+      return resourceSourceUnavailable(locale, [...enabledSources.values()].map((source) => source.name));
     const changingQuery = Boolean(
       plan.title || plan.candidateId !== null || plan.resolution !== null || plan.providers !== null || plan.refresh
     );
@@ -263,7 +276,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
         : 'Provide the film title and year, or choose a candidate above.';
     const movie = state.movie;
     currentAiTrace()?.sensitive(movie.title);
-    if (state.providers.some((id) => !this.sources.has(id))) {
+    if (state.providers.some((id) => !enabledSources.has(id))) {
       state.providers = [];
       state.releases = [];
       return zh
@@ -272,9 +285,9 @@ export class ResourceQueryTool implements ResourceQueryCapability {
     }
     const providers = state.providers.length
       ? state.providers.map((id) => {
-          return this.sources.get(id)!;
+          return enabledSources.get(id)!;
         })
-      : [...this.sources.values()];
+      : [...enabledSources.values()];
     if (!providers.length) return zh ? '当前没有接入资源服务。' : 'No resource services are available.';
     // Failed sources are not reusable query results; successful sources in a partial snapshot remain useful.
     const reusable

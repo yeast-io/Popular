@@ -5,6 +5,8 @@ import { useI18n } from '../../i18n';
 import { localizedErrorMessage } from '../../i18n/api-error';
 import { tvRequest } from './tv-show.client';
 import MediaTrailerDialog from '../media/MediaTrailerDialog.vue';
+import ResourceQueryDialog from '../resource-search/ResourceQueryDialog.vue';
+import { useResourceQuery } from '../resource-search/resource-query.client';
 import TvSeasonSelector from './TvSeasonSelector.vue';
 import TvEpisodeList from './TvEpisodeList.vue';
 import TvEpisodeDetailDialog from './TvEpisodeDetailDialog.vue';
@@ -24,6 +26,51 @@ const emit = defineEmits<{
 const { t, locale, formatNumber, formatDate } = useI18n();
 const show = ref<TvShowDetail | null>(null);
 const trailerOpen = ref(false);
+const resourcesOpen = ref(false);
+const resourceQuery = computed(() => {
+  const name = (show.value?.originalName || show.value?.name || '').trim();
+  if (!name || selectedSeason.value === null) return '';
+  const suffix = ` S${String(selectedSeason.value).padStart(2, '0')}`;
+  return `${name.slice(0, 200 - suffix.length)}${suffix}`;
+});
+const resourceSession = useResourceQuery(() => resourceQuery.value, () => 'tv');
+const resourceState = computed(() => {
+  const { groups, loading, error } = resourceSession;
+  if (loading.value || groups.value.some((group) => group.loading)) return 'checking';
+  if (groups.value.some((group) => group.result?.releases.length)) return 'available';
+  if (error.value || groups.value.some((group) => group.error)) return 'error';
+  if (groups.value.length && groups.value.every((group) => group.result)) return 'unavailable';
+  return 'pending';
+});
+const resourceStatus = computed(() => {
+  if (resourceState.value === 'available' && resourceSession.groups.value.some((group) => group.error))
+    return t('resourceSelection.availablePartial');
+  return t(`movie.resource.badge.${resourceState.value}`);
+});
+const resourceNotice = computed(() => resourceSession.error.value
+  || (resourceState.value === 'error' ? t('resourceQuery.error') : '')
+  || (!resourceSession.loading.value && resourceQueried.value && !resourceSession.groups.value.length ? t('resourceSelection.none') : ''));
+const resourceActionLabel = computed(() => t(resourceState.value === 'checking'
+  ? 'movie.resource.checking'
+  : resourceState.value === 'available' ? 'resourceSelection.viewResources' : 'resourceSelection.query'));
+const resourceQueried = ref(false);
+async function resourceAction() {
+  if (!props.authenticated) {
+    emit('requireLogin');
+    return;
+  }
+  if (!resourceQuery.value || resourceState.value === 'checking') return;
+  if (resourceState.value === 'available') resourcesOpen.value = true;
+  else {
+    resourceQueried.value = true;
+    await resourceSession.load();
+  }
+}
+function clearResources() {
+  resourcesOpen.value = false;
+  resourceQueried.value = false;
+  resourceSession.clear();
+}
 const season = ref<TvSeasonDetail | null>(null);
 const selectedSeason = ref<number | null>(null);
 const selectedEpisode = ref<TvEpisode | null>(null);
@@ -50,6 +97,7 @@ async function loadDetail() {
   const current = new AbortController();
   detailController = current;
   trailerOpen.value = false;
+  clearResources();
   show.value = null;
   season.value = null;
   selectedSeason.value = null;
@@ -116,6 +164,7 @@ async function toggleWatchlist() {
   }
 }
 async function loadSeason() {
+  clearResources();
   const id = ++seasonGeneration;
   seasonController?.abort();
   selectedEpisode.value = null;
@@ -148,7 +197,10 @@ onBeforeUnmount(() => {
   ++seasonGeneration;
   detailController?.abort();
   seasonController?.abort();
+  resourceSession.clear();
+  window.removeEventListener('integration-preferences-changed', clearResources);
 });
+window.addEventListener('integration-preferences-changed', clearResources);
 </script>
 
 <template>
@@ -162,17 +214,31 @@ onBeforeUnmount(() => {
         <div class="detail-poster">
           <img v-if="show.posterUrl && !posterFailed" :src="show.posterUrl" :alt="show.name" @error="posterFailed = true" />
           <div v-else class="poster-placeholder">{{ t('tv.imageUnavailable') }}</div>
+          <button v-if="authenticated" class="poster-resource-badge" :class="`is-${resourceState}`" type="button"
+            :aria-label="`${resourceStatus} · ${resourceActionLabel}`" :title="resourceActionLabel" :disabled="!resourceQuery || resourceState === 'checking'" @click="resourceAction">
+            <span class="poster-resource-dot" aria-hidden="true"></span><span>{{ resourceStatus }}</span>
+          </button>
         </div>
         <div class="detail-copy">
           <p class="eyebrow">{{ t('tv.module') }}</p><h1>{{ show.name || show.originalName || t('tv.unnamed') }}</h1>
           <p v-if="show.originalName && show.originalName !== show.name" class="detail-original">{{ show.originalName }}</p>
           <p v-if="show.tagline?.trim()" class="tagline">“{{ show.tagline }}”</p>
           <p class="overview detail-overview">{{ show.overview || t('tv.noOverview') }}</p>
-          <dl class="dossier-data tv-facts">
+          <dl class="dossier-data tv-facts" :class="{ 'has-resource-status': authenticated }">
             <div><dt>{{ t('tv.firstAirDate') }}</dt><dd>{{ show.firstAirDate ? formatDate(show.firstAirDate, { dateStyle: 'long', timeZone: 'UTC' }) : t('tv.unknown') }}</dd></div>
             <div><dt>{{ t('tv.rating') }}</dt><dd class="rating">{{ show.voteAverage === undefined || show.voteCount === 0 ? t('tv.unknown') : formatNumber(show.voteAverage, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }}</dd></div>
             <div><dt>{{ t('tv.status') }}</dt><dd>{{ statusLabel }}</dd></div>
             <div><dt>{{ t('tv.seasons') }}</dt><dd>{{ show.numberOfSeasons === undefined ? t('tv.unknown') : formatNumber(show.numberOfSeasons) }}</dd></div>
+            <div v-if="authenticated" class="dossier-resource">
+              <dt>{{ t('movie.detail.resources') }}</dt>
+              <dd>
+                <button class="poster-resource-badge dossier-resource-button resource-status-button tv-resource-query-button" type="button"
+                  :class="`is-${resourceState}`" :disabled="!resourceQuery || resourceState === 'checking'"
+                  :aria-label="`${resourceStatus} · ${resourceActionLabel}`" :title="resourceActionLabel" @click="resourceAction">
+                  <span class="poster-resource-dot" aria-hidden="true"></span><span>{{ resourceStatus }}</span>
+                </button>
+              </dd>
+            </div>
           </dl>
           <div class="detail-media-actions tv-media-actions">
             <button v-if="show.trailer" class="trailer-button" type="button" @click="trailerOpen = true">
@@ -192,6 +258,7 @@ onBeforeUnmount(() => {
       </div>
       <div v-if="show.seasons.length" class="tv-season-section">
         <TvSeasonSelector v-model="selectedSeason" :seasons="show.seasons" />
+        <p v-if="authenticated && resourceNotice" class="browse-error" role="alert">{{ resourceNotice }}</p>
         <p v-if="seasonLoading" class="movie-state" role="status">{{ t('tv.loadingSeason') }}</p>
         <div v-else-if="seasonError" class="movie-state" role="alert"><p>{{ seasonError }}</p><button class="outline-button" type="button" @click="loadSeason">{{ t('actions.retry') }}</button></div>
         <template v-else-if="season">
@@ -203,6 +270,9 @@ onBeforeUnmount(() => {
       <p v-else class="movie-state">{{ t('tv.noSeasons') }}</p>
       <MediaTrailerDialog v-if="trailerOpen && show.trailer" :trailer="show.trailer" :title="show.name" @close="trailerOpen = false" />
       <TvEpisodeDetailDialog v-if="selectedEpisode" :episode="selectedEpisode" @close="selectedEpisode = null" />
+      <ResourceQueryDialog v-if="resourcesOpen && selectedSeason !== null" :query="resourceQuery" media-type="tv" :session="resourceSession" :backdrop-url="show.backdropUrl" :poster-url="show.posterUrl"
+        :title="`${show.name || show.originalName} · ${selectedSeason === 0 ? t('tv.specials') : t('tv.seasonNumber', { number: selectedSeason })}`"
+        @close="resourcesOpen = false" />
     </article>
   </section>
 </template>

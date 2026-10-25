@@ -25,6 +25,10 @@ test('extracts resource identity, title, binary size, seeders, IMDb and next pag
   }
   );
 });
+test('retains the subtitle that identifies TV episode coverage', () => {
+  const html = searchHtml.replace('>Film</a>', '>Film</a><br>嫁金钗 第10-16集');
+  assert.equal(parseSearch(bytes(html), 1).releases[0]?.description, '嫁金钗 第10-16集');
+});
 test('distinguishes explicit empty results, changed pages, login pages and challenges', () => {
   assert.deepEqual(parseSearch(bytes(authenticated + '<p>没有找到</p>'), 1), { releases: [] });
   for (const [html, reason] of [

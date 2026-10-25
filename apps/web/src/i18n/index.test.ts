@@ -20,6 +20,8 @@ describe('i18n', () => {
   it('interpolates translated content', () => {
     expect(translate('zh-CN', 'format.duration.minutes', { minutes: 42 })).toBe('42 分钟');
     expect(translate('en-US', 'format.duration.minutes', { minutes: 42 })).toBe('42 min');
+    expect(translate('zh-CN', 'resourceSelection.cacheExpiresAt', { date: '14:30' })).toBe('缓存到期：14:30');
+    expect(translate('en-US', 'resourceSelection.cacheExpiresAt', { date: '14:30' })).toBe('Cache expires: 14:30');
   });
 
   it('formats durations with the active locale', () => {

@@ -105,7 +105,7 @@ export class MTeamClient implements MTeamVerifier, MTeamResourceSearcher, MTeamT
                     {
                       pageNumber: page,
                       pageSize: 100,
-                      mode: 'movie',
+                      mode: options.mediaType === 'tv' ? 'tvshow' : 'movie',
                       visible: 1,
                       sortField: 'SEEDERS',
                       sortDirection: 'DESC',
@@ -565,6 +565,7 @@ function parseRelease(value: unknown): MTeamRelease {
   const sizeBytes = parseNonNegativeInteger(row.size);
   const id = readString(row.id);
   const title = readString(row.name);
+  const description = readString(row.smallDescr);
   const publishedAt = readString(row.createdDate);
   const discount = readString(status.discount);
   const resolution = describeCode(readString(row.standard), resolutionNames);
@@ -585,6 +586,7 @@ function parseRelease(value: unknown): MTeamRelease {
   return {
     id,
     title,
+    ...(description ? { description } : {}),
     ...(imdbId ? { imdbId } : {}),
     visible,
     banned,

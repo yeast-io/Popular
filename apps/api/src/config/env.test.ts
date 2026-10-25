@@ -27,7 +27,7 @@ test('loads and normalizes valid environment', () => {
   assert.equal(config.MTEAM_RESOURCE_RETRY_DELAY_SECONDS, 900);
   assert.equal(config.MTEAM_RESOURCE_CHECK_LEASE_SECONDS, 120);
   assert.equal(config.MTEAM_SEARCH_MIN_INTERVAL_MS, 2_500);
-  assert.equal(config.MTEAM_RELEASE_CACHE_TTL_SECONDS, 120);
+  assert.equal(config.RESOURCE_RELEASE_CACHE_TTL_SECONDS, 1_800);
   assert.equal(config.AVATAR_MAX_BYTES, 50 * 1024 * 1024);
   assert.equal(config.AVATAR_MAX_PIXELS, 16_777_216);
 });

@@ -143,6 +143,7 @@ export const MovieReleaseListResponseSchema = Type.Object(
     availability: MovieResourceAvailabilitySchema,
     queriedAt: Type.String({ format: 'date-time' }),
     cached: Type.Boolean(),
+    cacheExpiresAt: Type.Optional(Type.String({ format: 'date-time' })),
     releases: Type.Array(MovieReleaseSchema),
   },
   { additionalProperties: false }
