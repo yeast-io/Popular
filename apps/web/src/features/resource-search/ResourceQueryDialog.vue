@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { resourceSiteIconStyle } from '../movies/resource-site.presentation';
 import type { ResourceQuerySession } from './resource-query.types';
 import { useResourceQuery } from './resource-query.client';
 import { onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
@@ -10,7 +11,6 @@ const { t, locale, formatNumber, formatDate } = useI18n();
 const dialog = ref<HTMLDialogElement | null>(null);
 const closeButton = ref<HTMLButtonElement | null>(null);
 const titleId = useId();
-const descriptionId = useId();
 const session = props.session ?? useResourceQuery(() => props.query, () => props.mediaType);
 const { groups, loading, error, defaultSite, load, loadGroup } = session;
 let trigger: HTMLElement | null = null;
@@ -46,20 +46,22 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <dialog ref="dialog" class="release-panel resource-query-dialog"
       :style="{ '--resource-artwork': backdropUrl || posterUrl ? `url(${JSON.stringify(backdropUrl || posterUrl)})` : undefined }"
-      :aria-labelledby="titleId" :aria-describedby="descriptionId"
+      :aria-labelledby="titleId"
       @cancel.prevent="emit('close')" @click.self="emit('close')">
       <header class="release-panel-heading">
         <div><p class="eyebrow">{{ t('resourceSelection.sources') }}</p><h2 :id="titleId">{{ title }}</h2></div>
         <button ref="closeButton" class="text-button" type="button" @click="emit('close')">{{ t('movie.releases.close') }}</button>
       </header>
       <div class="release-panel-content">
-        <p :id="descriptionId" class="muted-copy resource-query-hint">{{ t('resourceQuery.hint') }}</p>
         <p v-if="loading && !groups.length" class="muted-copy" role="status">{{ t('resourceQuery.loading') }}</p>
         <p v-if="error" class="browse-error" role="alert">{{ error }} <button class="text-button" type="button" @click="load">{{ t('actions.retry') }}</button></p>
         <p v-if="!loading && !error && !groups.length" class="muted-copy">{{ t('resourceSelection.none') }}</p>
         <details v-for="group in groups" :key="group.site" class="release-site-group" open>
           <summary>
-            <strong>{{ group.name }}</strong>
+            <strong class="release-site-identity">
+              <span class="resource-site-outline" :style="resourceSiteIconStyle(group.site)" aria-hidden="true" />
+              {{ group.name }}
+            </strong>
             <span v-if="group.site === defaultSite" class="integration-default-badge">{{ t('integrationDefaults.default') }}</span>
             <span class="release-site-status">{{ group.loading ? t('resourceQuery.loading') : group.error ? t('movie.resource.checkFailed') : t('resourceSelection.releaseCount', { count: group.result?.releases.length ?? 0 }) }}</span>
             <button class="release-site-refresh" type="button" :disabled="group.loading" :aria-label="t('resourceSelection.refreshSite', { name: group.name })"
@@ -109,7 +111,6 @@ onBeforeUnmount(() => {
   color: #e2e0d9;
 }
 .resource-query-dialog::backdrop { background: rgba(3, 4, 5, .78); backdrop-filter: blur(5px); }
-.resource-query-hint { margin: 0 0 20px; font-size: .8rem; line-height: 1.6; }
 .resource-query-description { margin: -2px 0 14px; color: #aeb3ba; font-size: .78rem; line-height: 1.6; overflow-wrap: anywhere; }
 .resource-query-more { margin-top: 16px; }
 @media (max-width: 700px) {

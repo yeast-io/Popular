@@ -4227,6 +4227,9 @@ body:has(.settings-page)::after {
 .release-site-group[open] > summary::before { content: '▾'; }
 .release-site-group > summary > .release-site-status { margin-left: auto; color: #a7aaa4; font-size: .8rem; }
 .release-site-group > summary::-webkit-details-marker { display: none; }
+.release-site-identity { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.release-site-identity .resource-site-outline { flex-shrink: 0; }
+.release-site-group > summary > .integration-default-badge { padding: 1px 5px; font-size: .62rem; line-height: 1.3; }
 .release-site-content { padding: 0 4px 16px; }
 .release-query-time { color: #989c96; font-size: .75rem; }
 .release-downloader-select { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 0; border-bottom: 1px solid #ffffff14; color: #a7aaa4; font-size: .78rem; }

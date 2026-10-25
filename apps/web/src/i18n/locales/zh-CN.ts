@@ -3,7 +3,6 @@ const zhCN = {
   'resourceQuery.error': '资源查询失败，请重试。',
   'resourceQuery.empty': '未找到匹配的资源。',
   'resourceQuery.openDetails': '打开资源详情',
-  'resourceQuery.hint': '结果可能包含单集或合集，请在资源详情中确认集数范围。',
   'watchlist.loadMore': '加载更多',
   'watchlist.countOne': '1 部',
   'watchlist.back': '← 返回想看清单',

@@ -5,7 +5,6 @@ const enUS = {
   'resourceQuery.error': 'Could not search resources. Please try again.',
   'resourceQuery.empty': 'No matching resources found.',
   'resourceQuery.openDetails': 'Open release details',
-  'resourceQuery.hint': 'Results may include individual episodes or packs. Check the episode coverage in the release details.',
   'watchlist.loadMore': 'Load more',
   'watchlist.countOne': '1 title',
   'watchlist.back': '← Back to watch list',

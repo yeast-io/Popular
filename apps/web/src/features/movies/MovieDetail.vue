@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { resourceSiteIconStyle } from './resource-site.presentation';
 import type { RemoteClientDevice, RemoteClientConfiguration, IntegrationPreferences, ApiError, DownloadProvider, DownloaderChoice, DownloadSource, DownloadProviderListResponse, MovieDetail, MovieDownload, MovieDownloadListResponse, MovieRelease, MovieResourceCheckResponse, MovieStatus, TrackedMovieStatus } from '@movie-hub/contract';
 import { getIntegrationLogo } from '../settings/integration-logos';
 import type { MovieSiteReleaseGroup } from './movie-site-releases.types';
@@ -987,7 +988,10 @@ function syncedAtLabel(syncedAt: string): string {
             <p v-if="!releasesLoading && !releaseGroups.length" class="muted-copy">{{ t('resourceSelection.none') }}</p>
             <details v-for="group in releaseGroups" :key="group.site" class="release-site-group" :open="expandedSites.includes(group.site)" @toggle="groupToggled(group.site, $event)">
               <summary>
-                <strong>{{ group.name }}</strong>
+                <strong class="release-site-identity">
+                  <span class="resource-site-outline" :style="resourceSiteIconStyle(group.site)" aria-hidden="true" />
+                  {{ group.name }}
+                </strong>
                 <span v-if="integrationPreferences?.defaults.resource === group.site" class="integration-default-badge">{{ t('integrationDefaults.default') }}</span>
                 <span v-if="group.loading" class="release-site-status">{{ t('movie.releases.loading') }}</span>
                 <span v-else-if="group.error" class="release-site-status">{{ t('movie.resource.checkFailed') }}</span>
