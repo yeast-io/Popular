@@ -1,3 +1,5 @@
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
+import type { MediaTrendingLock } from '../media-trending/media-trending.types.js';
 import type { Locale, MovieTrailer, TvShowSummary } from '@movie-hub/contract';
 import type { TvSeasonRecord } from './tv-season.types.js';
 import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
@@ -41,13 +43,8 @@ export interface TvTrendingPage {
   totalPages: number;
   totalResults: number;
 }
-export interface TvTrendingSnapshot extends TvTrendingPage {
-  generation: string;
-  fetchedAt: Date;
-  freshUntil: Date;
+export interface TvDiagnostics {
+  logger: AiLogger;
+  verbose: boolean;
 }
-export interface TvTrendingStore {
-  readPage(page: number, locale: Locale, generation?: string): Promise<TvTrendingSnapshot | null>;
-  writePage(record: TvTrendingSnapshot, locale: Locale, publish: boolean): Promise<void>;
-  readIds(locale: Locale, generation: string): Promise<number[]>;
-}
+export type TvSyncLock = MediaTrendingLock;

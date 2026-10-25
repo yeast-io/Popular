@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MongoTrendingStore, searchKey, trendingGenerationKey, trendingKey } from './movie.store.js';
+import { MongoMovieCatalogStore, searchKey } from './movie.store.js';
 
 test('Chinese and English summaries use separate localization identities', async () => {
   const movieWrites: unknown[] = [];
@@ -15,7 +15,7 @@ test('Chinese and English summaries use separate localization identities', async
       localizationWrites.push(...writes);
     },
   };
-  const store = new MongoTrendingStore(movies as never, localizations as never, {} as never);
+  const store = new MongoMovieCatalogStore(movies as never, localizations as never, {} as never);
   const syncedAt = new Date('2026-10-12T00:00:00.000Z');
 
   await store.upsertMovies(
@@ -102,7 +102,7 @@ test('movie detail upsert keeps image paths scoped to the requested locale', asy
   };
   const people = { bulkWrite: async () => undefined };
   const credits = { insertMany: async () => undefined, deleteMany: async () => undefined };
-  const store = new MongoTrendingStore(
+  const store = new MongoMovieCatalogStore(
     movies as never,
     localizations as never,
     {} as never,
@@ -146,7 +146,7 @@ test('movie detail stores a localized trailer and clears it when TMDB no longer 
   };
   const people = { bulkWrite: async () => undefined };
   const credits = { insertMany: async () => undefined, deleteMany: async () => undefined };
-  const store = new MongoTrendingStore(
+  const store = new MongoMovieCatalogStore(
     movies as never,
     localizations as never,
     {} as never,
@@ -223,7 +223,7 @@ test('reads the image paths belonging to the requested locale', async () => {
       };
     },
   };
-  const store = new MongoTrendingStore(movies as never, localizations as never, {} as never);
+  const store = new MongoMovieCatalogStore(movies as never, localizations as never, {} as never);
 
   const [chinese] = await store.readMovies([42], 'zh-CN');
   const [english] = await store.readMovies([42], 'en-US');
@@ -232,80 +232,7 @@ test('reads the image paths belonging to the requested locale', async () => {
   assert.equal(english?.posterPath, '/en-poster.jpg');
 });
 
-test('trending and search cache keys are isolated by locale', () => {
-  assert.notEqual(trendingKey('zh-CN', 1), trendingKey('en-US', 1));
+test('search cache keys are isolated by locale', () => {
   assert.notEqual(searchKey('Movie', 'zh-CN', 1), searchKey('Movie', 'en-US', 1));
-  assert.match(trendingKey('en-US', 1), /:en-US:/);
   assert.match(searchKey('Movie', 'zh-CN', 1), /^search:movie:zh-CN:/);
-});
-
-test('publishes every generation page before switching the active pointer', async () => {
-  const calls: string[] = [];
-  const resultWrites: unknown[][] = [];
-  const movies = {
-    bulkWrite: async () => {
-      calls.push('movies');
-    },
-  };
-  const localizations = {
-    bulkWrite: async () => {
-      calls.push('localizations');
-    },
-  };
-  const resultSets = {
-    bulkWrite: async (writes: unknown[]) => {
-      calls.push('pages');
-      resultWrites.push(writes);
-    },
-    updateMany: async () => {
-      calls.push('expire-old');
-    },
-  };
-  const states = {
-    updateOne: async () => {
-      calls.push('activate');
-    },
-  };
-  const store = new MongoTrendingStore(
-    movies as never,
-    localizations as never,
-    resultSets as never,
-    undefined,
-    undefined,
-    states as never
-  );
-  const generation = '00000000-0000-4000-8000-000000000001';
-  const fetchedAt = new Date('2026-10-13T00:00:00.000Z');
-
-  await store.publishSnapshot(
-    {
-      generation,
-      sourcePage: 3,
-      pageSize: 1,
-      fetchedAt,
-      pages: [1, 2].map((page) => {
-        return {
-          page,
-          totalPages: 10,
-          totalResults: 10,
-          fetchedAt,
-          movies: [{ tmdbId: page, title: `Movie ${page}`, genreIds: [] }],
-        };
-      }),
-    },
-    'zh-CN'
-  );
-
-  assert.deepEqual(calls, ['movies', 'localizations', 'pages', 'activate', 'expire-old']);
-  const writes = resultWrites[0] as Array<{
-    updateOne: { filter: { key: string }; update: { $set: { generation: string } } };
-  }>;
-  assert.deepEqual(
-    writes.map(({ updateOne }) => updateOne.filter.key),
-    [trendingGenerationKey('zh-CN', generation, 1), trendingGenerationKey('zh-CN', generation, 2)]
-  );
-  assert.equal(
-    writes.every(({ updateOne }) => updateOne.update.$set.generation === generation),
-    true
-  );
 });

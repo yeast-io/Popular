@@ -4,44 +4,17 @@ import type {
   MovieRecord,
   MovieStatusRecord,
   TrendingPageRecord,
-  TrendingSnapshotRecord,
-  TrendingStore,
 } from './movie.types.js';
 import { MovieService } from './movie.service.js';
 
 const generation = '00000000-0000-4000-8000-000000000001';
 
-class MemoryTrendingStore implements TrendingStore {
+class MemoryTrendingStore {
   readonly pages = new Map<string, TrendingPageRecord>();
 
-  async publishSnapshot(record: TrendingSnapshotRecord, locale: 'zh-CN' | 'en-US') {
-    for (const page of record.pages) this.pages.set(`${locale}:${page.page}`, page);
-  }
-
-  async appendSnapshotPage(record: TrendingPageRecord, locale: 'zh-CN' | 'en-US') {
-    this.pages.set(`${locale}:${record.page}`, record);
-  }
-
-  async readPage(page: number, locale: 'zh-CN' | 'en-US', requestedGeneration?: string) {
-    const record = this.pages.get(`${locale}:${page}`);
-    if (!record || (requestedGeneration && requestedGeneration !== generation)) return null;
-    return { ...record, generation };
-  }
-
-  async readSnapshot(locale: 'zh-CN' | 'en-US', requestedGeneration: string) {
-    if (requestedGeneration !== generation) return null;
-    const pages = [...this.pages.entries()]
-      .filter(([key]) => key.startsWith(`${locale}:`))
-      .map(([, page]) => page)
-      .sort((left, right) => left.page - right.page);
-    if (!pages.length) return null;
-    return {
-      generation,
-      pages,
-      sourcePage: pages.length,
-      pageSize: pages[0]!.movies.length,
-      fetchedAt: pages[0]!.fetchedAt,
-    };
+  async page(page: number, locale: 'zh-CN' | 'en-US') {
+    const record = this.pages.get(`${locale}:${page}`)!;
+    return { ...record, items: record.movies, generation, fetchedAt: record.fetchedAt.toISOString(), hasMore: page < record.totalPages };
   }
 }
 
@@ -68,8 +41,7 @@ test('trending preserves source order and maps optional presentation fields', as
     ],
   }
   );
-  const sync = { syncPage: async () => ({ status: 'completed' as const, pages: 1, movies: 0 }) };
-  const service = new MovieService(store, sync as never);
+  const service = new MovieService(store);
 
   const result = await service.trending(1, 'zh-CN', null);
   assert.deepEqual(
@@ -84,95 +56,16 @@ test('trending preserves source order and maps optional presentation fields', as
   assert.equal(result.locale, 'zh-CN');
 });
 
-test('trending lazily syncs the requested locale when its page is missing', async () => {
-  const store = new MemoryTrendingStore();
-  let requestedLocale = '';
-  const sync = {
-    syncPage: async (page: number, _trigger: string, locale: 'zh-CN' | 'en-US') => {
-      requestedLocale = locale;
-      await store.publishSnapshot(
-        {
-          generation,
-          sourcePage: page,
-          pageSize: 1,
-          fetchedAt,
-          pages: [
-            { page, totalPages: 1, totalResults: 1, fetchedAt, movies: [{ tmdbId: 1, title: 'Movie', genreIds: [] }] },
-          ],
-        },
-        locale
-      );
-      return { status: 'completed' as const, pages: 1, movies: 1 };
-    },
-  };
-  const result = await new MovieService(store, sync as never).trending(1, 'en-US', null);
-  assert.equal(requestedLocale, 'en-US');
-  assert.equal(result.locale, 'en-US');
-});
-
-test('trending reports a stable error when sync completes without publishing a page', async () => {
-  const sync = { syncPage: async () => ({ status: 'completed' as const, pages: 1, movies: 0 }) };
-  const service = new MovieService(new MemoryTrendingStore(), sync as never);
-  await assert.rejects(() => service.trending(1, 'zh-CN', null), { statusCode: 503, code: 'TRENDING_NOT_SYNCED' });
-});
-
-test('trending does not let a direct request lazily sync an arbitrary later page', async () => {
-  let called = false;
-  const sync = {
-    syncPage: async () => {
-      called = true;
-      return { status: 'completed' as const, pages: 1, movies: 0 };
-    },
-  };
-  const service = new MovieService(new MemoryTrendingStore(), sync as never);
-
-  await assert.rejects(() => service.trending(37, 'en-US', null), { statusCode: 503, code: 'TRENDING_NOT_SYNCED' });
-  assert.equal(called, false);
-});
-
-test('load more syncs only the next missing page', async () => {
-  const store = new MemoryTrendingStore();
-  store.pages.set('en-US:1', {
-    page: 1,
-    totalPages: 2,
-    totalResults: 1,
-    fetchedAt,
-    movies: [{ tmdbId: 7, title: 'First', genreIds: [] }],
-  }
-  );
-  let requestedPage = 0;
-  const sync = {
-    syncPage: async (page: number, _trigger: string, locale: string, requestedGeneration: string) => {
-      assert.equal(locale, 'en-US');
-      assert.equal(requestedGeneration, generation);
-      requestedPage = page;
-      store.pages.set(`${locale}:${page}`, {
-        page,
-        totalPages: 2,
-        totalResults: 1,
-        fetchedAt,
-        movies: [{ tmdbId: 8, title: 'Next', genreIds: [] }],
-      }
-      );
-      return { status: 'completed' as const, pages: 1, movies: 1 };
-    },
-  };
-  const result = await new MovieService(store, sync as never).loadMore(1, generation, 'en-US', null);
-  assert.equal(requestedPage, 2);
+test('load more delegates the next page with the pinned generation, locale and owner', async () => {
+  const reader = { page: async (page: number, locale: 'zh-CN' | 'en-US', owner: string | null, version?: string) => {
+    assert.equal(page, 2);
+    assert.equal(locale, 'en-US');
+    assert.equal(owner, 'owner');
+    assert.equal(version, generation);
+    return { items: [], page, totalPages: 2, totalResults: 1, fetchedAt: fetchedAt.toISOString(), generation, hasMore: false };
+  } };
+  const result = await new MovieService(reader).loadMore(1, generation, 'en-US', 'owner');
   assert.equal(result.page, 2);
-});
-
-test('load more rejects a fabricated current page instead of allowing arbitrary TMDB fetches', async () => {
-  let called = false;
-  const sync = {
-    syncPage: async () => {
-      called = true;
-      return { status: 'completed' as const, pages: 1, movies: 0 };
-    },
-  };
-  const service = new MovieService(new MemoryTrendingStore(), sync as never);
-  await assert.rejects(() => service.loadMore(37, generation, 'zh-CN', null), { statusCode: 400, code: 'BAD_REQUEST' });
-  assert.equal(called, false);
 });
 
 test('search caches results and merges statuses for the authenticated owner', async () => {
@@ -210,7 +103,7 @@ test('search caches results and merges statuses for the authenticated owner', as
       return [{ tmdbId: 42, status: 'interested', preference: 'liked', updatedAt: fetchedAt }];
     },
   };
-  const service = new MovieService(store, {} as never, provider, catalog, statuses as never);
+  const service = new MovieService(store, provider, catalog, statuses as never);
 
   const result = await service.search(' 银河 ', 1, 'en-US', 'owner-1');
 
@@ -261,7 +154,7 @@ test('search uses only a fresh summary cache for the requested locale', async ()
     },
   };
 
-  const result = await new MovieService(store, {} as never, provider, catalog).search('movie', 1, 'en-US', null);
+  const result = await new MovieService(store, provider, catalog).search('movie', 1, 'en-US', null);
   assert.equal(providerCalls, 0);
   assert.equal(result.items[0]?.title, 'Cached title');
   assert.equal(result.source, 'cache');
@@ -310,7 +203,7 @@ test('search refreshes a summary cache that belongs to another locale', async ()
     },
   };
 
-  const result = await new MovieService(store, {} as never, provider, catalog).search('movie', 1, 'en-US', null);
+  const result = await new MovieService(store, provider, catalog).search('movie', 1, 'en-US', null);
   assert.equal(providerCalls, 1);
   assert.equal(result.items[0]?.title, 'English title');
   assert.equal(result.source, 'tmdb');
@@ -351,7 +244,7 @@ test('search falls back only to a stale cache in the requested locale', async ()
     readMovieDetail: async () => null,
   };
 
-  const result = await new MovieService(store, {} as never, provider, catalog).search('movie', 1, 'en-US', null);
+  const result = await new MovieService(store, provider, catalog).search('movie', 1, 'en-US', null);
   assert.equal(result.items[0]?.title, 'Old English title');
   assert.equal(result.source, 'local-fallback');
 });
@@ -393,7 +286,7 @@ test('search rejects a different-locale cache when TMDB fails', async () => {
   };
 
   await assert.rejects(
-    () => new MovieService(store, {} as never, provider, catalog).search('movie', 1, 'en-US', null),
+    () => new MovieService(store, provider, catalog).search('movie', 1, 'en-US', null),
     /TMDB unavailable/
   );
 });
@@ -447,7 +340,7 @@ test('detail fetches, persists, and returns cast and director metadata', async (
       persisted = true;
     },
   };
-  const service = new MovieService(store, {} as never, provider, catalog);
+  const service = new MovieService(store, provider, catalog);
   const result = await service.detail(42, 'zh-CN', null);
   assert.equal(persisted, true);
   assert.equal(result.runtimeMinutes, 120);
@@ -510,7 +403,7 @@ test('detail never falls back to another locale when TMDB fails', async () => {
     readMovieDetail: async () => fallbackDetail,
   };
 
-  const service = new MovieService(store, {} as never, provider, catalog);
+  const service = new MovieService(store, provider, catalog);
   await assert.rejects(() => service.detail(42, 'en-US', null), /TMDB unavailable/);
   assert.equal(providerCalls, 1);
 });
@@ -559,7 +452,7 @@ test('detail refreshes a legacy cache once when trailer metadata has never been 
     readMovieDetail: async () => legacyDetail,
   };
 
-  const result = await new MovieService(store, {} as never, provider, catalog).detail(42, 'en-US', null);
+  const result = await new MovieService(store, provider, catalog).detail(42, 'en-US', null);
   assert.equal(providerCalls, 1);
   assert.equal(result.title, 'Refreshed detail');
 });
@@ -598,7 +491,7 @@ test('detail falls back to stale detail only in the requested locale', async () 
     readMovieDetail: async () => staleEnglish,
   };
 
-  const result = await new MovieService(store, {} as never, provider, catalog).detail(42, 'en-US', null);
+  const result = await new MovieService(store, provider, catalog).detail(42, 'en-US', null);
   assert.equal(result.title, 'Old English detail');
   assert.equal(result.locale, 'en-US');
   assert.equal(result.stale, true);

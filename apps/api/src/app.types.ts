@@ -2,7 +2,8 @@ import type { TvPreferenceService } from './modules/tv-preferences/tv-preference
 import type { WatchlistService } from './modules/watchlist/watchlist.service.js';
 import type { TvShowService } from './modules/tv-shows/tv-show.service.js';
 import type { TvSeasonService } from './modules/tv-shows/tv-season.service.js';
-import type { TvTrendingSyncService } from './modules/tv-shows/tv-trending-sync.service.js';
+import type { MediaTrendingReader } from './modules/media-trending/media-trending.types.js';
+import type { TvShowRecord } from './modules/tv-shows/tv-show.types.js';
 import type { RemoteDownloadCoordinator } from './modules/remote-downloads/remote-download-coordinator.service.js';
 import type { RemoteClientService } from './modules/remote-clients/remote-client.service.js';
 import type { IntegrationPreferencesService } from './modules/integrations/integration-preferences.service.js';
@@ -35,7 +36,7 @@ export interface BuildAppOptions {
   watchlistService?: WatchlistService;
   tvShowService?: TvShowService;
   tvSeasonService?: TvSeasonService;
-  tvTrendingService?: TvTrendingSyncService;
+  tvTrendingService?: MediaTrendingReader<TvShowRecord>;
   remoteDownloadCoordinator?: RemoteDownloadCoordinator;
   remoteClientService?: RemoteClientService;
   integrationPreferencesService?: IntegrationPreferencesService;

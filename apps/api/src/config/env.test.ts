@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { InvalidEnvironmentError, loadConfig, loadTrendingConfig } from './env.js';
+import { InvalidEnvironmentError, loadConfig, loadMongoMaintenanceConfig } from './env.js';
 
 const valid = {
   WEB_ORIGIN: 'http://localhost:5173',
@@ -57,28 +57,26 @@ test('rejects a URL in MINIO_ENDPOINT before constructing the SDK client', () =>
   );
 });
 
-test('trending job config does not require unrelated web, session, or MinIO settings', () => {
-  const config = loadTrendingConfig({
+test('catalog maintenance requires only MongoDB configuration', () => {
+  const config = loadMongoMaintenanceConfig({
     MONGODB_URI: valid.MONGODB_URI,
     REDIS_URL: valid.REDIS_URL,
     TMDB_READ_ACCESS_TOKEN: valid.TMDB_READ_ACCESS_TOKEN,
   }
   );
-  assert.equal(config.TMDB_LANGUAGE, 'zh-CN');
   assert.equal(config.MONGODB_DB_NAME, 'movie_hub');
 });
 
 test('rejects an unsupported configured TMDB locale', () => {
-  assert.throws(() => {
-    return loadTrendingConfig({
-      MONGODB_URI: valid.MONGODB_URI,
-      REDIS_URL: valid.REDIS_URL,
-      TMDB_READ_ACCESS_TOKEN: valid.TMDB_READ_ACCESS_TOKEN,
-      TMDB_LANGUAGE: 'fr-FR',
-    }
-    );
-  }, /TMDB_LANGUAGE/
-  );
+  assert.throws(() => loadConfig({ ...valid, TMDB_LANGUAGE: 'fr-FR' }), /TMDB_LANGUAGE/);
+});
+
+test('homepage cache TTL defaults to 15 minutes and validates overrides', () => {
+  assert.equal(loadConfig(valid).MEDIA_TRENDING_CACHE_TTL_SECONDS, 900);
+  assert.equal(loadConfig({ ...valid, MEDIA_TRENDING_CACHE_TTL_SECONDS: '60' }).MEDIA_TRENDING_CACHE_TTL_SECONDS, 60);
+  for (const ttl of ['0', '-1', '1.5', 'invalid', '86401']) {
+    assert.throws(() => loadConfig({ ...valid, MEDIA_TRENDING_CACHE_TTL_SECONDS: ttl }), /MEDIA_TRENDING_CACHE_TTL_SECONDS/);
+  }
 });
 
 test('accepts a 50 MB avatar limit and rejects larger values', () => {
@@ -157,7 +155,7 @@ test('Redis lock tracing defaults off and validates the switch for API and sync 
   assert.equal(loadConfig(valid).REDIS_LOCK_TRACE_ENABLED, false);
   assert.equal(loadConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'true' }).REDIS_LOCK_TRACE_ENABLED, true);
   assert.equal(loadConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'false' }).REDIS_LOCK_TRACE_ENABLED, false);
-  assert.equal(loadTrendingConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'true' }).REDIS_LOCK_TRACE_ENABLED, true);
+  assert.equal(loadConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'true' }).REDIS_LOCK_TRACE_ENABLED, true);
   assert.throws(() => loadConfig({ ...valid, REDIS_LOCK_TRACE_ENABLED: 'yes' }), /REDIS_LOCK_TRACE_ENABLED/);
 });
 

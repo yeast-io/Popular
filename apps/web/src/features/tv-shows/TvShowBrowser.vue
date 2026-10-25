@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from '../../i18n';
 import { loadWebConfig } from '../../config/env';
 import { localizedResponseError } from '../../i18n/api-error';
-import { localizedErrorMessage } from '../../i18n/api-error';
+import { LocalizedApiError, localizedErrorMessage } from '../../i18n/api-error';
 import { tvRequest } from './tv-show.client';
 import TvShowCard from './TvShowCard.vue';
 import MediaSearchBox from '../media/MediaSearchBox.vue';
@@ -68,8 +68,15 @@ async function load(reset = false) {
     hasMore.value = response.hasMore;
     stale.value = response.stale;
   } catch (cause) {
-    if (id === requestId && !current.signal.aborted)
+    if (id === requestId && !current.signal.aborted) {
+      if (cause instanceof LocalizedApiError && cause.translationKey === 'errors.mediaTrendingExpired') {
+        shows.value = [];
+        page.value = 0;
+        generation.value = '';
+        hasMore.value = false;
+      }
       error.value = localizedErrorMessage(cause, 'tv.error.load');
+    }
   } finally {
     if (id === requestId)
       loading.value = false;

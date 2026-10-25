@@ -13,15 +13,13 @@ import type {
   MovieRecord,
   MovieSearchProvider,
   MovieStatusStore,
-  TrendingStore,
 } from './movie.types.js';
-import type { TrendingSyncService } from './trending-sync.service.js';
+import type { MediaTrendingReader } from '../media-trending/media-trending.types.js';
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class MovieService {
   constructor(
-    private readonly store: TrendingStore,
-    private readonly sync: TrendingSyncService,
+    private readonly trendingReader: MediaTrendingReader<MovieRecord>,
     private readonly provider?: MovieSearchProvider,
     private readonly catalog?: MovieCatalogStore,
     private readonly statuses?: MovieStatusStore
@@ -33,28 +31,13 @@ export class MovieService {
     ownerId: string | null,
     generation?: string
   ): Promise<TrendingMoviesResponse> {
-    let result = await this.store.readPage(page, locale, generation);
-    if (!result && page === 1) {
-      const sync = await this.sync.syncPage(page, 'request', locale);
-      if (sync.status === 'skipped') {
-        result = await this.store.readPage(page, locale);
-        if (!result)
-          throw new AppError(
-            409,
-            'TRENDING_SYNC_IN_PROGRESS',
-            'This page is already being refreshed. Please retry shortly.'
-          );
-      } else {
-        result = await this.store.readPage(page, locale);
-      }
-    }
-    if (!result) throw new AppError(503, 'TRENDING_NOT_SYNCED', 'Trending movies are not available yet.');
+    const result = await this.trendingReader.page(page, locale, ownerId, generation);
     const stateByMovie = await this.stateMap(
       ownerId,
-      result.movies.map(({ tmdbId }) => tmdbId)
+      result.items.map(({ tmdbId }) => tmdbId)
     );
     return {
-      items: result.movies.map((movie) => {
+      items: result.items.map((movie) => {
         return toMovieSummary(
           movie,
           stateByMovie.get(movie.tmdbId)?.status,
@@ -62,10 +45,10 @@ export class MovieService {
         );
       }),
       page: result.page,
-      hasMore: result.page < result.totalPages,
+      hasMore: result.hasMore,
       source: 'cache',
       resultCompleteness: 'complete',
-      fetchedAt: result.fetchedAt.toISOString(),
+      fetchedAt: result.fetchedAt,
       generation: result.generation,
       locale,
     };
@@ -180,21 +163,7 @@ export class MovieService {
     locale: Locale,
     ownerId: string | null
   ): Promise<TrendingMoviesResponse> {
-    const current = await this.store.readPage(currentPage, locale, generation);
-    if (!current) throw new AppError(400, 'BAD_REQUEST', 'The current trending page is not available.');
-    if (currentPage >= current.totalPages) throw new AppError(400, 'BAD_REQUEST', 'There are no more trending pages.');
-    const nextPage = currentPage + 1;
-    const existing = await this.store.readPage(nextPage, locale, generation);
-    if (!existing) {
-      const result = await this.sync.syncPage(nextPage, 'load-more', locale, generation);
-      if (result.status === 'skipped')
-        throw new AppError(
-          409,
-          'TRENDING_SYNC_IN_PROGRESS',
-          'This page is already being refreshed. Please retry shortly.'
-        );
-    }
-    return this.trending(nextPage, locale, ownerId, generation);
+    return this.trending(currentPage + 1, locale, ownerId, generation);
   }
 }
 

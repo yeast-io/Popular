@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mediaTrendingPolicy } from '../modules/media-trending/media-trending.policy.js';
 import { DEFAULT_OPENAI_SYSTEM_PROMPT } from './system-prompts/default.prompts.js';
 import { supportedLocales } from '@movie-hub/contract';
 
@@ -48,9 +49,7 @@ const trendingFields = {
   TMDB_READ_ACCESS_TOKEN: z.string().min(1),
   TMDB_LANGUAGE: z.enum(supportedLocales).default('zh-CN'),
   TMDB_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
-  TRENDING_SYNC_PAGES: z.coerce.number().int().min(1).max(50).default(3),
-  TRENDING_SYNC_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(3),
-  TRENDING_SYNC_LOCK_TTL_SECONDS: z.coerce.number().int().min(30).max(3_600).default(300),
+  MEDIA_TRENDING_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(mediaTrendingPolicy.defaultTtlSeconds),
 };
 
 export const EnvSchema = z
@@ -234,13 +233,8 @@ export const EnvSchema = z
     }
   });
 
-export const TrendingEnvSchema = z.object({
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  ...mongodbFields,
-  ...redisFields,
-  ...trendingFields,
-});
+export const MongoMaintenanceEnvSchema = z.object({ ...mongodbFields });
 
 export type AppConfig = z.infer<typeof EnvSchema> & { trustProxy: false | string[] };
 
-export type TrendingConfig = z.infer<typeof TrendingEnvSchema>;
+export type MongoMaintenanceConfig = z.infer<typeof MongoMaintenanceEnvSchema>;

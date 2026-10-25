@@ -4,7 +4,7 @@ import { TmdbHttpError } from '../../infrastructure/tmdb/tmdb-http.client.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 import type { TvShowCatalogStore, TvShowProvider } from './tv-show.types.js';
-import type { TvSyncLock } from './tv-trending-sync.types.js';
+import type { TvSyncLock } from './tv-show.types.js';
 import { tvShowPolicy } from './tv-show.policy.js';
 import { tvShowMessages } from './tv-show.presentation.js';
 import { definedFields, tvShowSummary, tvSeasonSummary } from './tv-show.domain.js';

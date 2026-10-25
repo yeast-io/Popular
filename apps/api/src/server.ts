@@ -2,15 +2,12 @@ import { TvPreferenceService } from './modules/tv-preferences/tv-preference.serv
 import { MongoTvPreferenceStore } from './infrastructure/mongodb/tv-preferences/tv-preference.store.js';
 import { WatchlistService } from './modules/watchlist/watchlist.service.js';
 import { MongoTvWatchlistStore } from './infrastructure/mongodb/watchlist/tv-watchlist.store.js';
-import { tvShowPolicy } from './modules/tv-shows/tv-show.policy.js';
 import { TmdbHttpClient } from './infrastructure/tmdb/tmdb-http.client.js';
 import { TmdbTvClient } from './infrastructure/tmdb/tmdb-tv.client.js';
 import { MongoTvShowStore } from './infrastructure/mongodb/tv-shows/tv-show.store.js';
 import { MongoTvSeasonStore } from './infrastructure/mongodb/tv-shows/tv-season.store.js';
-import { MongoTvTrendingStore } from './infrastructure/mongodb/tv-shows/tv-trending.store.js';
 import { TvShowService } from './modules/tv-shows/tv-show.service.js';
 import { TvSeasonService } from './modules/tv-shows/tv-season.service.js';
-import { TvTrendingSyncService } from './modules/tv-shows/tv-trending-sync.service.js';
 import OpenAI from 'openai';
 import './config/load-env.js';
 import { randomUUID } from 'node:crypto';
@@ -75,11 +72,12 @@ import { RedisSessionStore } from './infrastructure/redis/session.store.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { MinioAvatarStore } from './infrastructure/minio/avatar.store.js';
 import { UserService } from './modules/users/user.service.js';
-import { MongoTrendingStore } from './infrastructure/mongodb/movies/movie.store.js';
+import { MongoMovieCatalogStore } from './infrastructure/mongodb/movies/movie.store.js';
 import { RedisSyncLock } from './infrastructure/redis/sync-lock.store.js';
 import { TmdbClient } from './infrastructure/tmdb/client.js';
 import { MovieService } from './modules/movies/movie.service.js';
-import { TrendingSyncService } from './modules/movies/trending-sync.service.js';
+import { MediaTrendingService } from './modules/media-trending/media-trending.service.js';
+import { RedisMediaTrendingStore } from './infrastructure/redis/media-trending/media-trending.store.js';
 import { MongoMovieStatusStore } from './infrastructure/mongodb/movie-statuses/user-movie-state.store.js';
 import { MovieStatusService } from './modules/movie-statuses/movie-status.service.js';
 import { MongoIntegrationConfigStore } from './infrastructure/mongodb/integrations/integration-config.store.js';
@@ -219,13 +217,12 @@ try {
     config.AVATAR_MAX_BYTES,
     config.AVATAR_MAX_PIXELS
   );
-  const trendingStore = new MongoTrendingStore(
+  const movieCatalog = new MongoMovieCatalogStore(
     models.movies,
     models.movieLocalizations,
     models.movieResultSets,
     models.people,
-    models.movieCredits,
-    models.trendingStates
+    models.movieCredits
   );
   const tmdb = new TmdbClient(
     config.TMDB_READ_ACCESS_TOKEN,
@@ -234,17 +231,17 @@ try {
     undefined,
     externalUsageStore
   );
-  const trendingSync = new TrendingSyncService(
-    tmdb,
-    trendingStore,
-    new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED, loggers.app),
-    config.TMDB_LANGUAGE,
-    config.TRENDING_SYNC_LOCK_TTL_SECONDS,
-    {
-      info: (bindings, message) => loggers.app.info(bindings, message),
-      error: (bindings, message) => loggers.error.error(bindings, message),
-    }
-  );
+  const mediaTrendingStore = new RedisMediaTrendingStore(infrastructure.redis.getClient());
+  const mediaTrendingLock = new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED && config.VERBOSE, loggers.app);
+  const mediaTrendingOptions = { ttlSeconds: config.MEDIA_TRENDING_CACHE_TTL_SECONDS, logger: loggers.app, verbose: config.VERBOSE };
+  const movieTrending = new MediaTrendingService('movie', mediaTrendingStore, {
+    fetch: async (page, locale, context) => {
+      const result = await tmdb.fetchPage(page, locale, context);
+      return { ...result, items: result.movies };
+    },
+    save: (items, locale, now) => movieCatalog.upsertMovies(items, now, locale),
+    read: (ids, locale) => movieCatalog.readMovies(ids, locale),
+  }, mediaTrendingLock, mediaTrendingOptions);
   const movieStatusStore = new MongoMovieStatusStore(models.userMovieStates);
   const mteamEndpoints = { baseUrl: config.MTEAM_BASE_URL, webBaseUrl: config.MTEAM_WEB_BASE_URL };
   const integrationConfigStore = withMTeamEndpoints(
@@ -266,7 +263,7 @@ try {
     integrationConfigStore,
     secrets,
     mteam,
-    trendingStore,
+    movieCatalog,
     tmdb,
     config.TMDB_LANGUAGE,
     {
@@ -283,16 +280,19 @@ try {
     }
   );
   await Promise.all([models.tvPreferences, models.tvWatchlist, models.tvShows, models.tvShowLocalizations, models.tvSeasons, models.tvSeasonLocalizations,
-    models.tvEpisodes, models.tvEpisodeLocalizations, models.tvShowResultSets, models.tvShowTrendingStates].map((model) => model.init()));
+    models.tvEpisodes, models.tvEpisodeLocalizations].map((model) => model.init()));
   const tvProvider = new TmdbTvClient(new TmdbHttpClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS, undefined, externalUsageStore));
   const tvLock = new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED && config.VERBOSE, loggers.app);
   const tvSeasonStore = new MongoTvSeasonStore(models);
   const tvCatalog = new MongoTvShowStore(models, tvSeasonStore);
   const tvShowService = new TvShowService(tvCatalog, tvProvider, tvLock);
   const tvSeasonService = new TvSeasonService(tvSeasonStore, tvProvider, tvLock);
-  const tvTrendingService = new TvTrendingSyncService(tvProvider, new MongoTvTrendingStore(models, tvCatalog), tvLock,
-    { freshnessMs: tvShowPolicy.trendingTtlMs });
-  const movieService = new MovieService(trendingStore, trendingSync, tmdb, trendingStore, movieStatusStore);
+  const tvTrendingService = new MediaTrendingService('tv', mediaTrendingStore, {
+    fetch: (page, locale, context) => tvProvider.fetchTrending(page, locale, context),
+    save: (items, locale, now) => tvCatalog.upsertSummaries(items, locale, now),
+    read: (ids, locale) => tvCatalog.readSummaries(ids, locale),
+  }, mediaTrendingLock, mediaTrendingOptions);
+  const movieService = new MovieService(movieTrending, tmdb, movieCatalog, movieStatusStore);
   await Promise.all([models.integrationConfigs.init(), models.resourceSiteCredentials.init()]);
   const hdarea = new HDAreaAdapter(config.HDAREA_BASE_URL);
   const resourceSiteService = new ResourceSiteService(
@@ -394,7 +394,7 @@ try {
     integrationPreferencesService,
     resourceSearchService,
     resourceSiteService,
-    trendingStore,
+    movieCatalog,
     tmdb,
     config.TMDB_LANGUAGE,
     { logger: loggers.error, verbose: config.VERBOSE },
@@ -441,7 +441,7 @@ try {
   gatewayPool.start();
   const movieStatusService = new MovieStatusService(
     movieStatusStore,
-    trendingStore,
+    movieCatalog,
     config.TMDB_LANGUAGE,
     {
       schedule: (ownerId, tmdbId, options) => movieSiteResourcesService.schedule(ownerId, tmdbId, options),
@@ -600,7 +600,7 @@ try {
   const preferenceService = new PreferenceService(
     preferenceStore,
     movieStatusStore,
-    trendingStore,
+    movieCatalog,
     tmdb,
     config.TMDB_LANGUAGE,
     (ownerId) => openaiSettingsService.requireCredentials(ownerId)
@@ -618,7 +618,7 @@ try {
     new MongoRecommendationStore(recommendationModel),
     preferenceStore,
     tmdb,
-    trendingStore,
+    movieCatalog,
     movieStatusStore,
     config.TMDB_LANGUAGE,
     { logger: loggers.error, verbose: config.VERBOSE }
@@ -634,13 +634,13 @@ try {
           site.id,
           site.name,
           resourceSiteService,
-          trendingStore,
+          movieCatalog,
           config.TMDB_LANGUAGE
         );
       }),
     ],
     tmdb,
-    trendingStore,
+    movieCatalog,
     config.TMDB_LANGUAGE,
     { logger: loggers.error, verbose: config.VERBOSE }
   );
@@ -710,7 +710,7 @@ try {
   const notificationWorker = new NotificationWorker(
     notificationService,
     movieDownloadService,
-    trendingStore,
+    movieCatalog,
     config.TMDB_LANGUAGE,
     config.WEB_ORIGIN,
     (event, fields) => {
@@ -729,7 +729,7 @@ try {
     authService,
     new MongoNotificationTestStore(models.movieDownloads),
     notificationService,
-    trendingStore,
+    movieCatalog,
     config.TMDB_LANGUAGE,
     config.WEB_ORIGIN,
     undefined,

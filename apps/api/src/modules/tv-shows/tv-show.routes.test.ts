@@ -5,7 +5,6 @@ import type { AppConfig } from '../../config/env.schema.js';
 import { registerTvShowRoutes } from './tv-show.routes.js';
 import { TvShowService } from './tv-show.service.js';
 import { TvSeasonService } from './tv-season.service.js';
-import { TvTrendingSyncService } from './tv-trending-sync.service.js';
 import type { TvShowRecord, TvShowCatalogStore, TvShowProvider } from './tv-show.types.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 
@@ -23,13 +22,18 @@ test('TV routes validate inputs, retain locale/default locale, serialize media t
   const seasons = { readDetail: async () => null, readSummaries: async () => [], writeDetail: async () => {
   }, writeSummaries: async () => {
   } };
-  registerTvShowRoutes(app, new TvShowService(catalog, provider, lock), new TvSeasonService(seasons, { fetchSeason: async (tmdbId, seasonNumber) => ({ tmdbId: 1, tvShowTmdbId: tmdbId, seasonNumber, name: 'Season', episodes: [] }) }, lock), new TvTrendingSyncService(provider, { readPage: async () => null, writePage: async () => {
-  }, readIds: async () => [] }, lock, { freshnessMs: 1000 }), { TMDB_LANGUAGE: 'zh-CN', SESSION_COOKIE_NAME: 'sid' } as AppConfig, { verbose: true, logger: { info: (fields: unknown) => {
+  registerTvShowRoutes(app, new TvShowService(catalog, provider, lock), new TvSeasonService(seasons, { fetchSeason: async (tmdbId, seasonNumber) => ({ tmdbId: 1, tvShowTmdbId: tmdbId, seasonNumber, name: 'Season', episodes: [] }) }, lock), { page: async () => ({ items: [show], page: 1, totalPages: 1, totalResults: 1, generation: '00000000-0000-4000-8000-000000000001', fetchedAt: new Date().toISOString(), hasMore: false }) }, { TMDB_LANGUAGE: 'zh-CN', SESSION_COOKIE_NAME: 'sid' } as AppConfig, { verbose: true, logger: { info: (fields: unknown) => {
     logs.push(fields);
   }, error: (fields: unknown) => {
     logs.push(fields);
   } } });
   try {
+    const trending = await app.inject('/tv-shows/trending?locale=en-US');
+    assert.equal(trending.statusCode, 200);
+    assert.equal(trending.json().locale, 'en-US');
+    assert.equal(trending.json().stale, false);
+    assert.equal(trending.json().items[0]?.mediaType, 'tv');
+    assert.equal(trending.headers['cache-control'], 'private, no-store');
     const search = await app.inject('/tv-shows/search?query=Series&page=2&locale=en-US');
     assert.equal(search.statusCode, 200);
     assert.equal(search.json().page, 2);

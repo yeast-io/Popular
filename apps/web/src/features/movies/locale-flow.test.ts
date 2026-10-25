@@ -21,6 +21,32 @@ describe('localized movie page flows', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['en-US', 'zh-CN'] as const)('restarts expired movie pagination from page one (%s)', async (locale) => {
+    setLocale(locale);
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes('/load-more')) return Response.json({ error: { code: 'MEDIA_TRENDING_EXPIRED' } }, { status: 409 });
+      return Response.json({ items: [{ tmdbId: 42, title: 'Film', userStatus: 'unwatched' }], page: 1, hasMore: true,
+        source: 'cache', resultCompleteness: 'complete', generation: trendingGeneration, fetchedAt, locale });
+    }));
+    const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
+    try {
+      await flushPromises();
+      await wrapper.get('.load-more').trigger('click');
+      await flushPromises();
+      expect(wrapper.findAll('.movie-card')).toHaveLength(0);
+      expect(wrapper.text()).toContain(locale === 'zh-CN' ? '此热门列表已过期' : 'This trending list has expired');
+      await wrapper.get('.movie-state button').trigger('click');
+      await flushPromises();
+      expect(urls.at(-1)).toContain('/trending?page=1');
+      expect(wrapper.findAll('.movie-card')).toHaveLength(1);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it.each(['en-US', 'zh-CN'] as const)('hides poster preferences for guests and restores them after login (%s)', async (locale) => {
     setLocale(locale);
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({

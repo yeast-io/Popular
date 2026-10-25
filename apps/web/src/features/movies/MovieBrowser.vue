@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MediaSearchBox from '../media/MediaSearchBox.vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
-import { localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
+import { LocalizedApiError, localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
 
 const props = defineProps<{ authenticated: boolean }>();
 const emit = defineEmits<{ requireLogin: []; openMovie: [tmdbId: number] }>();
@@ -125,7 +125,14 @@ async function loadMore() {
       applyTrending(result, true);
     }
   } catch (error) {
-    if (generation === requestGeneration) errorMessage.value = messageFor(error);
+    if (generation === requestGeneration) {
+      if (error instanceof LocalizedApiError && error.translationKey === 'errors.mediaTrendingExpired') {
+        movies.value = [];
+        trendingGeneration.value = '';
+        hasMore.value = false;
+      }
+      errorMessage.value = messageFor(error);
+    }
   } finally {
     if (generation === requestGeneration) loadingMore.value = false;
   }

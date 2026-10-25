@@ -7,7 +7,6 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch --env-file=../../.env src/server.ts",
     "start": "node dist/server.js",
-    "sync:trending": "node dist/jobs/sync-trending.js",
     "reset:movies": "node dist/jobs/reset-movie-catalog.js",
     "test": "node --import tsx --test 'src/**/*.test.ts'",
     "typecheck": "tsc -p tsconfig.json --noEmit"

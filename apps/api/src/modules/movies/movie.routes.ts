@@ -18,14 +18,28 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
 import { readSessionToken } from '../auth/auth.routes.js';
 import type { AuthService } from '../auth/auth.service.js';
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import type { MovieService } from './movie.service.js';
 
 export function registerMovieRoutes(
   app: FastifyInstance,
   service: MovieService,
   auth?: AuthService,
-  config?: AppConfig
+  config?: AppConfig,
+  logger: AiLogger = app.log
 ): void {
+  async function run<T>(requestId: string, operation: string, locale: string, action: () => Promise<T>): Promise<T> {
+    const trace = new AiTrace(logger, { requestId, correlationId: requestId, locale }, '', operation, config?.VERBOSE ?? false);
+    return withAiTrace(trace, async () => {
+      try {
+        return await trace.step(operation, action);
+      } catch (error) {
+        trace.fail(error, { outcome: 'failure' });
+        throw error;
+      }
+    });
+  }
   app.get<{ Querystring: TrendingQuery }>(
     '/movies/trending',
     {
@@ -34,12 +48,13 @@ export function registerMovieRoutes(
         response: { 200: TrendingMoviesResponseSchema, 409: ApiErrorSchema, 503: ApiErrorSchema },
       },
     },
-    async (request) => {
-      return service.trending(
+    async (request, reply) => {
+      reply.header('cache-control', 'private, no-store');
+      return run(request.id, 'movie.trending', resolveLocale(request.query.locale, config), async () => service.trending(
         request.query.page ?? 1,
         resolveLocale(request.query.locale, config),
         await optionalOwnerId(request, auth, config)
-      );
+      ));
     });
 
   app.get<{ Querystring: SearchMoviesQuery }>(
@@ -84,13 +99,14 @@ export function registerMovieRoutes(
         response: { 200: TrendingMoviesResponseSchema, 400: ApiErrorSchema, 409: ApiErrorSchema, 503: ApiErrorSchema },
       },
     },
-    async (request) => {
-      return service.loadMore(
+    async (request, reply) => {
+      reply.header('cache-control', 'private, no-store');
+      return run(request.id, 'movie.trending.load-more', resolveLocale(request.body.locale, config), async () => service.loadMore(
         request.body.page,
         request.body.generation,
         resolveLocale(request.body.locale, config),
         await optionalOwnerId(request, auth, config)
-      );
+      ));
     });
 }
 

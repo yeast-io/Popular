@@ -8,10 +8,12 @@ import { readSessionToken } from '../auth/auth.routes.js';
 import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type { TvShowService } from './tv-show.service.js';
 import type { TvSeasonService } from './tv-season.service.js';
-import type { TvTrendingSyncService } from './tv-trending-sync.service.js';
-import type { TvDiagnostics } from './tv-trending-sync.types.js';
+import type { MediaTrendingReader } from '../media-trending/media-trending.types.js';
+import type { TvShowRecord } from './tv-show.types.js';
+import { tvShowSummary } from './tv-show.domain.js';
+import type { TvDiagnostics } from './tv-show.types.js';
 
-export function registerTvShowRoutes(app: FastifyInstance, shows: TvShowService, seasons: TvSeasonService, trending: TvTrendingSyncService, config: AppConfig, diagnostics: TvDiagnostics, auth?: AuthService, preferences?: TvPreferenceService): void {
+export function registerTvShowRoutes(app: FastifyInstance, shows: TvShowService, seasons: TvSeasonService, trending: MediaTrendingReader<TvShowRecord>, config: AppConfig, diagnostics: TvDiagnostics, auth?: AuthService, preferences?: TvPreferenceService): void {
   async function run<T>(requestId: string, locale: Locale, operation: string, action: () => Promise<T>): Promise<T> {
     const trace = new AiTrace(diagnostics.logger, { requestId, correlationId: requestId, locale }, '', operation, diagnostics.verbose);
     return withAiTrace(trace, async () => {
@@ -35,8 +37,9 @@ export function registerTvShowRoutes(app: FastifyInstance, shows: TvShowService,
     reply.header('cache-control', 'private, no-store');
     return run(request.id, locale, 'tv.trending', async () => {
       const owner = await ownerId(readSessionToken(request, config.SESSION_COOKIE_NAME));
-      const result = await trending.trending(request.query.page ?? 1, locale, owner, request.query.generation);
-      return { ...result, items: preferences ? await preferences.apply(owner, result.items) : result.items };
+      const result = await trending.page(request.query.page ?? 1, locale, owner, request.query.generation);
+      const items = result.items.map(tvShowSummary);
+      return { ...result, stale: false, locale, items: preferences ? await preferences.apply(owner, items) : items };
     });
   });
   app.get<{ Querystring: TvSearchQuery }>('/tv-shows/search', {

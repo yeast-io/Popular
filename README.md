@@ -73,19 +73,15 @@ The API emits Apache Combined access lines to stdout after each response. Struct
 
 Sessions are stored in Redis and referenced by an `HttpOnly`, `SameSite=Lax` cookie. Set `SESSION_TOKEN_PEPPER` to at least 32 random characters and enable `SESSION_COOKIE_SECURE` behind HTTPS.
 
-## Weekly trending movies
+## Weekly trending movies and TV shows
 
-Set `TMDB_READ_ACCESS_TOKEN`, then populate the first cached pages before serving the site:
+Set `TMDB_READ_ACCESS_TOKEN`. Both homepages fetch TMDB on a Redis list cache miss; no prewarming command is required.
 
-```bash
-corepack pnpm --filter @movie-hub/api build
-corepack pnpm --filter @movie-hub/api sync:trending
-```
-
-- `GET /api/v1/movies/trending?page=1` reads only the last successfully published MongoDB result set.
-- `POST /api/v1/movies/trending/load-more` accepts `{ "page": 1 }` and may fetch page 2 from TMDB when it is not cached.
-- Movie rows are upserted before the ordered result set is published, so a failed refresh leaves the previous page available.
-- Redis locks prevent duplicate manual syncs and duplicate on-demand page refreshes.
+- `MEDIA_TRENDING_CACHE_TTL_SECONDS=900` sets the shared default 15-minute lifetime, separately scoped by media type and locale.
+- Redis holds ordered IDs, pagination and generation metadata; MongoDB retains movie/TV content and localization records.
+- Summaries are upserted before a list is published. Distributed locks prevent duplicate refreshes.
+- All pages share the generation's fixed expiry. An expired generation requires reloading the first page.
+- `POST /api/v1/movies/trending/load-more` accepts `{ "page": 1, "generation": "<returned UUID>", "locale": "zh-CN" }`; TV pagination sends `page`, `generation` and `locale` to `/api/v1/tv-shows/trending`.
 
 ## Movie discovery flow
 
@@ -114,5 +110,4 @@ Movie metadata is stored separately from people and movie credits. To deliberate
 ```bash
 corepack pnpm --filter @movie-hub/api build
 corepack pnpm --filter @movie-hub/api reset:movies
-corepack pnpm --filter @movie-hub/api sync:trending
 ```

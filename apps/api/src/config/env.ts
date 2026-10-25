@@ -1,5 +1,5 @@
-import { EnvSchema, TrendingEnvSchema } from './env.schema.js';
-import type { AppConfig, TrendingConfig } from './env.schema.js';
+import { EnvSchema, MongoMaintenanceEnvSchema } from './env.schema.js';
+import type { AppConfig, MongoMaintenanceConfig } from './env.schema.js';
 
 export class InvalidEnvironmentError extends Error {
   constructor(public readonly issues: string[]) {
@@ -22,8 +22,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   return { ...parsed.data, trustProxy };
 }
 
-export function loadTrendingConfig(environment: NodeJS.ProcessEnv = process.env): TrendingConfig {
-  const parsed = TrendingEnvSchema.safeParse(environment);
+export function loadMongoMaintenanceConfig(environment: NodeJS.ProcessEnv = process.env): MongoMaintenanceConfig {
+  const parsed = MongoMaintenanceEnvSchema.safeParse(environment);
   if (!parsed.success) {
     throw new InvalidEnvironmentError(
       parsed.error.issues.map((issue) => {

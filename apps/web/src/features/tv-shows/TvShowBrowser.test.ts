@@ -216,3 +216,27 @@ it.each(['en-US', 'zh-CN'] as const)('hides preferences for guests and disables 
   await wrapper.setProps({ authenticated: false });
   expect(wrapper.findAll('.preference-button')).toHaveLength(0);
 });
+
+it.each(['en-US', 'zh-CN'] as const)('restarts expired TV pagination from page one (%s)', async (locale) => {
+  setLocale(locale);
+  const urls: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    urls.push(url);
+    if (url.includes('page=2')) return Response.json({ error: { code: 'MEDIA_TRENDING_EXPIRED' } }, { status: 409 });
+    return Response.json({ items: [{ mediaType: 'tv', tmdbId: 42, name: 'Series' }], page: 1, hasMore: true,
+      generation: '00000000-0000-4000-8000-000000000001', stale: false, locale });
+  }));
+  const wrapper = mount(TvShowBrowser);
+  wrappers.push(wrapper);
+  await flushPromises();
+  await wrapper.get('.tv-load-more button').trigger('click');
+  await flushPromises();
+  expect(wrapper.findAll('.tv-show-card')).toHaveLength(0);
+  expect(wrapper.text()).toContain(locale === 'zh-CN' ? '此热门列表已过期' : 'This trending list has expired');
+  await wrapper.get('.movie-state button').trigger('click');
+  await flushPromises();
+  expect(urls.at(-1)).toContain('page=1');
+  expect(urls.at(-1)).not.toContain('generation=');
+  expect(wrapper.findAll('.tv-show-card')).toHaveLength(1);
+});

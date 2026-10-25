@@ -5,7 +5,7 @@ import { setLocale } from './index';
 describe('localized API errors', () => {
   it('maps stable API codes instead of exposing server messages', () => {
     expect(apiErrorKey({ error: { code: 'UNAUTHORIZED', message: 'server copy' } })).toBe('errors.unauthorized');
-    expect(apiErrorKey({ error: { code: 'TRENDING_SYNC_IN_PROGRESS' } })).toBe('errors.trendingSyncInProgress');
+    expect(apiErrorKey({ error: { code: 'MEDIA_TRENDING_EXPIRED' } })).toBe('errors.mediaTrendingExpired');
   });
 
   it('uses the requested fallback for malformed errors', () => {

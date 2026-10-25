@@ -2,11 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { TvShowService } from './tv-show.service.js';
 import { TvSeasonService } from './tv-season.service.js';
-import { TvTrendingSyncService } from './tv-trending-sync.service.js';
 import { TmdbHttpError } from '../../infrastructure/tmdb/tmdb-http.client.js';
-import type { TvShowCatalogStore, TvShowProvider, TvShowRecord, TvTrendingSnapshot, TvTrendingStore } from './tv-show.types.js';
+import type { TvShowCatalogStore, TvShowProvider, TvShowRecord } from './tv-show.types.js';
 import type { TvSeasonRecord, TvSeasonStore } from './tv-season.types.js';
-import type { TvSyncLock } from './tv-trending-sync.types.js';
+import type { TvSyncLock } from './tv-show.types.js';
 
 const show: TvShowRecord = { mediaType: 'tv', tmdbId: 42, name: 'Series', genreIds: [], seasons: [] };
 const season: TvSeasonRecord = { tmdbId: 99, tvShowTmdbId: 42, name: 'Season', seasonNumber: 1, episodes: [], episodeCount: 0 };
@@ -94,43 +93,6 @@ test('season lock contention returns cached stale data or explicit conflict', as
     statusCode: number;
   }).statusCode === 409);
 });
-test('trending pins generation, prevents page skips and removes overlapping show IDs', async () => {
-  const pages = new Map<number, TvTrendingSnapshot>();
-  const store: TvTrendingStore = {
-    readPage: async (page, _locale, generation) => {
-      const p = pages.get(page);
-      return p && (!generation || generation === p.generation) ? p : null;
-    },
-    writePage: async (record) => {
-      pages.set(record.page, record);
-    },
-    readIds: async () => [...pages.values()].flatMap((p) => p.items.map((s) => s.tmdbId)),
-  };
-  const upstream = provider();
-  upstream.fetchTrending = async (page) => ({ items: page === 1 ? [show] : [show, { ...show, tmdbId: 43 }], page, totalPages: 4, totalResults: 50 });
-  const service = new TvTrendingSyncService(upstream, store, lock, { freshnessMs: 10000 });
-  await assert.rejects(service.trending(2, 'en-US', null), /expired/);
-  const first = await service.trending(1, 'en-US', null);
-  await assert.rejects(service.trending(3, 'en-US', null, first.generation), /expired/);
-  const second = await service.trending(2, 'en-US', null, first.generation);
-  assert.equal(second.generation, first.generation);
-  assert.deepEqual(second.items.map((s) => s.tmdbId), [43]);
-});
-test('failed trending refresh preserves active cached generation', async () => {
-  const cached = { items: [show], page: 1, totalPages: 1, totalResults: 1,
-    generation: '00000000-0000-4000-8000-000000000001', fetchedAt: new Date(0), freshUntil: new Date(0) };
-  const store: TvTrendingStore = { readPage: async () => cached, readIds: async () => [], writePage: async () => {
-    assert.fail('must not publish');
-  } };
-  const upstream = provider();
-  upstream.fetchTrending = async () => {
-    throw new Error('network');
-  };
-  const result = await new TvTrendingSyncService(upstream, store, lock, { freshnessMs: 1000 }).trending(1, 'en-US', null);
-  assert.equal(result.stale, true);
-  assert.equal(result.generation, cached.generation);
-});
-
 test('TV search trims input, attributes requests and saves only show summaries', async () => {
   const store = catalog();
   let saved: TvShowRecord[] = [];

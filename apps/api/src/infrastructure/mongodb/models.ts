@@ -6,8 +6,6 @@ import { createTvSeasonModel } from './tv-shows/tv-season.schema.js';
 import { createTvSeasonLocalizationModel } from './tv-shows/tv-season-localization.schema.js';
 import { createTvEpisodeModel } from './tv-shows/tv-episode.schema.js';
 import { createTvEpisodeLocalizationModel } from './tv-shows/tv-episode-localization.schema.js';
-import { createTvShowResultSetModel } from './tv-shows/tv-show-result-set.schema.js';
-import { createTvShowTrendingStateModel } from './tv-shows/tv-show-trending-state.schema.js';
 import { createRemoteCommandModels } from './remote-downloads/remote-command.schema.js';
 import { createRemoteDeviceModel } from './remote-clients/remote-authorization.schema.js';
 import { createIntegrationPreferencesModel } from './integrations/integration-preferences.schema.js';
@@ -32,7 +30,6 @@ import { createIntegrationConfigModel } from './integrations/integration-config.
 import { createMovieResourceCheckModel } from './movie-resources/movie-resource-check.schema.js';
 import { createMovieResourceCheckTaskModel } from './movie-resources/movie-resource-check-task.schema.js';
 import { createMovieResourceSyncBatchModel } from './movie-resources/movie-resource-sync-batch.schema.js';
-import { createTrendingStateModel } from './sync/trending-state.schema.js';
 import { createTransmissionConfigModel } from './integrations/transmission-config.schema.js';
 import { createQBittorrentConfigModel } from './integrations/qbittorrent-config.schema.js';
 import { createMovieDownloadModel } from './downloads/movie-download.schema.js';
@@ -51,8 +48,6 @@ export function createModels(connection: Connection) {
     tvSeasonLocalizations: createTvSeasonLocalizationModel(connection),
     tvEpisodes: createTvEpisodeModel(connection),
     tvEpisodeLocalizations: createTvEpisodeLocalizationModel(connection),
-    tvShowResultSets: createTvShowResultSetModel(connection),
-    tvShowTrendingStates: createTvShowTrendingStateModel(connection),
 
     remoteControl: createRemoteCommandModels(connection),
     remoteDevices: createRemoteDeviceModel(connection),
@@ -76,7 +71,6 @@ export function createModels(connection: Connection) {
     movieResourceChecks: createMovieResourceCheckModel(connection),
     movieResourceCheckTasks: createMovieResourceCheckTaskModel(connection),
     movieResourceSyncBatches: createMovieResourceSyncBatchModel(connection),
-    trendingStates: createTrendingStateModel(connection),
     transmissionConfigs: createTransmissionConfigModel(connection),
     qbittorrentConfigs: createQBittorrentConfigModel(connection),
     movieDownloads: createMovieDownloadModel(connection),

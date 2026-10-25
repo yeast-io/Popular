@@ -48,7 +48,7 @@ test('TV preferences isolate owners, decorate trending/search, toggle/clear and 
     reply.status(error instanceof AppError ? error.statusCode : 400).send({ error: { code: error instanceof AppError ? error.code : 'BAD_REQUEST', message: error instanceof Error ? error.message : String(error), requestId: request.id } });
   });
   const search = { search: async () => ({ items: publicItems, page: 1, hasMore: false, stale: false, locale: 'zh-CN' }) };
-  const trending = { trending: async () => ({ items: publicItems, page: 1, hasMore: false, generation: '00000000-0000-4000-8000-000000000001', fetchedAt: new Date().toISOString(), stale: false, locale: 'zh-CN' }) };
+  const trending = { page: async () => ({ items: publicItems, page: 1, hasMore: false, generation: '00000000-0000-4000-8000-000000000001', fetchedAt: new Date().toISOString(), stale: false, locale: 'zh-CN' }) };
   registerTvShowRoutes(app, search as never, {} as never, trending as never, config, { logger, verbose: true }, auth, service);
   registerTvPreferenceRoutes(app, service, auth, config, logger);
   const url = '/me/tv-shows/42/preference';

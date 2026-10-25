@@ -1,8 +1,8 @@
 import '../config/load-env.js';
-import { loadTrendingConfig } from '../config/env.js';
+import { loadMongoMaintenanceConfig } from '../config/env.js';
 import { MongoDbConnector } from '../infrastructure/mongodb/connector.js';
 
-const config = loadTrendingConfig();
+const config = loadMongoMaintenanceConfig();
 const mongodb = new MongoDbConnector(config.MONGODB_URI, config.MONGODB_DB_NAME);
 
 try {

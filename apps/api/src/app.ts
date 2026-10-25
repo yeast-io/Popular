@@ -123,7 +123,7 @@ export async function buildApp({
       if (tvShowService && tvSeasonService && tvTrendingService) registerTvShowRoutes(api, tvShowService, tvSeasonService, tvTrendingService, config, { logger: loggers.error, verbose: config.VERBOSE }, authService, tvPreferenceService);
       if (tvPreferenceService && authService) registerTvPreferenceRoutes(api, tvPreferenceService, authService, config, loggers.error);
       if (watchlistService && authService) registerWatchlistRoutes(api, watchlistService, authService, config, loggers.error);
-      if (movieService) registerMovieRoutes(api, movieService, authService, config);
+      if (movieService) registerMovieRoutes(api, movieService, authService, config, loggers.app);
       if (movieStatusService && authService)
         registerMovieStatusRoutes(
           api,

@@ -5,12 +5,11 @@ import mongoose from 'mongoose';
 import { createModels } from '../models.js';
 import { MongoTvShowStore } from './tv-show.store.js';
 import { MongoTvSeasonStore } from './tv-season.store.js';
-import { MongoTvTrendingStore } from './tv-trending.store.js';
 import type { TvSeasonRecord } from '../../../modules/tv-shows/tv-season.types.js';
 import type { TvShowRecord } from '../../../modules/tv-shows/tv-show.types.js';
 
 // Explicitly opt in; always use a new disposable database, never the URI's database.
-test('real Mongo TV stores preserve detail, locale isolation, incomplete-season protection and snapshot retention', {
+test('real Mongo TV stores preserve detail, locale isolation, incomplete-season protection', {
   skip: !process.env.POPULAR_TV_MONGO_TEST_URI,
 }, async () => {
   const database = `popular_tv_test_${randomUUID().replaceAll('-', '')}`;
@@ -18,10 +17,9 @@ test('real Mongo TV stores preserve detail, locale isolation, incomplete-season 
   try {
     const models = createModels(connection);
     await Promise.all([models.tvShows, models.tvShowLocalizations, models.tvSeasons, models.tvSeasonLocalizations,
-      models.tvEpisodes, models.tvEpisodeLocalizations, models.tvShowResultSets, models.tvShowTrendingStates].map((model) => model.init()));
+      models.tvEpisodes, models.tvEpisodeLocalizations].map((model) => model.init()));
     const seasons = new MongoTvSeasonStore(models);
     const catalog = new MongoTvShowStore(models, seasons);
-    const trending = new MongoTvTrendingStore(models, catalog);
     const now = new Date();
     const season: TvSeasonRecord = { tmdbId: 90, tvShowTmdbId: 42, seasonNumber: 1, name: 'Season 1', episodeCount: 1,
       episodes: [{ tmdbId: 100, tvShowTmdbId: 42, seasonNumber: 1, episodeNumber: 1, name: 'Pilot', overview: 'Story', stillPath: '/a.jpg' }] };
@@ -50,15 +48,6 @@ test('real Mongo TV stores preserve detail, locale isolation, incomplete-season 
     await seasons.writeDetail({ ...season, episodes: [{ tmdbId: 100, tvShowTmdbId: 42, seasonNumber: 1, episodeNumber: 1, name: 'Pilot' }] }, 'en-US', new Date(now.getTime() + 3));
     assert.equal((await seasons.readDetail(42, 1, 'en-US'))?.episodes?.[0]?.overview, undefined);
     assert.equal((await seasons.readDetail(42, 1, 'en-US'))?.episodes?.[0]?.stillPath, undefined);
-    const generation = randomUUID();
-    const snapshot = { items: [show], page: 1, totalPages: 2, totalResults: 2, generation, fetchedAt: now, freshUntil: new Date(now.getTime() + 100000) };
-    await trending.writePage(snapshot, 'en-US', true);
-    const next = randomUUID();
-    await trending.writePage({ ...snapshot, generation: next }, 'en-US', true);
-    assert.equal((await trending.readPage(1, 'en-US'))?.generation, next);
-    assert.equal((await trending.readPage(1, 'en-US', generation))?.generation, generation);
-    assert.ok((await models.tvShowResultSets.findOne({ generation }).lean())?.deleteAt);
-    assert.equal((await models.tvShowResultSets.findOne({ generation: next }).lean())?.deleteAt, undefined);
     await seasons.writeDetail({ ...season, episodeCount: 0, episodes: [] }, 'en-US', new Date(now.getTime() + 4));
     assert.deepEqual((await seasons.readDetail(42, 1, 'en-US'))?.episodes, []);
     const trailer = { tmdbVideoId: 'video', provider: 'youtube' as const, providerVideoId: 'Safe_video-1', name: 'Trailer', official: true, publishedAt: '2026-01-01T00:00:00.000Z' };
