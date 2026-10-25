@@ -1,8 +1,8 @@
 import type { Locale } from '@movie-hub/contract';
 import type { Redis } from 'ioredis';
-import { mediaTrendingSnapshotSchema } from '../../../modules/media-trending/media-trending.schema.js';
-import type { MediaTrendingSnapshot } from '../../../modules/media-trending/media-trending.schema.js';
-import type { MediaTrendingKind, MediaTrendingLease, MediaTrendingStore } from '../../../modules/media-trending/media-trending.types.js';
+import { mediaTrendingSnapshotSchema } from '../../modules/media-trending/media-trending.schema.js';
+import type { MediaTrendingSnapshot } from '../../modules/media-trending/media-trending.schema.js';
+import type { MediaTrendingKind, MediaTrendingLease, MediaTrendingStore } from '../../modules/media-trending/media-trending.types.js';
 
 const publishScript = `
 if redis.call('GET', KEYS[2]) ~= ARGV[1] then return 0 end

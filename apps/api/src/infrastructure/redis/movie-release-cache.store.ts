@@ -2,7 +2,7 @@ import type { Redis } from 'ioredis';
 import type {
   MovieReleaseCacheEntry,
   MovieReleaseCacheStore,
-} from '../../../modules/integrations/movie-release-cache.types.js';
+} from '../../modules/integrations/movie-release-cache.types.js';
 
 export class RedisMovieReleaseCacheStore implements MovieReleaseCacheStore {
   constructor(private readonly redis: Redis) {}

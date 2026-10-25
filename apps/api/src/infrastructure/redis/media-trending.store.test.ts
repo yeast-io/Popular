@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RedisMediaTrendingStore } from './media-trending.store.js';
-import type { MediaTrendingSnapshot } from '../../../modules/media-trending/media-trending.schema.js';
+import type { MediaTrendingSnapshot } from '../../modules/media-trending/media-trending.schema.js';
 
 const snapshot = (): MediaTrendingSnapshot => ({ generation: '00000000-0000-4000-8000-000000000001', fetchedAt: new Date().toISOString(), expiresAt: Date.now() + 900000, sourcePage: 1, pageSize: 2, totalPages: 2, totalResults: 4, pages: [[1, 2]], pendingIds: [] });
 

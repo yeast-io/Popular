@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { Redis } from 'ioredis';
 import { RedisMediaTrendingStore } from './media-trending.store.js';
-import { RedisSyncLock } from '../sync-lock.store.js';
+import { RedisSyncLock } from './sync-lock.store.js';
 
 // Opt in to a disposable server on a Unix socket; never connect to application Redis.
 test('real Redis: prefixed Lua publication enforces lease ownership and lists expire automatically', {
