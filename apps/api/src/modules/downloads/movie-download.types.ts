@@ -1,9 +1,10 @@
-import type { DownloadProvider, DownloadSource, MovieDownloadStatus } from '@movie-hub/contract';
+import type { DownloadProvider, DownloadSource, MovieDownloadStatus, ResourceSiteRelease } from '@movie-hub/contract';
 
 export interface MovieDownloadRecord {
   id: string;
   ownerId: string;
-  tmdbId: number;
+  tmdbId?: number | undefined;
+  sourceDetailsUrl?: string;
   sourceProvider: DownloadSource;
   sourceReleaseId: string;
   provider?: DownloadProvider | undefined;
@@ -46,24 +47,25 @@ export interface MovieDownloadProgress {
 export interface MovieDownloadStore {
   findByRelease(
     ownerId: string,
-    tmdbId: number,
+    tmdbId: number | undefined,
     releaseId: string,
     sourceProvider?: DownloadSource,
   ): Promise<MovieDownloadRecord | null>;
   createSubmitting(
     ownerId: string,
-    tmdbId: number,
+    tmdbId: number | undefined,
     releaseId: string,
     provider: DownloadProvider | undefined,
     sourceProvider?: DownloadSource,
     downloaderInstanceId?: string,
     downloaderName?: string,
     remote?: RemoteDownloadTarget,
+    resource?: ResourceSiteRelease,
   ): Promise<DownloadClaim>;
   retry(id: string): Promise<DownloadClaim>;
   claimMissing(record: MovieDownloadRecord, provider: DownloadProvider | undefined,
     downloaderInstanceId?: string, downloaderName?: string, remote?: RemoteDownloadTarget): Promise<DownloadClaim>;
-  listForMovie(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]>;
+  listForMovie(ownerId: string, tmdbId: number | undefined): Promise<MovieDownloadRecord[]>;
   updateProgress(id: string, progress: MovieDownloadProgress): Promise<MovieDownloadRecord>;
   markFailed(id: string, errorCode: string, attemptedAt: Date): Promise<MovieDownloadRecord>;
   markMissing(id: string, attemptedAt: Date): Promise<MovieDownloadRecord>;

@@ -191,7 +191,7 @@ export class MongoRemoteControlStore implements RemoteControlStore {
       ? {
           downloadId: input.downloadId,
           ownerId: input.ownerId,
-          tmdbId: row.tmdbId,
+          ...(row.tmdbId !== undefined && row.tmdbId !== null ? { tmdbId: row.tmdbId } : {}),
           source: row.sourceProvider,
           resourceId: row.sourceReleaseId,
           executionMode: 'remote',

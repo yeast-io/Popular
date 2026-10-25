@@ -6,5 +6,6 @@ export interface MovieSiteReleaseGroup {
   supportsDownload: boolean;
   loading: boolean;
   error: string;
+  refreshAvailableAt?: number;
   result?: MovieSiteReleaseList;
 }

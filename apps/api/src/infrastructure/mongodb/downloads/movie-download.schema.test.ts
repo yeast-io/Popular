@@ -20,3 +20,11 @@ test('remote queue records may have an unknown downloader type while local downl
   assert.ok(new model(input).validateSync()?.errors.provider);
   assert.equal(new model({ ...input, executionMode: 'remote' }).validateSync(), undefined);
 });
+
+test('resource-level downloads can omit TMDB identity while retaining source identity and positive movie IDs', () => {
+  const model = createMovieDownloadModel(new Mongoose().createConnection());
+  const input = { ownerId: '507f1f77bcf86cd799439011', sourceProvider: 'mteam', sourceReleaseId: '991',
+    provider: 'transmission', lookupTag: 'resource-only', status: 'submitting', progress: 0 };
+  assert.equal(new model(input).validateSync(), undefined);
+  assert.ok(new model({ ...input, tmdbId: 0 }).validateSync()?.errors.tmdbId);
+});

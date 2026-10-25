@@ -1,4 +1,11 @@
 const zhCN = {
+  'resourceSelection.refreshRateLimited': '请等待倒计时结束后再重新获取该资源站的资源。',
+  'resourceSelection.refreshCountdown': '{seconds} 秒后可重新获取',
+  'resourceFilters.label': '按资源标签筛选',
+  'resourceFilters.hint': '多选需同时满足所有标签并仅筛选已加载的资源',
+  'resourceFilters.reset': '重置',
+  'resourceFilters.count': '已加载资源：{count} / {total}',
+  'resourceFilters.empty': '没有同时满足所选标签的资源。',
   'resourceQuery.loading': '正在查询资源…',
   'resourceQuery.error': '资源查询失败，请重试。',
   'resourceQuery.empty': '未找到匹配的资源。',

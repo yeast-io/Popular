@@ -530,6 +530,17 @@ test('download routes authenticate provider discovery, validate choices and seri
     assert.equal(/passkey|download\.php|cookie/i.test(hdarea.body), false);
     const listing = await app.inject({ method: 'GET', url, headers });
     assert.equal(listing.json().items[0].provider, 'transmission');
+    service.resourceSearch = { search: async () => ({ releases: [{ id: '992', title: 'Show S01E03-E04' }] }) };
+    const genericUrl = '/api/v1/me/resource-downloads';
+    assert.equal((await app.inject({ method: 'GET', url: genericUrl })).statusCode, 401);
+    const generic = await app.inject({ method: 'POST', url: genericUrl, headers,
+      payload: { sourceReleaseId: '992', provider: 'transmission', query: 'Show S01', page: 1 } });
+    assert.equal(generic.statusCode, 201);
+    assert.equal(generic.json().tmdbId, undefined);
+    assert.equal(generic.json().sourceReleaseId, '992');
+    const genericList = await app.inject({ method: 'GET', url: genericUrl, headers });
+    assert.equal(genericList.json().items.length, 1);
+    assert.equal(genericList.json().items[0].tmdbId, undefined);
   } finally {
     await app.close();
   }
@@ -777,4 +788,42 @@ test('a deleted Agent task can be explicitly downloaded to public Transmission w
     assert.deepEqual(f.adds, ['transmission']);
     assert.equal(f.lookups.includes('qbittorrent'), false);
   }
+});
+
+for (const provider of ['qbittorrent', 'transmission'] as const) {
+  test(`resource downloads reuse ${provider} submission and deduplicate by source/id without a movie or season`, async () => {
+    const f = fixture([provider]);
+    f.service.resourceSearch = { search: async (_owner, _source, input) => {
+      assert.equal(input.mediaType, 'tv');
+      return { releases: [{ id: '991', title: 'Show S01E03-E04', detailsUrl: 'https://example.test/detail/991' }] };
+    } };
+    const request = { sourceReleaseId: '991', query: 'Show S01', provider };
+    const first = await f.service.createResource('session', request, 'en-US');
+    const repeated = await f.service.createResource('session', { ...request, query: 'Show S01E03' }, 'zh-CN');
+    assert.equal(first.tmdbId, undefined);
+    assert.equal(repeated.id, first.id);
+    assert.equal(first.provider, provider);
+    assert.deepEqual(f.adds, [provider]);
+    assert.equal([...f.records.values()][0]?.tmdbId, undefined);
+    assert.equal((await f.service.listAndSync('session', undefined)).items.length, 1);
+  });
+}
+
+test('resource download validates the authenticated user and the selected search page before submission', async () => {
+  const f = fixture(['transmission']);
+  let calls = 0;
+  f.service.resourceSearch = { search: async (owner, source, input) => {
+    calls += 1;
+    assert.equal(owner, '507f1f77bcf86cd799439011');
+    assert.equal(source, 'hdarea');
+    assert.equal(input.page, 2);
+    return { releases: [] };
+  } };
+  const request = { sourceReleaseId: '991', sourceProvider: 'hdarea' as const, query: 'Show S01', page: 2, provider: 'transmission' as const };
+  await assert.rejects(f.service.createResource(undefined, request, 'en-US'), { code: 'UNAUTHORIZED' });
+  assert.equal(calls, 0);
+  await assert.rejects(f.service.createResource('session', request, 'en-US'), { code: 'NOT_FOUND' });
+  assert.equal(f.adds.length, 0);
+  assert.equal(f.siteFetches.length, 0);
+  assert.equal(f.records.size, 0);
 });

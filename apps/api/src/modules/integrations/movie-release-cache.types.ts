@@ -8,6 +8,15 @@ export interface MovieReleaseCacheIdentity {
   imdbId?: string;
 }
 
+export interface ResourceQueryCacheIdentity extends Omit<MovieReleaseCacheIdentity, 'tmdbId' | 'imdbId'> {
+  query: string;
+  mediaType: 'tv';
+  tmdbId?: never;
+  imdbId?: never;
+}
+
+export type ReleaseCacheIdentity = MovieReleaseCacheIdentity | ResourceQueryCacheIdentity;
+
 export interface MovieReleaseCacheEntry {
   value: unknown;
   expiresAt: string;
@@ -21,8 +30,12 @@ export interface MovieReleaseCacheStore {
 }
 
 export interface MovieReleaseCacheQuery<T extends { cached: boolean; cacheExpiresAt?: string }> {
-  identity: MovieReleaseCacheIdentity;
+  identity: ReleaseCacheIdentity;
   force?: boolean;
   validate(value: unknown): value is T;
   fetch(): Promise<T>;
+}
+
+export interface ResourceRefreshStore {
+  claim(ownerId: string, site: string, intervalMs: number): Promise<number>;
 }

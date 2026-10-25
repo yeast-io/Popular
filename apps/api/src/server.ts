@@ -69,7 +69,7 @@ import { createLoggers } from './infrastructure/logging/logger.js';
 import { createModels } from './infrastructure/mongodb/models.js';
 import { MongoAuthUserStore } from './infrastructure/mongodb/users/user.store.js';
 import { RedisSessionStore } from './infrastructure/redis/session.store.js';
-import { RedisMovieReleaseCacheStore } from './infrastructure/redis/movie-release-cache.store.js';
+import { RedisMovieReleaseCacheStore, RedisResourceRefreshStore } from './infrastructure/redis/movie-release-cache.store.js';
 import { MovieReleaseCacheService } from './modules/integrations/movie-release-cache.service.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { MinioAvatarStore } from './infrastructure/minio/avatar.store.js';
@@ -262,7 +262,8 @@ try {
   );
   const movieReleaseCache = new MovieReleaseCacheService(
     new RedisMovieReleaseCacheStore(infrastructure.redis.getClient()),
-    config.RESOURCE_RELEASE_CACHE_TTL_SECONDS * 1_000
+    config.RESOURCE_RELEASE_CACHE_TTL_SECONDS * 1_000,
+    new RedisResourceRefreshStore(infrastructure.redis.getClient())
   );
   const movieResourceChecks = new MovieResourceCheckService(
     movieResourceCheckStore,
@@ -313,7 +314,17 @@ try {
     ...[...resourceSiteService.registry.values()].map((site) => {
       return new ResourceSiteSearchSource(site.id, site.name, resourceSiteService);
     }),
-  ], async (ownerId) => (await integrationPreferencesService.get(ownerId)).effectiveSites);
+  ], async (ownerId) => (await integrationPreferencesService.get(ownerId)).effectiveSites, {
+    cache: movieReleaseCache,
+    credentialVersion: async (ownerId, site) => {
+      if (site === 'mteam') {
+        const config = await integrationConfigStore.find(ownerId, 'mteam');
+        return config?.externalUserId ? String(config.verifiedAt?.getTime() ?? 0) : undefined;
+      }
+      if (await resourceSiteService.status(ownerId, site) !== 'configured_valid') return undefined;
+      return resourceSiteService.cacheVersion(ownerId, site);
+    },
+  });
   const integrationService = new IntegrationService(
     authService,
     integrationConfigStore,
@@ -418,7 +429,7 @@ try {
     store: new MongoRemoteControlStore(models.users, models.remoteDevices, models.movieDownloads, models.remoteControl),
     report: (err, fields) => loggers.error.error({ err, ...fields }, 'remote-download'),
     torrent: async (command, download) => {
-      await movieSiteResourcesService.releaseForDownload(
+      if (download.tmdbId !== undefined) await movieSiteResourcesService.releaseForDownload(
         command.ownerId,
         download.tmdbId,
         command.source,
@@ -581,6 +592,7 @@ try {
   movieDownloadService.remote = new RemoteMovieDownloadService(new MongoMovieDownloadStore(models.movieDownloads),
     remoteClientService, remoteDownloadCoordinator);
   movieDownloadService.preferences = integrationPreferencesService;
+  movieDownloadService.resourceSearch = resourceSearchService;
   const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
   const conversationService = new ConversationService(authService, conversationStore);
   const openaiSettingsService = new OpenAISettingsService(authService, openaiConfigStore, secrets, {

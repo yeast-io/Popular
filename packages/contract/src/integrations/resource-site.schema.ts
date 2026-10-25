@@ -15,6 +15,8 @@ export const SaveResourceSiteSchema = Type.Object({
   passkey: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
   cookie: Type.Optional(Type.String({ minLength: 1, maxLength: 16384, pattern: '^[^\\r\\n]+$' })) }, { additionalProperties: false });
 export const ResourceSiteSearchSchema = Type.Object({
+  cacheOnly: Type.Optional(Type.Boolean()),
+  refresh: Type.Optional(Type.Boolean()),
   mediaType: Type.Optional(Type.Union([Type.Literal('movie'), Type.Literal('tv')])),
   query: Type.Optional(Type.String({ minLength: 1, maxLength: 200, pattern: '\\S' })),
   imdbId: Type.Optional(Type.String({ pattern: '^tt\\d+$' })),
@@ -36,6 +38,10 @@ export const ResourceSiteReleaseSchema = Type.Object({
   tags: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
 }, { additionalProperties: false });
 export const ResourceSiteSearchResultSchema = Type.Object({
+  cached: Type.Optional(Type.Boolean()),
+  cacheMiss: Type.Optional(Type.Boolean()),
+  queriedAt: Type.Optional(Type.String({ format: 'date-time' })),
+  cacheExpiresAt: Type.Optional(Type.String({ format: 'date-time' })),
   releases: Type.Array(ResourceSiteReleaseSchema), nextPage: Type.Optional(Type.Integer({ minimum: 1 })),
 }, { additionalProperties: false });
 export type ResourceSiteConfiguration = Static<typeof ResourceSiteConfigurationSchema>;

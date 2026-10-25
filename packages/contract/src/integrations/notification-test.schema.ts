@@ -7,7 +7,7 @@ export const NotificationTestListSchema = Type.Object({
   items: Type.Array(
     Type.Object({
       id: Type.String(),
-      tmdbId: Type.Integer(),
+      tmdbId: Type.Optional(Type.Integer()),
       title: Type.String(),
       resourceName: Type.String(),
       provider: DownloadProviderSchema,

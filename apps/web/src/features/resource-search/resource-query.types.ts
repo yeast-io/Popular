@@ -6,9 +6,11 @@ export interface ResourceQueryGroup {
   name: string;
   loading: boolean;
   error: string;
+  refreshAvailableAt?: number;
   retryPage: number;
   result?: ResourceSiteSearchResult;
   queriedAt?: string;
+  releasePages?: Record<string, number>;
 }
 
 export type ResourceQuerySession = ReturnType<typeof useResourceQuery>;

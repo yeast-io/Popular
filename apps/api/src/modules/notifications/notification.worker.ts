@@ -168,7 +168,8 @@ export async function buildDownloadNotification(
 ): Promise<DownloadNotification> {
   let movie;
   try {
-    movie = (await aiStep('notification.movie.read', () => movies.readMovies([record.tmdbId], locale)))[0];
+    const tmdbId = record.tmdbId;
+    if (tmdbId !== undefined) movie = (await aiStep('notification.movie.read', () => movies.readMovies([tmdbId], locale)))[0];
     currentAiTrace()?.event('notification.movie.resolved', { locale, outcome: movie ? 'found' : 'missing' });
   } catch (error) {
     currentAiTrace()?.fail(error);
@@ -189,12 +190,12 @@ export async function buildDownloadNotification(
   return {
     id,
     locale,
-    title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
-    resourceName: record.name ?? `TMDB ${record.tmdbId}`,
+    title: movie?.title ?? record.name ?? (record.tmdbId !== undefined ? `TMDB ${record.tmdbId}` : record.sourceReleaseId),
+    resourceName: record.name ?? (record.tmdbId !== undefined ? `TMDB ${record.tmdbId}` : record.sourceReleaseId),
     provider: record.downloaderName ?? record.provider ?? remoteDownloadMessages[locale].agent,
     totalBytes: record.totalBytes ?? 0,
     completedAt,
-    detailUrl: `${webOrigin.replace(/\/$/, '')}/movies/${record.tmdbId}`,
+    detailUrl: record.tmdbId !== undefined ? `${webOrigin.replace(/\/$/, '')}/movies/${record.tmdbId}` : record.sourceDetailsUrl ?? webOrigin,
     ...(poster ? { poster } : {}),
   };
 }

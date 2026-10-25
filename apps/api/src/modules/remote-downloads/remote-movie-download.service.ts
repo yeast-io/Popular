@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { DownloadSource, Locale, MovieDownload } from '@movie-hub/contract';
+import type { DownloadSource, Locale, MovieDownload, ResourceSiteRelease } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type { MovieDownloadStore } from '../downloads/movie-download.types.js';
@@ -15,8 +15,8 @@ export class RemoteMovieDownloadService {
     readonly coordinator: RemoteDownloadCoordinator
   ) {}
 
-  async create(ownerId: string, tmdbId: number, releaseId: string, source: DownloadSource,
-    deviceId: string, locale: Locale, displayTitle?: string): Promise<MovieDownload> {
+  async create(ownerId: string, tmdbId: number | undefined, releaseId: string, source: DownloadSource,
+    deviceId: string, locale: Locale, displayTitle?: string, resource?: ResourceSiteRelease): Promise<MovieDownload> {
     const correlationId = currentAiTrace()?.correlationId ?? randomUUID();
     const configuration = await this.clients.get(ownerId);
     const device = configuration.devices.find((item) => item.id === deviceId);
@@ -38,7 +38,7 @@ export class RemoteMovieDownloadService {
         : { record: existing }
       : await aiStep('remote-queue.download.claim', () => this.downloads.createSubmitting(
           ownerId, tmdbId, releaseId, device.downloaderType, source, undefined,
-          remoteDownloadMessages[locale].agent, remote));
+          remoteDownloadMessages[locale].agent, remote, resource));
     if (record.executionMode !== 'remote' || record.remoteDeviceId !== deviceId || !record.remoteCommandId)
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', remoteDownloadMessages[locale].targetConflict);
     await this.coordinator.enqueue({ commandId: record.remoteCommandId, downloadId: record.id, ownerId,

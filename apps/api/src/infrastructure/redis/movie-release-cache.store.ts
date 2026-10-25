@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import type {
   MovieReleaseCacheEntry,
   MovieReleaseCacheStore,
+  ResourceRefreshStore,
 } from '../../modules/integrations/movie-release-cache.types.js';
 
 export class RedisMovieReleaseCacheStore implements MovieReleaseCacheStore {
@@ -40,5 +42,21 @@ export class RedisMovieReleaseCacheStore implements MovieReleaseCacheStore {
     return value !== null && typeof value === 'object' && 'value' in value
       && 'expiresAt' in value && typeof value.expiresAt === 'string'
       && Number.isFinite(Date.parse(value.expiresAt));
+  }
+}
+
+const claimScript = `
+if redis.call('SET', KEYS[1], '1', 'PX', ARGV[1], 'NX') then
+  return 0
+end
+return math.max(1, redis.call('PTTL', KEYS[1]))
+`;
+
+export class RedisResourceRefreshStore implements ResourceRefreshStore {
+  constructor(private readonly redis: Redis) {}
+
+  async claim(ownerId: string, site: string, intervalMs: number): Promise<number> {
+    const hash = createHash('sha256').update(JSON.stringify([ownerId, site])).digest('hex');
+    return Number(await this.redis.eval(claimScript, 1, `resource-refresh:v1:${hash}`, intervalMs));
   }
 }

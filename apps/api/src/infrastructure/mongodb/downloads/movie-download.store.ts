@@ -4,7 +4,7 @@ import { REMOTE_QUEUE_RETENTION_MS, REMOTE_DELIVERY_TTL_MS } from '../../../modu
 import type { RemoteDownloadTarget } from '../../../modules/downloads/movie-download.types.js';
 import { MISSING_DOWNLOAD_RETENTION_MS } from '../../../modules/downloads/movie-download.policy.js';
 import { Types, type Model, type UpdateWithAggregationPipeline } from 'mongoose';
-import type { DownloadProvider, DownloadSource, MovieDownloadStatus } from '@movie-hub/contract';
+import type { DownloadProvider, DownloadSource, MovieDownloadStatus, ResourceSiteRelease } from '@movie-hub/contract';
 import type {
   DownloadClaim,
   MovieDownloadProgress,
@@ -18,12 +18,12 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
 
   async findByRelease(
     ownerId: string,
-    tmdbId: number,
+    tmdbId: number | undefined,
     releaseId: string,
     sourceProvider: DownloadSource = 'mteam'
   ): Promise<MovieDownloadRecord | null> {
     const row = await this.downloads
-      .findOne({ ownerId, tmdbId, sourceProvider, sourceReleaseId: releaseId })
+      .findOne({ ownerId, tmdbId: tmdbId === undefined ? { $exists: false } : tmdbId, sourceProvider, sourceReleaseId: releaseId })
       .lean()
       .exec();
     return row ? toMovieDownloadRecord(row) : null;
@@ -31,13 +31,14 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
 
   async createSubmitting(
     ownerId: string,
-    tmdbId: number,
+    tmdbId: number | undefined,
     releaseId: string,
     provider: DownloadProvider | undefined,
     sourceProvider: DownloadSource = 'mteam',
     downloaderInstanceId?: string,
     downloaderName?: string,
-    remote?: RemoteDownloadTarget
+    remote?: RemoteDownloadTarget,
+    resource?: ResourceSiteRelease
   ): Promise<DownloadClaim> {
     const id = new Types.ObjectId();
     const now = Date.now();
@@ -55,7 +56,9 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
       const row = await this.downloads.create({
         _id: id,
         ownerId,
-        tmdbId,
+        ...(tmdbId !== undefined ? { tmdbId } : {}),
+        ...(resource?.detailsUrl ? { sourceDetailsUrl: resource.detailsUrl } : {}),
+        ...(resource?.title ? { name: resource.title } : {}),
         sourceProvider,
         sourceReleaseId: releaseId,
         provider,
@@ -157,8 +160,8 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
     return { record: current, claimed: false };
   }
 
-  async listForMovie(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]> {
-    const rows = await this.downloads.find({ ownerId, tmdbId }).sort({ createdAt: 1 }).lean().exec();
+  async listForMovie(ownerId: string, tmdbId: number | undefined): Promise<MovieDownloadRecord[]> {
+    const rows = await this.downloads.find({ ownerId, tmdbId: tmdbId === undefined ? { $exists: false } : tmdbId }).sort({ createdAt: 1 }).lean().exec();
     return rows.map(toMovieDownloadRecord);
   }
 
@@ -207,7 +210,8 @@ export function toMovieDownloadRecord(row: MovieDownloadDocument & { _id: unknow
   return {
     id: String(row._id),
     ownerId: row.ownerId.toString(),
-    tmdbId: row.tmdbId,
+    ...(row.tmdbId !== undefined && row.tmdbId !== null ? { tmdbId: row.tmdbId } : {}),
+    ...(row.sourceDetailsUrl ? { sourceDetailsUrl: row.sourceDetailsUrl } : {}),
     sourceProvider: row.sourceProvider as DownloadSource,
     sourceReleaseId: row.sourceReleaseId,
     ...(row.provider ? { provider: row.provider as DownloadProvider } : {}),

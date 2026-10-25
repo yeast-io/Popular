@@ -165,6 +165,18 @@ describe('Movie Detail live releases', () => {
     expect(dialog?.textContent).toContain('DTS-HD MA');
     expect(dialog?.textContent).toContain('中字');
     expect(dialog?.textContent).toContain('缓存到期');
+    const filter = dialog!.querySelector<HTMLButtonElement>('.release-tag-filter')!;
+    expect(filter.textContent?.trim()).toBe('4K');
+    expect(filter.getAttribute('aria-pressed')).toBe('false');
+    filter.click();
+    await flushPromises();
+    expect(filter.getAttribute('aria-pressed')).toBe('true');
+    expect(dialog!.querySelectorAll('.release-card')).toHaveLength(1);
+    expect(dialog!.querySelector('.release-site-refresh .release-site-count')?.textContent).toBe('1');
+    expect(dialog!.textContent).toContain('多选需同时满足所有标签并仅筛选已加载的资源');
+    dialog!.querySelector<HTMLButtonElement>('.release-site-reset')!.click();
+    await flushPromises();
+    expect(filter.getAttribute('aria-pressed')).toBe('false');
     const detailLink = dialog?.querySelector<HTMLAnchorElement>('.release-detail-link');
     expect(detailLink?.href).toBe('https://kp.m-team.cc/detail/991');
     expect(detailLink?.target).toBe('_blank');

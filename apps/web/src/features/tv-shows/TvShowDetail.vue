@@ -190,6 +190,9 @@ async function loadSeason() {
       seasonLoading.value = false;
   }
 }
+watch([resourceQuery, () => props.authenticated, locale], () => {
+  if (props.authenticated && resourceQuery.value) void resourceSession.load(true);
+});
 watch(selectedSeason, () => void loadSeason(), { flush: 'sync' });
 watch([() => props.tmdbId, () => props.authenticated, locale], () => void loadDetail(), { immediate: true, flush: 'sync' });
 onBeforeUnmount(() => {

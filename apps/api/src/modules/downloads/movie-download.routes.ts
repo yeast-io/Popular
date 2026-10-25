@@ -3,6 +3,8 @@ import {
   ApiErrorSchema,
   DownloadProviderListResponseSchema,
   CreateMovieDownloadRequestSchema,
+  CreateResourceDownloadRequestSchema,
+  type CreateResourceDownloadRequest,
   MovieDownloadListResponseSchema,
   MovieDownloadSchema,
   MovieIdParamsSchema,
@@ -28,6 +30,40 @@ export function registerMovieDownloadRoutes(
     },
     async (request) => service.providers(token(request))
   );
+
+  app.get('/me/resource-downloads', {
+    schema: { response: { 200: MovieDownloadListResponseSchema, 401: ApiErrorSchema } },
+  }, async (request) => {
+    const trace = new AiTrace(app.log, { requestId: request.id }, '', 'download.resources.sync', config.VERBOSE);
+    return withAiTrace(trace, async () => {
+      try {
+        return await aiStep('download.resources.sync', () => service.listAndSync(token(request), undefined));
+      } catch (error) {
+        trace.fail(error);
+        throw error;
+      }
+    });
+  });
+  app.post<{ Body: CreateResourceDownloadRequest }>('/me/resource-downloads', {
+    schema: { body: CreateResourceDownloadRequestSchema, response: { 201: MovieDownloadSchema, 400: ApiErrorSchema,
+      401: ApiErrorSchema, 404: ApiErrorSchema, 409: ApiErrorSchema, 429: ApiErrorSchema,
+      502: ApiErrorSchema, 503: ApiErrorSchema, 504: ApiErrorSchema } },
+  }, async (request, reply) => {
+    const trace = new AiTrace(app.log, { requestId: request.id }, '', 'download.resources.create', config.VERBOSE);
+    return withAiTrace(trace, async () => {
+      try {
+        const result = await aiStep('download.resources.create', () => service.createResource(token(request), request.body,
+          request.headers['accept-language']?.startsWith('zh')
+            ? 'zh-CN'
+            : request.headers['accept-language']?.startsWith('en') ? 'en-US' : config.TMDB_LANGUAGE));
+        trace.event('download.resources.completed', { taskId: result.id, provider: result.provider, outcome: result.status });
+        return reply.status(201).send(result);
+      } catch (error) {
+        trace.fail(error);
+        throw error;
+      }
+    });
+  });
 
   app.get<{ Params: MovieIdParams }>(
     '/me/movies/:tmdbId/downloads',

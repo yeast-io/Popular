@@ -37,7 +37,7 @@ export class NotificationTestService {
         ...new Set(
           visible.map((row) => {
             return row.tmdbId;
-          })
+          }).filter((id): id is number => id !== undefined)
         ),
       ],
       locale
@@ -48,12 +48,12 @@ export class NotificationTestService {
       page,
       hasMore: records.length > 30,
       items: visible.filter((record) => Boolean(record.provider)).map((record) => {
-        const movie = byId.get(record.tmdbId);
+        const movie = record.tmdbId !== undefined ? byId.get(record.tmdbId) : undefined;
         return {
           id: record.id,
-          tmdbId: record.tmdbId,
-          title: movie?.title ?? record.name ?? `TMDB ${record.tmdbId}`,
-          resourceName: record.name ?? `TMDB ${record.tmdbId}`,
+          ...(record.tmdbId !== undefined ? { tmdbId: record.tmdbId } : {}),
+          title: movie?.title ?? record.name ?? (record.tmdbId !== undefined ? `TMDB ${record.tmdbId}` : record.sourceReleaseId),
+          resourceName: record.name ?? (record.tmdbId !== undefined ? `TMDB ${record.tmdbId}` : record.sourceReleaseId),
           provider: record.provider!,
           ...(record.downloaderInstanceId ? { downloaderInstanceId: record.downloaderInstanceId } : {}),
           ...(record.downloaderName ? { downloaderName: record.downloaderName } : {}),

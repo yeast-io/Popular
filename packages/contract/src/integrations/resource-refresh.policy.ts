@@ -1,0 +1,1 @@
+export const RESOURCE_REFRESH_INTERVAL_MS = 30_000;

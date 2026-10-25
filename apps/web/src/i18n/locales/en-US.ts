@@ -1,6 +1,13 @@
 import type { TranslationMessages } from '../translation-messages.types.js';
 
 const enUS = {
+  'resourceSelection.refreshRateLimited': 'Wait for the countdown before refreshing this resource site again.',
+  'resourceSelection.refreshCountdown': 'Refresh in {seconds}s',
+  'resourceFilters.label': 'Filter resources by tags',
+  'resourceFilters.hint': 'Selected tags must all match. Only loaded resources are filtered.',
+  'resourceFilters.reset': 'Reset',
+  'resourceFilters.count': 'Loaded resources: {count} / {total}',
+  'resourceFilters.empty': 'No resources match all selected tags.',
   'resourceQuery.loading': 'Searching resource sites…',
   'resourceQuery.error': 'Could not search resources. Please try again.',
   'resourceQuery.empty': 'No matching resources found.',

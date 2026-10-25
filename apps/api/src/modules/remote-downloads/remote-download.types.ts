@@ -15,7 +15,7 @@ import type {
 export interface RemoteDownloadSource {
   downloadId: string;
   ownerId: string;
-  tmdbId: number;
+  tmdbId?: number;
   source: string;
   resourceId: string;
   remoteCommandId?: string;

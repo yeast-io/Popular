@@ -16,6 +16,7 @@ function fixture(knownDownloader = true) {
   let creations = 0;
   const matches = (filter: Record<string, unknown>) => row && Object.entries(filter).every(([key, expected]) => {
     const actual = key.split('.').reduce<unknown>((value, part) => (value as Record<string, unknown> | undefined)?.[part], row);
+    if (expected && typeof expected === 'object' && '$exists' in expected) return expected.$exists ? actual !== undefined : actual === undefined;
     return String(actual) === String(expected);
   });
   const store = new MongoMovieDownloadStore({
@@ -150,4 +151,18 @@ test('unknown, active and unverified missing Agent tasks never get a fresh comma
     assert.equal(f.calls[1]!.commandId, intent.commandId);
     assert.equal(f.row().remoteRequest!.digest, intent.digest);
   }
+});
+
+test('resource-only Agent tasks retain title and details without assigning a movie, show or season', async () => {
+  const f = fixture();
+  const resource = { id: '991', title: 'Show S01E03-E04', detailsUrl: 'https://example.test/991' };
+  const first = await f.service.create(f.ownerId, undefined, '991', 'mteam', 'device-a', 'en-US', resource.title, resource);
+  const repeated = await f.service.create(f.ownerId, undefined, '991', 'mteam', 'device-a', 'en-US', resource.title, resource);
+  assert.equal(first.tmdbId, undefined);
+  assert.equal(f.row().tmdbId, undefined);
+  assert.equal(f.row().name, resource.title);
+  assert.equal(f.row().sourceDetailsUrl, resource.detailsUrl);
+  assert.equal(f.row().remoteRequest?.displayTitle, resource.title);
+  assert.equal(repeated.id, first.id);
+  assert.equal(f.creations(), 1);
 });

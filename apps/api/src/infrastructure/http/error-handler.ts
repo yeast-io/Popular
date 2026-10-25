@@ -8,6 +8,9 @@ export function registerErrorHandler(app: FastifyInstance, loggers: AppLoggers):
     logErrorOnce(loggers.error, error, { operation: 'http.request', requestId: request.id });
 
     if (error instanceof AppError) {
+      if (error.code === 'RESOURCE_REFRESH_RATE_LIMITED' && error.details && typeof error.details === 'object'
+        && 'retryAfterSeconds' in error.details && typeof error.details.retryAfterSeconds === 'number')
+        reply.header('Retry-After', String(error.details.retryAfterSeconds));
       return reply.status(error.statusCode).send({
         error: {
           code: error.code,

@@ -34,7 +34,7 @@ export const MovieDownloadStatusSchema = Type.Union([
 const MovieDownloadBaseSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
-    tmdbId: Type.Integer({ minimum: 1 }),
+    tmdbId: Type.Optional(Type.Integer({ minimum: 1 })),
     sourceProvider: DownloadSourceSchema,
     sourceReleaseId: Type.String({ minLength: 1 }),
     provider: Type.Optional(DownloadProviderSchema),
@@ -87,3 +87,10 @@ export type MovieDownloadStatus = Static<typeof MovieDownloadStatusSchema>;
 export type MovieDownload = Static<typeof MovieDownloadSchema>;
 export type MovieDownloadListResponse = Static<typeof MovieDownloadListResponseSchema>;
 export type CreateMovieDownloadRequest = Static<typeof CreateMovieDownloadRequestSchema>;
+
+export const CreateResourceDownloadRequestSchema = Type.Object({
+  ...CreateMovieDownloadRequestSchema.properties,
+  query: Type.String({ minLength: 1, maxLength: 200, pattern: '\\S' }),
+  page: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+}, { additionalProperties: false });
+export type CreateResourceDownloadRequest = Static<typeof CreateResourceDownloadRequestSchema>;

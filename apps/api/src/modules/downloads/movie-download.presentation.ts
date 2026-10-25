@@ -4,7 +4,7 @@ import type { MovieDownloadRecord } from './movie-download.types.js';
 export function toResponse(record: MovieDownloadRecord): MovieDownload {
   const response = {
     id: record.id,
-    tmdbId: record.tmdbId,
+    ...(record.tmdbId !== undefined ? { tmdbId: record.tmdbId } : {}),
     sourceProvider: record.sourceProvider,
     sourceReleaseId: record.sourceReleaseId,
     ...(record.provider ? { provider: record.provider } : {}),

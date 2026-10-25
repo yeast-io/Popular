@@ -36,6 +36,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
+  vi.useRealTimers();
 });
 
 describe('resource query dialog', () => {
@@ -54,7 +55,7 @@ describe('resource query dialog', () => {
     render();
     await flushPromises();
     expect(text()).toContain('MobLand S01E01');
-    expect(text()).toContain('First episode');
+    expect(text()).not.toContain('First episode');
     expect(document.querySelector('dialog [role=alert]')?.textContent).toContain('timed out');
     expect(document.querySelector<HTMLAnchorElement>('.release-detail-link')?.href).toBe('https://kp.m-team.cc/detail/1');
     await click('.resource-query-more');
@@ -64,6 +65,82 @@ describe('resource query dialog', () => {
     refresh.click();
     await flushPromises();
     expect(document.querySelectorAll('.release-card')).toHaveLength(1);
+  });
+
+  it('filters each site independently and applies the selection to subsequent pages', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (url.pathname.endsWith('integration-preferences')) return Response.json(preferences);
+      return Response.json(url.searchParams.get('page') === '2'
+        ? { releases: [{ id: '4', title: 'Next episode', resolution: '4K', tags: ['中字'] }] }
+        : { releases: [
+            { id: '1', title: '4K subtitles', resolution: '4K', tags: ['中字'] },
+            { id: '2', title: 'HD subtitles', resolution: '1080p', tags: ['中字'] },
+            { id: '3', title: '4K no subtitles', resolution: '4K', tags: [] },
+          ], nextPage: 2 });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    render();
+    await flushPromises();
+    const sites = [...document.querySelectorAll('.release-site-group')];
+    const first = sites[0]!;
+    const second = sites[1]!;
+    const tag = (label: string) => [...first.querySelectorAll<HTMLButtonElement>('.release-tag-filter')].find((button) => button.textContent?.trim() === label)!;
+    expect(first.querySelector('.release-site-refresh .release-site-count')?.textContent).toBe('3');
+    expect(first.querySelector('.release-site-status')?.textContent).toBe('');
+    expect(first.querySelectorAll('.release-card')).toHaveLength(3);
+    expect(first.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    tag('4K').click();
+    await flushPromises();
+    expect(first.querySelectorAll('.release-card')).toHaveLength(2);
+    tag('Chinese subtitles').click();
+    await flushPromises();
+    expect(first.querySelectorAll('.release-card')).toHaveLength(1);
+    expect(second.querySelectorAll('.release-card')).toHaveLength(3);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search'))).toHaveLength(2);
+    first.querySelector<HTMLButtonElement>('.resource-query-more')!.click();
+    await flushPromises();
+    expect(first.querySelectorAll('.release-card')).toHaveLength(2);
+    expect(first.querySelectorAll('[aria-pressed="true"]')).toHaveLength(2);
+    const secondTag = second.querySelector<HTMLButtonElement>('.release-tag-filter')!;
+    secondTag.click();
+    await flushPromises();
+    first.querySelector<HTMLButtonElement>('.release-site-reset')!.click();
+    await flushPromises();
+    expect(first.querySelectorAll('[aria-pressed="true"]')).toHaveLength(0);
+    expect(secondTag.getAttribute('aria-pressed')).toBe('true');
+    expect(first.querySelector('.release-site-refresh .release-site-count')?.textContent).toBe('4');
+    expect(first.hasAttribute('open')).toBe(true);
+    expect(first.querySelectorAll('.release-card')).toHaveLength(4);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search'))).toHaveLength(3);
+  });
+
+  it.each(['en-US', 'zh-CN'] as const)('uses the backend remaining time instead of a rate-limit message in %s', async (locale) => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    setLocale(locale);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (url.pathname.endsWith('integration-preferences')) return Response.json(preferences);
+      if (url.pathname.endsWith('download-providers')) return Response.json({ providers: [] });
+      if (url.pathname.endsWith('remote-client')) return Response.json({ hasKey: false, devices: [] });
+      if (url.pathname.endsWith('resource-downloads')) return Response.json({ items: [] });
+      if (url.searchParams.get('refresh') === 'true') return Response.json({ error: {
+        code: 'RESOURCE_REFRESH_RATE_LIMITED', message: 'Do not show this error text', details: { retryAfterSeconds: 12 },
+      } }, { status: 429, headers: { 'Retry-After': '12' } });
+      return Response.json({ releases: [{ id: '1', title: 'Retained release' }] });
+    }));
+    render();
+    await flushPromises();
+    await click('.release-site-refresh');
+    const button = document.querySelector<HTMLButtonElement>('.release-site-refresh')!;
+    expect(button.textContent).toContain(locale === 'en-US' ? 'Refresh in 12s' : '12 秒后可重新获取');
+    expect(button.disabled).toBe(true);
+    expect(document.querySelector('.browse-error')).toBeNull();
+    expect(document.querySelectorAll('.release-card')).toHaveLength(2);
+    expect(document.querySelectorAll<HTMLButtonElement>('.release-site-refresh')[1]?.disabled).toBe(false);
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toContain(locale === 'en-US' ? 'Refresh' : '重新获取');
   });
 
   it('aborts on close, ignores late responses and restores scroll and focus', async () => {

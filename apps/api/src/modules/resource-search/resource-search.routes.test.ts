@@ -1,3 +1,4 @@
+import { MovieReleaseCacheService } from '../integrations/movie-release-cache.service.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildApp } from '../../app.js';
@@ -99,6 +100,56 @@ test('source search endpoints authenticate, isolate failed sources, validate inp
     const detail = await app.inject({ method: 'GET', url: `${base}/hdarea/releases/42`, headers });
     assert.equal(detail.statusCode, 200);
     assert.equal(detail.json().title, 'HDArea detail');
+  } finally {
+    await app.close();
+  }
+});
+
+test('TV HTTP cache restoration avoids source calls and refresh returns 429 with Retry-After', async () => {
+  const rows = new Map<string, { value: unknown; expiresAt: string }>();
+  const revisions = new Map<string, string>();
+  let claimed = false;
+  let calls = 0;
+  const cache = new MovieReleaseCacheService({
+    async read(key) { return rows.get(key) ?? null; },
+    async write(key, value, ttlMs) {
+      const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+      rows.set(key, { value, expiresAt });
+      return expiresAt;
+    },
+    async readRevision(key) { return revisions.get(key) ?? null; },
+    async activateRevision(key, revision) { revisions.set(key, revision); },
+  }, 1_800_000, { async claim() {
+    if (claimed) return 30_000;
+    claimed = true;
+    return 0;
+  } });
+  const service = new ResourceSearchService([{
+    id: 'mteam', name: 'M-Team', details: false, status: async () => 'configured_valid',
+    search: async () => {
+      calls += 1;
+      return { releases: [{ id: String(calls), title: 'Season pack' }] };
+    },
+  }], async () => ['mteam'], { cache, credentialVersion: async () => 'v1' });
+  const app = await buildApp({ config, healthDependencies: [], resourceSearchService: service,
+    authService: { requireOwnerId: async () => 'owner' } as unknown as AuthService });
+  const base = '/api/v1/me/resource-search/mteam/releases?mediaType=tv&query=Show%20S01';
+  try {
+    const miss = await app.inject({ method: 'GET', url: `${base}&cacheOnly=true` });
+    assert.equal(miss.statusCode, 200);
+    assert.equal(miss.json().cacheMiss, true);
+    assert.equal(calls, 0);
+    assert.equal((await app.inject({ method: 'GET', url: base })).statusCode, 200);
+    const hit = await app.inject({ method: 'GET', url: `${base}&cacheOnly=true` });
+    assert.equal(hit.json().cached, true);
+    assert.equal(calls, 1);
+    assert.equal((await app.inject({ method: 'GET', url: `${base}&refresh=true` })).statusCode, 200);
+    const rejected = await app.inject({ method: 'GET', url: `${base}&refresh=true` });
+    assert.equal(rejected.statusCode, 429);
+    assert.equal(rejected.headers['retry-after'], '30');
+    assert.equal(rejected.json().error.code, 'RESOURCE_REFRESH_RATE_LIMITED');
+    assert.equal(rejected.json().error.details.retryAfterSeconds, 30);
+    assert.equal(calls, 2);
   } finally {
     await app.close();
   }

@@ -31,6 +31,7 @@ export function registerResourceSearchRoutes(
     400: ApiErrorSchema,
     401: ApiErrorSchema,
     409: ApiErrorSchema,
+    429: ApiErrorSchema,
     502: ApiErrorSchema,
     504: ApiErrorSchema,
   };
@@ -78,7 +79,10 @@ export function registerResourceSearchRoutes(
     },
     (request) => {
       return execute(request, 'search', (owner, signal) => {
-        return service.search(owner, request.params.site, request.query, signal);
+        return service.search(owner, request.params.site, request.query, signal,
+          request.headers['accept-language']?.startsWith('zh')
+            ? 'zh-CN'
+            : request.headers['accept-language']?.startsWith('en') ? 'en-US' : config.TMDB_LANGUAGE);
       });
     });
   app.get<{ Params: ResourceSiteReleaseParams }>(

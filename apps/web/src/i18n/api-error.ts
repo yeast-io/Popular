@@ -30,6 +30,7 @@ const errorKeys = {
   MEDIA_TRENDING_EXPIRED: 'errors.mediaTrendingExpired',
   INTEGRATION_VALIDATION_FAILED: 'errors.mteamValidation',
   RESOURCE_SITE_NOT_CONFIGURED: 'resourceSite.error.notConfigured',
+  RESOURCE_REFRESH_RATE_LIMITED: 'resourceSelection.refreshRateLimited',
   RESOURCE_SITE_FAILED: 'resourceSite.error.invalidResponse',
   RESOURCE_SITE_ACCOUNT_IN_USE: 'resourceSite.error.accountInUse',
   RESOURCE_SITE_IDENTITY_PENDING: 'resourceSite.error.identityPending',
@@ -63,7 +64,7 @@ const errorKeys = {
 } as const satisfies Record<ErrorCode, TranslationKey>;
 
 export class LocalizedApiError extends Error {
-  constructor(readonly translationKey: TranslationKey) {
+  constructor(readonly translationKey: TranslationKey, readonly code?: ErrorCode, readonly retryAfterSeconds?: number) {
     super(translationKey);
     this.name = 'LocalizedApiError';
   }
@@ -79,7 +80,10 @@ export function apiErrorKey(value: unknown, fallback: TranslationKey = 'errors.u
 }
 
 export function localizedApiError(value: unknown, fallback?: TranslationKey): LocalizedApiError {
-  return new LocalizedApiError(apiErrorKey(value, fallback));
+  const error = (value as Partial<ApiError> | null)?.error;
+  const seconds = (error?.details as { retryAfterSeconds?: unknown } | undefined)?.retryAfterSeconds;
+  return new LocalizedApiError(apiErrorKey(value, fallback), error?.code,
+    typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : undefined);
 }
 
 export async function localizedResponseError(
@@ -87,7 +91,16 @@ export async function localizedResponseError(
   fallback: TranslationKey = 'errors.requestFailed'
 ): Promise<LocalizedApiError> {
   try {
-    return localizedApiError(await response.json(), fallback);
+    const error = localizedApiError(await response.json(), fallback);
+    if (response.status === 429 && error.code === 'RESOURCE_REFRESH_RATE_LIMITED' && error.retryAfterSeconds === undefined) {
+      const header = response.headers.get('Retry-After');
+      if (header !== null && header.trim()) {
+        const seconds = /^\d+$/.test(header.trim()) ? Number(header) : (Date.parse(header) - Date.now()) / 1000;
+        if (Number.isFinite(seconds) && seconds >= 0)
+          return new LocalizedApiError(error.translationKey, error.code, Math.ceil(seconds));
+      }
+    }
+    return error;
   } catch {
     return new LocalizedApiError(fallback);
   }

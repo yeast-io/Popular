@@ -11,6 +11,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
   document.body.style.overflow = '';
+  vi.useRealTimers();
 });
 
 function fixture(primary = 'mteam', sites = ['hdarea', 'mteam']) {
@@ -147,7 +148,7 @@ it('keeps successful releases when another site fails and retries that site inde
   expect(groups[1]?.textContent).toContain('timed out');
   f.failures.clear();
   groups[1]!.open = true;
-  groups[1]!.querySelector<HTMLButtonElement>('button')!.click();
+  groups[1]!.querySelector<HTMLButtonElement>('.release-site-refresh')!.click();
   await flushPromises();
   expect(groups[1]?.querySelectorAll('.release-card')).toHaveLength(1);
   expect(f.calls.filter((url) => url.endsWith('/mteam/releases'))).toHaveLength(1);
@@ -249,6 +250,35 @@ it('refreshes only the chosen site without toggling its disclosure or replacing 
   expect(f.calls.some((url) => url.endsWith('/mteam/releases/refresh'))).toBe(false);
   expect(f.calls.filter((url) => url.endsWith('/mteam/releases'))).toHaveLength(1);
   expect(groups[0]!.querySelector('.release-site-content')?.innerHTML).toBe(otherContents);
+  wrapper.unmount();
+});
+
+it.each(['en-US', 'zh-CN'] as const)('refills movie refresh countdown from the backend without replacing resources in %s', async (locale) => {
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+  setLocale(locale);
+  fixture();
+  const base = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/releases/refresh')) return Response.json({ error: {
+      code: 'RESOURCE_REFRESH_RATE_LIMITED', details: { retryAfterSeconds: 12 },
+    } }, { status: 429 });
+    return base(input, init);
+  }));
+  const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
+  await flushPromises();
+  await wrapper.get('.resource-status-button').trigger('click');
+  await flushPromises();
+  const group = document.querySelector('.release-site-group')!;
+  const originalTitle = group.querySelector('.release-card h3')?.textContent;
+  const button = group.querySelector<HTMLButtonElement>('.release-site-refresh')!;
+  button.click();
+  await flushPromises();
+  expect(button.textContent).toContain(locale === 'en-US' ? 'Refresh in 12s' : '12 秒后可重新获取');
+  expect(button.disabled).toBe(true);
+  expect(group.querySelector('.browse-error')).toBeNull();
+  expect(group.querySelector('.release-card h3')?.textContent).toBe(originalTitle);
+  await vi.advanceTimersByTimeAsync(12_000);
+  expect(button.disabled).toBe(false);
   wrapper.unmount();
 });
 

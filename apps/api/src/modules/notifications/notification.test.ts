@@ -402,3 +402,13 @@ test('locale lookup failure leaves the task retryable instead of sending in a wr
   assert.deepEqual(f.sent, []);
   assert.equal(f.tasks[0]!.task.notified, false);
 });
+
+test('resource download notifications use the source details without inferring a movie or episode', async () => {
+  const notification = await buildDownloadNotification({
+    id: 'resource-task', ownerId: 'owner', sourceProvider: 'mteam', sourceReleaseId: '991',
+    sourceDetailsUrl: 'https://source.example/detail/991', name: 'Show S01E03-E04', provider: 'transmission',
+    lookupTag: 'resource-tag', status: 'completed', progress: 100,
+  }, 'notification', new Date(), { readMovies: async () => { throw new Error('Resource must not be resolved as a movie'); } }, 'en-US', 'https://popular.example');
+  assert.equal(notification.title, 'Show S01E03-E04');
+  assert.equal(notification.detailUrl, 'https://source.example/detail/991');
+});

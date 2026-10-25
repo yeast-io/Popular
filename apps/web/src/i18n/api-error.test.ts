@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apiErrorKey, localizedApiError, localizedErrorMessage } from './api-error';
+import { apiErrorKey, localizedApiError, localizedErrorMessage, localizedResponseError } from './api-error';
 import { setLocale } from './index';
 
 describe('localized API errors', () => {
@@ -39,4 +39,18 @@ it.each(['en-US', 'zh-CN'] as const)('explains site account conflicts and pendin
     ['RESOURCE_SITE_ACCOUNT_IN_USE', locale === 'zh-CN' ? '该站点账号已绑定其他账号。' : 'This site account is already linked to another account.'],
     ['RESOURCE_SITE_IDENTITY_PENDING', locale === 'zh-CN' ? '已有站点账号尚未完成身份验证，暂时无法添加新的绑定。' : 'Existing site accounts still need identity verification. New bindings are temporarily unavailable.'],
   ]) expect(localizedErrorMessage(localizedApiError({ error: { code, message: 'private internal details' } }), 'errors.unknown')).toBe(expected);
+});
+
+it('preserves the backend rate-limit code and remaining seconds', async () => {
+  const response = Response.json({ error: { code: 'RESOURCE_REFRESH_RATE_LIMITED', details: { retryAfterSeconds: 12 } } },
+    { status: 429, headers: { 'Retry-After': '20' } });
+  const error = await localizedResponseError(response);
+  expect(error.code).toBe('RESOURCE_REFRESH_RATE_LIMITED');
+  expect(error.retryAfterSeconds).toBe(12);
+});
+
+it('uses Retry-After when rate-limit JSON omits the remaining seconds', async () => {
+  const response = Response.json({ error: { code: 'RESOURCE_REFRESH_RATE_LIMITED' } },
+    { status: 429, headers: { 'Retry-After': '7' } });
+  expect((await localizedResponseError(response)).retryAfterSeconds).toBe(7);
 });

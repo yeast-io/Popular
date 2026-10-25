@@ -1,3 +1,5 @@
+import type { ResourceSearchService } from '../resource-search/resource-search.service.js';
+import type { CreateResourceDownloadRequest, ResourceSiteRelease } from '@movie-hub/contract';
 import { toResponse } from './movie-download.presentation.js';
 import type { RemoteMovieDownloadService } from '../remote-downloads/remote-movie-download.service.js';
 import type { Locale } from '@movie-hub/contract';
@@ -46,6 +48,7 @@ import { userExternalRequestContext } from '../external-usage/external-usage.dom
 
 export class MovieDownloadService {
   remote?: RemoteMovieDownloadService;
+  resourceSearch?: Pick<ResourceSearchService, 'search'>;
   preferences?: Pick<IntegrationPreferencesService, 'get'>;
   private readonly syncs = new Map<string, Promise<MovieDownloadRecord[]>>();
 
@@ -119,22 +122,35 @@ export class MovieDownloadService {
     );
   }
 
+  async createResource(token: string | undefined, input: CreateResourceDownloadRequest, locale: Locale): Promise<MovieDownload> {
+    const ownerId = await this.auth.requireOwnerId(token);
+    if (!this.resourceSearch) throw new AppError(503, 'SERVICE_UNAVAILABLE', '');
+    const source = input.sourceProvider ?? 'mteam';
+    const result = await aiStep('download.resources.validate', () => this.resourceSearch!.search(ownerId, source,
+      { query: input.query, mediaType: 'tv', page: input.page ?? 1 }, AbortSignal.timeout(30_000), locale), { source });
+    const resource = result.releases.find((release) => release.id === input.sourceReleaseId);
+    if (!resource) throw new AppError(404, 'NOT_FOUND', '');
+    return this.createForOwner(ownerId, undefined, resource.id, input.provider, source, input.downloaderInstanceId,
+      input.remoteDeviceId, locale, resource.title.slice(0, 512), resource);
+  }
+
   /** Internal entry: owner identity must come from a verified channel binding or authenticated conversation. */
   async createForOwner(
     ownerId: string,
-    tmdbId: number,
+    tmdbId: number | undefined,
     releaseId: string,
     requestedProvider?: DownloadProvider,
     sourceProvider: DownloadSource = 'mteam',
     requestedInstanceId?: string,
     remoteDeviceId?: string,
     locale: Locale = 'en-US',
-    sourceReleaseTitle?: string
+    sourceReleaseTitle?: string,
+    resource?: ResourceSiteRelease
   ): Promise<MovieDownload> {
     if (remoteDeviceId) {
       if (!this.remote || requestedInstanceId || requestedProvider)
         throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', '');
-      return this.remote.create(ownerId, tmdbId, releaseId, sourceProvider, remoteDeviceId, locale, sourceReleaseTitle);
+      return this.remote.create(ownerId, tmdbId, releaseId, sourceProvider, remoteDeviceId, locale, sourceReleaseTitle, resource);
     }
     const existing = await this.downloads.findByRelease(ownerId, tmdbId, releaseId, sourceProvider);
     if (existing?.executionMode === 'remote' && existing.status !== 'missing') return toResponse(existing);
@@ -191,6 +207,8 @@ export class MovieDownloadService {
     const release = await aiStep(
       'download.resources.validate',
       async () => {
+        if (resource) return resource;
+        if (tmdbId === undefined) throw new AppError(404, 'NOT_FOUND', '');
         if (sourceProvider === 'hdarea')
           return this.siteDownloads!.resources.releaseForDownload(ownerId, tmdbId, sourceProvider, releaseId);
         const list = await this.resources.listReleases(ownerId, tmdbId);
@@ -206,7 +224,7 @@ export class MovieDownloadService {
             { downloadId: existing.id, provider })
         : await aiStep('download.task.retry', () => this.downloads.retry(existing.id))
       : await aiStep('download.task.claim', () => {
-          return this.downloads.createSubmitting(ownerId, tmdbId, releaseId, provider, sourceProvider, selected.downloaderInstanceId, selected.name);
+          return this.downloads.createSubmitting(ownerId, tmdbId, releaseId, provider, sourceProvider, selected.downloaderInstanceId, selected.name, undefined, resource);
         });
     let record = claim.record;
     // A different request or instance may have won the unique release claim.
@@ -375,7 +393,7 @@ export class MovieDownloadService {
     };
   }
 
-  async listAndSync(token: string | undefined, tmdbId: number): Promise<MovieDownloadListResponse> {
+  async listAndSync(token: string | undefined, tmdbId: number | undefined): Promise<MovieDownloadListResponse> {
     const ownerId = await this.auth.requireOwnerId(token);
     const key = `${ownerId}:${tmdbId}`;
     const existing = this.syncs.get(key);
@@ -383,7 +401,7 @@ export class MovieDownloadService {
     return { items: records.map(toResponse) };
   }
 
-  private async runSharedSync(key: string, ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]> {
+  private async runSharedSync(key: string, ownerId: string, tmdbId: number | undefined): Promise<MovieDownloadRecord[]> {
     const operation = this.sync(ownerId, tmdbId);
     this.syncs.set(key, operation);
     try {
@@ -393,7 +411,7 @@ export class MovieDownloadService {
     }
   }
 
-  private async sync(ownerId: string, tmdbId: number): Promise<MovieDownloadRecord[]> {
+  private async sync(ownerId: string, tmdbId: number | undefined): Promise<MovieDownloadRecord[]> {
     let records = await aiStep('download.sync.records', () => this.downloads.listForMovie(ownerId, tmdbId));
     const syncable = records.filter((record) => {
       return (

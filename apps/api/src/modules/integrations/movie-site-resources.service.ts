@@ -280,7 +280,7 @@ export class MovieSiteResourcesService {
     try {
       return await this.queryReleases(ownerId, tmdbId, site, page, force);
     } catch (error) {
-      if (!(error instanceof MovieReleaseCacheError) && site !== 'mteam' && this.sites.registry.has(site)) {
+      if (!(error instanceof MovieReleaseCacheError) && !(error instanceof AppError && error.code === 'RESOURCE_REFRESH_RATE_LIMITED') && site !== 'mteam' && this.sites.registry.has(site)) {
         try {
           await this.checks.recordAttempt({ ownerId, tmdbId, provider: site }, attemptedAt, this.failureResult(error));
         } catch (recordError) {

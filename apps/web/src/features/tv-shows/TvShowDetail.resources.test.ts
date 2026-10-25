@@ -18,6 +18,7 @@ beforeEach(() => {
   });
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.includes('cacheOnly=true')) return Response.json({ releases: [], cacheMiss: true });
     if (url.includes('integration-preferences')) return Response.json({ defaults: {}, choices: [], selectedSites: [], effectiveSites: [] });
     if (url.includes('/watchlist/')) return Response.json({ inWatchlist: false });
     if (url.includes('/seasons/')) return Response.json({ ...detail.seasons[0], episodes: [], stale: false });
@@ -36,6 +37,7 @@ describe('TV season resources', () => {
     const base = globalThis.fetch;
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes('cacheOnly=true')) return Response.json({ releases: [], cacheMiss: true });
       if (url.includes('integration-preferences')) return Response.json({ defaults: { resource: 'mteam' }, choices: [], selectedSites: [], effectiveSites: ['mteam'] });
       if (url.includes('resource-search')) return Response.json({ releases: [{ id: '1', title: 'MobLand S02' }] });
       return base(input, init);
@@ -44,7 +46,7 @@ describe('TV season resources', () => {
     const wrapper = mount(TvShowDetail, { props: { tmdbId: 42, authenticated: true }, attachTo: document.body });
     mounted.push(wrapper);
     await flushPromises();
-    expect(fetcher.mock.calls.some(([url]) => String(url).includes('resource-search') || String(url).includes('integration-preferences'))).toBe(false);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes('resource-search') && !String(url).includes('cacheOnly=true'))).toBe(false);
     expect(wrapper.get('.detail-poster .poster-resource-badge').classes()).toContain('is-pending');
     await wrapper.get('[role=combobox]').trigger('click');
     await wrapper.get('[data-season="2"]').trigger('click');
@@ -57,18 +59,44 @@ describe('TV season resources', () => {
     expect(wrapper.get('.dossier-data > div:last-child').classes()).toContain('dossier-resource');
     expect(wrapper.find('.resource-check-panel').exists()).toBe(false);
     expect(wrapper.get('.detail-poster .poster-resource-badge').classes()).toContain('is-available');
-    const queries = fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search'));
+    const queries = fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search') && !String(url).includes('cacheOnly=true'));
     expect(queries).toHaveLength(1);
     expect(new URL(String(queries[0]![0]), 'http://localhost').searchParams.get('query')).toBe('MobLand S02');
     expect(String(queries[0]![0])).toContain('mediaType=tv');
     await wrapper.get('.detail-poster .poster-resource-badge').trigger('click');
     await flushPromises();
     expect(document.querySelector('dialog')?.textContent).toContain('MobLand S02');
-    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search'))).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search') && !String(url).includes('cacheOnly=true'))).toHaveLength(1);
     await wrapper.setProps({ authenticated: false });
     await flushPromises();
     expect(document.querySelector('dialog')).toBeNull();
     expect(wrapper.find('.poster-resource-badge').exists()).toBe(false);
+  });
+
+  it.each(['en-US', 'zh-CN'] as const)('restores the selected season from server cache after remounting in %s', async (locale) => {
+    setLocale(locale);
+    const base = globalThis.fetch;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('integration-preferences')) return Response.json({ defaults: { resource: 'mteam' }, choices: [], selectedSites: [], effectiveSites: ['mteam'] });
+      if (url.includes('resource-search')) {
+        expect(url).toContain('cacheOnly=true');
+        return Response.json({ releases: [{ id: 'cached', title: 'Cached season pack' }], cached: true,
+          queriedAt: '2026-10-25T00:00:00.000Z', cacheExpiresAt: '2026-10-25T00:30:00.000Z' });
+      }
+      return base(input, init);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    for (let count = 0; count < 2; count += 1) {
+      const wrapper = mount(TvShowDetail, { props: { tmdbId: 42, authenticated: true }, attachTo: document.body });
+      await flushPromises();
+      expect(wrapper.get('.poster-resource-badge').classes()).toContain('is-available');
+      await wrapper.get('.tv-resource-query-button').trigger('click');
+      await flushPromises();
+      expect(document.querySelector('dialog')?.textContent).toContain('Cached season pack');
+      wrapper.unmount();
+    }
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search'))).toHaveLength(2);
   });
 
   it('hides resource controls and sends no resource query for guests', async () => {
@@ -86,6 +114,7 @@ describe('TV season resources', () => {
     let signal: AbortSignal | undefined;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes('cacheOnly=true')) return Response.json({ releases: [], cacheMiss: true });
       if (url.includes('integration-preferences')) return Response.json({ defaults: { resource: 'mteam' }, choices: [], selectedSites: [], effectiveSites: ['mteam'] });
       if (url.includes('resource-search')) {
         signal = init?.signal ?? undefined;
@@ -115,6 +144,7 @@ describe('TV season resources', () => {
     const base = globalThis.fetch;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes('cacheOnly=true')) return Response.json({ releases: [], cacheMiss: true });
       if (url.includes('integration-preferences')) return Response.json({ defaults: { resource: 'mteam' }, choices: [], selectedSites: [], effectiveSites: ['mteam', 'hdarea'] });
       if (url.includes('/hdarea/releases')) return Response.json({ error: { code: 'RESOURCE_SITE_FAILED', details: { reason: 'timeout' } } }, { status: 504 });
       if (url.includes('/mteam/releases')) return Response.json({ releases: [{ id: '1', title: 'MobLand S01' }] });
