@@ -1,13 +1,19 @@
 {
   "name": "@movie-hub/web",
-  "version": "0.0.0",
+  "version": "0.0.1-beta.1",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "vue-tsc -b && vite build",
     "dev": "vite",
     "test": "vitest run",
-    "typecheck": "vue-tsc -b --noEmit"
+    "typecheck": "vue-tsc -b --noEmit",
+    "patch": "pnpm version patch",
+    "minor": "pnpm version minor",
+    "major": "pnpm version major",
+    "beta": "pnpm version prerelease --preid beta",
+    "alpha": "pnpm version prerelease --preid alpha",
+    "rc": "pnpm version prerelease --preid rc"
   },
   "dependencies": {
     "@movie-hub/contract": "workspace:*",

@@ -1,30 +1,41 @@
-name: Deploy Popular
+name: Deploy Web And API Services
 
 on:
+  push:
+    branches:
+      - release
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
   group: popular-production
   cancel-in-progress: false
 
 jobs:
-  verify:
-    name: Verify deployment connection
+  deploy:
+    if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      - name: Check SSH and Docker
-        shell: bash
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
-          DEPLOY_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -33,80 +44,189 @@ jobs:
           : "${DEPLOY_SSH_KEY:?Missing DEPLOY_SSH_KEY}"
           : "${DEPLOY_KNOWN_HOSTS:?Missing DEPLOY_KNOWN_HOSTS}"
 
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+
           umask 077
-          ssh_dir=$(mktemp -d)
-          trap 'rm -rf "$ssh_dir"' EXIT
+          ssh_dir="$RUNNER_TEMP/popular-ssh"
+          mkdir -p "$ssh_dir"
 
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
 
-          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "Invalid commit SHA"
-            exit 1
-          }
+          cat > "$ssh_dir/config" <<EOF
+          Host popular
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            Port $DEPLOY_PORT
+            IdentityFile $ssh_dir/key
+            UserKnownHostsFile $ssh_dir/known_hosts
+            StrictHostKeyChecking yes
+            IdentitiesOnly yes
+            BatchMode yes
+            ConnectTimeout 15
+            ServerAliveInterval 30
+            ServerAliveCountMax 6
+          EOF
 
-          ssh \
-            -i "$ssh_dir/key" \
-            -p "$DEPLOY_PORT" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
-            -o ConnectTimeout=15 \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=6 \
-            "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash -se -- '$DEPLOY_SHA'" <<'REMOTE'
+      - name: Read successful deployment versions
+        run: |
           set -euo pipefail
 
+          ssh -F "$RUNNER_TEMP/popular-ssh/config" popular \
+            'if test -f "$HOME/popular-deploy/.env"; then cat "$HOME/popular-deploy/.env"; fi' \
+            > "$RUNNER_TEMP/popular-deployed.env"
+
+      - name: Detect version changes
+        id: versions
+        run: |
+          set -euo pipefail
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const version = (file) => {
+            const value = JSON.parse(fs.readFileSync(file, 'utf8')).version;
+            if (typeof value !== 'string' || !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(value)) {
+              throw new Error(`Version cannot be used in a Docker tag: ${file}`);
+            }
+            return value;
+          };
+
+          const contract = version('packages/contract/package.json');
+          const tags = {
+            api: `${version('apps/api/package.json')}-contract.${contract}`,
+            web: `${version('apps/web/package.json')}-contract.${contract}`,
+          };
+
+          const previous = {};
+          const state = fs.readFileSync(
+            path.join(process.env.RUNNER_TEMP, 'popular-deployed.env'),
+            'utf8',
+          );
+
+          for (const line of state.split(/\r?\n/)) {
+            const match = line.match(/^(API_IMAGE_TAG|WEB_IMAGE_TAG)=(.*)$/);
+            if (match) {
+              previous[match[1]] = match[2].trim().replace(/^(['"])(.*)\1$/, '$2');
+            }
+          }
+
+          for (const service of ['api', 'web']) {
+            const tag = tags[service];
+            if (tag.length > 128) {
+              throw new Error(`Image tag exceeds 128 characters: ${service}`);
+            }
+
+            const key = `${service.toUpperCase()}_IMAGE_TAG`;
+            const changed = previous[key] !== tag;
+
+            fs.appendFileSync(
+              process.env.GITHUB_OUTPUT,
+              `${service}_tag=${tag}\ndeploy_${service}=${changed}\n`,
+            );
+
+            console.log(`${service}: ${previous[key] || '(none)'} -> ${tag}; deploy=${changed}`);
+          }
+          NODE
+
+      - name: Build and deploy selected services
+        if: steps.versions.outputs.deploy_api == 'true' || steps.versions.outputs.deploy_web == 'true'
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          API_IMAGE_TAG: ${{ steps.versions.outputs.api_tag }}
+          WEB_IMAGE_TAG: ${{ steps.versions.outputs.web_tag }}
+          DEPLOY_API: ${{ steps.versions.outputs.deploy_api }}
+          DEPLOY_WEB: ${{ steps.versions.outputs.deploy_web }}
+        run: |
+          set -euo pipefail
+
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          ssh -F "$RUNNER_TEMP/popular-ssh/config" popular \
+            "bash -se -- '$DEPLOY_SHA' '$API_IMAGE_TAG' '$WEB_IMAGE_TAG' '$DEPLOY_API' '$DEPLOY_WEB'" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+
           commit_sha="$1"
+          api_tag="$2"
+          web_tag="$3"
+          deploy_api="$4"
+          deploy_web="$5"
+
           deploy_dir="$HOME/popular-deploy"
           mkdir -p "$deploy_dir"
 
-          # Prevent overlapping deployments on this server.
           exec 9>"$deploy_dir/deploy.lock"
           flock -n 9 || {
             echo "Another deployment is running"
             exit 1
           }
 
-          # Build from a clean directory, separate from production configuration.
+          test -f "$deploy_dir/compose.yml"
+
           build_dir=$(mktemp -d "$deploy_dir/build.XXXXXXXX")
           trap 'rm -rf "$build_dir"' EXIT
 
-          echo "Fetching commit: $commit_sha"
+          printf 'API_IMAGE_TAG=%s\nWEB_IMAGE_TAG=%s\n' \
+            "$api_tag" "$web_tag" > "$build_dir/versions.env"
+
+          unset API_IMAGE_TAG WEB_IMAGE_TAG
+
+          compose() {
+            docker compose \
+              --project-directory "$deploy_dir" \
+              --env-file "$build_dir/versions.env" \
+              -f "$deploy_dir/compose.yml" \
+              "$@"
+          }
+
+          compose config --quiet
+
           git init "$build_dir/source"
           cd "$build_dir/source"
           git remote add origin https://github.com/yeast-io/Popular.git
           GIT_TERMINAL_PROMPT=0 git fetch --depth=1 origin "$commit_sha"
           git checkout --detach FETCH_HEAD
-
           test "$(git rev-parse HEAD)" = "$commit_sha"
-          test -f .dockerignore
-          test -f apps/api/Dockerfile
 
-          echo "Building API image: popular-api:$commit_sha"
-          docker build \
-            -f apps/api/Dockerfile \
-            -t "popular-api:$commit_sha" \
-            .
+          services=()
 
-          docker image inspect "popular-api:$commit_sha" \
-            --format 'Built image: {{.Id}}'
+          if [[ "$deploy_api" == "true" ]]; then
+            services+=(api)
 
-          echo "API image build completed"
+            docker build \
+              -f apps/api/Dockerfile \
+              --label "org.opencontainers.image.revision=$commit_sha" \
+              -t "popular-api:$api_tag" \
+              .
+          fi
 
-          echo "Building Web image: popular-web:$commit_sha"
+          if [[ "$deploy_web" == "true" ]]; then
+            services+=(web)
 
-          docker build \
-            -f apps/web/Dockerfile \
-            --build-arg VITE_API_BASE_URL=https://api.gofloat.cn/api/v1 \
-            -t "popular-web:$commit_sha" \
-            .
+            docker build \
+              -f apps/web/Dockerfile \
+              --label "org.opencontainers.image.revision=$commit_sha" \
+              --build-arg VITE_API_BASE_URL=https://api.gofloat.cn/api/v1 \
+              -t "popular-web:$web_tag" \
+              .
+          fi
 
-          docker image inspect "popular-web:$commit_sha" \
-            --format 'Built Web image: {{.Id}}'
-
-          echo "Web image build completed"
-          
+          if compose up -d --no-deps --wait --wait-timeout 180 "${services[@]}"; then
+            mv "$build_dir/versions.env" "$deploy_dir/.env"
+            echo "Deployment succeeded; version records saved"
+          else
+            compose ps --all || true
+            compose logs --tail=100 "${services[@]}" || true
+            echo "Deployment failed; successful version records were not updated"
+            exit 1
+          fi
           REMOTE
+
+      - name: Clean up SSH credentials
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/popular-ssh"

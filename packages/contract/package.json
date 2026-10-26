@@ -16,7 +16,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --import tsx --test 'src/**/*.test.ts'",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "patch": "pnpm version patch",
+    "minor": "pnpm version minor",
+    "major": "pnpm version major",
+    "beta": "pnpm version prerelease --preid beta",
+    "alpha": "pnpm version prerelease --preid alpha",
+    "rc": "pnpm version prerelease --preid rc"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.41"
