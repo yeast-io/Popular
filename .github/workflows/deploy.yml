@@ -14,10 +14,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  detect:
     if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      api_tag: ${{ steps.versions.outputs.api_tag }}
+      web_tag: ${{ steps.versions.outputs.web_tag }}
+      gateway_tag: ${{ steps.versions.outputs.gateway_tag }}
+      deploy_api: ${{ steps.versions.outputs.deploy_api }}
+      deploy_web: ${{ steps.versions.outputs.deploy_web }}
+      deploy_gateway: ${{ steps.versions.outputs.deploy_gateway }}
 
     defaults:
       run:
@@ -94,11 +101,11 @@ jobs:
             }
             return value;
           };
-
           const contract = version('packages/contract/package.json');
           const tags = {
             api: `${version('apps/api/package.json')}-contract.${contract}`,
             web: `${version('apps/web/package.json')}-contract.${contract}`,
+            gateway: `${version('apps/helpers/gateway/package.json')}-contract.${contract}`,
           };
 
           const previous = {};
@@ -108,13 +115,13 @@ jobs:
           );
 
           for (const line of state.split(/\r?\n/)) {
-            const match = line.match(/^(API_IMAGE_TAG|WEB_IMAGE_TAG)=(.*)$/);
+            const match = line.match(/^(API_IMAGE_TAG|WEB_IMAGE_TAG|GATEWAY_IMAGE_TAG)=(.*)$/);
             if (match) {
               previous[match[1]] = match[2].trim().replace(/^(['"])(.*)\1$/, '$2');
             }
           }
 
-          for (const service of ['api', 'web']) {
+          for (const service of ['api', 'web', 'gateway']) {
             const tag = tags[service];
             if (tag.length > 128) {
               throw new Error(`Image tag exceeds 128 characters: ${service}`);
@@ -132,150 +139,52 @@ jobs:
           }
           NODE
 
-      - name: Build and deploy selected services
-        if: steps.versions.outputs.deploy_api == 'true' || steps.versions.outputs.deploy_web == 'true'
-        env:
-          DEPLOY_SHA: ${{ github.sha }}
-          API_IMAGE_TAG: ${{ steps.versions.outputs.api_tag }}
-          WEB_IMAGE_TAG: ${{ steps.versions.outputs.web_tag }}
-          DEPLOY_API: ${{ steps.versions.outputs.deploy_api }}
-          DEPLOY_WEB: ${{ steps.versions.outputs.deploy_web }}
-        run: |
-          set -euo pipefail
-
-          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
-
-          ssh -F "$RUNNER_TEMP/popular-ssh/config" popular \
-            "bash -se -- '$DEPLOY_SHA' '$API_IMAGE_TAG' '$WEB_IMAGE_TAG' '$DEPLOY_API' '$DEPLOY_WEB'" <<'REMOTE'
-          set -euo pipefail
-          umask 077
-
-          commit_sha="$1"
-          api_tag="$2"
-          web_tag="$3"
-          deploy_api="$4"
-          deploy_web="$5"
-
-          deploy_dir="$HOME/popular-deploy"
-          mkdir -p "$deploy_dir"
-
-          exec 9>"$deploy_dir/deploy.lock"
-          flock -n 9 || {
-            echo "Another deployment is running"
-            exit 1
-          }
-
-          test -f "$deploy_dir/compose.yml"
-
-          build_dir=$(mktemp -d "$deploy_dir/build.XXXXXXXX")
-          trap 'rm -rf "$build_dir"' EXIT
-
-          printf 'API_IMAGE_TAG=%s\nWEB_IMAGE_TAG=%s\n' \
-            "$api_tag" "$web_tag" > "$build_dir/versions.env"
-
-          unset API_IMAGE_TAG WEB_IMAGE_TAG
-
-          compose() {
-            docker compose \
-              --project-directory "$deploy_dir" \
-              --env-file "$build_dir/versions.env" \
-              -f "$deploy_dir/compose.yml" \
-              "$@"
-          }
-
-          compose config --quiet
-
-          git init "$build_dir/source"
-          cd "$build_dir/source"
-          git remote add origin https://github.com/yeast-io/Popular.git
-          GIT_TERMINAL_PROMPT=0 git fetch --depth=1 origin "$commit_sha"
-          git checkout --detach FETCH_HEAD
-          test "$(git rev-parse HEAD)" = "$commit_sha"
-
-          services=()
-
-          if [[ "$deploy_api" == "true" ]]; then
-            services+=(api)
-
-            docker build \
-              -f apps/api/Dockerfile \
-              --label "org.opencontainers.image.revision=$commit_sha" \
-              -t "popular-api:$api_tag" \
-              .
-          fi
-
-          if [[ "$deploy_web" == "true" ]]; then
-            services+=(web)
-
-            docker build \
-              -f apps/web/Dockerfile \
-              --label "org.opencontainers.image.revision=$commit_sha" \
-              --build-arg VITE_API_BASE_URL=https://api.gofloat.cn/api/v1 \
-              -t "popular-web:$web_tag" \
-              .
-          fi
-
-          if compose up -d --no-deps --wait --wait-timeout 180 "${services[@]}"; then
-            mv "$build_dir/versions.env" "$deploy_dir/.env"
-            echo "Deployment succeeded; version records saved"
-
-            clean_old_images() {
-              local repository="$1"
-              local current_tag="$2"
-              local candidates="$build_dir/${repository}-candidates"
-              local sorted="$build_dir/${repository}-sorted"
-              local image created retained=0
-
-              if ! docker image inspect "$repository:$current_tag" >/dev/null 2>&1; then
-                echo "Skipping $repository cleanup: current image is missing"
-                return 0
-              fi
-
-              if ! docker image ls \
-                --filter "reference=$repository:*" \
-                --format '{{.Repository}}:{{.Tag}}' > "$build_dir/${repository}-tags"; then
-                echo "Skipping $repository cleanup: cannot list images"
-                return 0
-              fi
-
-              : > "$candidates"
-              while IFS= read -r image; do
-                [[ "$image" == "$repository:"* ]] || continue
-                [[ "$image" == "$repository:$current_tag" ]] && continue
-                if created=$(docker image inspect --format '{{.Created}}' "$image"); then
-                  printf '%s\t%s\n' "$created" "$image" >> "$candidates"
-                else
-                  echo "Skipping $image: cannot inspect image"
-                fi
-              done < "$build_dir/${repository}-tags"
-
-              if ! sort -r "$candidates" > "$sorted"; then
-                echo "Skipping $repository cleanup: cannot sort images"
-                return 0
-              fi
-
-              while IFS=$'\t' read -r created image; do
-                if (( retained < 2 )); then
-                  retained=$((retained + 1))
-                  continue
-                fi
-                if ! docker image rm "$image"; then
-                  echo "Could not remove $image; it may still be used by a container"
-                fi
-              done < "$sorted"
-            }
-
-            clean_old_images popular-api "$api_tag"
-            clean_old_images popular-web "$web_tag"
-          else
-            compose ps --all || true
-            compose logs --tail=100 "${services[@]}" || true
-            echo "Deployment failed; successful version records were not updated"
-            exit 1
-          fi
-          REMOTE
-
       - name: Clean up SSH credentials
         if: always()
         run: |
           rm -rf "$RUNNER_TEMP/popular-ssh"
+
+  deploy-api:
+    needs: detect
+    if: needs.detect.outputs.deploy_api == 'true'
+    uses: ./.github/workflows/deploy-service.yml
+    with:
+      service: api
+      api_tag: ${{ needs.detect.outputs.api_tag }}
+      web_tag: ${{ needs.detect.outputs.web_tag }}
+      gateway_tag: ${{ needs.detect.outputs.gateway_tag }}
+    secrets:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+  deploy-web:
+    needs: [detect, deploy-api]
+    if: ${{ always() && !cancelled() && needs.detect.result == 'success' && needs.detect.outputs.deploy_web == 'true' && (needs['deploy-api'].result == 'success' || needs['deploy-api'].result == 'skipped') }}
+    uses: ./.github/workflows/deploy-service.yml
+    with:
+      service: web
+      api_tag: ${{ needs.detect.outputs.api_tag }}
+      web_tag: ${{ needs.detect.outputs.web_tag }}
+      gateway_tag: ${{ needs.detect.outputs.gateway_tag }}
+    secrets:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+  deploy-gateway:
+    needs: detect
+    if: needs.detect.outputs.deploy_gateway == 'true'
+    uses: ./.github/workflows/deploy-service.yml
+    with:
+      service: gateway
+      api_tag: ${{ needs.detect.outputs.api_tag }}
+      web_tag: ${{ needs.detect.outputs.web_tag }}
+      gateway_tag: ${{ needs.detect.outputs.gateway_tag }}
+    secrets:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}

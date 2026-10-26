@@ -218,27 +218,24 @@ test('resource site domains are configurable HTTPS origins with no embedded secr
   }
 });
 
-test('Gateway pool config requires paired service credentials and explicit local transport without production downgrade', () => {
+test('Gateway pool config requires paired service credentials and accepts HTTP(S)/WS(S) in production', () => {
   const gateway = { REMOTE_GATEWAY_BASE_URL: 'https://gateway.example', REMOTE_GATEWAY_SERVICE_TOKEN: 'x'.repeat(32) };
   assert.equal(loadConfig({ ...valid, ...gateway }).REMOTE_GATEWAY_POOL_SIZE, 4);
   for (const changes of [
     { REMOTE_GATEWAY_SERVICE_TOKEN: '' },
-    { REMOTE_GATEWAY_BASE_URL: 'http://localhost:4310' },
     { REMOTE_GATEWAY_POOL_SIZE: '0' },
     { REMOTE_GATEWAY_BASE_URL: 'https://user:secret@gateway.example' },
     { REMOTE_GATEWAY_BASE_URL: 'https://gateway.example/path' },
-    { REMOTE_GATEWAY_ALLOW_INSECURE_DEV: 'true', NODE_ENV: 'production' },
+    { REMOTE_GATEWAY_BASE_URL: 'http://gateway.example?token=secret' },
+    { REMOTE_GATEWAY_BASE_URL: 'ws://gateway.example#fragment' },
+    { REMOTE_GATEWAY_BASE_URL: 'ftp://gateway.example' },
   ])
     assert.throws(() => loadConfig({ ...valid, ...gateway, ...changes }), InvalidEnvironmentError);
-  assert.equal(
-    loadConfig({
-      ...valid,
-      ...gateway,
-      NODE_ENV: 'development',
-      REMOTE_GATEWAY_BASE_URL: 'ws://127.0.0.1:4310',
-      REMOTE_GATEWAY_ALLOW_INSECURE_DEV: 'true',
-    }
-    ).REMOTE_GATEWAY_ALLOW_INSECURE_DEV,
-    true
-  );
+  for (const protocol of ['http', 'https', 'ws', 'wss']) {
+    const address = `${protocol}://gateway.example:4310`;
+    assert.equal(
+      loadConfig({ ...valid, ...gateway, NODE_ENV: 'production', REMOTE_GATEWAY_BASE_URL: address }).REMOTE_GATEWAY_BASE_URL,
+      address
+    );
+  }
 });

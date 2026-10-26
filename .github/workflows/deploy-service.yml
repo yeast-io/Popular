@@ -1,0 +1,282 @@
+name: Deploy Service
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string
+      api_tag:
+        required: true
+        type: string
+      web_tag:
+        required: true
+        type: string
+      gateway_tag:
+        required: true
+        type: string
+    secrets:
+      DEPLOY_HOST:
+        required: true
+      DEPLOY_USER:
+        required: true
+      DEPLOY_SSH_KEY:
+        required: true
+      DEPLOY_KNOWN_HOSTS:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?Missing DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Missing DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?Missing DEPLOY_SSH_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing DEPLOY_KNOWN_HOSTS}"
+
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+
+          umask 077
+          ssh_dir="$RUNNER_TEMP/popular-ssh"
+          mkdir -p "$ssh_dir"
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+
+          cat > "$ssh_dir/config" <<EOF
+          Host popular
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            Port $DEPLOY_PORT
+            IdentityFile $ssh_dir/key
+            UserKnownHostsFile $ssh_dir/known_hosts
+            StrictHostKeyChecking yes
+            IdentitiesOnly yes
+            BatchMode yes
+            ConnectTimeout 15
+            ServerAliveInterval 30
+            ServerAliveCountMax 6
+          EOF
+
+      - name: Build and deploy ${{ inputs.service }}
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          SERVICE: ${{ inputs.service }}
+          API_IMAGE_TAG: ${{ inputs.api_tag }}
+          WEB_IMAGE_TAG: ${{ inputs.web_tag }}
+          GATEWAY_IMAGE_TAG: ${{ inputs.gateway_tag }}
+        run: |
+          set -euo pipefail
+
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SERVICE" == api || "$SERVICE" == web || "$SERVICE" == gateway ]]
+          [[ "$API_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]
+          [[ "$WEB_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]
+          [[ "$GATEWAY_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]
+          (( ${#API_IMAGE_TAG} <= 128 && ${#WEB_IMAGE_TAG} <= 128 && ${#GATEWAY_IMAGE_TAG} <= 128 ))
+
+          ssh -F "$RUNNER_TEMP/popular-ssh/config" popular \
+            "bash -se -- '$DEPLOY_SHA' '$SERVICE' '$API_IMAGE_TAG' '$WEB_IMAGE_TAG' '$GATEWAY_IMAGE_TAG'" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+
+          commit_sha="$1"
+          service="$2"
+          target_api_tag="$3"
+          target_web_tag="$4"
+          target_gateway_tag="$5"
+          deploy_dir="$HOME/popular-deploy"
+          mkdir -p "$deploy_dir"
+
+          exec 9>"$deploy_dir/deploy.lock"
+          flock -w 2700 9 || {
+            echo "Timed out waiting for another deployment"
+            exit 1
+          }
+
+          test -f "$deploy_dir/compose.yml"
+
+          current_api_tag=""
+          current_web_tag=""
+          current_gateway_tag=""
+          if [[ -f "$deploy_dir/.env" ]]; then
+            while IFS='=' read -r key value; do
+              case "$key" in
+                API_IMAGE_TAG) current_api_tag="$value" ;;
+                WEB_IMAGE_TAG) current_web_tag="$value" ;;
+                GATEWAY_IMAGE_TAG) current_gateway_tag="$value" ;;
+              esac
+            done < "$deploy_dir/.env"
+          fi
+
+          valid_tag() {
+            [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] && (( ${#1} <= 128 ))
+          }
+          [[ -z "$current_api_tag" ]] || valid_tag "$current_api_tag"
+          [[ -z "$current_web_tag" ]] || valid_tag "$current_web_tag"
+          [[ -z "$current_gateway_tag" ]] || valid_tag "$current_gateway_tag"
+
+          build_dir=$(mktemp -d "$deploy_dir/build.XXXXXXXX")
+          trap 'rm -rf "$build_dir"' EXIT
+
+          api_compose_tag="${current_api_tag:-$target_api_tag}"
+          web_compose_tag="${current_web_tag:-$target_web_tag}"
+          gateway_compose_tag="${current_gateway_tag:-$target_gateway_tag}"
+          if [[ "$service" == api ]]; then
+            api_compose_tag="$target_api_tag"
+            target_tag="$target_api_tag"
+          elif [[ "$service" == web ]]; then
+            web_compose_tag="$target_web_tag"
+            target_tag="$target_web_tag"
+          else
+            gateway_compose_tag="$target_gateway_tag"
+            target_tag="$target_gateway_tag"
+          fi
+
+          printf 'API_IMAGE_TAG=%s\nWEB_IMAGE_TAG=%s\nGATEWAY_IMAGE_TAG=%s\n' \
+            "$api_compose_tag" "$web_compose_tag" "$gateway_compose_tag" > "$build_dir/versions.env"
+
+          compose() {
+            docker compose \
+              --project-directory "$deploy_dir" \
+              --env-file "$build_dir/versions.env" \
+              -f "$deploy_dir/compose.yml" \
+              "$@"
+          }
+
+          compose config --quiet
+          if ! compose config --services | grep -Fxq "$service"; then
+            echo "Service $service is missing from $deploy_dir/compose.yml"
+            exit 1
+          fi
+
+          git init "$build_dir/source"
+          cd "$build_dir/source"
+          git remote add origin https://github.com/yeast-io/Popular.git
+          GIT_TERMINAL_PROMPT=0 git fetch --depth=1 origin "$commit_sha"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$commit_sha"
+
+          if [[ "$service" == api ]]; then
+            docker build \
+              -f apps/api/Dockerfile \
+              --label "org.opencontainers.image.revision=$commit_sha" \
+              -t "popular-api:$target_tag" \
+              .
+          elif [[ "$service" == web ]]; then
+            docker build \
+              -f apps/web/Dockerfile \
+              --label "org.opencontainers.image.revision=$commit_sha" \
+              --build-arg VITE_API_BASE_URL=https://api.gofloat.cn/api/v1 \
+              -t "popular-web:$target_tag" \
+              .
+          else
+            docker build \
+              -f apps/helpers/gateway/Dockerfile \
+              --label "org.opencontainers.image.revision=$commit_sha" \
+              -t "popular-gateway:$target_tag" \
+              .
+          fi
+
+          if compose up -d --no-deps --wait --wait-timeout 180 "$service"; then
+            if [[ "$service" == api ]]; then
+              current_api_tag="$target_tag"
+            elif [[ "$service" == web ]]; then
+              current_web_tag="$target_tag"
+            else
+              current_gateway_tag="$target_tag"
+            fi
+            {
+              if [[ -n "$current_api_tag" ]]; then
+                printf 'API_IMAGE_TAG=%s\n' "$current_api_tag"
+              fi
+              if [[ -n "$current_web_tag" ]]; then
+                printf 'WEB_IMAGE_TAG=%s\n' "$current_web_tag"
+              fi
+              if [[ -n "$current_gateway_tag" ]]; then
+                printf 'GATEWAY_IMAGE_TAG=%s\n' "$current_gateway_tag"
+              fi
+            } > "$build_dir/successful.env"
+            mv "$build_dir/successful.env" "$deploy_dir/.env"
+            echo "$service deployment succeeded; version record saved"
+
+            clean_old_images() {
+              local repository="$1"
+              local current_tag="$2"
+              local candidates="$build_dir/${repository}-candidates"
+              local sorted="$build_dir/${repository}-sorted"
+              local image created retained=0
+
+              if ! docker image inspect "$repository:$current_tag" >/dev/null 2>&1; then
+                echo "Skipping $repository cleanup: current image is missing"
+                return 0
+              fi
+
+              if ! docker image ls \
+                --filter "reference=$repository:*" \
+                --format '{{.Repository}}:{{.Tag}}' > "$build_dir/${repository}-tags"; then
+                echo "Skipping $repository cleanup: cannot list images"
+                return 0
+              fi
+
+              : > "$candidates"
+              while IFS= read -r image; do
+                [[ "$image" == "$repository:"* ]] || continue
+                [[ "$image" == "$repository:$current_tag" ]] && continue
+                if created=$(docker image inspect --format '{{.Created}}' "$image"); then
+                  printf '%s\t%s\n' "$created" "$image" >> "$candidates"
+                else
+                  echo "Skipping $image: cannot inspect image"
+                fi
+              done < "$build_dir/${repository}-tags"
+
+              if ! sort -r "$candidates" > "$sorted"; then
+                echo "Skipping $repository cleanup: cannot sort images"
+                return 0
+              fi
+
+              while IFS=$'\t' read -r created image; do
+                if (( retained < 2 )); then
+                  retained=$((retained + 1))
+                  continue
+                fi
+                if ! docker image rm "$image"; then
+                  echo "Could not remove $image; it may still be used by a container"
+                fi
+              done < "$sorted"
+            }
+
+            clean_old_images "popular-$service" "$target_tag"
+          else
+            compose ps --all || true
+            compose logs --tail=100 "$service" || true
+            echo "$service deployment failed; version record was not updated"
+            exit 1
+          fi
+          REMOTE
+
+      - name: Clean up SSH credentials
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/popular-ssh"

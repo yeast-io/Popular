@@ -6,7 +6,6 @@ export interface GatewayPoolOptions {
   token: string;
   instanceId: string;
   size?: number;
-  allowInsecure?: boolean;
   diagnostics: RpcDiagnostics;
   handle(command: string, payload: unknown, frame: RpcFrame): Promise<unknown>;
 }

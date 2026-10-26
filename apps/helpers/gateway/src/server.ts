@@ -7,13 +7,9 @@ import { createGatewayApp } from './gateway.routes.js';
 import { createRedisClient } from './infrastructure/redis/client.js';
 import { GatewayBridge } from './infrastructure/gateway-bridge.service.js';
 import { gatewayLogger } from './gateway-logging.service.js';
-import { requireCondition } from './gateway.errors.js';
 
 const config = configSchema.parse(process.env);
 const logger = gatewayLogger(config.LOG_LEVEL, [config.INTERNAL_INBOUND_TOKEN, config.REDIS_URL]);
-const proxyTls = config.TLS_TERMINATION === 'proxy';
-const allowHttp = config.NODE_ENV !== 'production' && config.ALLOW_INSECURE_DEV;
-requireCondition(proxyTls || (config.TLS_CERT_FILE && config.TLS_KEY_FILE) || allowHttp, 'HTTPS_REQUIRED', 500);
 const instanceId = randomUUID();
 const redisClient = createRedisClient({
   url: config.REDIS_URL,
@@ -43,18 +39,7 @@ try {
   });
   app = await createGatewayApp(service, config.INTERNAL_INBOUND_TOKEN, {
     bridge,
-    ...(!proxyTls && config.TLS_CERT_FILE && config.TLS_KEY_FILE
-      ? {
-          tls: {
-            cert: await readFile(config.TLS_CERT_FILE),
-            key: await readFile(config.TLS_KEY_FILE),
-          },
-        }
-      : {
-          tlsTerminatedByProxy: proxyTls,
-          allowInsecureDev: allowHttp,
-          ...(proxyTls ? { trustProxy: 'loopback' as const } : {}),
-        }),
+    trustProxy: 'loopback',
   });
   await app.listen({ host: config.HOST, port: config.PORT });
   let stopping = false;

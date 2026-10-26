@@ -22,9 +22,9 @@ async function ready(pool) {
 }
 async function host(t, gateway, bridge, backend) {
   const token = 'independent-test-service-credential-123456';
-  const app = await createGatewayApp(gateway, token, { bridge, allowInsecureDev: true });
+  const app = await createGatewayApp(gateway, token, { bridge });
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
-  const pool = new GatewayPool({ urls: [address], token, instanceId: 'popular-test', size: 4, allowInsecure: true,
+  const pool = new GatewayPool({ urls: [address], token, instanceId: 'popular-test', size: 4,
     diagnostics, handle: (c, p) => backend.handle(c, p) });
   t.after(async () => {
     await pool.stop();

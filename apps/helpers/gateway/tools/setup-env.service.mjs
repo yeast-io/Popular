@@ -44,6 +44,8 @@ function updateEnvironment(text, updates) {
     const key = match?.[1];
     if (
       [
+        'TLS_TERMINATION',
+        'ALLOW_INSECURE_DEV',
         'TLS_CERT_FILE',
         'TLS_KEY_FILE',
         'MONGODB_URI',
@@ -94,7 +96,7 @@ export async function setupGatewayEnvironment(options = {}) {
     const existing = await fileText(envFile, true);
     const template = await readFile(resolve(gatewayDirectory, '.env.example'), 'utf8');
     const values = parseEnv(existing ?? template);
-    const updates = { TLS_TERMINATION: 'proxy' };
+    const updates = {};
     const generated = [];
     const preserved = [];
     for (const key of fields) {

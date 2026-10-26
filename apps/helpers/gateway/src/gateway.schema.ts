@@ -90,10 +90,6 @@ export const agentStatusSchema = z
   .strict();
 export const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
-  ALLOW_INSECURE_DEV: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
   VERBOSE: z
     .enum(['true', 'false'])
     .default('false')
@@ -105,9 +101,6 @@ export const configSchema = z.object({
   INTERNAL_INBOUND_TOKEN: z.string().min(32),
   SIGNING_PRIVATE_KEY_FILE: z.string().min(1),
   SIGNING_KEY_ID: id,
-  TLS_TERMINATION: z.enum(['proxy', 'direct']).default('direct'),
-  TLS_CERT_FILE: z.string().optional(),
-  TLS_KEY_FILE: z.string().optional(),
 });
 
 export const protocolErrorSchema = z

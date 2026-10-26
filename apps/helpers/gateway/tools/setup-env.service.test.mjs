@@ -21,7 +21,7 @@ test('generates independent credentials, private Ed25519 JWK and proxy env witho
   const env = parseEnv(await readFile(f.envFile, 'utf8'));
   assert.equal(env.INTERNAL_INBOUND_TOKEN.length, 64);
   assert.equal(env.POPULAR_OUTBOUND_TOKEN, undefined);
-  assert.equal(env.TLS_TERMINATION, 'proxy');
+  assert.equal(env.TLS_TERMINATION, undefined);
   assert.equal(env.TLS_CERT_FILE, undefined);
   assert.equal(env.TLS_KEY_FILE, undefined);
   assert.equal(env.STORAGE_ADAPTER_MODULE, undefined);
@@ -44,7 +44,7 @@ test('rerun preserves credentials, signing identity, unrelated settings/comments
     f.envFile,
     (await readFile(f.envFile, 'utf8'))
     + '# custom comment\r\nCUSTOM="keep # value"\r\n'
-    + `export INTERNAL_INBOUND_TOKEN='${initial.INTERNAL_INBOUND_TOKEN}'\r\nTLS_CERT_FILE=/old/cert.pem\r\nTLS_KEY_FILE=/old/key.pem\r\n`
+    + `export INTERNAL_INBOUND_TOKEN='${initial.INTERNAL_INBOUND_TOKEN}'\r\nTLS_TERMINATION=direct\r\nALLOW_INSECURE_DEV=true\r\nTLS_CERT_FILE=/old/cert.pem\r\nTLS_KEY_FILE=/old/key.pem\r\n`
   );
   await setupGatewayEnvironment(f);
   const content = await readFile(f.envFile, 'utf8');
@@ -52,6 +52,8 @@ test('rerun preserves credentials, signing identity, unrelated settings/comments
   for (const field of ['INTERNAL_INBOUND_TOKEN', 'SIGNING_PRIVATE_KEY_FILE', 'SIGNING_KEY_ID']) {
     assert.equal(next[field], initial[field]);
   }
+  for (const field of ['TLS_TERMINATION', 'TLS_CERT_FILE', 'TLS_KEY_FILE', 'ALLOW_INSECURE_DEV'])
+    assert.equal(next[field], undefined);
   assert.equal(next.CUSTOM, 'keep # value');
   assert.match(content, /# custom comment/);
   assert.equal(content.match(/^INTERNAL_INBOUND_TOKEN=/gm).length, 1);

@@ -174,7 +174,6 @@ try {
     token: config.REMOTE_GATEWAY_SERVICE_TOKEN ?? '',
     instanceId: randomUUID(),
     size: config.REMOTE_GATEWAY_POOL_SIZE,
-    allowInsecure: config.REMOTE_GATEWAY_ALLOW_INSECURE_DEV,
     diagnostics: {
       verbose: config.VERBOSE,
       info: (fields) => loggers.app.info(fields, 'gateway-pool'),

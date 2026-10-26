@@ -17,20 +17,11 @@ export async function createGatewayApp(
   internalToken: string,
   options: {
     bridge?: GatewayBridge;
-    tls?: { cert: Buffer; key: Buffer };
-    allowInsecureDev?: boolean;
-    tlsTerminatedByProxy?: boolean;
     trustProxy?: 'loopback';
   } = {}
 ) {
-  requireCondition(
-    options.tls || options.tlsTerminatedByProxy === true || options.allowInsecureDev === true,
-    'HTTPS_REQUIRED',
-    500
-  );
   const app = Fastify({
     trustProxy: options.trustProxy ?? false,
-    ...(options.tls ? { https: options.tls } : {}),
     bodyLimit: 65_536,
     requestTimeout: 15_000,
     connectionTimeout: 15_000,

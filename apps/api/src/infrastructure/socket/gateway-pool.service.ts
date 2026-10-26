@@ -11,11 +11,8 @@ export class GatewayPool {
     this.members = Array.from({ length: options.size ?? 4 }, (_, slot) => ({ slot, attempt: 0, ready: false }));
     for (const address of options.urls) {
       const url = new URL(address);
-      if (
-        !['https:', 'wss:'].includes(url.protocol)
-        && !(options.allowInsecure && ['http:', 'ws:'].includes(url.protocol))
-      ) {
-        throw new RpcError('WSS_REQUIRED', 'not_applied');
+      if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) {
+        throw new RpcError('INVALID_GATEWAY_URL', 'not_applied');
       }
       if (url.username || url.password || url.search || url.hash)
         throw new RpcError('INVALID_GATEWAY_URL', 'not_applied');

@@ -108,10 +108,6 @@ export const EnvSchema = z
     AVATAR_MAX_PIXELS: z.coerce.number().int().min(1).max(100_000_000).default(16_777_216),
     REMOTE_GATEWAY_BASE_URL: optionalUrl,
     REMOTE_GATEWAY_POOL_SIZE: z.coerce.number().int().min(1).max(32).default(4),
-    REMOTE_GATEWAY_ALLOW_INSECURE_DEV: z
-      .enum(['true', 'false'])
-      .default('false')
-      .transform((v) => v === 'true'),
     REMOTE_GATEWAY_SERVICE_TOKEN: z
       .string()
       .min(32)
@@ -196,13 +192,6 @@ export const EnvSchema = z
     }
     if (value.REMOTE_GATEWAY_BASE_URL) {
       const url = new URL(value.REMOTE_GATEWAY_BASE_URL);
-      if (['http:', 'ws:'].includes(url.protocol) && !value.REMOTE_GATEWAY_ALLOW_INSECURE_DEV)
-        context.addIssue({
-          code: 'custom',
-          path: ['REMOTE_GATEWAY_BASE_URL'],
-          message: 'WSS requires HTTPS/ WSS Gateway origin unless insecure development transport is explicit',
-        }
-        );
       if (
         !['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)
         || url.username
@@ -219,13 +208,6 @@ export const EnvSchema = z
         );
       }
     }
-    if (value.REMOTE_GATEWAY_ALLOW_INSECURE_DEV && value.NODE_ENV === 'production')
-      context.addIssue({
-        code: 'custom',
-        path: ['REMOTE_GATEWAY_ALLOW_INSECURE_DEV'],
-        message: 'Insecure Gateway transport requires development mode',
-      }
-      );
     if (value.OPENAI_MAX_OUTPUT_TOKENS >= value.OPENAI_MAX_CONTEXT_TOKENS) {
       context.addIssue({
         code: 'custom',
