@@ -1,0 +1,56 @@
+name: Deploy Popular
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: popular-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify deployment connection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Check SSH and Docker
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?Missing DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Missing DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?Missing DEPLOY_SSH_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing DEPLOY_KNOWN_HOSTS}"
+
+          umask 077
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf "$ssh_dir"' EXIT
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+
+          ssh \
+            -i "$ssh_dir/key" \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+            -o ConnectTimeout=15 \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          whoami
+          git --version
+          docker version
+          docker compose version
+          REMOTE
