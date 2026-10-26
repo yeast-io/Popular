@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { replacementSecret } from './integration-secret.domain';
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
-import type { ResourceSiteConfiguration, ApiError } from '@movie-hub/contract';
+import type { ResourceSiteConfiguration } from '@movie-hub/contract';
 import SourceConfigurationActions from './SourceConfigurationActions.vue';
 import IntegrationCard from '../settings/IntegrationCard.vue';
 import { loadWebConfig } from '../../config/env';
 import { t } from '../../i18n';
-import { apiErrorKey, LocalizedApiError, localizedErrorMessage } from '../../i18n/api-error';
-import type { TranslationKey } from '../../i18n/translation.types';
+import { localizedApiError, LocalizedApiError, localizedErrorMessage } from '../../i18n/api-error';
 
 const emit = defineEmits<{ 'configuration-changed': [] }>();
 const { apiBaseUrl } = loadWebConfig();
@@ -36,19 +35,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, credentials: 'include', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) });
   if (response.status === 204) return undefined as T;
   const result = await response.json();
-  if (!response.ok) {
-    const reason = (result as ApiError).error?.details as { reason?: string } | undefined;
-    const key = `resourceSite.error.${reason?.reason ?? 'network'}`;
-    throw new LocalizedApiError(key in errorKeys ? key as TranslationKey : apiErrorKey(result, 'resourceSite.error.network'));
-  }
+  if (!response.ok) throw localizedApiError(result, 'resourceSite.error.network');
   return result as T;
 }
-const errorKeys = {
-  'resourceSite.error.notConfigured': true, 'resourceSite.error.authentication': true,
-  'resourceSite.error.blocked': true, 'resourceSite.error.rateLimited': true,
-  'resourceSite.error.invalidResponse': true, 'resourceSite.error.network': true,
-  'resourceSite.error.timeout': true, 'resourceSite.error.invalidCredential': true,
-};
 async function action(work: () => Promise<void>) {
   busy.value = true;
   notice.value = '';

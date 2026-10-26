@@ -198,7 +198,7 @@ const zhCN = {
   'resourceSite.deleteConfirm': '删除已保存的 HDArea 配置？',
   'resourceSite.error.passkeyRequired': '请先在 HDArea 设置中配置 Passkey，再下载。',
   'resourceSite.error.notConfigured': '尚未配置资源站点，请先在设置中添加至少一个站点。',
-  'resourceSite.error.accountInUse': '该站点账号已绑定其他账号。',
+  'resourceSite.error.accountInUse': '密钥或认证信息无法重复绑定',
   'resourceSite.error.identityPending': '已有站点账号尚未完成身份验证，暂时无法添加新的绑定。',
   'resourceSite.error.authentication': 'Cookie 无效或已过期，请更新后重新验证。',
   'resourceSite.error.blocked': 'HDArea 要求验证或拒绝访问，已停止请求。',

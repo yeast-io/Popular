@@ -200,7 +200,7 @@ const enUS = {
   'resourceSite.deleteConfirm': 'Delete the saved HDArea configuration?',
   'resourceSite.error.passkeyRequired': 'Configure a Passkey in HDArea settings before downloading.',
   'resourceSite.error.notConfigured': 'No resource sites configured. Add at least one in Settings.',
-  'resourceSite.error.accountInUse': 'This site account is already linked to another account.',
+  'resourceSite.error.accountInUse': 'Keys or authentication credentials cannot be linked more than once.',
   'resourceSite.error.identityPending': 'Existing site accounts still need identity verification. New bindings are temporarily unavailable.',
   'resourceSite.error.authentication': 'The Cookie is invalid or expired. Update it and verify again.',
   'resourceSite.error.blocked': 'HDArea requires verification or denied access. Requests have stopped.',

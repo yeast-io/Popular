@@ -109,7 +109,11 @@ test('M-Team routes require authentication and never serialize the API key', asy
         assert.equal(response.json().error.code, code);
         assert.equal(response.body.includes('private-original-index'), false);
         assert.equal(response.body.includes('must-not-leak'), false);
-        if (language === 'zh-CN') assert.match(response.json().error.message, /站点账号/);
+        if (response.json().error.code === 'RESOURCE_SITE_ACCOUNT_IN_USE')
+          assert.equal(response.json().error.message, language === 'zh-CN'
+            ? '密钥或认证信息无法重复绑定'
+            : 'Keys or authentication credentials cannot be linked more than once.');
+        else if (language === 'zh-CN') assert.match(response.json().error.message, /站点账号/);
       }
     }
   }

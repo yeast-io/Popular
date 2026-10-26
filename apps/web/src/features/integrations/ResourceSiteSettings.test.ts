@@ -2,6 +2,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
 import ResourceSiteSettings from './ResourceSiteSettings.vue';
+import MTeamSettings from './MTeamSettings.vue';
 import { setLocale } from '../../i18n';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -53,4 +54,32 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     expect(wrapper.text()).not.toContain('uid=secret');
     wrapper.unmount();
   });
+}
+
+for (const locale of ['zh-CN', 'en-US'] as const) {
+  for (const [site, component, field] of [
+    ['hdarea', ResourceSiteSettings, '#hdarea-cookie'],
+    ['mteam', MTeamSettings, '#mteam-api-key'],
+  ] as const) {
+    it(`shows the shared duplicate credential message when adding ${site} in ${locale}`, async () => {
+      setLocale(locale);
+      vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'PUT') return Response.json({
+          error: { code: 'RESOURCE_SITE_ACCOUNT_IN_USE', message: 'private server details' },
+        }, { status: 409 });
+        return Response.json({ site, provider: site, status: 'unconfigured' });
+      }));
+      const wrapper = mount(component);
+      await flushPromises();
+      await wrapper.get(field).setValue('test-credential');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(wrapper.text()).toContain(locale === 'zh-CN'
+        ? '密钥或认证信息无法重复绑定'
+        : 'Keys or authentication credentials cannot be linked more than once.');
+      expect(wrapper.text()).not.toContain('private server details');
+      expect(wrapper.emitted('configuration-changed')).toBeUndefined();
+      wrapper.unmount();
+    });
+  }
 }

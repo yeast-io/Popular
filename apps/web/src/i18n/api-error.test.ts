@@ -36,7 +36,7 @@ it('preserves actionable site failure reasons in both languages and ignores unkn
 it.each(['en-US', 'zh-CN'] as const)('explains site account conflicts and pending migration without exposing server details (%s)', (locale) => {
   setLocale(locale);
   for (const [code, expected] of [
-    ['RESOURCE_SITE_ACCOUNT_IN_USE', locale === 'zh-CN' ? '该站点账号已绑定其他账号。' : 'This site account is already linked to another account.'],
+    ['RESOURCE_SITE_ACCOUNT_IN_USE', locale === 'zh-CN' ? '密钥或认证信息无法重复绑定' : 'Keys or authentication credentials cannot be linked more than once.'],
     ['RESOURCE_SITE_IDENTITY_PENDING', locale === 'zh-CN' ? '已有站点账号尚未完成身份验证，暂时无法添加新的绑定。' : 'Existing site accounts still need identity verification. New bindings are temporarily unavailable.'],
   ]) expect(localizedErrorMessage(localizedApiError({ error: { code, message: 'private internal details' } }), 'errors.unknown')).toBe(expected);
 });
