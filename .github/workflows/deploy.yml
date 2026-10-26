@@ -95,4 +95,18 @@ jobs:
             --format 'Built image: {{.Id}}'
 
           echo "API image build completed"
+
+          echo "Building Web image: popular-web:$commit_sha"
+
+          docker build \
+            -f apps/web/Dockerfile \
+            --build-arg VITE_API_BASE_URL=https://api.gofloat.cn/api/v1 \
+            -t "popular-web:$commit_sha" \
+            .
+
+          docker image inspect "popular-web:$commit_sha" \
+            --format 'Built Web image: {{.Id}}'
+
+          echo "Web image build completed"
+          
           REMOTE
