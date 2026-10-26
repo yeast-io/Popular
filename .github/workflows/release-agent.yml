@@ -46,7 +46,21 @@ jobs:
 
           CONFIG="helpers/agent/src-tauri/tauri.conf.json"
 
+          echo "Checking config: $CONFIG"
+
+          if [[ ! -f "$CONFIG" ]]; then
+            echo "::error::Config file not found: $CONFIG"
+            exit 1
+          fi
+
+          if ! jq empty "$CONFIG"; then
+            echo "::error::Invalid JSON: $CONFIG"
+            exit 1
+          fi
+
           BASE_VERSION=$(jq -r '.version // empty' "$CONFIG")
+
+          echo "Detected version: $VERSION"
 
           if [[ -z "$BASE_VERSION" ]]; then
             echo "Missing version in $CONFIG"
