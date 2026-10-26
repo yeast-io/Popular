@@ -18,4 +18,6 @@ FROM nginx:stable-alpine AS runtime
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /workspace/apps/web/dist/ /usr/share/nginx/html/
 
+RUN chmod -R a+rX /usr/share/nginx/html
+
 EXPOSE 80
