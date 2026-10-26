@@ -5,6 +5,7 @@ const userMovieStateSchema = new Schema(
   {
     ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     tmdbId: { type: Number, required: true, min: 1 },
+    resourceNotificationEnabled: { type: Boolean, default: false },
     status: { type: String, required: true, enum: [...movieStatuses, 'not_interested'], default: 'unwatched' },
     preference: { type: String, required: true, enum: moviePreferences, default: 'neutral' },
   },

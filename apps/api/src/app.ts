@@ -45,7 +45,10 @@ import { registerExternalUsageRoutes } from './modules/external-usage/external-u
 import { registerPublicConfigRoutes } from './modules/config/public-config.routes.js';
 import { registerConversationRoutes } from './modules/conversations/conversation.routes.js';
 
+import { registerResourceNotificationRoutes } from './modules/resource-notifications/resource-notification.routes.js';
+
 export async function buildApp({
+  resourceNotificationService,
   remoteClientService,
   resourceSiteService,
   resourceSearchService,
@@ -117,11 +120,12 @@ export async function buildApp({
       if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config);
       registerPublicConfigRoutes(api, config);
       registerHealthRoutes(api, healthDependencies);
-      if (authService) registerAuthRoutes(api, authService, config);
+      if (authService) registerAuthRoutes(api, authService, config, loggers.error);
       if (preferenceService && authService) registerPreferenceRoutes(api, preferenceService, authService, config);
       if (userService) registerUserRoutes(api, userService, config);
       if (tvShowService && tvSeasonService && tvTrendingService) registerTvShowRoutes(api, tvShowService, tvSeasonService, tvTrendingService, config, { logger: loggers.error, verbose: config.VERBOSE }, authService, tvPreferenceService);
       if (tvPreferenceService && authService) registerTvPreferenceRoutes(api, tvPreferenceService, authService, config, loggers.error);
+      if (resourceNotificationService && authService) registerResourceNotificationRoutes(api, resourceNotificationService, authService, config, loggers.error);
       if (watchlistService && authService) registerWatchlistRoutes(api, watchlistService, authService, config, loggers.error);
       if (movieService) registerMovieRoutes(api, movieService, authService, config, loggers.app);
       if (movieStatusService && authService)

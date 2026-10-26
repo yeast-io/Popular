@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AppError } from '../../infrastructure/http/app-error.js';
+import { verificationFixture } from './email-verification.fixtures.test.js';
 import { AuthService } from './auth.service.js';
 import { DuplicateEmailError } from './auth.errors.js';
 import type { AuthUserStore, SessionStore, StoredUser } from './auth.types.js';
@@ -72,53 +73,65 @@ class MemorySessions implements SessionStore {
   }
 }
 
-test('register normalizes email and creates an authenticated session', async () => {
+test('registration remains unauthenticated until the email-bound code is verified', async () => {
   const users = new MemoryUsers();
   const sessions = new MemorySessions();
-  const service = new AuthService(users, sessions, 100);
-  const result = await service.register({
-    email: ' PERSON@Example.COM ',
-    password: 'correct horse battery staple',
-    displayName: 'Person',
-  }
-  );
-  assert.equal(result.user.email, 'person@example.com');
+  const fixture = verificationFixture(users);
+  const service = new AuthService(users, sessions, 100, fixture.service);
+  const pending = await service.register({ email: ' PERSON@Example.COM ', password: 'correct horse battery staple', displayName: 'Person' }, 'en-US');
+  assert.equal(pending.email, 'person@example.com');
+  assert.equal(users.users.size, 0);
+  assert.equal(sessions.sessions.size, 0);
+  assert.equal(fixture.sent[0]?.locale, 'en-US');
+  await assert.rejects(service.login({ email: pending.email, password: 'correct horse battery staple' }));
+  await service.register({ email: pending.email, password: 'different password', displayName: 'Other' });
+  assert.equal(fixture.sent.length, 1);
+  const code = fixture.sent[0]!.code;
+  await assert.rejects(service.verifyRegistration({ email: 'other@example.com', code, password: 'correct horse battery staple' }));
+  await assert.rejects(service.verifyRegistration({ email: pending.email, code, password: 'different password' }));
+  const result = await service.verifyRegistration({ email: pending.email, code, password: 'correct horse battery staple' });
+  assert.equal(result.user.email, pending.email);
   assert.equal(await sessions.getOwnerId(result.token), result.user.id);
-  assert.notEqual(users.users.get('person@example.com')?.passwordHash, 'correct horse battery staple');
+  assert.notEqual(users.users.get(pending.email)?.passwordHash, 'correct horse battery staple');
+  await assert.rejects(service.verifyRegistration({ email: pending.email, code, password: 'correct horse battery staple' }));
+  assert.ok((await service.login({ email: pending.email, password: 'correct horse battery staple' })).token);
 });
 
-test('register rejects new users once the configured limit is reached', async () => {
+test('expired registrations and five wrong code attempts cannot create accounts', async () => {
   const users = new MemoryUsers();
-  const service = new AuthService(users, new MemorySessions(), 1);
-  await service.register({
-    email: 'first@example.com',
-    password: 'correct horse battery staple',
-    displayName: 'First',
-  }
-  );
-  await assert.rejects(
-    service.register({ email: 'second@example.com', password: 'correct horse battery staple', displayName: 'Second' }),
-    (error: unknown) => {
-      return (
-        error instanceof AppError
-        && error.statusCode === 403
-        && error.code === 'REGISTRATION_LIMIT_REACHED'
-        && error.message === 'Registration user limit has been reached'
-      );
-    });
-  assert.equal(users.users.size, 1);
+  const fixture = verificationFixture(users);
+  const service = new AuthService(users, new MemorySessions(), 100, fixture.service);
+  await service.register({ email: 'expired@example.com', password: 'secure password', displayName: 'Expired' });
+  for (const record of fixture.records.values()) record.registration.expiresAt = Date.now() - 1;
+  await assert.rejects(service.verifyRegistration({ email: 'expired@example.com', code: fixture.sent[0]!.code, password: 'secure password' }));
+  await service.register({ email: 'locked@example.com', password: 'secure password', displayName: 'Locked' });
+  const code = fixture.sent[1]!.code;
+  const wrongCode = code === '000000' ? '111111' : '000000';
+  for (let index = 0; index < 5; index++) await assert.rejects(service.verifyRegistration({ email: 'locked@example.com', code: wrongCode, password: 'secure password' }));
+  await assert.rejects(service.verifyRegistration({ email: 'locked@example.com', code, password: 'secure password' }));
+  assert.equal(users.users.size, 0);
 });
 
-test('concurrent registrations cannot exceed the configured limit in one server process', async () => {
+test('send failure removes pending data and registration fails closed without Mailgun integration', async () => {
   const users = new MemoryUsers();
-  const service = new AuthService(users, new MemorySessions(), 1);
-  const results = await Promise.allSettled([
-    service.register({ email: 'first@example.com', password: 'correct horse battery staple', displayName: 'First' }),
-    service.register({ email: 'second@example.com', password: 'correct horse battery staple', displayName: 'Second' }),
-  ]
-  );
+  const fixture = verificationFixture(users);
+  fixture.failSend();
+  const service = new AuthService(users, new MemorySessions(), 100, fixture.service);
+  const input = { email: 'failure@example.com', password: 'secure password', displayName: 'Failure' };
+  await assert.rejects(service.register(input), (error: unknown) => error instanceof AppError && error.code === 'EMAIL_VERIFICATION_UNAVAILABLE' && error.cause instanceof Error);
+  assert.equal(fixture.records.size, 0);
+  assert.equal(users.users.size, 0);
+  await assert.rejects(new AuthService(users, new MemorySessions(), 100).register(input));
+});
+
+test('verification rechecks the user limit and serializes account creation', async () => {
+  const users = new MemoryUsers();
+  const fixture = verificationFixture(users, 1);
+  const service = new AuthService(users, new MemorySessions(), 1, fixture.service);
+  await service.register({ email: 'first@example.com', password: 'secure password', displayName: 'First' });
+  await service.register({ email: 'second@example.com', password: 'secure password', displayName: 'Second' });
+  const results = await Promise.allSettled(fixture.sent.map(({ email, code }) => service.verifyRegistration({ email, code, password: 'secure password' })));
   assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
-  assert.equal(results.filter((result) => result.status === 'rejected').length, 1);
   assert.equal(users.users.size, 1);
 });
 
@@ -134,13 +147,15 @@ test('login rejects a wrong password without revealing which credential failed',
 test('current user and logout use the server-side session', async () => {
   const users = new MemoryUsers();
   const sessions = new MemorySessions();
-  const service = new AuthService(users, sessions, 100);
-  const registered = await service.register({
+  const fixture = verificationFixture(users);
+  const service = new AuthService(users, sessions, 100, fixture.service);
+  await service.register({
     email: 'person@example.com',
     password: 'correct horse battery staple',
     displayName: 'Person',
   }
   );
+  const registered = await service.verifyRegistration({ email: 'person@example.com', code: fixture.sent[0]!.code, password: 'correct horse battery staple' });
   assert.equal((await service.currentUser(registered.token)).id, registered.user.id);
   await service.logout(registered.token);
   await assert.rejects(

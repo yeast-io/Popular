@@ -1,3 +1,9 @@
+import { EmailVerificationService } from './modules/auth/email-verification.service.js';
+import { RedisEmailVerificationStore } from './infrastructure/redis/email-verification.store.js';
+import { MailgunClient } from './infrastructure/mailgun/mailgun.client.js';
+import { ResourceNotificationService } from './modules/resource-notifications/resource-notification.service.js';
+import { ResourceNotificationWorker } from './modules/resource-notifications/resource-notification.worker.js';
+import { MongoResourceNotificationStore } from './infrastructure/mongodb/resource-notifications/resource-notification.store.js';
 import { TvPreferenceService } from './modules/tv-preferences/tv-preference.service.js';
 import { MongoTvPreferenceStore } from './infrastructure/mongodb/tv-preferences/tv-preference.store.js';
 import { WatchlistService } from './modules/watchlist/watchlist.service.js';
@@ -140,6 +146,7 @@ try {
   shutdown.assertRunning();
   const models = createModels(infrastructure.mongodb.getConnection());
   await Promise.all([
+    models.resourceNotifications.init(),
     models.remoteControl.commands.init(),
     models.remoteControl.receipts.init(),
     models.remoteControl.limits.init(),
@@ -209,7 +216,14 @@ try {
     config.SESSION_TOKEN_PEPPER,
     config.SESSION_TTL_SECONDS
   );
-  const authService = new AuthService(userStore, sessionStore, config.REGISTRATION_USER_LIMIT);
+  const verificationService = new EmailVerificationService(
+    userStore,
+    new RedisEmailVerificationStore(infrastructure.redis.getClient()),
+    new MailgunClient(config.MAILGUN_API_KEY, config.MAILGUN_BASE_URL, config.MAILGUN_DOMAIN, config.MAILGUN_FROM),
+    config.SESSION_TOKEN_PEPPER,
+    config.REGISTRATION_USER_LIMIT
+  );
+  const authService = new AuthService(userStore, sessionStore, config.REGISTRATION_USER_LIMIT, verificationService);
   const externalUsageService = new ExternalUsageService(authService, externalUsageStore);
   const avatarStore = new MinioAvatarStore(infrastructure.minio.getClient(), config.MINIO_BUCKET);
   const userService = new UserService(
@@ -564,6 +578,7 @@ try {
           return telegramService.isConfigured(ownerId);
         },
         send: (ownerId, notification) => telegramService.sendNotification(ownerId, notification),
+        sendResource: (ownerId, notification) => telegramService.sendNotification(ownerId, notification),
       },
       {
         id: 'whatsapp',
@@ -572,9 +587,19 @@ try {
           return whatsappService.isConfigured(ownerId);
         },
         send: (ownerId, notification) => whatsappService.sendNotification(ownerId, notification),
+        sendResource: (ownerId, notification) => whatsappService.sendNotification(ownerId, notification),
       },
     ]
   );
+  const resourceNotificationService = new ResourceNotificationService(new MongoResourceNotificationStore(models.resourceNotifications), {
+    notifications: notificationService, movies: movieCatalog, tv: tvCatalog, search: resourceSearchService,
+    enabledSites: async (ownerId) => (await integrationPreferencesService.get(ownerId)).effectiveSites,
+    resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
+    logger: loggers.error, verbose: config.VERBOSE, webOrigin: config.WEB_ORIGIN,
+    intervalMs: config.RESOURCE_NOTIFICATION_INTERVAL_MS,
+  });
+  const resourceNotificationWorker = new ResourceNotificationWorker(resourceNotificationService);
+  shutdown.register('resource_notification_worker', 29, () => resourceNotificationWorker.stop());
   const movieDownloadService = new MovieDownloadService(
     authService,
     new MongoMovieDownloadStore(models.movieDownloads),
@@ -757,6 +782,7 @@ try {
     { resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE) }
   );
   const app = await buildApp({
+    resourceNotificationService,
     remoteClientService,
     remoteDownloadCoordinator,
     resourceSiteService,
@@ -774,7 +800,7 @@ try {
     userService,
     movieService,
     tvPreferenceService: new TvPreferenceService(new MongoTvPreferenceStore(models.tvPreferences), tvCatalog),
-    watchlistService: new WatchlistService(movieStatusService, tvCatalog, new MongoTvWatchlistStore(models.tvWatchlist), movieStatusStore),
+    watchlistService: new WatchlistService(movieStatusService, tvCatalog, new MongoTvWatchlistStore(models.tvWatchlist), movieStatusStore, resourceNotificationService),
     tvShowService,
     tvSeasonService,
     tvTrendingService,
@@ -804,6 +830,7 @@ try {
   shutdown.assertRunning();
   externalUsageAggregation.start();
   notificationWorker.start();
+  resourceNotificationWorker.start();
   telegramWorker?.start();
   const linkedWhatsAppOwners = await models.whatsappSessions
     .find({ encryptedState: { $exists: true } })

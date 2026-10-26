@@ -495,3 +495,22 @@ test('recommendation replies send escaped photo captions only to the current own
   await assert.rejects(f.service.reply('alice', '101', 'Movie', poster), { code: 'CONFLICT' });
   assert.equal(f.sent.length, 1);
 });
+
+test('resource discovery messages use the linked owner and localized discovery labels with escaped titles', async () => {
+  const f = fixture();
+  const link = await f.service.start('alice');
+  await f.service.accept(f.update(link.bindingUrl));
+  for (const locale of ['en-US', 'zh-CN'] as const) {
+    await f.service.sendNotification('alice', {
+      kind: 'resource-found', id: 'notice', locale, title: '<Movie>', resourceName: 'Release & name',
+      site: 'M-Team', foundAt: new Date('2026-10-26T00:00:00Z'), detailUrl: 'https://popular.example/movies/7',
+    });
+    const message = f.sent.at(-1)!;
+    assert.equal(message.chatId, '101');
+    assert.ok(message.text.includes(locale === 'en-US' ? 'Resource found' : '发现资源'));
+    assert.ok(message.text.includes('&lt;Movie&gt;'));
+    assert.ok(message.text.includes('Release &amp; name'));
+    assert.ok(!message.text.includes('Download complete'));
+    assert.ok(!message.text.includes('下载完成'));
+  }
+});

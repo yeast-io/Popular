@@ -1,3 +1,4 @@
+import type { ResourceFoundNotification } from '../resource-notifications/resource-notification.types.js';
 import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import type { Locale, SaveNotificationPreferences } from '@movie-hub/contract';
 import type { MovieDownloadProgress, MovieDownloadRecord } from '../downloads/movie-download.types.js';
@@ -12,6 +13,7 @@ export interface NotificationPlan {
   nextRunAt: Date;
 }
 export interface DownloadNotification {
+  kind?: 'download-complete';
   id: string;
   title: string;
   resourceName: string;
@@ -22,7 +24,10 @@ export interface DownloadNotification {
   poster?: Buffer;
   locale?: Locale;
 }
+export type NotificationMessage = DownloadNotification | ResourceFoundNotification;
+
 export interface NotificationChannel {
+  sendResource?(ownerId: string, notification: ResourceFoundNotification): Promise<{ messageId: string }>;
   id: string;
   name: string;
   isConfigured(ownerId: string): Promise<boolean>;

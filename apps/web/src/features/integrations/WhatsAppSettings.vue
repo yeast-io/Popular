@@ -62,8 +62,11 @@ async function refresh() {
   }
 }
 function schedule() {
-  if (disposed) return;
+  if (timer) clearTimeout(timer);
+  timer = undefined;
+  if (disposed || busy.value || !['connecting', 'qr', 'pairing'].includes(state.value.status)) return;
   timer = setTimeout(async () => {
+    timer = undefined;
     if (!busy.value) await refresh();
     schedule();
   }, 3_000);
@@ -71,6 +74,8 @@ function schedule() {
 async function act(action: 'bind' | 'test' | 'remove') {
   if (busy.value) return;
   busy.value = true;
+  if (timer) clearTimeout(timer);
+  timer = undefined;
   version++;
   controller?.abort();
   errorMessage.value = '';
@@ -84,7 +89,10 @@ async function act(action: 'bind' | 'test' | 'remove') {
   } catch (error) {
     if (!disposed) errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
   } finally {
-    if (!disposed) busy.value = false;
+    if (!disposed) {
+      busy.value = false;
+      schedule();
+    }
   }
 }
 onMounted(async () => {
@@ -137,14 +145,14 @@ onUnmounted(() => {
       <p v-if="state.status === 'connecting'">{{ t('whatsapp.wait') }}</p>
       <p v-if="state.status === 'connected'">{{ t('whatsapp.testHint') }}</p>
       <p v-if="state.status === 'disconnected' || state.status === 'error'">{{ t('whatsapp.reconnectHint') }}</p>
-      <div class="settings-card-footer integration-form-footer">
-        <div class="settings-feedback integration-feedback">
+      <div class="settings-card-footer integration-form-footer" :class="{ 'whatsapp-remove-confirmation': confirmRemove }">
+        <div v-if="errorMessage || successMessage || !confirmRemove" class="settings-feedback integration-feedback">
           <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
           <p v-if="successMessage" class="success settings-message" role="status">{{ successMessage }}</p>
         </div>
+        <p v-if="confirmRemove" class="whatsapp-remove-message">{{ t('whatsapp.removeConfirm') }}</p>
         <div class="integration-actions">
           <template v-if="confirmRemove">
-            <span>{{ t('whatsapp.removeConfirm') }}</span>
             <button class="secondary" type="button" :disabled="busy" @click="confirmRemove = false">
               {{ t('qbittorrent.cancel') }}
             </button>
@@ -188,6 +196,18 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.whatsapp-remove-confirmation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.whatsapp-remove-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.whatsapp-remove-confirmation .integration-actions {
+  min-width: 0;
+  max-width: 100%;
+}
 .whatsapp-pairing {
   display: grid;
   justify-items: start;

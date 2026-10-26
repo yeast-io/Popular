@@ -82,3 +82,29 @@ it('shows unknown instead of zero when no model request returned usage', async (
   );
   wrapper.unmount();
 });
+
+it.each([
+  ['zh-CN', '助手资源搜索规划', '助手下载规划'],
+  ['en-US', 'Assistant resource search planning', 'Assistant download planning'],
+] as const)('translates assistant planning operations in both breakdowns (%s)', async (locale, resourcesLabel, downloadLabel) => {
+  setLocale(locale);
+  const metrics = { requests: 1, successes: 1, failures: 0, averageDurationMs: 100 };
+  const operations = ['assistant.resources.plan', 'assistant.download.plan'].map((operation) => ({
+    provider: 'openai', operation, ...metrics,
+  }));
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+    range: { days: 30, retentionDays: 90 },
+    totals: { ...metrics, requests: 2, successes: 2 },
+    providers: [], daily: [], operations,
+    models: operations.map((operation) => ({ ...operation, model: 'test-model' })),
+  })));
+  const wrapper = mount(UsageStatistics);
+  await flushPromises();
+  for (const title of ['usage-operation-title', 'usage-model-title']) {
+    const rows = wrapper.get(`section[aria-labelledby="${title}"]`).findAll('tbody tr');
+    expect(rows.map((row) => row.findAll('td')[1]!.text())).toEqual([resourcesLabel, downloadLabel]);
+  }
+  expect(wrapper.text()).not.toContain('assistant.resources.plan');
+  expect(wrapper.text()).not.toContain('assistant.download.plan');
+  wrapper.unmount();
+});

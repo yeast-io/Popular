@@ -10,6 +10,11 @@ const resourceSiteErrorKeys = {
 } as const;
 
 const errorKeys = {
+  EMAIL_VERIFICATION_INVALID: 'auth.verificationInvalid',
+  EMAIL_VERIFICATION_LIMIT_REACHED: 'auth.verificationLimit',
+  EMAIL_VERIFICATION_UNAVAILABLE: 'auth.verificationUnavailable',
+  RESOURCE_NOTIFICATION_CHANNEL_REQUIRED: 'resourceNotifications.channelRequired',
+  RESOURCE_NOTIFICATION_LIMIT_REACHED: 'resourceNotifications.limitReached',
   INTEGRATION_DEFAULT_REPLACEMENT_REQUIRED: 'integrationDefaults.replacementRequired',
   INTEGRATION_DEFAULT_INVALID: 'integrationDefaults.invalid',
   INSUFFICIENT_MOVIE_RATINGS: 'preferences.insufficient',

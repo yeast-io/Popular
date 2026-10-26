@@ -31,7 +31,10 @@ import type { ExternalUsageService } from './modules/external-usage/external-usa
 import type { ConversationService } from './modules/conversations/conversation.service.js';
 import type { ConversationTurnService } from './modules/conversations/conversation-turn.service.js';
 
+import type { ResourceNotificationService } from './modules/resource-notifications/resource-notification.service.js';
+
 export interface BuildAppOptions {
+  resourceNotificationService?: ResourceNotificationService;
   tvPreferenceService?: TvPreferenceService;
   watchlistService?: WatchlistService;
   tvShowService?: TvShowService;

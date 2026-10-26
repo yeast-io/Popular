@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
+import type { Model } from 'mongoose';
+import type { TvWatchlistDocument } from './tv-watchlist.schema.js';
 import { createTvWatchlistModel, tvWatchlistSchema } from './tv-watchlist.schema.js';
 import { MongoTvWatchlistStore } from './tv-watchlist.store.js';
 
@@ -23,6 +25,14 @@ test('real Mongo watch list persists independent owners, concurrent idempotent a
     await store.add(two, 42);
     assert.equal((await store.list(one, 1, 20)).total, 1);
     assert.equal(await store.contains(two, 42), true);
+    assert.deepEqual((await store.list(one, 1, 20)).notificationEnabledIds, []);
+    assert.equal(await store.setResourceNotification(one, 42, true), true);
+    assert.deepEqual((await store.list(one, 1, 20)).notificationEnabledIds, [42]);
+    assert.deepEqual((await store.list(two, 1, 20)).notificationEnabledIds, []);
+    assert.equal(await store.setResourceNotification(one, 404, true), false);
+    assert.equal(await store.contains(one, 404), false);
+    assert.equal(await store.setResourceNotification(one, 42, false), true);
+    assert.deepEqual((await store.list(one, 1, 20)).notificationEnabledIds, []);
     await store.add(one, 43);
     const first = await store.list(one, 1, 1);
     const second = await store.list(one, 2, 1);
@@ -35,4 +45,18 @@ test('real Mongo watch list persists independent owners, concurrent idempotent a
     await connection.dropDatabase();
     await connection.close();
   }
+});
+
+test('TV notification writes are owner-scoped, preserve list timestamps and never add missing entries', async () => {
+  const calls: unknown[][] = [];
+  let matchedCount = 1;
+  const model = { updateOne: (...args: unknown[]) => {
+    calls.push(args);
+    return { exec: async () => ({ matchedCount }) };
+  } } as unknown as Model<TvWatchlistDocument>;
+  const store = new MongoTvWatchlistStore(model);
+  assert.equal(await store.setResourceNotification('one', 42, true), true);
+  assert.deepEqual(calls[0], [{ ownerId: 'one', tmdbId: 42 }, { $set: { resourceNotificationEnabled: true } }, { timestamps: false }]);
+  matchedCount = 0;
+  assert.equal(await store.setResourceNotification('two', 42, false), false);
 });

@@ -8,11 +8,18 @@ import type { MovieStatusService } from '../movie-statuses/movie-status.service.
 function setup() {
   const entries = new Map<string, number[]>();
   const calls: unknown[][] = [];
+  const notifications = new Set<string>();
   const tv: TvWatchlistStore = {
     contains: async (owner, id) => (entries.get(owner) ?? []).includes(id),
     add: async (owner, id) => { entries.set(owner, [...new Set([...(entries.get(owner) ?? []), id])]); },
     remove: async (owner, id) => { entries.set(owner, (entries.get(owner) ?? []).filter((value) => value !== id)); },
-    list: async (owner, page, size) => ({ ids: (entries.get(owner) ?? []).slice((page - 1) * size, page * size), total: (entries.get(owner) ?? []).length }),
+    setResourceNotification: async (owner, id, enabled) => {
+      if (!(entries.get(owner) ?? []).includes(id)) return false;
+      if (enabled) notifications.add(`${owner}:${id}`);
+      else notifications.delete(`${owner}:${id}`);
+      return true;
+    },
+    list: async (owner, page, size) => ({ notificationEnabledIds: (entries.get(owner) ?? []).filter((id) => notifications.has(`${owner}:${id}`)), ids: (entries.get(owner) ?? []).slice((page - 1) * size, page * size), total: (entries.get(owner) ?? []).length }),
   };
   const catalog: TvShowCatalogStore = {
     readDetail: async () => null,
@@ -24,14 +31,17 @@ function setup() {
     calls.push(args);
     return { items: [{ tmdbId: 42, title: 'Movie', userStatus: 'interested', userPreference: 'neutral', resourceCheck: { checking: false } }], pagination: { page: 2, pageSize: 20, total: 30, hasMore: false }, locale: 'en-US' };
   } } as unknown as MovieStatusService;
-  return { entries, service: new WatchlistService(movies, catalog, tv, { list: async () => ({ items: [{ tmdbId: 42, ownerId: 'owner', status: 'interested' as const, preference: 'neutral' as const, updatedAt: new Date() }], total: 30 }) }), calls };
+  return { entries, service: new WatchlistService(movies, catalog, tv, { setResourceNotification: async (...args) => {
+    calls.push(args);
+    return args[0] === 'owner' && args[1] === 42;
+  }, list: async () => ({ items: [{ tmdbId: 42, ownerId: 'owner', status: 'interested' as const, preference: 'neutral' as const, updatedAt: new Date() }], total: 30 }) }), calls };
 }
 
 test('movie watch list retains interested resource-check path and excludes status/action metadata', async () => {
   const { service, calls } = setup();
   const result = await service.list('owner', 'movie', 2, 20, 'en-US');
   assert.deepEqual(calls, [['owner', 'interested', 2, 20, 'en-US']]);
-  assert.deepEqual(result.items, [{ mediaType: 'movie', tmdbId: 42, title: 'Movie' }]);
+  assert.deepEqual(result.items, [{ mediaType: 'movie', tmdbId: 42, resourceNotificationEnabled: false, title: 'Movie' }]);
   assert.equal(result.pagination.total, 30);
 });
 test('TV membership is owner-scoped, idempotent and independent of movie IDs', async () => {
@@ -72,4 +82,19 @@ test('saved TV IDs remain visible when all localized catalog metadata is unavail
   assert.equal(result.items[0]?.tmdbId, 404);
   assert.equal(result.items[0]?.title, '资料暂不可用 · TMDB 404');
   assert.equal(result.pagination.total, 1);
+});
+
+test('notification switches persist independently of membership, owner and media type', async () => {
+  const { service, calls } = setup();
+  await service.addTv('one', 42, 'en-US');
+  assert.equal((await service.list('one', 'tv', 1, 20, 'en-US')).items[0]?.resourceNotificationEnabled, false);
+  assert.deepEqual(await service.setResourceNotification('one', 'tv', 42, true, 'en-US'), { enabled: true });
+  assert.equal((await service.list('one', 'tv', 1, 20, 'en-US')).items[0]?.resourceNotificationEnabled, true);
+  assert.equal((await service.membership('one', 42)).inWatchlist, true);
+  await assert.rejects(service.setResourceNotification('two', 'tv', 42, true, 'zh-CN'), /想看清单/);
+  await service.setResourceNotification('one', 'tv', 42, false, 'en-US');
+  assert.equal((await service.list('one', 'tv', 1, 20, 'en-US')).items[0]?.resourceNotificationEnabled, false);
+  await service.setResourceNotification('owner', 'movie', 42, true, 'en-US');
+  assert.deepEqual(calls.pop(), ['owner', 42, true]);
+  await assert.rejects(service.setResourceNotification('two', 'movie', 42, true, 'en-US'), /not in your watch list/);
 });

@@ -1,4 +1,4 @@
-import type { DownloadNotification } from '../notifications/notification.types.js';
+import type { NotificationMessage } from '../notifications/notification.types.js';
 import type { WhatsAppConfiguration } from '@movie-hub/contract';
 import type { IncomingMessage } from '../incoming-message.types.js';
 
@@ -18,7 +18,7 @@ export interface WhatsAppConnection {
   setTyping?(active: boolean): Promise<void>;
   ownsChat?(chatId: string): boolean;
   sendSelf(): Promise<string>;
-  sendNotification(notification: DownloadNotification): Promise<string>;
+  sendNotification(notification: NotificationMessage): Promise<string>;
   stop(logout: boolean): Promise<void>;
 }
 export interface WhatsAppDiagnostic {

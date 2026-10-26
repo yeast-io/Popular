@@ -154,3 +154,55 @@ it('ignores a delayed movie response after switching to TV and localizes TV empt
   await flushPromises();
   expect(wrapper.text()).toContain('No TV shows in this category yet.');
 });
+
+it('keeps counts and old rows stable while loading but prevents opening stale results', async () => {
+  setLocale('en-US');
+  let resolveLiked!: (response: Response) => void;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), 'http://localhost');
+    const status = url.searchParams.get('status')!;
+    if (status === 'liked' && url.searchParams.get('pageSize') === '20') return new Promise<Response>((resolve) => {
+      resolveLiked = resolve;
+    });
+    return Response.json(result(status));
+  }));
+  const wrapper = host();
+  await flushPromises();
+  expect(wrapper.findAll('.watchlist-count').map((badge) => badge.text())).toEqual(['21', '1', '1']);
+  await wrapper.get('.watchlist-filters button:nth-child(2)').trigger('click');
+  expect(wrapper.get('.watchlist-entry').text()).toContain('watched 1');
+  expect(wrapper.findAll('.watchlist-count').map((badge) => badge.text())).toEqual(['21', '1', '1']);
+  expect(wrapper.get('.viewing-preferences-results').attributes('aria-busy')).toBe('true');
+  expect(wrapper.get('.viewing-preferences-content').attributes('inert')).toBeDefined();
+  await wrapper.get('.watchlist-entry').trigger('click');
+  expect(wrapper.getComponent(ViewingPreferencesPage).emitted('openMovie')).toBeUndefined();
+  resolveLiked(Response.json(result('liked')));
+  await flushPromises();
+  expect(wrapper.get('.watchlist-entry').text()).toContain('liked 1');
+  expect(wrapper.get('.viewing-preferences-results').attributes('aria-busy')).toBe('false');
+  expect(wrapper.get('.viewing-preferences-content').attributes('inert')).toBeUndefined();
+  await wrapper.get('.watchlist-entry').trigger('click');
+  expect(wrapper.getComponent(ViewingPreferencesPage).emitted('openMovie')).toEqual([[1]]);
+});
+
+it('replaces stale rows with an error when a filter switch fails and retries the selected filter', async () => {
+  setLocale('zh-CN');
+  let failLiked = true;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), 'http://localhost');
+    const status = url.searchParams.get('status')!;
+    if (status === 'liked' && url.searchParams.get('pageSize') === '20' && failLiked) return new Response(null, { status: 503 });
+    return Response.json(result(status));
+  }));
+  const wrapper = host();
+  await flushPromises();
+  await wrapper.get('.watchlist-filters button:nth-child(2)').trigger('click');
+  await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toContain('观影偏好加载失败');
+  expect(wrapper.find('.watchlist-entry').exists()).toBe(false);
+  expect(wrapper.findAll('.watchlist-count').map((badge) => badge.text())).toEqual(['21', '1', '1']);
+  failLiked = false;
+  await wrapper.get('[role="alert"] button').trigger('click');
+  await flushPromises();
+  expect(wrapper.get('.watchlist-entry').text()).toContain('liked 1');
+});

@@ -7,12 +7,104 @@ import { setLocale, useI18n } from './i18n';
 const fetchedAt = '2026-10-12T00:00:00.000Z';
 const trendingGeneration = '00000000-0000-4000-8000-000000000001';
 
+describe('introduction homepage navigation', () => {
+  let signedIn = false;
+  const account = { id: 'homepage-user', email: 'viewer@example.com', displayName: 'Viewer' };
+
+  beforeEach(() => {
+    signedIn = false;
+    setLocale('zh-CN');
+    window.history.replaceState({}, '', '/');
+    vi.stubGlobal('scrollTo', vi.fn());
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/config')) return Response.json({ aiAssistantEnabled: false, notificationTestEnabled: false });
+      if (url.endsWith('/auth/me')) return signedIn ? Response.json({ user: account }) : new Response(null, { status: 401 });
+      if (url.endsWith('/auth/login')) return Response.json({ user: account });
+      if (url.endsWith('/auth/logout')) return new Response(null, { status: 204 });
+      throw new Error(`Unexpected homepage request: ${url}`);
+    }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('shows the introduction without loading movie data, preserves guest browsing and handles history', async () => {
+    const wrapper = mount(App, { global: { stubs: { MovieBrowser: true } } });
+    await flushPromises();
+    expect(wrapper.get('h1').text()).toContain('一个下载入口');
+    expect(vi.mocked(fetch).mock.calls.every(([url]) => /\/(config|auth\/me)$/.test(String(url)))).toBe(true);
+    await wrapper.get('.lp-text-button').trigger('click');
+    expect(window.location.pathname).toBe('/movies');
+    expect(wrapper.find('movie-browser-stub').exists()).toBe(true);
+    window.history.replaceState({}, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await flushPromises();
+    expect(wrapper.find('.lp').exists()).toBe(true);
+    await wrapper.get('.lp-hero-actions .lp-button').trigger('click');
+    expect(window.location.pathname).toBe('/login');
+    expect(wrapper.find('#auth-email').exists()).toBe(true);
+    await wrapper.get('.auth-page .back-button').trigger('click');
+    await wrapper.get('.lp-signin').trigger('click');
+    await wrapper.get('#auth-email').setValue('viewer@example.com');
+    await wrapper.get('#auth-password').setValue('a-secure-password');
+    await wrapper.get('.auth-card form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.find('.lp').exists()).toBe(false);
+    expect(wrapper.find('movie-browser-stub').exists()).toBe(true);
+    await wrapper.get('.account-signout-group button').trigger('click');
+    await flushPromises();
+    expect(window.location.pathname).toBe('/');
+    expect(wrapper.find('.lp').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('opens the public Agent guide from home and supports direct visits and browser history', async () => {
+    let wrapper = mount(App);
+    await flushPromises();
+    await wrapper.get('.la-link').trigger('click');
+    expect(window.location.pathname).toBe('/link-agent');
+    expect(wrapper.get('h1').text()).toContain('下载器在本地');
+    expect(wrapper.findAll('.agent-header')).toHaveLength(1);
+    expect(wrapper.find('.site-header').exists()).toBe(false);
+    expect(wrapper.get('.agent-steps').text()).toContain('Gateway');
+    await wrapper.get('.agent-language').trigger('click');
+    expect(wrapper.get('h1').text()).toContain('Your downloader stays local');
+    await wrapper.get('.agent-language').trigger('click');
+    wrapper.unmount();
+    wrapper = mount(App);
+    await flushPromises();
+    expect(wrapper.get('h1').text()).toContain('下载器在本地');
+    expect(vi.mocked(fetch).mock.calls.every(([url]) => /\/(config|auth\/me)$/.test(String(url)))).toBe(true);
+    window.history.replaceState({}, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await flushPromises();
+    expect(wrapper.find('.lp').exists()).toBe(true);
+    await wrapper.get('.la-link').trigger('click');
+    await wrapper.get('.agent-signin').trigger('click');
+    expect(window.location.pathname).toBe('/login');
+    wrapper.unmount();
+  });
+
+  it('opens the existing app for a returning signed-in user at the root URL', async () => {
+    signedIn = true;
+    const wrapper = mount(App, { global: { stubs: { MovieBrowser: true } } });
+    await flushPromises();
+    expect(wrapper.find('.lp').exists()).toBe(false);
+    expect(wrapper.find('movie-browser-stub').exists()).toBe(true);
+    expect(wrapper.find('.account-menu').exists()).toBe(true);
+    wrapper.unmount();
+  });
+});
+
 describe('movie detail navigation', () => {
   let scrollY = 0;
 
   beforeEach(() => {
     setLocale('zh-CN');
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/movies');
     Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
     vi.stubGlobal(
       'scrollTo',
@@ -88,7 +180,7 @@ describe('movie detail navigation', () => {
     expect(window.location.pathname).toBe('/movies/42');
     expect(replaceState).toHaveBeenLastCalledWith(expect.objectContaining({ listPage: 'movies', scrollY: 640 }), '');
 
-    window.history.replaceState({ listPage: 'movies', scrollY: 640 }, '', '/');
+    window.history.replaceState({ listPage: 'movies', scrollY: 640 }, '', '/movies');
     window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
     await flushPromises();
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
@@ -258,7 +350,7 @@ describe('account routes', () => {
   });
 });
 
-describe('language menu', () => {
+describe('header language control', () => {
   beforeEach(() => {
     setLocale('zh-CN');
     window.history.replaceState({}, '', '/');
@@ -287,22 +379,11 @@ describe('language menu', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps language choices collapsed until requested and closes after selection', async () => {
+  it('removes the language control from the header', async () => {
     const wrapper = mount(App);
     await flushPromises();
-
-    const menu = wrapper.get<HTMLDetailsElement>('.locale-switcher');
-    expect(menu.element.open).toBe(false);
-    expect(menu.find('.locale-icon').exists()).toBe(true);
-    expect(menu.get('summary').attributes('aria-label')).toBe('语言: 简体中文');
-
-    menu.element.open = true;
-    await menu.get('.locale-options button:last-child').trigger('click');
-    await flushPromises();
-
-    expect(menu.element.open).toBe(false);
-    expect(menu.get('summary').attributes('aria-label')).toBe('Language: English');
-    expect(menu.get('.locale-options button:last-child').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.find('.site-header .locale-switcher').exists()).toBe(false);
+    expect(wrapper.find('.site-header .locale-options').exists()).toBe(false);
     wrapper.unmount();
   });
 });
@@ -358,6 +439,23 @@ describe('settings workspace', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it.each(['en-US', 'zh-CN'] as const)('shows system language in desktop and mobile settings (%s)', async (locale) => {
+    setLocale(locale);
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper.get('[data-settings-section="language"]').trigger('click');
+    const label = locale === 'zh-CN' ? '系统语言' : 'System language';
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe(label);
+    expect(wrapper.get('#settings-category option[value="language"]').text()).toBe(label);
+    expect(window.location.search).toBe('?section=language');
+    expect(wrapper.get('.locale-options').isVisible()).toBe(true);
+    expect(wrapper.findAll('.locale-card-title').map((node) => node.text())).toEqual(['简体中文', 'English']);
+    expect(wrapper.findAll('.locale-options input[type="radio"]')).toHaveLength(2);
+    await wrapper.get('#settings-category').setValue('profile');
+    expect(wrapper.get('.locale-options').element.closest('.settings-form')?.getAttribute('style')).toContain('display: none');
+    wrapper.unmount();
   });
 
   it.each(['en-US', 'zh-CN'] as const)('keeps Tools selected after a reload (%s)', async (locale) => {
@@ -533,38 +631,25 @@ describe('settings workspace', () => {
 
   it.each(
     ['en-US', 'zh-CN'] as const
-  )('places independent download switches on bound message cards in %s', async (locale) => {
+  )('shows connected message cards without download notification capsules in %s', async (locale) => {
     setLocale(locale);
     const baseFetch = globalThis.fetch;
-    let enabled = false;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/telegram') || url.endsWith('/whatsapp')) return Response.json({ status: 'connected' });
-      if (url.endsWith('/notifications')) {
-        if (init?.method === 'PUT') enabled = JSON.parse(String(init.body)).enabled;
-        return Response.json({ enabled, defaultChannel: 'telegram', additionalChannels: [], channels: [
-          { id: 'telegram', name: 'Telegram', configured: true },
-          { id: 'whatsapp', name: 'WhatsApp', configured: true },
-        ] }
-        );
-      }
       return baseFetch(input, init);
-    })
-    );
+    }));
     const wrapper = mount(App, { attachTo: document.body });
     try {
       await flushPromises();
       await wrapper.get('#settings-category').setValue('notifications');
       await flushPromises();
       expect(wrapper.get('.settings-content-heading h2').text()).toBe(locale === 'zh-CN' ? '消息' : 'Messages');
-      const telegram = wrapper.get('[aria-labelledby="telegram-title"]');
-      const whatsapp = wrapper.get('[aria-labelledby="whatsapp-title"]');
-      expect(telegram.get('.download-notification-switch').isVisible()).toBe(true);
-      expect(whatsapp.get('.download-notification-switch').isVisible()).toBe(true);
-      await telegram.get('input[role="switch"]').setValue(true);
-      await flushPromises();
-      expect(enabled).toBe(true);
-      expect(whatsapp.get<HTMLInputElement>('input[role="switch"]').element.checked).toBe(false);
+      expect(wrapper.get('[aria-labelledby="telegram-title"]').isVisible()).toBe(true);
+      expect(wrapper.get('[aria-labelledby="whatsapp-title"]').isVisible()).toBe(true);
+      expect(wrapper.find('.download-notification-switch').exists()).toBe(false);
+      expect(wrapper.find('input[role="switch"]').exists()).toBe(false);
+      expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/notifications'))).toBe(false);
     } finally { wrapper.unmount(); }
   });
 
@@ -580,6 +665,37 @@ describe('settings workspace', () => {
     await wrapper.get('#settings-category').setValue('profile');
     expect(wrapper.get('#profile-display-name').isVisible()).toBe(true);
     wrapper.unmount();
+  });
+
+  it.each(['en-US', 'zh-CN'] as const)('stops WhatsApp pairing requests when leaving messages and refreshes on return in %s', async (locale) => {
+    setLocale(locale);
+    vi.useFakeTimers();
+    const baseFetch = globalThis.fetch;
+    const whatsappFetch = vi.fn(async () => Response.json({ status: 'pairing' }));
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/whatsapp')) return whatsappFetch();
+      return baseFetch(input, init);
+    }));
+    const wrapper = mount(App, { attachTo: document.body, global: { stubs: { MovieBrowser: true } } });
+    try {
+      await flushPromises();
+      await wrapper.get('#settings-category').setValue('notifications');
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(whatsappFetch).toHaveBeenCalledTimes(2);
+      await wrapper.get('#settings-category').setValue('profile');
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(whatsappFetch).toHaveBeenCalledTimes(2);
+      await wrapper.get('#settings-category').setValue('notifications');
+      await flushPromises();
+      expect(whatsappFetch).toHaveBeenCalledTimes(3);
+      await wrapper.get('.site-nav button').trigger('click');
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(whatsappFetch).toHaveBeenCalledTimes(3);
+    } finally {
+      wrapper.unmount();
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -671,7 +787,7 @@ describe('experimental page switches', () => {
 
 describe('account language', () => {
   beforeEach(() => {
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/settings?section=language');
     setLocale('zh-CN');
     vi.stubGlobal('scrollTo', vi.fn());
   });
@@ -715,11 +831,13 @@ describe('account language', () => {
     const wrapper = mount(App);
     await flushPromises();
     expect(f.saves).toEqual(['zh-CN']);
-    const buttons = wrapper.findAll('.locale-options button');
-    await buttons[1]!.trigger('click');
-    await buttons[0]!.trigger('click');
+    const buttons = wrapper.findAll('.locale-options input');
+    await buttons[1]!.setValue();
+    await buttons[0]!.setValue();
     await flushPromises();
     expect(f.saves).toEqual(['zh-CN', 'en-US', 'zh-CN']);
+    expect(wrapper.get('.locale-save-status').text()).toBe('语言设置已保存');
+    expect(wrapper.get<HTMLInputElement>('.locale-options input[value="zh-CN"]').element.checked).toBe(true);
     expect(useI18n().locale.value).toBe('zh-CN');
     wrapper.unmount();
   });
@@ -728,9 +846,11 @@ describe('account language', () => {
     const f = setup('en-US', true);
     const wrapper = mount(App);
     await flushPromises();
-    await wrapper.findAll('.locale-options button')[0]!.trigger('click');
+    await wrapper.findAll('.locale-options input')[0]!.setValue();
     await flushPromises();
     expect(f.saves).toEqual(['zh-CN']);
+    expect(wrapper.get<HTMLInputElement>('.locale-options input[value="en-US"]').element.checked).toBe(true);
+    expect(wrapper.get('.locale-save-status').text()).toBe('Changes apply immediately and save automatically');
     expect(useI18n().locale.value).toBe('en-US');
     expect(wrapper.get('[role="alert"]').text()).toBe('The request failed. Please try again.');
     wrapper.unmount();
@@ -752,6 +872,7 @@ describe('Watch list account navigation', () => {
       }
       if (url.includes('/me/tv-shows/preferences?')) return Response.json({ items: [{ tmdbId: 42, mediaType: 'tv', title: 'Liked series' }], pagination: { page: 1, pageSize: 20, total: 1, hasMore: false }, locale: 'en-US' });
       if (url.includes('/movies/42?')) return Response.json({ tmdbId: 42, title: 'Saved detail', genres: [], cast: [], directors: [], userStatus: 'watched', stale: false, detailSyncedAt: fetchedAt });
+      if (url.includes('/me/resource-notifications?')) return Response.json({ items: [{ id: 'notice', tmdbId: 42, mediaType: 'movie', title: 'Resource film', status: 'pending', createdAt: fetchedAt }], limit: 5, locale: 'en-US' });
       if (url.includes('/me/watchlist?')) {
         const tv = url.includes('mediaType=tv');
         return Response.json({ items: [{ tmdbId: 42, mediaType: tv ? 'tv' : 'movie', title: tv ? 'Saved series' : 'Saved film' }], pagination: { page: 1, pageSize: 20, total: 1, hasMore: false }, locale: 'en-US' });
@@ -769,10 +890,10 @@ describe('Watch list account navigation', () => {
     const wrapper = mount(App);
     await flushPromises();
     const actions = wrapper.findAll('.account-action-group button').map((button) => button.text());
-    expect(actions.slice(0, 4)).toEqual(['Settings', 'Usage', 'Watch list', 'Viewing preferences']);
-    expect(wrapper.get('.account-library-group').findAll('button').map((button) => button.text())).toEqual(['Watch list', 'Viewing preferences']);
+    expect(actions.slice(0, 5)).toEqual(['Settings', 'Usage', 'Watch list', 'Resource notifications', 'Viewing preferences']);
+    expect(wrapper.get('.account-library-group').findAll('button').map((button) => button.text())).toEqual(['Watch list', 'Resource notifications', 'Viewing preferences']);
     expect(wrapper.get('.site-nav').text()).not.toContain('My Movies');
-    await wrapper.get('.account-library-group button:nth-child(2)').trigger('click');
+    await wrapper.get('.account-library-group button:nth-child(3)').trigger('click');
     await flushPromises();
     expect(window.location.pathname).toBe('/viewing-preferences');
     expect(wrapper.get('.watchlist-entry').text()).toContain('watched saved film');
@@ -789,6 +910,22 @@ describe('Watch list account navigation', () => {
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/resources/sync'))).toBe(false);
     wrapper.unmount();
   });
+  it('opens resource notifications beside watch list and preserves the list origin through details', async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper.findAll('.account-library-group button').find((button) => button.text() === 'Resource notifications')!.trigger('click');
+    await flushPromises();
+    expect(window.location.pathname).toBe('/resource-notifications');
+    expect(wrapper.get('.resource-notification-page').text()).toContain('Resource film');
+    await wrapper.get('.resource-notification-entry').trigger('click');
+    await flushPromises();
+    expect(window.history.state.movieOrigin).toBe('resource-notifications');
+    window.history.replaceState({}, '', '/resource-notifications');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await flushPromises();
+    expect(wrapper.get('.resource-notification-page').text()).toContain('Resource film');
+    wrapper.unmount();
+  });
   it('redirects the retired My Movies URL to viewing preferences', async () => {
     window.history.replaceState({}, '', '/my-movies');
     const wrapper = mount(App);
@@ -800,7 +937,7 @@ describe('Watch list account navigation', () => {
   it('opens TV details from viewing preferences and retains both navigation levels on return', async () => {
     const wrapper = mount(App);
     await flushPromises();
-    await wrapper.get('.account-library-group button:nth-child(2)').trigger('click');
+    await wrapper.get('.account-library-group button:nth-child(3)').trigger('click');
     await flushPromises();
     await wrapper.get('.viewing-preferences-media button:nth-child(2)').trigger('click');
     await flushPromises();

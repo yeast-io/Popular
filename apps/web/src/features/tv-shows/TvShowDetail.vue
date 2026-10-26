@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ResourceNotificationButton from '../resource-notifications/ResourceNotificationButton.vue';
+import ResourceNotificationFeedback from '../resource-notifications/ResourceNotificationFeedback.vue';
+import type { ResourceNotificationFeedback as ResourceNotificationFeedbackState } from '../resource-notifications/resource-notification.types';
 import type { TvEpisode, TvShowDetail, TvSeasonDetail, WatchlistMembership } from '@movie-hub/contract';
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { useI18n } from '../../i18n';
@@ -13,6 +16,7 @@ import TvEpisodeDetailDialog from './TvEpisodeDetailDialog.vue';
 import { watchlistRequest } from '../watchlist/watchlist.client';
 import { tvStatusLabel } from './tv-show.presentation';
 
+const resourceNotificationFeedback = ref<ResourceNotificationFeedbackState | null>(null);
 const props = defineProps<{
   tmdbId: number;
   authenticated?: boolean;
@@ -254,7 +258,9 @@ window.addEventListener('integration-preferences-changed', clearResources);
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4V3Z" /><path v-if="inWatchlist" d="m9 9 2 2 4-4" /><path v-else d="M9 10h6m-3-3v6" /></svg>
               <span :id="watchlistTooltipId" class="detail-state-tooltip" role="tooltip">{{ t(membershipLoading || savingWatchlist ? 'watchlist.saving' : watchlistError ? 'actions.retry' : inWatchlist ? 'watchlist.joined' : 'watchlist.notJoined') }}</span>
             </button>
+            <ResourceNotificationButton media-type="tv" :tmdb-id="props.tmdbId" :authenticated="!!props.authenticated" @feedback="resourceNotificationFeedback = $event" @require-login="emit('requireLogin')" />
           </div>
+          <ResourceNotificationFeedback :feedback="resourceNotificationFeedback" />
           <p v-if="watchlistError" class="browse-error" role="alert">{{ watchlistError }}</p>
           <p v-if="show.stale" class="freshness" role="status">{{ t('tv.stale') }}</p>
         </div>

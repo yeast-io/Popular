@@ -73,6 +73,8 @@ function operationLabel(operation: string): string {
     'torrent.download': 'usage.operation.torrentDownload',
     'conversation.reply': 'usage.operation.conversationReply',
     'conversation.summary': 'usage.operation.conversationSummary',
+    'assistant.resources.plan': 'usage.operation.assistantResourcesPlan',
+    'assistant.download.plan': 'usage.operation.assistantDownloadPlan',
     'assistant.intent': 'usage.operation.assistantIntent',
     'assistant.discuss': 'usage.operation.assistantDiscuss',
     'assistant.recommend': 'usage.operation.assistantRecommend',

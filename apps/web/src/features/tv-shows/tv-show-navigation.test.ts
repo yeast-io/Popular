@@ -42,7 +42,7 @@ it('TV cards navigate separately from movie IDs and direct detail links survive 
 });
 
 it('Movies and TV Shows have separate routes, requests, cached lists and scroll positions', async () => {
-  window.history.replaceState({}, '', '/');
+  window.history.replaceState({}, '', '/movies');
   setLocale('en-US');
   let scrollY = 0;
   Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });

@@ -1,3 +1,4 @@
+import { RESOURCE_NOTIFICATION_INTERVAL_MS } from '../modules/resource-notifications/resource-notification.policy.js';
 import { z } from 'zod';
 import { mediaTrendingPolicy } from '../modules/media-trending/media-trending.policy.js';
 import { DEFAULT_OPENAI_SYSTEM_PROMPT } from './system-prompts/default.prompts.js';
@@ -63,6 +64,7 @@ export const EnvSchema = z
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
     ACCESS_LOG_ENABLED: booleanString.default(true),
     VERBOSE: booleanString.default(false),
+    RESOURCE_NOTIFICATION_INTERVAL_MS: z.coerce.number().int().min(60_000).max(2_147_483_647).default(RESOURCE_NOTIFICATION_INTERVAL_MS),
     PAGE_AI_ASSISTANT_ENABLED: booleanString.default(true),
     ...mongodbFields,
     ...redisFields,
@@ -73,6 +75,15 @@ export const EnvSchema = z
     SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(31_536_000).default(2_592_000),
     SESSION_TOKEN_PEPPER: z.string().min(32),
     SESSION_COOKIE_SECURE: booleanString.default(false),
+    MAILGUN_API_KEY: z.string().trim().min(1).optional().or(z.literal('').transform(() => undefined)),
+    MAILGUN_BASE_URL: z.url().default('https://api.mailgun.net').refine((value) => {
+      const url = new URL(value);
+      return url.protocol === 'https:' && ['api.mailgun.net', 'api.eu.mailgun.net'].includes(url.hostname)
+        && !url.username && !url.password && !url.port && !url.search && !url.hash
+        && ['/', '/v3', '/v3/'].includes(url.pathname);
+    }, 'must be an official Mailgun HTTPS API base URL'),
+    MAILGUN_DOMAIN: z.string().regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*\.[a-z]{2,}$/).default('mail.gofloat.cn'),
+    MAILGUN_FROM: z.string().min(1).refine((value) => !/[\r\n]/.test(value)).default('Popular <noreply@mail.gofloat.cn>'),
     REGISTRATION_USER_LIMIT: z.coerce.number().int().min(1).default(100),
     MINIO_ENDPOINT: z
       .string()

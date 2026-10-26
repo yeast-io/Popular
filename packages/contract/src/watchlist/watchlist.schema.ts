@@ -12,6 +12,7 @@ export const WatchlistItemSchema = Type.Object({
   mediaType: WatchlistMediaTypeSchema,
   tmdbId: Type.Integer({ minimum: 1 }),
   title: Type.String(),
+  resourceNotificationEnabled: Type.Optional(Type.Boolean()),
   overview: Type.Optional(Type.String()),
   posterUrl: Type.Optional(Type.String({ format: 'uri' })),
   releaseDate: Type.Optional(Type.String({ format: 'date' })),
@@ -28,3 +29,11 @@ export type WatchlistQuery = Static<typeof WatchlistQuerySchema>;
 export type WatchlistItem = Static<typeof WatchlistItemSchema>;
 export type WatchlistResponse = Static<typeof WatchlistResponseSchema>;
 export type WatchlistMembership = Static<typeof WatchlistMembershipSchema>;
+
+export const WatchlistItemParamsSchema = Type.Object({
+  mediaType: WatchlistMediaTypeSchema,
+  tmdbId: Type.Integer({ minimum: 1 }),
+}, { additionalProperties: false });
+export const WatchlistResourceNotificationSchema = Type.Object({ enabled: Type.Boolean() }, { additionalProperties: false });
+export type WatchlistItemParams = Static<typeof WatchlistItemParamsSchema>;
+export type WatchlistResourceNotification = Static<typeof WatchlistResourceNotificationSchema>;

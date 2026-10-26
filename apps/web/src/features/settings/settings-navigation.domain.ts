@@ -2,6 +2,7 @@ import type { SettingsSection } from '../../app.types';
 
 const sectionSlugs: Record<SettingsSection, string> = {
   profile: 'profile',
+  language: 'language',
   ai: 'ai-assistant',
   preferences: 'movie-preferences',
   resources: 'sources',

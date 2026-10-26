@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ResourceNotificationButton from '../resource-notifications/ResourceNotificationButton.vue';
+import ResourceNotificationFeedback from '../resource-notifications/ResourceNotificationFeedback.vue';
+import type { ResourceNotificationFeedback as ResourceNotificationFeedbackState } from '../resource-notifications/resource-notification.types';
 import type { IntegrationPreferences, ApiError, MovieDetail, MovieRelease, MovieResourceCheckResponse, MovieStatus, TrackedMovieStatus } from '@movie-hub/contract';
 import ResourceSiteRefresh from '../resource-search/ResourceSiteRefresh.vue';
 import ResourceReleaseFilter from '../resource-search/ResourceReleaseFilter.vue';
@@ -12,6 +15,7 @@ import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
 import { LocalizedApiError, localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
 
+const resourceNotificationFeedback = ref<ResourceNotificationFeedbackState | null>(null);
 const props = defineProps<{ tmdbId: number; authenticated: boolean }>();
 const emit = defineEmits<{ back: []; requireLogin: [] }>();
 const { apiBaseUrl } = loadWebConfig();
@@ -643,6 +647,7 @@ function syncedAtLabel(syncedAt: string): string {
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4V3Z" /><path v-if="movie.userStatus === 'interested'" d="m9 9 2 2 4-4" /><path v-else d="M9 10h6m-3-3v6" /></svg>
               <span :id="`${statusTooltipId}-watchlist`" class="detail-state-tooltip" role="tooltip">{{ t(movie.userStatus === 'interested' ? 'watchlist.joined' : 'watchlist.notJoined') }}</span>
             </button>
+            <ResourceNotificationButton media-type="movie" :tmdb-id="props.tmdbId" :authenticated="!!props.authenticated" @feedback="resourceNotificationFeedback = $event" @require-login="emit('requireLogin')" />
             <button class="detail-state-icon watched-icon" type="button" :class="{ active: movie.userStatus === 'watched' }"
               :aria-pressed="movie.userStatus === 'watched'" :disabled="updating"
               :aria-label="t(movie.userStatus === 'watched' ? 'movie.status.markUnwatched' : 'movie.status.markWatched')"
@@ -652,6 +657,7 @@ function syncedAtLabel(syncedAt: string): string {
             </button>
           </div>
           </div>
+          <ResourceNotificationFeedback :feedback="resourceNotificationFeedback" />
           <p v-if="authenticated && resourceError" class="browse-error" role="alert">{{ resourceError }}</p>
           <p v-if="errorMessage" class="browse-error" role="alert">{{ errorMessage }}</p>
         </div>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 
-defineProps<{ name: 'profile' | 'ai' | 'preferences' | 'resources' | 'downloads' | 'keys' | 'notifications' }>();
+defineProps<{ name: 'profile' | 'language' | 'ai' | 'preferences' | 'resources' | 'downloads' | 'keys' | 'notifications' }>();
 const paths = {
+  language: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3c4.8 5 4.8 13 0 18-4.8-5-4.8-13 0-18Z',
   preferences: 'M4 5h16M4 12h16M4 19h16M8 3v4M16 10v4M10 17v4',
   profile: 'M20 21v-2a7 7 0 0 0-14 0v2M13 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
   ai: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z',

@@ -1,3 +1,4 @@
+import { resourceNotificationMessages } from '../resource-notifications/resource-notification.presentation.js';
 import { downloadNotificationMessages } from '../notifications/notification.presentation.js';
 import type { TelegramStore, TelegramUpdate, TelegramTransport } from './telegram.types.js';
 import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
@@ -6,7 +7,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { TelegramBinding, TelegramConfiguration } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import type { DownloadNotification } from '../notifications/notification.types.js';
+import type { NotificationMessage } from '../notifications/notification.types.js';
 import type { IncomingMessage } from '../incoming-message.types.js';
 
 export const bindingHash = (value: string): string => {
@@ -167,7 +168,7 @@ export class TelegramService {
     return chatId;
   }
 
-  async sendNotification(ownerId: string, notification: DownloadNotification): Promise<{ messageId: string }> {
+  async sendNotification(ownerId: string, notification: NotificationMessage): Promise<{ messageId: string }> {
     const chatId = await this.recipient(ownerId);
     const caption = downloadCaption(notification);
     const messageId = notification.poster?.length
@@ -195,7 +196,13 @@ function field(value: string, limit: number): string {
   if (/[\uD800-\uDBFF]$/.test(shortened)) shortened = shortened.slice(0, -1);
   return escapeHtml(shortened + '…');
 }
-function downloadCaption(notification: DownloadNotification): string {
+function downloadCaption(notification: NotificationMessage): string {
+  if ('kind' in notification && notification.kind === 'resource-found') {
+    const messages = resourceNotificationMessages[notification.locale];
+    return [`<b>🔔 ${messages.found}</b>`, `<b>${field(notification.title, 180)}</b>`,
+      `<code>${field(notification.resourceName, 400)}</code>`, `${messages.site}: ${field(notification.site, 40)}`,
+      notification.foundAt.toISOString(), `<a href="${escapeHtml(notification.detailUrl)}">${messages.details}</a>`].join('\n');
+  }
   const messages = downloadNotificationMessages[notification.locale ?? 'zh-CN'];
   const lines = [
     `<b>✅ ${messages.completed}</b>`,

@@ -5,26 +5,29 @@ import type { MovieStatusService } from '../movie-statuses/movie-status.service.
 import type { TvShowCatalogStore } from '../tv-shows/tv-show.types.js';
 import { tvShowSummary, definedFields } from '../tv-shows/tv-show.domain.js';
 import { tvShowMessages } from '../tv-shows/tv-show.presentation.js';
-import type { MovieStatusStore } from '../movies/movie.types.js';
-import { unavailableWatchlistTitle } from './watchlist.presentation.js';
-import type { TvWatchlistStore } from './watchlist.types.js';
+import { watchlistItemNotFound, unavailableWatchlistTitle } from './watchlist.presentation.js';
+import type { TvWatchlistStore, WatchlistMovieStore } from './watchlist.types.js';
+
+import type { ResourceNotificationService } from '../resource-notifications/resource-notification.service.js';
 
 export class WatchlistService {
   constructor(
     private readonly movies: MovieStatusService,
     private readonly catalog: TvShowCatalogStore,
     private readonly tv: TvWatchlistStore,
-    private readonly movieStates: Pick<MovieStatusStore, 'list'>
+    private readonly movieStates: WatchlistMovieStore,
+    private readonly resourceNotifications?: ResourceNotificationService
   ) {}
 
   async list(ownerId: string, mediaType: WatchlistMediaType, page: number, pageSize: number, locale: Locale): Promise<WatchlistResponse> {
+    const notifications = this.resourceNotifications ? await this.resourceNotifications.store.list(ownerId) : undefined;
     if (mediaType === 'movie') {
       const result = await aiStep('watchlist.movies.list', () => this.movies.list(ownerId, 'interested', page, pageSize, locale));
       const states = await aiStep('watchlist.movies.identities', () => this.movieStates.list(ownerId, 'interested', page, pageSize));
       const byId = new Map(result.items.map((item) => [item.tmdbId, item]));
       return { ...result, items: states.items.map((state) => {
         const item = byId.get(state.tmdbId);
-        return definedFields({ mediaType: 'movie' as const, tmdbId: state.tmdbId, title: item?.title || unavailableWatchlistTitle(locale, state.tmdbId), overview: item?.overview, posterUrl: item?.posterUrl, releaseDate: item?.releaseDate, voteAverage: item?.voteAverage });
+        return definedFields({ mediaType: 'movie' as const, tmdbId: state.tmdbId, resourceNotificationEnabled: notifications ? notifications.some((entry) => entry.mediaType === 'movie' && entry.tmdbId === state.tmdbId) : state.resourceNotificationEnabled ?? false, title: item?.title || unavailableWatchlistTitle(locale, state.tmdbId), overview: item?.overview, posterUrl: item?.posterUrl, releaseDate: item?.releaseDate, voteAverage: item?.voteAverage });
       }) };
     }
     const result = await aiStep('watchlist.tv.list', () => this.tv.list(ownerId, page, pageSize));
@@ -34,8 +37,24 @@ export class WatchlistService {
     const byId = new Map([...fallback, ...shows].map((show) => [show.tmdbId, tvShowSummary(show)]));
     return { items: result.ids.flatMap((tmdbId) => {
       const show = byId.get(tmdbId);
-      return [definedFields({ mediaType: 'tv' as const, tmdbId, title: show?.name || show?.originalName || unavailableWatchlistTitle(locale, tmdbId), overview: show?.overview, posterUrl: show?.posterUrl, releaseDate: show?.firstAirDate, voteAverage: show?.voteAverage })];
+      return [definedFields({ mediaType: 'tv' as const, tmdbId, resourceNotificationEnabled: notifications ? notifications.some((entry) => entry.mediaType === 'tv' && entry.tmdbId === tmdbId) : result.notificationEnabledIds.includes(tmdbId), title: show?.name || show?.originalName || unavailableWatchlistTitle(locale, tmdbId), overview: show?.overview, posterUrl: show?.posterUrl, releaseDate: show?.firstAirDate, voteAverage: show?.voteAverage })];
     }), pagination: { page, pageSize, total: result.total, hasMore: page * pageSize < result.total }, locale };
+  }
+
+  async remove(ownerId: string, mediaType: WatchlistMediaType, tmdbId: number) {
+    if (mediaType === 'movie') await aiStep('watchlist.movies.remove', () => this.movies.clear(ownerId, tmdbId));
+    else await this.removeTv(ownerId, tmdbId);
+    return { inWatchlist: false };
+  }
+
+  async setResourceNotification(ownerId: string, mediaType: WatchlistMediaType, tmdbId: number, enabled: boolean, locale: Locale) {
+    if (this.resourceNotifications) return enabled
+      ? this.resourceNotifications.add(ownerId, mediaType, tmdbId, locale)
+      : this.resourceNotifications.remove(ownerId, mediaType, tmdbId);
+    const store = mediaType === 'movie' ? this.movieStates : this.tv;
+    const found = await aiStep('watchlist.resource-notification.save', () => store.setResourceNotification(ownerId, tmdbId, enabled));
+    if (!found) throw new AppError(404, 'NOT_FOUND', watchlistItemNotFound(locale));
+    return { enabled };
   }
 
   async membership(ownerId: string, tmdbId: number) {

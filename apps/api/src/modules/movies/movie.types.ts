@@ -77,6 +77,7 @@ export interface MovieCatalogStore {
 }
 
 export interface MovieStatusRecord {
+  resourceNotificationEnabled?: boolean;
   tmdbId: number;
   status: 'unwatched' | 'watched' | 'interested';
   preference: 'neutral' | 'liked' | 'disliked';

@@ -3,6 +3,8 @@
   "private": true,
   "packageManager": "pnpm@12.10.1",
   "scripts": {
+    "user:delete": "node --import ./apps/api/node_modules/tsx/dist/loader.mjs tools/users/delete-user.mjs",
+    "test:email": "node --import ./apps/api/node_modules/tsx/dist/loader.mjs tools/mailgun/test-email.mjs",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "lint:test": "node --test tools/eslint/*.test.mjs",

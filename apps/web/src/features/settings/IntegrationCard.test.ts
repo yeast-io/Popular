@@ -2,6 +2,8 @@
 import { mount } from '@vue/test-utils';
 import { expect, it } from 'vitest';
 import IntegrationCard from './IntegrationCard.vue';
+import hdareaLine from '../../assets/integrations/hdarea-line.svg';
+import mteamLine from '../../assets/integrations/mteam-line.svg';
 
 const props = {
   id: 'telegram',
@@ -38,9 +40,9 @@ it('shows letters for a service without a logo and preserves the card controls',
   wrapper.unmount();
 });
 
-it('uses the bundled HDArea favicon', () => {
-  const wrapper = mount(IntegrationCard, { props: { ...props, id: 'hdarea', title: 'HDArea', badge: 'HD' } });
-  expect(wrapper.get('.connection-badge img').attributes('src')).toMatch(/^(data:image\/|\/)/);
+it.each(['hdarea', 'mteam'])('uses the bundled %s line logo', (id) => {
+  const wrapper = mount(IntegrationCard, { props: { ...props, id, title: id, badge: 'HD' } });
+  expect(wrapper.get('.connection-badge img').attributes('src')).toBe(id === 'hdarea' ? hdareaLine : mteamLine);
   expect(wrapper.get('.connection-badge').text()).toBe('');
   wrapper.unmount();
 });

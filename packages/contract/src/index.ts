@@ -42,6 +42,7 @@ export * from './tv-shows/tv-season.schema.js';
 export * from './tv-shows/tv-episode.schema.js';
 
 export * from './watchlist/watchlist.schema.js';
+export * from './resource-notifications/resource-notification.schema.js';
 export * from './tv-preferences/tv-preference.schema.js';
 
 export * from './integrations/resource-refresh.policy.js';

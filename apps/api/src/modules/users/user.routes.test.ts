@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import test from 'node:test';
 import { buildApp } from '../../app.js';
 import { loadConfig } from '../../config/env.js';
+import { verificationFixture } from '../auth/email-verification.fixtures.test.js';
 import { AuthService } from '../auth/auth.service.js';
 import { DuplicateEmailError } from '../auth/auth.errors.js';
 import type { AuthUserStore, SessionStore, StoredUser } from '../auth/auth.types.js';
@@ -117,15 +118,17 @@ async function fixture() {
   const users = new MemoryUsers();
   const sessions = new MemorySessions();
   const avatars = new MemoryAvatars();
-  const auth = new AuthService(users, sessions, config.REGISTRATION_USER_LIMIT);
+  const verification = verificationFixture(users);
+  const auth = new AuthService(users, sessions, config.REGISTRATION_USER_LIMIT, verification.service);
   const userService = new UserService(auth, users, avatars, config.AVATAR_MAX_BYTES, config.AVATAR_MAX_PIXELS);
   const app = await buildApp({ config, healthDependencies: [], authService: auth, userService });
-  const registration = await app.inject({
+  await app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
     payload: { email: 'person@example.com', password: 'correct horse battery staple', displayName: 'Person' },
   });
-  const rawCookie = registration.headers['set-cookie'];
+  const verified = await app.inject({ method: 'POST', url: '/api/v1/auth/verify-email', payload: { email: 'person@example.com', code: verification.sent[0]!.code, password: 'correct horse battery staple' } });
+  const rawCookie = verified.headers['set-cookie'];
   const cookie = (Array.isArray(rawCookie) ? rawCookie[0] : rawCookie)?.split(';', 1)[0] ?? '';
   return { app, avatars, cookie };
 }
@@ -244,8 +247,8 @@ test('account locale persists in auth responses, validates input, and requires t
     assert.equal(anonymous.statusCode, 401);
     const another = await f.app.inject({ method: 'POST', url: '/api/v1/auth/register',
       payload: { email: 'other@example.com', password: 'correct horse battery staple', displayName: 'Other' } });
-    assert.equal(another.statusCode, 201);
-    assert.equal(another.json().user.locale, undefined);
+    assert.equal(another.statusCode, 202);
+    assert.equal(another.headers['set-cookie'], undefined);
     const me = await f.app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: { cookie: f.cookie } });
     assert.equal(me.json().user.locale, 'zh-CN');
   } finally { await f.app.close(); }

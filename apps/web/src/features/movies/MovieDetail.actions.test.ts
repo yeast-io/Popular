@@ -61,7 +61,7 @@ describe('movie detail icon actions', () => {
     setLocale(locale);
     const { wrapper, writes } = setup();
     await flushPromises();
-    expect(wrapper.get('.detail-media-actions').findAll('button').map((button) => button.classes()[0])).toEqual(['trailer-button', 'detail-state-icon', 'detail-state-icon']);
+    expect(wrapper.get('.detail-media-actions').findAll('button').map((button) => button.classes()[0])).toEqual(['trailer-button', 'detail-state-icon', 'detail-state-icon', 'detail-state-icon']);
     expect(wrapper.find('.detail-preference').exists()).toBe(false);
     expect(wrapper.find('.detail-status').exists()).toBe(false);
     expect(wrapper.get('.watchlist-icon').attributes('title')).toBeUndefined();
@@ -127,4 +127,22 @@ it.each(['en-US', 'zh-CN'] as const)('combines cast and directors once per perso
   expect(wrapper.findAll('.people-list')).toHaveLength(1);
   expect(wrapper.findAll('.detail-sections h2')).toHaveLength(0);
   expect(wrapper.find('.detail-action-toolbar > .resource-check-panel').exists()).toBe(false);
+});
+
+it.each(['en-US', 'zh-CN'] as const)('keeps resource notification feedback below the movie toolbar (%s)', async (locale) => {
+  setLocale(locale);
+  const { wrapper } = setup();
+  await flushPromises();
+  const previousFetch = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, options) => {
+    if (String(input).includes('/me/resource-notifications/') && options?.method === 'PUT') return Response.json({ error: { code: 'RESOURCE_NOTIFICATION_CHANNEL_REQUIRED', message: 'missing channel' } }, { status: 409 });
+    return previousFetch(input, options);
+  });
+  await wrapper.get('.resource-notification-button').trigger('click');
+  await flushPromises();
+  expect(wrapper.get('.resource-notification-feedback').text()).toContain(locale === 'zh-CN' ? '请先配置通信工具' : 'Configure a communication tool');
+  expect(wrapper.get('.detail-action-toolbar').find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.get('.resource-notification-feedback').element.closest('.detail-action-toolbar')).toBeNull();
+  expect(wrapper.get('.resource-notification-feedback a').attributes('href')).toBe('/settings?section=messages');
+  expect(wrapper.find('.watched-icon').exists()).toBe(true);
 });

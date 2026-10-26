@@ -14,6 +14,66 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it.each(['unbound', 'connected', 'disconnected', 'error'] as const)(
+  'does not poll while status is %s', async (status) => {
+    const fetchMock = vi.fn(async () => Response.json({ status }));
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(WhatsAppSettings);
+    try {
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(12_000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally { wrapper.unmount(); }
+  }
+);
+
+it('stops polling after connecting and restarts after unlinking and binding again', async () => {
+  let status = 'unbound';
+  const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+    if (input.endsWith('/bind')) status = 'connecting';
+    if (init?.method === 'DELETE') {
+      status = 'unbound';
+      return new Response(null, { status: 204 });
+    }
+    return Response.json({ status });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const wrapper = mount(WhatsAppSettings);
+  try {
+    await flushPromises();
+    await wrapper.get('button.primary').trigger('click');
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    status = 'connected';
+    await vi.advanceTimersByTimeAsync(3_000);
+    const count = fetchMock.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(fetchMock).toHaveBeenCalledTimes(count);
+    await wrapper.get('button.danger').trigger('click');
+    await wrapper.get('button.danger').trigger('click');
+    await flushPromises();
+    await wrapper.get('button.primary').trigger('click');
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(fetchMock).toHaveBeenCalledTimes(count + 3);
+  } finally { wrapper.unmount(); }
+});
+
+it('stops polling after a failed status request', async () => {
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(Response.json({ status: 'pairing' }))
+    .mockRejectedValue(new Error('offline'));
+  vi.stubGlobal('fetch', fetchMock);
+  const wrapper = mount(WhatsAppSettings);
+  try {
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  } finally { wrapper.unmount(); }
+});
+
 it('starts QR binding, polls connection, sends self-test and confirms unlink', async () => {
   const calls: Array<{ method: string; url: string; init: RequestInit | undefined }> = [];
   let status = { status: 'unbound' } as Record<string, string>;

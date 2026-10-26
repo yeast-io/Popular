@@ -82,6 +82,13 @@ test('self-chat replies cannot loop back into the receiver, even before send res
       assert.ok(payload.caption?.includes(locale === 'en-US' ? 'Downloader: Seedbox' : '下载器: Seedbox'));
       assert.ok(payload.caption?.includes(locale === 'en-US' ? 'Completion detected at:' : '检测完成时间:'));
     }
+    for (const locale of ['en-US', 'zh-CN'] as const) {
+      await connection.sendNotification({ kind: 'resource-found', id: 'notice', locale, title: 'Movie', resourceName: 'Release', site: 'M-Team', foundAt: new Date('2026-10-26T00:00:00Z'), detailUrl: 'https://popular.example/movies/7' });
+      const text = payloads.at(-1)!.text!;
+      assert.ok(text.includes(locale === 'en-US' ? 'Resource found' : '发现资源'));
+      assert.ok(!text.includes('Download complete'));
+      assert.ok(!text.includes('下载完成'));
+    }
     assert.equal(received, 0);
     handlers.get('messages.upsert')!({
       type: 'notify',

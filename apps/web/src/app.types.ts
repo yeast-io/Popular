@@ -1,11 +1,14 @@
 export type AuthField = 'displayName' | 'email' | 'password';
 
 export type Page
-  = | 'notification-tests'
+  = | 'home'
+    | 'link-agent'
+    | 'notification-tests'
     | 'movies'
     | 'tv-shows'
     | 'viewing-preferences'
     | 'watchlist'
+    | 'resource-notifications'
     | 'ai'
     | 'settings'
     | 'usage'
@@ -14,6 +17,6 @@ export type Page
     | 'login'
     | 'register';
 
-export type SettingsSection = 'profile' | 'ai' | 'preferences' | 'resources' | 'downloads' | 'keys' | 'notifications';
+export type SettingsSection = 'profile' | 'language' | 'ai' | 'preferences' | 'resources' | 'downloads' | 'keys' | 'notifications';
 
-export type ListPage = 'movies' | 'tv-shows' | 'viewing-preferences' | 'watchlist';
+export type ListPage = 'movies' | 'tv-shows' | 'viewing-preferences' | 'watchlist' | 'resource-notifications';

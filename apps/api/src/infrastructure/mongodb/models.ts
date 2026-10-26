@@ -1,4 +1,5 @@
 import { createTvPreferenceModel } from './tv-preferences/tv-preference.schema.js';
+import { createResourceNotificationModel } from './resource-notifications/resource-notification.schema.js';
 import { createTvWatchlistModel } from './watchlist/tv-watchlist.schema.js';
 import { createTvShowModel } from './tv-shows/tv-show.schema.js';
 import { createTvShowLocalizationModel } from './tv-shows/tv-show-localization.schema.js';
@@ -42,6 +43,7 @@ export function createModels(connection: Connection) {
   return {
     tvPreferences: createTvPreferenceModel(connection),
     tvWatchlist: createTvWatchlistModel(connection),
+    resourceNotifications: createResourceNotificationModel(connection),
     tvShows: createTvShowModel(connection),
     tvShowLocalizations: createTvShowLocalizationModel(connection),
     tvSeasons: createTvSeasonModel(connection),

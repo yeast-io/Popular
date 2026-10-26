@@ -17,6 +17,14 @@ test('watch list routes require a session, validate categories and propagate own
       calls.push(args);
       return { items: [], pagination: { page: 1, pageSize: 20, total: 0, hasMore: false }, locale: args[4] };
     },
+    remove: async (...args: unknown[]) => {
+      calls.push(args);
+      return { inWatchlist: false };
+    },
+    setResourceNotification: async (...args: unknown[]) => {
+      calls.push(args);
+      return { enabled: args[3] };
+    },
     membership: async (...args: unknown[]) => {
       calls.push(args);
       return { inWatchlist: false };
@@ -52,6 +60,17 @@ test('watch list routes require a session, validate categories and propagate own
     assert.equal((await app.inject({ method: 'DELETE', url: '/me/watchlist/tv-shows/42', headers })).statusCode, 200);
     for (const url of ['/me/watchlist?mediaType=invalid', '/me/watchlist?mediaType=tv&page=0', '/me/watchlist?mediaType=movie&pageSize=51', '/me/watchlist/tv-shows/0']) {
       assert.equal((await app.inject({ url, headers })).statusCode, 400);
+    }
+    calls.length = 0;
+    for (const media of ['movie', 'tv']) {
+      const url = `/me/watchlist/${media}/42/resource-notification?locale=en-US`;
+      assert.equal((await app.inject({ method: 'PUT', url, payload: { enabled: true } })).statusCode, 401);
+      assert.equal((await app.inject({ method: 'PUT', url, headers, payload: { enabled: true } })).json().enabled, true);
+      assert.deepEqual(calls.shift(), ['owner-one', media, 42, true, 'en-US']);
+      assert.equal((await app.inject({ method: 'PUT', url, headers, payload: {} })).statusCode, 400);
+      assert.equal((await app.inject({ method: 'DELETE', url: `/me/watchlist/${media}/42` })).statusCode, 401);
+      assert.equal((await app.inject({ method: 'DELETE', url: `/me/watchlist/${media}/42`, headers })).json().inWatchlist, false);
+      assert.deepEqual(calls.shift(), ['owner-one', media, 42]);
     }
     assert.ok(logs.some((value) => typeof (value as { correlationId?: string }).correlationId === 'string'));
   } finally { await app.close(); }

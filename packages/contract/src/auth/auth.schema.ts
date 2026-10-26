@@ -38,3 +38,17 @@ export type RegisterRequest = Static<typeof RegisterRequestSchema>;
 export type LoginRequest = Static<typeof LoginRequestSchema>;
 export type AuthUser = Static<typeof AuthUserSchema>;
 export type AuthResponse = Static<typeof AuthResponseSchema>;
+
+export const RegistrationPendingResponseSchema = Type.Object({
+  email: EmailSchema,
+  expiresAt: Type.String({ format: 'date-time' }),
+}, { additionalProperties: false });
+
+export const VerifyRegistrationRequestSchema = Type.Object({
+  email: EmailSchema,
+  code: Type.String({ pattern: '^[0-9]{6}$' }),
+  password: PasswordSchema,
+}, { additionalProperties: false });
+
+export type RegistrationPendingResponse = Static<typeof RegistrationPendingResponseSchema>;
+export type VerifyRegistrationRequest = Static<typeof VerifyRegistrationRequestSchema>;

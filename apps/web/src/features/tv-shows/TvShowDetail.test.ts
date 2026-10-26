@@ -178,7 +178,7 @@ it('places trailer playback before the watch list icon and opens the returned TV
   const wrapper = mount(TvShowDetail, { props: { tmdbId: 42 }, global: { stubs: { MediaTrailerDialog: true } } });
   mounted.push(wrapper);
   await flushPromises();
-  expect(wrapper.get('.tv-media-actions').findAll('button').map((button) => button.classes()[0])).toEqual(['trailer-button', 'detail-state-icon']);
+  expect(wrapper.get('.tv-media-actions').findAll('button').map((button) => button.classes()[0])).toEqual(['trailer-button', 'detail-state-icon', 'detail-state-icon']);
   await wrapper.get('.trailer-button').trigger('click');
   await flushPromises();
   const player = wrapper.findComponent({ name: 'MediaTrailerDialog' });
@@ -202,4 +202,24 @@ it.each(['en-US', 'zh-CN'] as const)('shows the localized tagline before overvie
     expect(wrapper.find('.tagline').exists()).toBe(false);
     expect(wrapper.get('.overview').text()).toBe('Series overview');
   }
+});
+
+it.each(['en-US', 'zh-CN'] as const)('shows resource notification errors below TV actions (%s)', async (locale) => {
+  setLocale(locale);
+  const previousFetch = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, options) => {
+    if (String(input).includes('/me/resource-notifications/')) return options?.method === 'PUT'
+      ? Response.json({ error: { code: 'RESOURCE_NOTIFICATION_CHANNEL_REQUIRED', message: 'missing channel' } }, { status: 409 })
+      : Response.json({ enabled: false });
+    return previousFetch(input, options);
+  });
+  const wrapper = render();
+  await wrapper.setProps({ authenticated: true });
+  await flushPromises();
+  await wrapper.get('.resource-notification-button').trigger('click');
+  await flushPromises();
+  expect(wrapper.get('.resource-notification-feedback').text()).toContain(locale === 'zh-CN' ? '请先配置通信工具' : 'Configure a communication tool');
+  expect(wrapper.get('.resource-notification-feedback').element.closest('.detail-media-actions')).toBeNull();
+  expect(wrapper.get('.detail-media-actions').find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.get('.resource-notification-feedback a').attributes('href')).toBe('/settings?section=messages');
 });

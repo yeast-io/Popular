@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildApp } from '../../app.js';
 import { loadConfig } from '../../config/env.js';
+import { verificationFixture } from './email-verification.fixtures.test.js';
 import { AuthService } from './auth.service.js';
 import { DuplicateEmailError } from './auth.errors.js';
 import type { AuthUserStore, SessionStore, StoredUser } from './auth.types.js';
@@ -88,11 +89,13 @@ class MemorySessions implements SessionStore {
   }
 }
 
-test('registration cookie authenticates /me and logout clears it', async () => {
+test('registration requires verification before a cookie authenticates /me and logout clears it', async () => {
+  const users = new MemoryUsers();
+  const fixture = verificationFixture(users);
   const app = await buildApp({
     config,
     healthDependencies: [],
-    authService: new AuthService(new MemoryUsers(), new MemorySessions(), config.REGISTRATION_USER_LIMIT),
+    authService: new AuthService(users, new MemorySessions(), config.REGISTRATION_USER_LIMIT, fixture.service),
   }
   );
 
@@ -102,9 +105,17 @@ test('registration cookie authenticates /me and logout clears it', async () => {
     payload: { email: 'person@example.com', password: 'correct horse battery staple', displayName: 'Person' },
   }
   );
-  assert.equal(registration.statusCode, 201);
-  assert.deepEqual(registration.json(), { user: { id: '1', email: 'person@example.com', displayName: 'Person' } });
-  const rawSetCookie = registration.headers['set-cookie'];
+  assert.equal(registration.statusCode, 202);
+  assert.equal(registration.headers['set-cookie'], undefined);
+  assert.equal(registration.json().email, 'person@example.com');
+  const unverifiedLogin = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: 'person@example.com', password: 'correct horse battery staple' } });
+  assert.equal(unverifiedLogin.statusCode, 401);
+  const verification = await app.inject({ method: 'POST', url: '/api/v1/auth/verify-email', payload: { email: 'person@example.com', code: fixture.sent[0]!.code, password: 'correct horse battery staple' } });
+  assert.equal(verification.statusCode, 200);
+  assert.equal(verification.json().user.email, 'person@example.com');
+  const replay = await app.inject({ method: 'POST', url: '/api/v1/auth/verify-email', payload: { email: 'person@example.com', code: fixture.sent[0]!.code, password: 'correct horse battery staple' } });
+  assert.equal(replay.statusCode, 400);
+  const rawSetCookie = verification.headers['set-cookie'];
   const setCookie = Array.isArray(rawSetCookie) ? rawSetCookie[0] : rawSetCookie;
   assert.match(setCookie ?? '', /^movie_hub_session=session-1;/);
   assert.match(setCookie ?? '', /HttpOnly/);
@@ -145,32 +156,42 @@ test('registration validates password length before calling the service', async 
 
 test('registration returns a stable API error when the user limit is reached', async () => {
   const users = new MemoryUsers();
-  const app = await buildApp({
-    config,
-    healthDependencies: [],
-    authService: new AuthService(users, new MemorySessions(), 1),
-  }
-  );
-  const payload = { password: 'correct horse battery staple', displayName: 'Person' };
-  assert.equal(
-    (
-      await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/register',
-        payload: { ...payload, email: 'first@example.com' },
-      }
-      )
-    ).statusCode,
-    201
-  );
-  const rejected = await app.inject({
-    method: 'POST',
-    url: '/api/v1/auth/register',
-    payload: { ...payload, email: 'second@example.com' },
-  }
-  );
+  await users.createPasswordUser({ email: 'first@example.com', passwordHash: 'hash', displayName: 'First' });
+  const fixture = verificationFixture(users, 1);
+  const app = await buildApp({ config, healthDependencies: [], authService: new AuthService(users, new MemorySessions(), 1, fixture.service) });
+  const rejected = await app.inject({ method: 'POST', url: '/api/v1/auth/register', payload: { email: 'second@example.com', password: 'correct horse battery staple', displayName: 'Second' } });
   assert.equal(rejected.statusCode, 403);
   assert.equal(rejected.json().error.code, 'REGISTRATION_LIMIT_REACHED');
-  assert.equal(users.users.size, 1);
+  assert.equal(fixture.sent.length, 0);
   await app.close();
+});
+
+test('registration quota and Mailgun failures are localized and never issue sessions', async () => {
+  const users = new MemoryUsers();
+  const fixture = verificationFixture(users);
+  fixture.exhaustQuota();
+  const app = await buildApp({ config, healthDependencies: [], authService: new AuthService(users, new MemorySessions(), 100, fixture.service) });
+  try {
+    const response = await app.inject({ method: 'POST', url: '/api/v1/auth/register', headers: { 'accept-language': 'en-US' },
+      payload: { email: 'person@example.com', password: 'secure password', displayName: 'Person' } });
+    assert.equal(response.statusCode, 429);
+    assert.equal(response.json().error.code, 'EMAIL_VERIFICATION_LIMIT_REACHED');
+    assert.match(response.json().error.message, /24 hours/);
+    assert.equal(response.headers['set-cookie'], undefined);
+    assert.equal(users.users.size, 0);
+    assert.equal(fixture.sent.length, 0);
+  } finally { await app.close(); }
+
+  const failing = verificationFixture(users);
+  failing.failSend();
+  const failedApp = await buildApp({ config, healthDependencies: [], authService: new AuthService(users, new MemorySessions(), 100, failing.service) });
+  try {
+    const response = await failedApp.inject({ method: 'POST', url: '/api/v1/auth/register', headers: { 'accept-language': 'zh-CN' },
+      payload: { email: 'person@example.com', password: 'secure password', displayName: 'Person' } });
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.json().error.code, 'EMAIL_VERIFICATION_UNAVAILABLE');
+    assert.match(response.json().error.message, /无法发送/);
+    assert.equal(response.headers['set-cookie'], undefined);
+    assert.equal(users.users.size, 0);
+  } finally { await failedApp.close(); }
 });

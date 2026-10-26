@@ -1,3 +1,4 @@
+import { resourceNotificationMessages } from '../../modules/resource-notifications/resource-notification.presentation.js';
 import { downloadNotificationMessages } from '../../modules/notifications/notification.presentation.js';
 import makeWASocket, {
   BufferJSON,
@@ -281,6 +282,12 @@ export function createBaileysConnector(makeSocket: typeof makeWASocket = makeWAS
       async sendNotification(notification) {
         const current = socket;
         if (stopped || !current?.user?.id) throw new Error('WhatsApp not connected');
+        if (notification.kind === 'resource-found') {
+          const messages = resourceNotificationMessages[notification.locale];
+          const text = [`🔔 ${messages.found} · ${notification.title}`, notification.resourceName,
+            `${messages.site}: ${notification.site}`, `${messages.foundAt}: ${notification.foundAt.toISOString()}`, notification.detailUrl].join('\n');
+          return sendOwnMessage({ text });
+        }
         const messages = downloadNotificationMessages[notification.locale ?? 'zh-CN'];
         const caption = [
           `✅ ${messages.completed} · ${notification.title}`,

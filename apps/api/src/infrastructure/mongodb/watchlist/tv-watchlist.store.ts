@@ -22,11 +22,18 @@ export class MongoTvWatchlistStore implements TvWatchlistStore {
     await this.model.deleteOne({ ownerId, tmdbId }).exec();
   }
 
+  async setResourceNotification(ownerId: string, tmdbId: number, enabled: boolean): Promise<boolean> {
+    const result = await this.model.updateOne(
+      { ownerId, tmdbId }, { $set: { resourceNotificationEnabled: enabled } }, { timestamps: false }
+    ).exec();
+    return result.matchedCount > 0;
+  }
+
   async list(ownerId: string, page: number, pageSize: number) {
     const [rows, total] = await Promise.all([
       this.model.find({ ownerId }).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean().exec(),
       this.model.countDocuments({ ownerId }).exec(),
     ]);
-    return { ids: rows.map((row) => row.tmdbId), total };
+    return { ids: rows.map((row) => row.tmdbId), total, notificationEnabledIds: rows.filter((row) => row.resourceNotificationEnabled).map((row) => row.tmdbId) };
   }
 }

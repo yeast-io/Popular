@@ -1,8 +1,9 @@
 import { aiStep } from '../../infrastructure/logging/ai-trace.js';
-import type { AuthUser, Locale, LoginRequest, RegisterRequest } from '@movie-hub/contract';
+import type { AuthUser, Locale, LoginRequest, RegisterRequest, RegistrationPendingResponse, VerifyRegistrationRequest } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import { hashPassword, verifyPassword } from './password.js';
-import { DuplicateEmailError } from './auth.errors.js';
+import { verifyPassword } from './password.js';
+import type { EmailVerificationService } from './email-verification.service.js';
+import { emailVerificationMessages } from './email-verification.messages.js';
 import type { AuthUserStore, SessionStore, StoredUser } from './auth.types.js';
 
 const DUMMY_PASSWORD_HASH = `scrypt$AAAAAAAAAAAAAAAAAAAAAA$${Buffer.alloc(64).toString('base64url')}`;
@@ -13,38 +14,21 @@ export class AuthService {
   constructor(
     private readonly users: AuthUserStore,
     private readonly sessions: SessionStore,
-    private readonly registrationUserLimit: number
+    private readonly registrationUserLimit: number,
+    private readonly verification?: EmailVerificationService
   ) {}
 
-  async register(input: RegisterRequest): Promise<{ user: AuthUser; token: string }> {
-    const email = normalizeEmail(input.email);
-    const passwordHash = await hashPassword(input.password);
-    return this.withRegistrationLock(async () => {
-      if ((await this.users.countUsers()) >= this.registrationUserLimit) {
-        throw new AppError(403, 'REGISTRATION_LIMIT_REACHED', 'Registration user limit has been reached');
-      }
-      return this.createRegisteredUser(input, email, passwordHash);
-    });
+  async register(input: RegisterRequest, locale: Locale = 'zh-CN'): Promise<RegistrationPendingResponse> {
+    if (!this.verification) throw new AppError(503, 'EMAIL_VERIFICATION_UNAVAILABLE', emailVerificationMessages[locale].unavailable);
+    return this.verification.start(input, locale);
   }
 
-  private async createRegisteredUser(
-    input: RegisterRequest,
-    email: string,
-    passwordHash: string
-  ): Promise<{ user: AuthUser; token: string }> {
-    try {
-      const user = await this.users.createPasswordUser({
-        email,
-        displayName: input.displayName.trim(),
-        passwordHash,
-      });
+  async verifyRegistration(input: VerifyRegistrationRequest, locale: Locale = 'zh-CN'): Promise<{ user: AuthUser; token: string }> {
+    if (!this.verification) throw new AppError(503, 'EMAIL_VERIFICATION_UNAVAILABLE', emailVerificationMessages[locale].unavailable);
+    return this.withRegistrationLock(async () => {
+      const user = await this.verification!.verify(input, locale);
       return { user: toAuthUser(user), token: await this.sessions.create(user.id) };
-    } catch (error) {
-      if (error instanceof DuplicateEmailError) {
-        throw new AppError(409, 'CONFLICT', 'Email is already registered');
-      }
-      throw error;
-    }
+    });
   }
 
   private async withRegistrationLock<T>(operation: () => Promise<T>): Promise<T> {

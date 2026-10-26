@@ -17,7 +17,7 @@ afterEach(() => {
 
 it.each(['en-US', 'zh-CN'] as const)('uses the mobile scroll container for navigation, restoration and page edges (%s)', async (locale) => {
   setLocale(locale);
-  window.history.replaceState({}, '', '/');
+  window.history.replaceState({}, '', '/movies');
   vi.stubGlobal('scrollTo', vi.fn());
   host = document.createElement('div');
   host.id = 'app';
@@ -53,7 +53,7 @@ it.each(['en-US', 'zh-CN'] as const)('uses the mobile scroll container for navig
   expect(window.history.state).toMatchObject({ movieOrigin: 'movies' });
   expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'smooth' });
 
-  window.history.replaceState({}, '', '/');
+  window.history.replaceState({}, '', '/movies');
   window.dispatchEvent(new PopStateEvent('popstate'));
   await flushPromises();
   await new Promise((resolve) => window.requestAnimationFrame(resolve));

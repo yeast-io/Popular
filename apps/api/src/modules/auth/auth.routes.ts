@@ -1,6 +1,10 @@
 import {
   ApiErrorSchema,
   AuthResponseSchema,
+  RegistrationPendingResponseSchema,
+  VerifyRegistrationRequestSchema,
+  type VerifyRegistrationRequest,
+  type Locale,
   LoginRequestSchema,
   RegisterRequestSchema,
   type LoginRequest,
@@ -8,21 +12,52 @@ import {
 } from '@movie-hub/contract';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppConfig } from '../../config/env.schema.js';
+import { AiTrace, withAiTrace, aiStep } from '../../infrastructure/logging/ai-trace.js';
+import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import { AuthService } from './auth.service.js';
 
-export function registerAuthRoutes(app: FastifyInstance, service: AuthService, config: AppConfig): void {
+export function registerAuthRoutes(app: FastifyInstance, service: AuthService, config: AppConfig, logger?: AiLogger): void {
+  const execute = async <T>(request: FastifyRequest, stage: string, action: (locale: Locale) => Promise<T>) => {
+    const locale: Locale = request.headers['accept-language']?.startsWith('en')
+      ? 'en-US'
+      : request.headers['accept-language']?.startsWith('zh') ? 'zh-CN' : config.TMDB_LANGUAGE;
+    const trace = new AiTrace(logger, { requestId: request.id }, '', 'auth.api', config.VERBOSE);
+    const body = request.body as Record<string, unknown> | undefined;
+    for (const key of ['email', 'password', 'code']) {
+      if (typeof body?.[key] === 'string') trace.sensitive(body[key]);
+    }
+    return withAiTrace(trace, async () => {
+      try {
+        return await aiStep(stage, () => action(locale));
+      } catch (error) {
+        trace.fail(error);
+        throw error;
+      }
+    });
+  };
   app.post<{ Body: RegisterRequest }>(
     '/auth/register',
     {
       schema: {
         body: RegisterRequestSchema,
-        response: { 201: AuthResponseSchema, 400: ApiErrorSchema, 403: ApiErrorSchema, 409: ApiErrorSchema },
+        response: { 202: RegistrationPendingResponseSchema, 429: ApiErrorSchema, 503: ApiErrorSchema, 400: ApiErrorSchema, 403: ApiErrorSchema, 409: ApiErrorSchema },
       },
     },
     async (request, reply) => {
-      const result = await service.register(request.body);
+      const result = await execute(request, 'auth.register', (locale) => service.register(request.body, locale));
+      return reply.status(202).send(result);
+    });
+
+  app.post<{ Body: VerifyRegistrationRequest }>(
+    '/auth/verify-email',
+    { schema: {
+      body: VerifyRegistrationRequestSchema,
+      response: { 200: AuthResponseSchema, 400: ApiErrorSchema, 403: ApiErrorSchema, 409: ApiErrorSchema, 503: ApiErrorSchema },
+    } },
+    async (request, reply) => {
+      const result = await execute(request, 'auth.verify-email', (locale) => service.verifyRegistration(request.body, locale));
       reply.header('set-cookie', sessionCookie(config, result.token));
-      return reply.status(201).send({ user: result.user });
+      return { user: result.user };
     });
 
   app.post<{ Body: LoginRequest }>(
@@ -34,7 +69,7 @@ export function registerAuthRoutes(app: FastifyInstance, service: AuthService, c
       },
     },
     async (request, reply) => {
-      const result = await service.login(request.body);
+      const result = await execute(request, 'auth.login', () => service.login(request.body));
       reply.header('set-cookie', sessionCookie(config, result.token));
       return { user: result.user };
     });

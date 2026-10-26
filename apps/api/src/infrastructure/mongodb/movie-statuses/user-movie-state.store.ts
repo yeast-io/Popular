@@ -71,6 +71,15 @@ export class MongoMovieStatusStore implements MovieStatusStore {
     if (row && normalizeStatus(row.status) === 'unwatched') await this.states.deleteOne({ ownerId, tmdbId }).exec();
   }
 
+  async setResourceNotification(ownerId: string, tmdbId: number, enabled: boolean): Promise<boolean> {
+    const result = await this.states.updateOne(
+      { ownerId, tmdbId, status: 'interested' },
+      { $set: { resourceNotificationEnabled: enabled } },
+      { timestamps: false }
+    ).exec();
+    return result.matchedCount > 0;
+  }
+
   async readForMovies(ownerId: string, tmdbIds: number[]): Promise<MovieStatusRecord[]> {
     if (tmdbIds.length === 0) return [];
     const rows = await this.states
@@ -126,11 +135,13 @@ function toRecord(row: {
   status: string;
   preference?: string | null;
   updatedAt: Date;
+  resourceNotificationEnabled?: boolean;
 }): MovieStatusRecord {
   return {
     tmdbId: row.tmdbId,
     status: normalizeStatus(row.status),
     preference: normalizePreference(row),
     updatedAt: row.updatedAt,
+    resourceNotificationEnabled: row.resourceNotificationEnabled ?? false,
   };
 }

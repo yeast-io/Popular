@@ -184,7 +184,7 @@ export class WhatsAppService {
 
   async sendNotification(
     ownerId: string,
-    notification: import('../notifications/notification.types.js').DownloadNotification
+    notification: import('../notifications/notification.types.js').NotificationMessage
   ): Promise<{ messageId: string }> {
     return this.serial(ownerId, async () => {
       if (this.closed || !(await this.store.exists(ownerId))) throw new Error('WhatsApp not linked');
