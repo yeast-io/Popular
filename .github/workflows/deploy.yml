@@ -13,7 +13,7 @@ jobs:
   verify:
     name: Verify deployment connection
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 30
 
     steps:
       - name: Check SSH and Docker
@@ -24,6 +24,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -39,6 +40,11 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
 
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Invalid commit SHA"
+            exit 1
+          }
+
           ssh \
             -i "$ssh_dir/key" \
             -p "$DEPLOY_PORT" \
@@ -47,10 +53,46 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
             -o ConnectTimeout=15 \
-            "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=6 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash -se -- '$DEPLOY_SHA'" <<'REMOTE'
           set -euo pipefail
-          whoami
-          git --version
-          docker version
-          docker compose version
+
+          commit_sha="$1"
+          deploy_dir="$HOME/popular-deploy"
+          mkdir -p "$deploy_dir"
+
+          # Prevent overlapping deployments on this server.
+          exec 9>"$deploy_dir/deploy.lock"
+          flock -n 9 || {
+            echo "Another deployment is running"
+            exit 1
+          }
+
+          # Build from a clean directory, separate from production configuration.
+          build_dir=$(mktemp -d "$deploy_dir/build.XXXXXXXX")
+          trap 'rm -rf "$build_dir"' EXIT
+
+          echo "Fetching commit: $commit_sha"
+          git init "$build_dir/source"
+          cd "$build_dir/source"
+          git remote add origin https://github.com/yeast-io/Popular.git
+          GIT_TERMINAL_PROMPT=0 git fetch --depth=1 origin "$commit_sha"
+          git checkout --detach FETCH_HEAD
+
+          test "$(git rev-parse HEAD)" = "$commit_sha"
+          test -f .dockerignore
+          test -f apps/api/Dockerfile
+
+          echo "Building API image: popular-api:$commit_sha"
+          docker build \
+            -f apps/api/Dockerfile \
+            -t "popular-api:$commit_sha" \
+            .
+
+          docker image inspect "popular-api:$commit_sha" \
+            --format 'Built image: {{.Id}}'
+
+          echo "API image build completed"
           REMOTE
