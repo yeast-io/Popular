@@ -1,0 +1,336 @@
+name: Release PLA Agent
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "helpers/agent/src-tauri/tauri.conf.json"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-pla-agent
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Check version
+    runs-on: ubuntu-latest
+
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version change
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          CONFIG="helpers/agent/src-tauri/tauri.conf.json"
+
+          BASE_VERSION=$(jq -r '.version // empty' "$CONFIG")
+
+          if [[ -z "$BASE_VERSION" ]]; then
+            echo "Missing version in $CONFIG"
+            exit 1
+          fi
+
+          if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $BASE_VERSION"
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            STABLE_VERSION="${BASE_VERSION%%[-+]*}"
+            VERSION="${STABLE_VERSION}-beta.${GITHUB_RUN_NUMBER}"
+            PRERELEASE=true
+
+            echo "Manual beta build requested"
+          else
+            VERSION="$BASE_VERSION"
+
+            if [[ "$VERSION" == *"-"* ]]; then
+              PRERELEASE=true
+            else
+              PRERELEASE=false
+            fi
+
+            if [[ "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+              echo "No previous commit to compare"
+              exit 1
+            fi
+
+            PREVIOUS_VERSION=$(
+              git show "${BEFORE}:${CONFIG}" 2>/dev/null |
+              jq -r '.version // empty'
+            ) || {
+              echo "Cannot read previous version"
+              exit 1
+            }
+
+            echo "Previous: $PREVIOUS_VERSION"
+            echo "Current:  $VERSION"
+
+            if [[ "$PREVIOUS_VERSION" == "$VERSION" ]]; then
+              echo "Version unchanged. Skipping release."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          TAG="pla-v${VERSION}"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Skipping."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists. Refusing to overwrite."
+            exit 1
+          fi
+
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+          echo "Release version: $VERSION"
+          echo "Release tag: $TAG"
+          echo "Prerelease: $PRERELEASE"
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            os: macos-15
+            target: universal-apple-darwin
+
+          - platform: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        working-directory: helpers/agent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || 'x86_64-pc-windows-msvc' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: helpers/agent/src-tauri
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Override Tauri version for Beta
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          CONFIG="src-tauri/tauri.conf.json"
+
+          jq --arg version "$VERSION" \
+            '.version = $version' \
+            "$CONFIG" > tauri.conf.tmp.json
+
+          mv tauri.conf.tmp.json "$CONFIG"
+
+          echo "Tauri version overridden to $VERSION"
+
+      - name: Build macOS Universal
+        if: matrix.platform == 'macos'
+        run: pnpm exec tauri build --target universal-apple-darwin --bundles dmg
+
+      - name: Build Windows Portable
+        if: matrix.platform == 'windows'
+        run: pnpm exec tauri build --target x86_64-pc-windows-msvc --no-bundle
+
+      - name: Package macOS DMG
+        if: matrix.platform == 'macos'
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ../../release
+
+          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg \
+            -maxdepth 1 -type f -name '*.dmg' -print -quit)
+
+          if [[ -z "$DMG" ]]; then
+            echo "DMG not found"
+            exit 1
+          fi
+
+          cp "$DMG" "../../release/pla-${VERSION}.dmg"
+
+      - name: Package Windows Portable
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $targetDir = "src-tauri/target/x86_64-pc-windows-msvc/release"
+          $bundleDir = "../../release"
+          $portableDir = "../../portable/PLA"
+
+          New-Item -ItemType Directory -Force $bundleDir | Out-Null
+          New-Item -ItemType Directory -Force $portableDir | Out-Null
+
+          # Assumes the executable is named pla.exe.
+          $exe = Join-Path $targetDir "pla.exe"
+
+          if (-not (Test-Path $exe)) {
+            throw "Portable executable not found: $exe"
+          }
+
+          Copy-Item $exe "$portableDir/pla.exe"
+
+          # Include DLL files located next to the executable.
+          Get-ChildItem $targetDir -Filter "*.dll" -File |
+            Copy-Item -Destination $portableDir
+
+          # Include Tauri external binaries if configured.
+          $config = Get-Content "src-tauri/tauri.conf.json" -Raw |
+            ConvertFrom-Json
+
+          $externalBins = @($config.bundle.externalBin)
+
+          foreach ($bin in $externalBins) {
+            if (-not $bin) { continue }
+
+            $name = [System.IO.Path]::GetFileName($bin)
+            $source = Join-Path $targetDir "$name.exe"
+
+            if (Test-Path $source) {
+              Copy-Item $source $portableDir
+            }
+          }
+
+          Compress-Archive `
+            -Path "../../portable/PLA" `
+            -DestinationPath "$bundleDir/pla-$env:VERSION.zip" `
+            -CompressionLevel Optimal
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pla-${{ matrix.platform }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs:
+      - prepare
+      - build
+
+    if: needs.prepare.outputs.release == 'true'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pla-*
+          path: release
+          merge-multiple: true
+
+      - name: Verify artifacts
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          test -s "release/pla-${VERSION}.dmg"
+          test -s "release/pla-${VERSION}.zip"
+
+          echo "Release artifacts:"
+          ls -lh release/
+
+          sha256sum release/* > release/SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          ARGS=(
+            --repo "$REPO"
+            --target "$SHA"
+            --title "PLA v${VERSION}"
+            --generate-notes
+          )
+
+          if [[ "$PRERELEASE" == "true" ]]; then
+            ARGS+=(--prerelease)
+          else
+            ARGS+=(--latest)
+          fi
+
+          gh release create "$TAG" release/* "${ARGS[@]}"
