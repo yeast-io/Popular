@@ -6,15 +6,6 @@ on:
       service:
         required: true
         type: string
-      api_tag:
-        required: true
-        type: string
-      web_tag:
-        required: true
-        type: string
-      gateway_tag:
-        required: true
-        type: string
     secrets:
       DEPLOY_HOST:
         required: true
@@ -29,7 +20,155 @@ permissions:
   contents: read
 
 jobs:
+  detect:
+    name: Check ${{ inputs.service }} version
+    if: github.ref == 'refs/heads/release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      api_tag: ${{ steps.versions.outputs.api_tag }}
+      web_tag: ${{ steps.versions.outputs.web_tag }}
+      gateway_tag: ${{ steps.versions.outputs.gateway_tag }}
+      deploy: ${{ steps.versions.outputs.deploy }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?Missing DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Missing DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?Missing DEPLOY_SSH_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing DEPLOY_KNOWN_HOSTS}"
+
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+
+          umask 077
+          ssh_dir="$RUNNER_TEMP/popular-ssh"
+          mkdir -p "$ssh_dir"
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+
+          cat > "$ssh_dir/config" <<EOF
+          Host popular
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            Port $DEPLOY_PORT
+            IdentityFile $ssh_dir/key
+            UserKnownHostsFile $ssh_dir/known_hosts
+            StrictHostKeyChecking yes
+            IdentitiesOnly yes
+            BatchMode yes
+            ConnectTimeout 15
+            ServerAliveInterval 30
+            ServerAliveCountMax 6
+          EOF
+
+      - name: Read successful deployment versions
+        run: |
+          set -euo pipefail
+
+          ssh -F "$RUNNER_TEMP/popular-ssh/config" popular \
+            'if test -f "$HOME/popular-deploy/.env"; then cat "$HOME/popular-deploy/.env"; fi' \
+            > "$RUNNER_TEMP/popular-deployed.env"
+
+      - name: Detect version changes
+        id: versions
+        env:
+          SERVICE: ${{ inputs.service }}
+        run: |
+          set -euo pipefail
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const version = (file) => {
+            const value = JSON.parse(fs.readFileSync(file, 'utf8')).version;
+            if (typeof value !== 'string' || !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(value)) {
+              throw new Error(`Version cannot be used in a Docker tag: ${file}`);
+            }
+            return value;
+          };
+          const selected = process.env.SERVICE;
+          if (!['api', 'web', 'gateway'].includes(selected)) {
+            throw new Error('Unsupported deployment service');
+          }
+          const contract = version('packages/contract/package.json');
+          const tags = {
+            api: `${version('apps/api/package.json')}-contract.${contract}`,
+            web: `${version('apps/web/package.json')}-contract.${contract}`,
+            gateway: `${version('apps/helpers/gateway/package.json')}-contract.${contract}`,
+          };
+
+          const previous = {};
+          const state = fs.readFileSync(
+            path.join(process.env.RUNNER_TEMP, 'popular-deployed.env'),
+            'utf8',
+          );
+
+          for (const line of state.split(/\r?\n/)) {
+            const match = line.match(/^(API_IMAGE_TAG|WEB_IMAGE_TAG|GATEWAY_IMAGE_TAG)=(.*)$/);
+            if (match) {
+              previous[match[1]] = match[2].trim().replace(/^(['"])(.*)\1$/, '$2');
+            }
+          }
+
+          for (const service of ['api', 'web', 'gateway']) {
+            const tag = tags[service];
+            if (tag.length > 128) {
+              throw new Error(`Image tag exceeds 128 characters: ${service}`);
+            }
+
+            const key = `${service.toUpperCase()}_IMAGE_TAG`;
+            const changed = previous[key] !== tag;
+
+            fs.appendFileSync(
+              process.env.GITHUB_OUTPUT,
+              `${service}_tag=${tag}\n`,
+            );
+
+            if (service === selected) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `deploy=${changed}\n`);
+              const result = changed ? 'Deploy / 部署' : 'Skip: version unchanged / 跳过：版本未变化';
+              console.log(`${service}: ${previous[key] || '(none)'} -> ${tag}; deploy=${changed}`);
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+                `### ${service} deployment / 部署检查\n\n` +
+                `| Item / 项目 | Value / 值 |\n| --- | --- |\n` +
+                `| Previous / 已部署 | ${previous[key] || '(none)'} |\n` +
+                `| Target / 目标 | ${tag} |\n` +
+                `| Result / 结果 | ${result} |\n`);
+            }
+          }
+          NODE
+
+      - name: Clean up SSH credentials
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/popular-ssh"
+
   deploy:
+    name: Deploy ${{ inputs.service }}
+    needs: detect
+    if: needs.detect.outputs.deploy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
@@ -83,9 +222,9 @@ jobs:
         env:
           DEPLOY_SHA: ${{ github.sha }}
           SERVICE: ${{ inputs.service }}
-          API_IMAGE_TAG: ${{ inputs.api_tag }}
-          WEB_IMAGE_TAG: ${{ inputs.web_tag }}
-          GATEWAY_IMAGE_TAG: ${{ inputs.gateway_tag }}
+          API_IMAGE_TAG: ${{ needs.detect.outputs.api_tag }}
+          WEB_IMAGE_TAG: ${{ needs.detect.outputs.web_tag }}
+          GATEWAY_IMAGE_TAG: ${{ needs.detect.outputs.gateway_tag }}
         run: |
           set -euo pipefail
 
@@ -166,7 +305,7 @@ jobs:
           }
 
           compose config --quiet
-          if ! compose config --services | grep -Fxq "$service"; then
+          if ! compose config --services | grep -Fx "$service" >/dev/null; then
             echo "Service $service is missing from $deploy_dir/compose.yml"
             exit 1
           fi
