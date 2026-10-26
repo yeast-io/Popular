@@ -153,12 +153,8 @@ vite.config.ts.timestamp-*
 
 .vscode/
 
-.docs/
-
 # skills
 .agents/
 .aider-desk/
 
 .archify
-
-docs/
