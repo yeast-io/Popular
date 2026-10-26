@@ -1,7 +1,7 @@
 <p align="center"><img src="docs/images/popular-mark.svg" alt="Popular" width="72" /></p>
 <h1 align="center">Popular</h1>
 <p align="center"><strong>Multiple sources. Your own downloaders. One place to manage them.</strong></p>
-<p align="center"><a href="development.md">Development guide</a> · <a href="https://github.com/yeast-io/Popular/issues">Feedback</a></p>
+<p align="center"><a href="docs/development.md">Development guide</a> · <a href="https://github.com/yeast-io/Popular/issues">Feedback</a></p>
 
 ## Why Popular?
 

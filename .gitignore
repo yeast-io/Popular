@@ -158,3 +158,7 @@ vite.config.ts.timestamp-*
 .aider-desk/
 
 .archify
+
+docs/REMOTE_CLIENT.md
+docs/MESSAGE_CHAIN.md
+docs/AI_ASSISTANT.md
