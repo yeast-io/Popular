@@ -1,0 +1,28 @@
+name: Deploy Web
+run-name: Deploy Web · ${{ github.ref_name }} · ${{ github.sha }}
+
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: popular-production-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Web
+    if: github.ref == 'refs/heads/release'
+    uses: ./.github/workflows/deploy-service.yml
+    with:
+      service: web
+    secrets:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
