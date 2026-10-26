@@ -150,7 +150,7 @@ corepack pnpm --parallel --filter @movie-hub/api --filter @movie-hub/web dev
 ## 文档与反馈
 
 - [开发与本地运行](docs/development.md)
-- [智能助手设计](docs/AI_ASSISTANT.md)
+- [智能助手实现](apps/api/src/modules/assistant/assistant.workflow.ts)
 - [PLA 构建与配置](apps/helpers/agent/README.md)
 - [Gateway 运行与协议](apps/helpers/gateway/README.md)
 - [提交问题或功能建议](https://github.com/yeast-io/Popular/issues)

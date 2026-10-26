@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="340" viewBox="0 0 1280 340" role="img" aria-labelledby="title description">
+  <title id="title">Popular — 多个资源站，一个下载入口</title>
+  <desc id="description">连接你的资源站账号和下载器，集中查找、比较资源并发起下载。</desc>
+  <defs><radialGradient id="glow"><stop stop-color="#f0522d" stop-opacity=".14"/><stop offset="1" stop-color="#101313" stop-opacity="0"/></radialGradient></defs>
+  <rect width="1280" height="340" rx="18" fill="#101313"/>
+  <ellipse cx="160" cy="80" rx="600" ry="410" fill="url(#glow)"/>
+  <g transform="translate(72 65) scale(1.05)">
+    <rect width="64" height="64" rx="18" fill="#f0522d"/>
+    <path fill="#111111" fill-rule="evenodd" d="M16 14h9v4.6c2.3-3.5 5.5-5.2 9.5-5.2C43 13.4 48 20 48 29.7s-5 16.3-13.5 16.3c-4 0-7.2-1.7-9.5-5v17h-9V14Zm16.2 7.2c-4.7 0-7.6 3.2-7.6 8.5s2.9 8.5 7.6 8.5 7.3-3.2 7.3-8.5-2.6-8.5-7.3-8.5Z"/>
+    <circle cx="49.5" cy="45.5" r="4.5" fill="#111111"/>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="162" y="117" font-size="62" font-weight="800" letter-spacing="-3" fill="#f0ede5">popular<tspan fill="#f0522d">.</tspan></text>
+    <text x="72" y="205" font-size="37" font-weight="650" fill="#f0ede5">多个资源站，<tspan fill="#f77550">一个下载入口。</tspan></text>
+    <text x="74" y="252" font-size="18" fill="#a3aca5">连接资源与设备，让下载更顺手。</text>
+    <text x="1120" y="284" font-size="13" text-anchor="end" letter-spacing="2" fill="#7d8c81">POPULAR LINK AGENT · PLA</text>
+  </g>
+  <g fill="none" stroke="#f0522d" stroke-opacity=".13"><circle cx="1110" cy="80" r="110"/><circle cx="1110" cy="80" r="155"/><circle cx="1110" cy="80" r="200"/></g>
+</svg>
