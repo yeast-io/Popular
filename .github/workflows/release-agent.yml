@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "helpers/agent/src-tauri/tauri.conf.json"
+      - "apps/helpers/agent/src-tauri/tauri.conf.json"
 
   workflow_dispatch:
 
@@ -44,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          CONFIG="helpers/agent/src-tauri/tauri.conf.json"
+          CONFIG="apps/helpers/agent/src-tauri/tauri.conf.json"
 
           echo "Checking config: $CONFIG"
 
@@ -154,7 +154,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: helpers/agent
+        working-directory: apps/helpers/agent
 
     steps:
       - name: Checkout
@@ -168,7 +168,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: helpers/agent/src-tauri
+          workspaces: apps/helpers/agent/src-tauri
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
