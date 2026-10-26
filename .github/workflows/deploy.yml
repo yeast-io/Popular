@@ -218,6 +218,55 @@ jobs:
           if compose up -d --no-deps --wait --wait-timeout 180 "${services[@]}"; then
             mv "$build_dir/versions.env" "$deploy_dir/.env"
             echo "Deployment succeeded; version records saved"
+
+            clean_old_images() {
+              local repository="$1"
+              local current_tag="$2"
+              local candidates="$build_dir/${repository}-candidates"
+              local sorted="$build_dir/${repository}-sorted"
+              local image created retained=0
+
+              if ! docker image inspect "$repository:$current_tag" >/dev/null 2>&1; then
+                echo "Skipping $repository cleanup: current image is missing"
+                return 0
+              fi
+
+              if ! docker image ls \
+                --filter "reference=$repository:*" \
+                --format '{{.Repository}}:{{.Tag}}' > "$build_dir/${repository}-tags"; then
+                echo "Skipping $repository cleanup: cannot list images"
+                return 0
+              fi
+
+              : > "$candidates"
+              while IFS= read -r image; do
+                [[ "$image" == "$repository:"* ]] || continue
+                [[ "$image" == "$repository:$current_tag" ]] && continue
+                if created=$(docker image inspect --format '{{.Created}}' "$image"); then
+                  printf '%s\t%s\n' "$created" "$image" >> "$candidates"
+                else
+                  echo "Skipping $image: cannot inspect image"
+                fi
+              done < "$build_dir/${repository}-tags"
+
+              if ! sort -r "$candidates" > "$sorted"; then
+                echo "Skipping $repository cleanup: cannot sort images"
+                return 0
+              fi
+
+              while IFS=$'\t' read -r created image; do
+                if (( retained < 2 )); then
+                  retained=$((retained + 1))
+                  continue
+                fi
+                if ! docker image rm "$image"; then
+                  echo "Could not remove $image; it may still be used by a container"
+                fi
+              done < "$sorted"
+            }
+
+            clean_old_images popular-api "$api_tag"
+            clean_old_images popular-web "$web_tag"
           else
             compose ps --all || true
             compose logs --tail=100 "${services[@]}" || true

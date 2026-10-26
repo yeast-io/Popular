@@ -9,42 +9,27 @@ import type { BuildAppOptions } from './app.types.js';
 import { aiAssistantPageEnabled } from './config/env.js';
 import { registerTelegramRoutes } from './modules/telegram/telegram.routes.js';
 import { registerPreferenceRoutes } from './modules/preferences/preference.routes.js';
-
 import { registerNotificationTestRoutes } from './modules/notifications/notification-test.routes.js';
-
 import { registerNotificationRoutes } from './modules/notifications/notification.routes.js';
-
 import { registerWhatsAppRoutes } from './modules/whatsapp/whatsapp.routes.js';
-
 import { randomUUID } from 'node:crypto';
 import { registerOpenAISettingsRoutes } from './modules/integrations/openai-settings.routes.js';
-
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
-
 import { registerErrorHandler } from './infrastructure/http/error-handler.js';
 import { registerAccessLog } from './infrastructure/logging/access-log.js';
 import { createLoggers, createPrettyLoggers } from './infrastructure/logging/logger.js';
 import { registerHealthRoutes } from './modules/health/health.routes.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
-
 import { registerUserRoutes } from './modules/users/user.routes.js';
-
 import { registerMovieRoutes } from './modules/movies/movie.routes.js';
-
 import { registerMovieStatusRoutes } from './modules/movie-statuses/movie-status.routes.js';
-
 import { registerIntegrationRoutes } from './modules/integrations/integration.routes.js';
-
 import { registerTransmissionRoutes } from './modules/integrations/transmission.routes.js';
-
 import { registerMovieDownloadRoutes } from './modules/downloads/movie-download.routes.js';
-
 import { registerExternalUsageRoutes } from './modules/external-usage/external-usage.routes.js';
-
 import { registerPublicConfigRoutes } from './modules/config/public-config.routes.js';
 import { registerConversationRoutes } from './modules/conversations/conversation.routes.js';
-
 import { registerResourceNotificationRoutes } from './modules/resource-notifications/resource-notification.routes.js';
 
 export async function buildApp({
@@ -91,7 +76,8 @@ export async function buildApp({
     },
   });
 
-  await app.register(cors, { origin: config.WEB_ORIGIN, credentials: true });
+  const allowedCORSMethods = ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'PATCH'];
+  await app.register(cors, { origin: config.WEB_ORIGIN, credentials: true, methods: allowedCORSMethods });
   registerAccessLog(app, config.ACCESS_LOG_ENABLED);
   registerErrorHandler(app, loggers);
 
