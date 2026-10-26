@@ -15,16 +15,6 @@ Finding a movie can mean repeating searches across resource sites, comparing ver
 - Receive availability alerts and download completion messages through linked channels.
 - Configure your own OpenAI API Key to start with a recommendation or a conversation.
 
-You choose the release and target downloader. Popular does not automatically choose a release and start a download for you.
-
-## Interface preview
-
-<table>
-  <tr><td width="50%" align="center"><strong>Compare releases</strong></td><td width="50%" align="center"><strong>Connect your downloaders</strong></td></tr>
-  <tr><td align="center"><img src="images/resource-preview.png" alt="Release information with quality, file size, encoding and tags." width="360" /></td><td align="center"><img src="images/downloader-connections.png" alt="Popular connects directly to online downloaders or through PLA to a local downloader." width="360" /></td></tr>
-</table>
-
-These screenshots show parts of the Chinese landing page. Release records are illustrative data, not a claim that those releases are available.
 
 ## Features
 

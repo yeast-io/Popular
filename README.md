@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>连接你的资源站账号与下载器，在一个地方查找、比较资源并发起下载。</strong>
+  <strong>聚合所有资源，让观影体验更佳。</strong>
 </p>
 
 <p align="center">
@@ -23,23 +23,6 @@
 - **选择后直接提交**：发送到公网可访问的下载器，或经 PLA 接入的本地下载器。
 - **进展主动通知**：发现可用资源、下载完成时，通过已绑定的消息渠道提醒你。
 - **也可以从对话开始**：配置自己的 OpenAI API Key，通过智能助手获取推荐、查询资源并发起下载。
-
-资源版本与目标下载器由你选择。Popular 不会替你自动挑选资源后直接下载。
-
-## 界面预览
-
-<table>
-  <tr>
-    <td width="50%" align="center"><strong>资源信息与版本比较</strong></td>
-    <td width="50%" align="center"><strong>公网直连与本地设备接入</strong></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/images/resource-preview.png" alt="资源预览：画质、体积、做种人数、编码和字幕标签。" width="360" /></td>
-    <td align="center"><img src="docs/images/downloader-connections.png" alt="Popular 直连线上下载器，并通过 PLA 连接本地下载器。" width="360" /></td>
-  </tr>
-</table>
-
-以上为首页的局部界面展示，资源内容为演示数据，不代表实际可下载的资源。
 
 ## 你可以用它做什么？
 
