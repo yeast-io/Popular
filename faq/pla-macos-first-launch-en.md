@@ -34,5 +34,3 @@ Closing the settings window leaves PLA running in the menu bar. Use the menu's q
 | PLA still crashes or fails after approval | Report the PLA version, macOS version, Mac chip type and full error message for investigation. |
 
 You do not need to disable Gatekeeper, enable apps from anywhere, or run terminal commands to remove quarantine attributes. This guide covers an exception for one app from a source you trust.
-
-Reference: [Apple: Safely open apps on your Mac](https://support.apple.com/en-au/102445). A manual exception does not notarize the app.
