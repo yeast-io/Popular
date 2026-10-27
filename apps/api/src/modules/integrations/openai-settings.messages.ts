@@ -1,0 +1,15 @@
+export const openAISettingsMessages = {
+  invalidKey: { en: 'Invalid API key format', zh: 'API 密钥格式无效' },
+  busy: { en: 'OpenAI verification is already in progress', zh: '正在验证 OpenAI 密钥，请等待完成' },
+  failed: { en: 'OpenAI key verification failed', zh: 'OpenAI 密钥验证失败' },
+  changed: { en: 'API key changed during verification; reload settings', zh: '验证期间密钥已发生变化，请重新加载设置' },
+  unavailable: { en: 'Connection verification is unavailable', zh: '连接验证暂不可用' },
+  cooldown: { en: 'Wait 30 seconds before another connection test', zh: '请等待 30 秒后再验证' },
+  missing: { en: 'Save an API key before testing', zh: '请先输入并验证保存 API 密钥' },
+  testChanged: { en: 'API key changed during testing; test the current key again', zh: '验证期间密钥已发生变化，请重新验证' },
+  modelMissing: { en: 'Save an API key before choosing a model', zh: '请先验证保存 API 密钥，再选择模型' },
+  modelInvalid: { en: 'Test the current key and choose a model from its list', zh: '请验证当前密钥并从列表选择模型' },
+  modelChanged: { en: 'API key or model list changed; reload settings', zh: '密钥或模型列表已发生变化，请重新加载设置' },
+  configure: { en: 'Configure your OpenAI API key in Settings first', zh: '请先在设置中配置 OpenAI API 密钥' },
+  chooseModel: { en: 'Choose an OpenAI model in Settings first', zh: '请先在设置中选择 OpenAI 模型' },
+} as const;

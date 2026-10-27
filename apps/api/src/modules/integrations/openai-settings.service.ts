@@ -1,5 +1,6 @@
+import { openAISettingsMessages as messages } from './openai-settings.messages.js';
 import type { IntegrationPreferencesService } from './integration-preferences.service.js';
-import type { OpenAIConfigRecord, OpenAIConfigStore } from './openai-settings.types.js';
+import type { OpenAIConfigRecord, OpenAIConfigStore, OpenAIVerification, OpenAICredentials } from './openai-settings.types.js';
 import { currentAiTrace, aiStep } from '../../infrastructure/logging/ai-trace.js';
 import type { OpenAIConfiguration, OpenAIValidation } from '@movie-hub/contract';
 import type { AuthService } from '../auth/auth.service.js';
@@ -7,8 +8,8 @@ import { AppError } from '../../infrastructure/http/app-error.js';
 import { SecretCrypto } from './secret-crypto.js';
 
 export class OpenAIProbeError extends Error {
-  constructor(readonly reason: NonNullable<OpenAIValidation['failureReason']>) {
-    super('OpenAI connection verification failed');
+  constructor(readonly reason: NonNullable<OpenAIValidation['failureReason']>, options?: ErrorOptions) {
+    super('OpenAI connection verification failed', options);
   }
 }
 export class OpenAISettingsService {
@@ -20,27 +21,71 @@ export class OpenAISettingsService {
     private readonly auth: Pick<AuthService, 'requireOwnerId'>,
     private readonly store: OpenAIConfigStore,
     private readonly secrets: SecretCrypto,
-    private readonly verification?: {
-      model: string;
-      recommendedModels?: readonly string[];
-      verify(apiKey: string): Promise<string[]>;
-    }
+    private readonly verification?: OpenAIVerification
   ) {}
 
   async get(token: string | undefined): Promise<OpenAIConfiguration> {
-    const record = await this.store.find(await this.auth.requireOwnerId(token));
+    const ownerId = await aiStep('openai.authenticate', () => this.auth.requireOwnerId(token));
+    const record = await aiStep('openai.credentials.load', () => this.store.find(ownerId));
     return record ? this.response(record) : { configured: false };
   }
 
   async save(token: string | undefined, apiKey: string): Promise<OpenAIConfiguration> {
-    const ownerId = await this.auth.requireOwnerId(token);
+    const ownerId = await aiStep('openai.authenticate', () => this.auth.requireOwnerId(token));
     const key = apiKey.trim();
     if (key.length < 20 || key.length > 4096 || /\s/.test(key)) {
-      throw new AppError(400, 'VALIDATION_ERROR', 'Invalid API key format');
+      throw new AppError(400, 'VALIDATION_ERROR', messages.invalidKey.en);
     }
-    const maskedApiKey = `••••${key.slice(-4)}`;
-    await this.store.save({ ownerId, maskedApiKey, encryptedApiKey: this.secrets.encrypt(key, this.context(ownerId)) });
-    return this.response({ ownerId, encryptedApiKey: '', maskedApiKey });
+    currentAiTrace()?.sensitive(key);
+    if (this.pending.has(ownerId)) throw new AppError(409, 'CONFLICT', messages.busy.en);
+    const operation = this.verifyAndSave(ownerId, key);
+    this.pending.set(ownerId, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.pending.get(ownerId) === operation) this.pending.delete(ownerId);
+    }
+  }
+
+  private async verifyAndSave(ownerId: string, key: string): Promise<OpenAIConfiguration> {
+    const previous = await aiStep('openai.credentials.load', () => this.store.find(ownerId));
+    const validation = await this.probe(ownerId, key);
+    if (validation.status !== 'valid') {
+      throw new AppError(400, 'INTEGRATION_VALIDATION_FAILED', messages.failed.en,
+        { provider: 'openai', reason: validation.failureReason });
+    }
+    const available = this.recommendedModels(validation.models);
+    const previousModel = previous?.model ?? this.verification?.model;
+    const model = previousModel && available.includes(previousModel) ? previousModel : available[0];
+    const record: OpenAIConfigRecord = {
+      ownerId, maskedApiKey: `••••${key.slice(-4)}`,
+      encryptedApiKey: this.secrets.encrypt(key, this.context(ownerId)),
+      validation, ...(model ? { model } : {}),
+    };
+    if (!(await aiStep('openai.credentials.save', () => this.store.save(record, previous?.encryptedApiKey ?? null)))) {
+      throw new AppError(409, 'CONFLICT', messages.changed.en);
+    }
+    await this.preferences?.configured(ownerId, 'ai', 'openai');
+    return this.response(record);
+  }
+
+  private async probe(ownerId: string, key: string): Promise<OpenAIValidation> {
+    if (!this.verification) throw new AppError(503, 'SERVICE_UNAVAILABLE', messages.unavailable.en);
+    if (Date.now() - (this.lastAttempt.get(ownerId) ?? 0) < 30_000)
+      throw new AppError(409, 'CONFLICT', messages.cooldown.en);
+    this.lastAttempt.set(ownerId, Date.now());
+    currentAiTrace()?.sensitive(key);
+    try {
+      const models = await aiStep('openai.models.list', () => this.verification!.verify(key));
+      return { method: 'model_list', status: 'valid', checkedAt: new Date().toISOString(), models };
+    } catch (error) {
+      currentAiTrace()?.fail(error);
+      currentAiTrace()?.clearFailure();
+      return {
+        method: 'model_list', status: 'failed', checkedAt: new Date().toISOString(), models: [],
+        failureReason: error instanceof OpenAIProbeError ? error.reason : 'request_failed',
+      };
+    }
   }
 
   private response(record: OpenAIConfigRecord): OpenAIConfiguration {
@@ -48,7 +93,7 @@ export class OpenAISettingsService {
     return {
       configured: true,
       maskedApiKey: record.maskedApiKey,
-      ...(model ? { model } : {}),
+      ...(record.validation?.status === 'valid' && model && (record.model || this.recommendedModels(record.validation.models).includes(model)) ? { model } : {}),
       ...(record.validation && record.validation.method === 'model_list'
         ? { validation: { ...record.validation, models: this.recommendedModels(record.validation.models) } }
         : {}),
@@ -65,7 +110,7 @@ export class OpenAISettingsService {
   }
 
   async test(token: string | undefined): Promise<OpenAIConfiguration> {
-    const ownerId = await this.auth.requireOwnerId(token);
+    const ownerId = await aiStep('openai.authenticate', () => this.auth.requireOwnerId(token));
     const existing = this.pending.get(ownerId);
     if (existing) return existing;
     const operation = this.verify(ownerId);
@@ -78,55 +123,39 @@ export class OpenAISettingsService {
   }
 
   private async verify(ownerId: string): Promise<OpenAIConfiguration> {
-    const record = await this.store.find(ownerId);
-    if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Save an API key before testing');
-    if (!this.verification) throw new AppError(503, 'SERVICE_UNAVAILABLE', 'Connection verification is unavailable');
-    if (Date.now() - (this.lastAttempt.get(ownerId) ?? 0) < 30_000)
-      throw new AppError(409, 'CONFLICT', 'Wait 30 seconds before another connection test');
+    const record = await aiStep('openai.credentials.load', () => this.store.find(ownerId));
+    if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', messages.missing.en);
     const key = this.secrets.decrypt(record.encryptedApiKey, this.context(ownerId));
-    this.lastAttempt.set(ownerId, Date.now());
-    let validation: OpenAIValidation;
-    try {
-      const models = await this.verification.verify(key);
-      validation = { method: 'model_list', status: 'valid', checkedAt: new Date().toISOString(), models };
-    } catch (error) {
-      validation = {
-        method: 'model_list',
-        status: 'failed',
-        checkedAt: new Date().toISOString(),
-        models: [],
-        failureReason: error instanceof OpenAIProbeError ? error.reason : 'request_failed',
-      };
-    }
-    if (!(await this.store.saveValidation(ownerId, record.encryptedApiKey, validation))) {
-      throw new AppError(409, 'CONFLICT', 'API key changed during testing; test the current key again');
+    const validation = await this.probe(ownerId, key);
+    if (!(await aiStep('openai.validation.save', () => this.store.saveValidation(ownerId, record.encryptedApiKey, validation)))) {
+      throw new AppError(409, 'CONFLICT', messages.testChanged.en);
     }
     if (validation.status === 'valid') await this.preferences?.configured(ownerId, 'ai', 'openai');
     return this.response({ ...record, validation });
   }
 
   async selectModel(token: string | undefined, model: string): Promise<OpenAIConfiguration> {
-    const ownerId = await this.auth.requireOwnerId(token);
-    const record = await this.store.find(ownerId);
-    if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Save an API key before choosing a model');
+    const ownerId = await aiStep('openai.authenticate', () => this.auth.requireOwnerId(token));
+    const record = await aiStep('openai.credentials.load', () => this.store.find(ownerId));
+    if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', messages.modelMissing.en);
     if (
       record.validation?.method !== 'model_list'
       || record.validation.status !== 'valid'
       || !this.recommendedModels(record.validation.models).includes(model)
     ) {
-      throw new AppError(400, 'VALIDATION_ERROR', 'Test the current key and choose a model from its list');
+      throw new AppError(400, 'VALIDATION_ERROR', messages.modelInvalid.en);
     }
-    if (!(await this.store.selectModel(ownerId, record.encryptedApiKey, model))) {
-      throw new AppError(409, 'CONFLICT', 'API key or model list changed; reload settings');
+    if (!(await aiStep('openai.model.save', () => this.store.selectModel(ownerId, record.encryptedApiKey, model)))) {
+      throw new AppError(409, 'CONFLICT', messages.modelChanged.en);
     }
     return this.response({ ...record, model });
   }
 
-  async requireCredentials(ownerId: string): Promise<{ apiKey: string; model: string }> {
+  async requireCredentials(ownerId: string): Promise<OpenAICredentials> {
     const record = await aiStep('credentials.load', () => this.store.find(ownerId));
-    if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Configure your OpenAI API key in Settings first');
+    if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', messages.configure.en);
     const model = record.model ?? this.verification?.model;
-    if (!model) throw new AppError(400, 'VALIDATION_ERROR', 'Choose an OpenAI model in Settings first');
+    if (!model) throw new AppError(400, 'VALIDATION_ERROR', messages.chooseModel.en);
     const apiKey = await aiStep('credentials.decrypt', async () => {
       return this.secrets.decrypt(record.encryptedApiKey, this.context(ownerId));
     });
@@ -135,15 +164,15 @@ export class OpenAISettingsService {
   }
 
   async delete(token: string | undefined): Promise<void> {
-    const ownerId = await this.auth.requireOwnerId(token);
+    const ownerId = await aiStep('openai.authenticate', () => this.auth.requireOwnerId(token));
     await this.preferences?.beforeDelete(ownerId, 'ai', 'openai');
-    await this.store.delete(ownerId);
+    await aiStep('openai.credentials.delete', () => this.store.delete(ownerId));
     await this.preferences?.deleted(ownerId, 'ai', 'openai');
   }
 
   async requireApiKey(ownerId: string): Promise<string> {
     const record = await aiStep('credentials.load', () => this.store.find(ownerId));
-    if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', 'Configure your OpenAI API key in Settings first');
+    if (!record) throw new AppError(403, 'OPENAI_NOT_CONFIGURED', messages.configure.en);
     const key = await aiStep('credentials.decrypt', async () => {
       return this.secrets.decrypt(record.encryptedApiKey, this.context(ownerId));
     });

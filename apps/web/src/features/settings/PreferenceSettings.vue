@@ -1,17 +1,50 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, nextTick, ref } from 'vue';
-import type { TasteProfileResponse, TasteRevision } from '@movie-hub/contract';
+import { onMounted, onBeforeUnmount, nextTick, ref, computed } from 'vue';
+import type { TasteProfileResponse, TasteRevision, OpenAIConfiguration } from '@movie-hub/contract';
 import { loadWebConfig } from '../../config/env';
 import { useI18n, formatDate } from '../../i18n';
+import { localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
 
 const { apiBaseUrl } = loadWebConfig();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const profile = ref<TasteProfileResponse | null>(null);
 const drafts = ref<Record<string, string>>({});
 const expandedEntries = ref<string[]>([]);
 let entryExpansionInitialized = false;
 const busy = ref(false);
 const error = ref('');
+const aiConfig = ref<OpenAIConfiguration | null>(null);
+const checkingAi = ref(true);
+const aiConfigError = ref('');
+const aiReady = computed(() => Boolean(aiConfig.value?.configured && aiConfig.value.validation?.status === 'valid' && aiConfig.value.model));
+const aiNotice = computed(() => checkingAi.value
+  ? t('preferences.aiChecking')
+  : aiConfigError.value || (!aiReady.value ? t('preferences.aiRequired') : ''));
+let aiSequence = 0;
+async function loadAIConfiguration(): Promise<boolean> {
+  const id = ++aiSequence;
+  checkingAi.value = true;
+  aiConfigError.value = '';
+  try {
+    const response = await fetch(`${apiBaseUrl}/me/integrations/openai`, {
+      credentials: 'include', headers: { 'accept-language': locale.value },
+    });
+    if (!response.ok) throw await localizedResponseError(response, 'preferences.aiUnavailable');
+    const config = await response.json() as OpenAIConfiguration;
+    if (stopped || id !== aiSequence) return false;
+    aiConfig.value = config;
+    return aiReady.value;
+  } catch (cause) {
+    if (!stopped && id === aiSequence) {
+      aiConfig.value = null;
+      aiConfigError.value = localizedErrorMessage(cause, 'preferences.aiUnavailable');
+    }
+    return false;
+  } finally {
+    if (!stopped && id === aiSequence) checkingAi.value = false;
+  }
+}
+
 const confirmClear = ref(false);
 const removeId = ref<string | null>(null);
 const versionDialog = ref<HTMLDialogElement | null>(null);
@@ -48,28 +81,37 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let stopped = false;
 let sequence = 0;
 async function request(method = 'GET', action?: Record<string, unknown>, generate = false) {
+  if (generate && (busy.value || checkingAi.value || !aiReady.value)) return;
   const id = ++sequence;
   if (method !== 'GET' && timer) clearTimeout(timer);
   if (method !== 'GET') busy.value = true;
   error.value = '';
   try {
+    if (generate && !(await loadAIConfiguration())) return;
     const response = await fetch(`${apiBaseUrl}/me/preferences${generate ? '/generate' : ''}`, {
       method,
       credentials: 'include',
+      headers: { 'accept-language': locale.value, ...(action ? { 'content-type': 'application/json' } : {}) },
       ...(action
         ? {
-            headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ expectedVersion: profile.value?.version ?? 0, ...action }),
           }
         : {}),
     });
     if (!response.ok) {
       const result = await response.json();
-      throw new Error(
-        result.error?.code === 'PREFERENCE_VERSION_CONFLICT' || response.status === 409
-          ? t('preferences.conflict')
-          : t('preferences.failed')
-      );
+      if (stopped || id !== sequence) return;
+      if (generate && result.error?.code === 'OPENAI_NOT_CONFIGURED') {
+        aiConfig.value = { configured: false };
+        return;
+      }
+      if (result.error?.code === 'INSUFFICIENT_MOVIE_RATINGS') {
+        error.value = t('preferences.insufficient', { minimum: profile.value?.minimumRatings ?? 5 });
+        return;
+      }
+      if (result.error?.code === 'PREFERENCE_VERSION_CONFLICT' || response.status === 409)
+        throw localizedApiError({ error: { code: 'PREFERENCE_VERSION_CONFLICT' } });
+      throw localizedApiError(result, 'preferences.failed');
     }
     const result = (await response.json()) as TasteProfileResponse;
     if (stopped || id !== sequence) return;
@@ -91,28 +133,28 @@ async function request(method = 'GET', action?: Record<string, unknown>, generat
         void request();
       }, 3000);
   } catch (cause) {
-    if (!stopped && id === sequence) error.value = cause instanceof Error ? cause.message : t('preferences.failed');
+    if (!stopped && id === sequence) error.value = localizedErrorMessage(cause, 'preferences.failed');
   } finally {
     if (id === sequence) busy.value = false;
   }
 }
 onMounted(() => {
+  void loadAIConfiguration();
   void request();
 });
 onBeforeUnmount(() => {
   stopped = true;
   closeVersion();
   sequence++;
+  aiSequence++;
   if (timer) clearTimeout(timer);
 });
 </script>
 
 <template>
-  <section class="settings-card preference-settings" :aria-busy="busy">
-    <div v-if="error" class="preference-notice error" role="alert">
-      <span>{{ error }}</span>
-      <button class="secondary" type="button" @click="request()">{{ t('preferences.reload') }}</button>
-    </div>
+  <section class="settings-card preference-settings" :aria-busy="busy || checkingAi">
+    <p v-if="aiNotice" class="preference-notice" :class="{ error: !checkingAi }" :role="checkingAi ? 'status' : 'alert'">{{ aiNotice }}</p>
+    <p v-if="error" class="preference-notice error" role="alert">{{ error }}</p>
     <p v-if="!profile && !error" class="preference-muted" role="status">{{ t('preferences.loading') }}</p>
     <template v-if="profile">
       <section class="preference-generation" :aria-label="t('preferences.analysis')">
@@ -131,7 +173,7 @@ onBeforeUnmount(() => {
           type="button"
           class="primary"
           :disabled="
-            busy ||
+            busy || checkingAi || !aiReady ||
             (!profile.generatedAt && profile.ratedCount < profile.minimumRatings) ||
             ['pending', 'processing'].includes(profile.task?.status ?? '')
           "
@@ -139,7 +181,7 @@ onBeforeUnmount(() => {
         >
           {{
             t(
-              profile.task?.status === 'failed'
+              profile.task?.status === 'failed' && aiReady
                 ? 'preferences.retry'
                 : profile.generatedAt
                   ? 'preferences.regenerate'
@@ -159,7 +201,7 @@ onBeforeUnmount(() => {
           t(`preferences.${profile.task.status}`)
         }}</span>
       </div>
-      <p v-if="profile.task?.status === 'failed'" class="preference-notice error" role="alert">
+      <p v-if="profile.task?.status === 'failed' && aiReady && !checkingAi" class="preference-notice error" role="alert">
         {{ t('preferences.taskFailed') }}
       </p>
       <p class="preference-hint">{{ t('preferences.manualHint') }}</p>
@@ -742,14 +784,7 @@ onBeforeUnmount(() => {
   outline-offset: 3px;
 }
 .preference-notice {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
   margin: 16px 0;
-  padding: 12px;
-  border: 1px solid #704336;
-  border-radius: 7px;
   font-size: 0.75rem;
 }
 .preference-settings .preference-footer {

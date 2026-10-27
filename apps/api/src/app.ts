@@ -103,7 +103,7 @@ export async function buildApp({
       if (notificationTestService) registerNotificationTestRoutes(api, notificationTestService, config);
       if (notificationService) registerNotificationRoutes(api, notificationService, config);
       if (whatsappService) registerWhatsAppRoutes(api, whatsappService, config);
-      if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config);
+      if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config, loggers.error);
       registerPublicConfigRoutes(api, config);
       registerHealthRoutes(api, healthDependencies);
       if (authService) registerAuthRoutes(api, authService, config, loggers.error);

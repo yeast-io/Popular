@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { serializeDiagnosticError } from '../logging/diagnostic-error.js';
 import { probeOpenAI } from './connection-probe.js';
 
 test('lists model metadata only and returns sorted unique IDs without generation', async () => {
@@ -17,7 +18,7 @@ test('lists model metadata only and returns sorted unique IDs without generation
   assert.deepEqual(models, ['a-model', 'z-model']);
   assert.deepEqual(await probeOpenAI({ models: { list: async () => ({ object: 'list', data: [] }) } } as never), []);
 });
-test('maps provider failures to safe reasons without raw SDK errors or secret-bearing causes', async () => {
+test('maps provider failures to safe reasons with preserved causes and redacted diagnostic output', async () => {
   for (const [error, reason] of [
     [{ status: 401 }, 'authentication'],
     [{ status: 403 }, 'authentication'],
@@ -38,7 +39,8 @@ test('maps provider failures to safe reasons without raw SDK errors or secret-be
       },
       (failure) => {
         assert.equal((failure as { reason: string }).reason, reason);
-        assert.equal((failure as Error).cause, undefined);
+        assert.equal((failure as Error).cause, error);
+        assert.equal(JSON.stringify(serializeDiagnosticError(failure, ['secret-private-api-key'])).includes('secret-private-api-key'), false);
         assert.equal(JSON.stringify(failure).includes('secret-private-api-key'), false);
         return true;
       });

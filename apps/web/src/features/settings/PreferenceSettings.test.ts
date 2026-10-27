@@ -5,6 +5,10 @@ import PreferenceSettings from './PreferenceSettings.vue';
 import { setLocale } from '../../i18n';
 import type { TasteProfileResponse } from '@movie-hub/contract';
 
+const configuredAI = () => Response.json({ configured: true, model: 'model-a', validation: {
+  status: 'valid', method: 'model_list', checkedAt: '2026-10-27T00:00:00Z', models: ['model-a'],
+} });
+
 const profile = (): TasteProfileResponse => {
   return {
     version: 2,
@@ -31,6 +35,7 @@ it('requires five ratings before generation and never starts analysis on page lo
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url, init?: RequestInit) => {
+      if (String(_url).endsWith('/openai')) return configuredAI();
       requests.push(init?.method ?? 'GET');
       return Response.json(profile());
     })
@@ -46,6 +51,7 @@ it('manual generation is explicit and sends no client-selected user identity', a
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url, init?: RequestInit) => {
+      if (String(url).endsWith('/openai')) return configuredAI();
       requests.push({
         url: String(url),
         method: init?.method ?? 'GET',
@@ -69,6 +75,7 @@ it('corrections submit the current version and deletion requires a separate conf
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url, init?: RequestInit) => {
+      if (String(_url).endsWith('/openai')) return configuredAI();
       if (init?.body) requests.push(JSON.parse(String(init.body)));
       return Response.json({
         ...profile(),
@@ -104,7 +111,8 @@ it('corrections submit the current version and deletion requires a separate conf
 it('keeps revision content out of the list and restores focus after closing or cancelling its dialog', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => {
+    vi.fn(async (url: string) => {
+      if (url.endsWith('/openai')) return configuredAI();
       return Response.json({
         ...profile(),
         revisions: [
@@ -156,7 +164,8 @@ it('keeps revision content out of the list and restores focus after closing or c
 it('shows empty revision content without incorrectly treating it as a generation failure', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => {
+    vi.fn(async (url: string) => {
+      if (url.endsWith('/openai')) return configuredAI();
       return Response.json({
         ...profile(),
         revisions: [{ version: 0, at: '2026-10-18T12:00:00Z', source: 'user-edit', entries: [] }],
@@ -189,7 +198,7 @@ it.each(['en-US', 'zh-CN'] as const)('expands only the first visible entry and p
   ].map(
     (entry) => ({ ...entry, evidenceRefs: ['source'], updatedAt: '2026-10-20T00:00:00Z', protected: false })
   );
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ...profile(), entries })));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/openai') ? configuredAI() : Response.json({ ...profile(), entries })));
   const wrapper = mount(PreferenceSettings);
   try {
     await flushPromises();
@@ -214,4 +223,97 @@ it.each(['en-US', 'zh-CN'] as const)('expands only the first visible entry and p
       [false, true, false]
     );
   } finally { wrapper.unmount(); }
+});
+
+it.each(['en-US', 'zh-CN'] as const)('blocks generation and retry when AI is missing or unverified in %s', async (locale) => {
+  setLocale(locale);
+  for (const ai of [
+    { configured: false },
+    { configured: true, model: 'model-a' },
+    { configured: true, validation: { status: 'valid' } },
+    { configured: true, model: 'model-a', validation: { status: 'failed' } },
+  ]) {
+    const fetchMock = vi.fn(async (url: string) => Response.json(url.endsWith('/openai')
+      ? ai
+      : {
+          ...profile(), ratedCount: 5, task: { status: 'failed' },
+        }));
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(PreferenceSettings);
+    await flushPromises();
+    expect(wrapper.get('button.primary').attributes('disabled')).toBeDefined();
+    expect(wrapper.text()).toContain(locale === 'zh-CN' ? '请先配置并验证 AI 密钥' : 'Configure and verify your AI key');
+    expect(wrapper.text()).not.toContain(locale === 'zh-CN' ? '请重试' : 'Please retry');
+    await wrapper.get('button.primary').trigger('click');
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/generate'))).toBe(false);
+    wrapper.unmount();
+  }
+});
+
+it('blocks generation if the saved key was deleted after the page loaded', async () => {
+  let checks = 0;
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.endsWith('/openai')) return ++checks === 1 ? configuredAI() : Response.json({ configured: false });
+    return Response.json({ ...profile(), ratedCount: 5 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const wrapper = mount(PreferenceSettings);
+  await flushPromises();
+  expect(wrapper.get('button.primary').attributes('disabled')).toBeUndefined();
+  await wrapper.get('button.primary').trigger('click');
+  await flushPromises();
+  expect(checks).toBe(2);
+  expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/generate'))).toBe(false);
+  expect(wrapper.get('button.primary').attributes('disabled')).toBeDefined();
+  wrapper.unmount();
+});
+
+it('keeps existing preferences editable when AI configuration cannot be loaded', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.endsWith('/openai')) throw new TypeError('offline');
+    return Response.json({ ...profile(), ratedCount: 5 });
+  }));
+  const wrapper = mount(PreferenceSettings);
+  await flushPromises();
+  expect(wrapper.get('button.primary').attributes('disabled')).toBeDefined();
+  expect(wrapper.get('input[role="switch"]').attributes('disabled')).toBeUndefined();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  wrapper.unmount();
+});
+
+it('handles a missing-key response between the configuration check and generation without suggesting retry', async () => {
+  setLocale('en-US');
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.endsWith('/openai')) return configuredAI();
+    if (url.endsWith('/generate')) return Response.json({ error: { code: 'OPENAI_NOT_CONFIGURED' } }, { status: 403 });
+    return Response.json({ ...profile(), ratedCount: 5 });
+  }));
+  const wrapper = mount(PreferenceSettings);
+  await flushPromises();
+  await wrapper.get('button.primary').trigger('click');
+  await flushPromises();
+  expect(wrapper.text()).toContain('Configure and verify your AI key');
+  expect(wrapper.text()).not.toContain('retry');
+  expect(wrapper.get('button.primary').attributes('disabled')).toBeDefined();
+  wrapper.unmount();
+});
+
+it('does not enable generation until the initial AI check has completed', async () => {
+  let resolveConfig!: (response: Response) => void;
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.endsWith('/openai')) return new Promise<Response>((resolve) => {
+      resolveConfig = resolve;
+    });
+    return Response.json({ ...profile(), ratedCount: 5 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const wrapper = mount(PreferenceSettings);
+  await flushPromises();
+  expect(wrapper.get('button.primary').attributes('disabled')).toBeDefined();
+  await wrapper.get('button.primary').trigger('click');
+  expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/generate'))).toBe(false);
+  resolveConfig(configuredAI());
+  await flushPromises();
+  expect(wrapper.get('button.primary').attributes('disabled')).toBeUndefined();
+  wrapper.unmount();
 });

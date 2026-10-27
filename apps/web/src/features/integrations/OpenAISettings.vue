@@ -3,15 +3,18 @@ import IntegrationCard from '../settings/IntegrationCard.vue';
 import type { OpenAIConfiguration } from '@movie-hub/contract';
 import { computed, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
-import { formatDate, t } from '../../i18n';
+import { formatDate, t, useI18n } from '../../i18n';
 import { localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
 
+const { locale } = useI18n();
 const { apiBaseUrl } = loadWebConfig();
 const config = ref<OpenAIConfiguration>({ configured: false });
 const apiKey = ref('');
 const loading = ref(true);
 const busy = ref(false);
 const testing = ref(false);
+const verified = computed(() => config.value.configured && config.value.validation?.status === 'valid' && !apiKey.value.trim());
+const canVerify = computed(() => !busy.value && !confirmDelete.value && (apiKey.value.trim() ? apiKey.value.trim().length >= 20 : config.value.configured));
 const selectedModel = ref('');
 const models = computed(() => config.value.validation?.models ?? []);
 watch(config, (value) => {
@@ -56,43 +59,26 @@ onMounted(async () => {
   }
 });
 
-async function save() {
-  if (busy.value || !apiKey.value.trim()) return;
-  busy.value = true;
-  errorMessage.value = '';
-  successMessage.value = '';
-  try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/openai`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ apiKey: apiKey.value.trim() }),
-    });
-    if (!response.ok) throw await localizedResponseError(response);
-    config.value = await response.json();
-    apiKey.value = '';
-    successMessage.value = t('openai.saved');
-  } catch (error) {
-    errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
-  } finally {
-    busy.value = false;
-  }
-}
-
-async function testConnection() {
-  if (busy.value || !config.value.configured || apiKey.value.trim()) return;
+async function verify() {
+  if (!canVerify.value) return;
   busy.value = true;
   testing.value = true;
   errorMessage.value = '';
   successMessage.value = '';
+  const key = apiKey.value.trim();
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/openai/test`, {
-      method: 'POST',
+    const response = await fetch(`${apiBaseUrl}/me/integrations/openai${key ? '' : '/test'}`, {
+      method: key ? 'PUT' : 'POST',
       credentials: 'include',
+      headers: { 'accept-language': locale.value, ...(key ? { 'content-type': 'application/json' } : {}) },
+      ...(key ? { body: JSON.stringify({ apiKey: key }) } : {}),
     });
     if (!response.ok) throw await localizedResponseError(response);
     config.value = await response.json();
-    if (config.value.validation?.status === 'valid') successMessage.value = t('openai.testPassed');
+    if (config.value.validation?.status === 'valid') {
+      apiKey.value = '';
+      successMessage.value = t('openai.saved');
+    }
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
   } finally {
@@ -101,8 +87,15 @@ async function testConnection() {
   }
 }
 
+function requestDelete() {
+  if (busy.value || !config.value.configured) return;
+  successMessage.value = '';
+  errorMessage.value = '';
+  confirmDelete.value = true;
+}
+
 async function saveModel() {
-  if (busy.value || apiKey.value.trim() || !selectedModel.value) return;
+  if (busy.value || !verified.value || !selectedModel.value || selectedModel.value === config.value.model) return;
   busy.value = true;
   errorMessage.value = '';
   successMessage.value = '';
@@ -110,13 +103,14 @@ async function saveModel() {
     const response = await fetch(`${apiBaseUrl}/me/integrations/openai/model`, {
       method: 'PUT',
       credentials: 'include',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'accept-language': locale.value },
       body: JSON.stringify({ model: selectedModel.value }),
     });
     if (!response.ok) throw await localizedResponseError(response);
     config.value = await response.json();
     successMessage.value = t('openai.modelSaved');
   } catch (error) {
+    selectedModel.value = config.value.model ?? '';
     errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
   } finally {
     busy.value = false;
@@ -124,11 +118,12 @@ async function saveModel() {
 }
 
 async function remove() {
+  if (busy.value || !config.value.configured || !confirmDelete.value) return;
   busy.value = true;
   errorMessage.value = '';
   successMessage.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/openai`, { method: 'DELETE', credentials: 'include' });
+    const response = await fetch(`${apiBaseUrl}/me/integrations/openai`, { method: 'DELETE', credentials: 'include', headers: { 'accept-language': locale.value } });
     if (!response.ok) throw await localizedResponseError(response);
     config.value = { configured: false };
     apiKey.value = '';
@@ -156,7 +151,7 @@ async function remove() {
     :notice="errorMessage || validationNotice"
   >
     <p v-if="loading" class="loading compact-loading">{{ t('openai.loading') }}</p>
-    <form v-else class="integration-form" @submit.prevent="save">
+    <form v-else class="integration-form" @submit.prevent="verify">
       <div class="settings-fields integration-fields">
         <label for="openai-api-key">
           OpenAI API Key <span v-if="config.configured">({{ config.maskedApiKey }})</span>
@@ -167,14 +162,13 @@ async function remove() {
             autocomplete="new-password"
             minlength="20"
             maxlength="4096"
-            :disabled="busy"
+            :disabled="busy || confirmDelete"
             :placeholder="config.configured ? t('openai.replaceHint') : 'sk-…'"
           />
           <small>{{ t('openai.keyHint') }}</small>
         </label>
       </div>
       <p class="connection-note openai-test-hint">{{ t('openai.testHint') }}</p>
-      <p v-if="apiKey.trim() && config.configured" class="openai-test-detail">{{ t('openai.saveFirst') }}</p>
       <p v-if="config.validation" class="openai-test-detail">
         {{
           t('openai.checkedAt', {
@@ -182,15 +176,16 @@ async function remove() {
           })
         }}
       </p>
-      <p v-if="config.model" class="openai-test-detail">{{ t('openai.currentModel', { model: config.model }) }}</p>
-      <div v-if="config.validation?.status === 'valid'" class="settings-fields integration-fields openai-model-fields">
+      <p v-if="verified && config.model" class="openai-test-detail">{{ t('openai.currentModel', { model: config.model }) }}</p>
+      <div v-if="verified" class="settings-fields integration-fields openai-model-fields">
         <label for="openai-model">
           {{ t('openai.model') }}
           <span class="openai-model-select">
             <select
               id="openai-model"
               v-model="selectedModel"
-              :disabled="busy || Boolean(apiKey.trim()) || !models.length"
+              :disabled="busy || confirmDelete || !models.length"
+              @change="saveModel"
             >
               <option disabled value="">{{ t('openai.chooseModel') }}</option>
               <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
@@ -208,53 +203,32 @@ async function remove() {
           <small>{{ t('openai.modelHint') }}</small>
           <small v-if="!models.length">{{ t('openai.noModels') }}</small>
         </label>
-        <button
-          class="secondary openai-model-save"
-          type="button"
-          :disabled="busy || Boolean(apiKey.trim()) || !selectedModel || selectedModel === config.model"
-          @click="saveModel"
-        >
-          {{ t('openai.saveModel') }}
-        </button>
       </div>
-      <div class="settings-card-footer integration-form-footer">
-        <div class="settings-feedback integration-feedback">
+      <div class="settings-card-footer integration-form-footer openai-footer">
+        <div v-if="errorMessage || validationNotice || successMessage" class="settings-feedback integration-feedback">
           <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
           <p v-if="validationNotice && !errorMessage" class="error settings-message" role="alert">
             {{ validationNotice }}
           </p>
           <p v-if="successMessage" class="success settings-message" role="status">{{ successMessage }}</p>
         </div>
-        <div class="integration-actions">
-          <template v-if="config.configured && confirmDelete">
-            <span>{{ t('openai.deleteConfirm') }}</span>
+        <div v-if="confirmDelete" class="openai-delete-confirmation" role="group" aria-labelledby="openai-delete-prompt">
+          <p id="openai-delete-prompt">{{ t('openai.deleteConfirm') }}</p>
+          <div class="integration-actions">
             <button class="secondary" type="button" :disabled="busy" @click="confirmDelete = false">
               {{ t('qbittorrent.cancel') }}
             </button>
             <button class="secondary danger" type="button" :disabled="busy" @click="remove">
               {{ t('qbittorrent.confirmDelete') }}
             </button>
-          </template>
-          <button
-            v-else-if="config.configured"
-            class="secondary danger"
-            type="button"
-            :disabled="busy"
-            @click="confirmDelete = true"
-          >
+          </div>
+        </div>
+        <div v-else class="integration-actions">
+          <button class="secondary danger" type="button" :disabled="busy || !config.configured" @click="requestDelete">
             {{ t('openai.delete') }}
           </button>
-          <button
-            v-if="config.configured && !confirmDelete"
-            class="secondary openai-test-button"
-            type="button"
-            :disabled="busy || Boolean(apiKey.trim())"
-            @click="testConnection"
-          >
+          <button class="primary openai-test-button" type="submit" :disabled="!canVerify">
             {{ testing ? t('openai.testing') : t('openai.test') }}
-          </button>
-          <button class="primary" type="submit" :disabled="busy || apiKey.trim().length < 20">
-            {{ busy && !testing ? t('openai.saving') : t('openai.save') }}
           </button>
         </div>
       </div>
@@ -263,6 +237,34 @@ async function remove() {
 </template>
 
 <style scoped>
+.openai-footer {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.openai-footer .integration-feedback {
+  flex: 1 1 240px;
+  overflow-wrap: anywhere;
+}
+.openai-delete-confirmation {
+  display: grid;
+  flex: 1 1 100%;
+  min-width: 0;
+  gap: 12px;
+}
+.openai-delete-confirmation p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.openai-delete-confirmation .integration-actions {
+  justify-content: flex-end;
+}
+@media (max-width: 600px) {
+  .openai-footer > .integration-actions {
+    width: 100%;
+  }
+}
+
 .openai-test-detail {
   margin: 0;
   color: #93988e;

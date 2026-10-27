@@ -31,17 +31,28 @@ export class MongoOpenAIConfigStore implements OpenAIConfigStore {
       : null;
   }
 
-  async save(record: OpenAIConfigRecord): Promise<void> {
-    await this.configs
-      .updateOne(
-        { ownerId: record.ownerId },
+  async save(record: OpenAIConfigRecord, expectedEncryptedApiKey: string | null): Promise<boolean> {
+    try {
+      const result = await this.configs.updateOne(
+        { ownerId: record.ownerId, encryptedApiKey: expectedEncryptedApiKey ?? { $exists: false } },
         {
-          $set: { ownerId: record.ownerId, encryptedApiKey: record.encryptedApiKey, maskedApiKey: record.maskedApiKey },
-          $unset: { validation: 1, model: 1 },
+          $set: {
+            ownerId: record.ownerId,
+            encryptedApiKey: record.encryptedApiKey,
+            maskedApiKey: record.maskedApiKey,
+            validation: record.validation,
+            ...(record.model ? { model: record.model } : {}),
+          },
+          ...(!record.model ? { $unset: { model: 1 } } : {}),
         },
-        { upsert: true, runValidators: true }
-      )
-      .exec();
+        { upsert: expectedEncryptedApiKey === null, runValidators: true }
+      ).exec();
+      return result.matchedCount === 1 || result.upsertedCount === 1;
+    } catch (error) {
+      // A concurrent first save won the unique owner index. Never overwrite it.
+      if (error && typeof error === 'object' && 'code' in error && error.code === 11000) return false;
+      throw error;
+    }
   }
 
   async saveValidation(ownerId: string, encryptedApiKey: string, validation: OpenAIValidation): Promise<boolean> {

@@ -9,6 +9,17 @@ const resourceSiteErrorKeys = {
   network: 'resourceSite.error.network', timeout: 'resourceSite.error.timeout', invalidCredential: 'resourceSite.error.invalidCredential',
 } as const;
 
+const openAIFailureKeys = {
+  'openai.failure.authentication': 'openai.failure.authentication',
+  'openai.failure.quota': 'openai.failure.quota',
+  'openai.failure.rate_limit': 'openai.failure.rate_limit',
+  'openai.failure.model': 'openai.failure.model',
+  'openai.failure.timeout': 'openai.failure.timeout',
+  'openai.failure.network': 'openai.failure.network',
+  'openai.failure.invalid_response': 'openai.failure.invalid_response',
+  'openai.failure.request_failed': 'openai.failure.request_failed',
+} as const;
+
 const errorKeys = {
   EMAIL_VERIFICATION_INVALID: 'auth.verificationInvalid',
   EMAIL_VERIFICATION_LIMIT_REACHED: 'auth.verificationLimit',
@@ -79,6 +90,10 @@ export function apiErrorKey(value: unknown, fallback: TranslationKey = 'errors.u
   const error = (value as Partial<ApiError> | null)?.error;
   const code = error?.code;
   const reason = (error?.details as { reason?: unknown } | undefined)?.reason;
+  if (code === 'INTEGRATION_VALIDATION_FAILED' && (error?.details as { provider?: unknown } | undefined)?.provider === 'openai') {
+    const key = `openai.failure.${typeof reason === 'string' ? reason : 'request_failed'}`;
+    return Object.hasOwn(openAIFailureKeys, key) ? openAIFailureKeys[key as keyof typeof openAIFailureKeys] : 'openai.failure.request_failed';
+  }
   if (code === 'RESOURCE_SITE_FAILED' && typeof reason === 'string' && Object.hasOwn(resourceSiteErrorKeys, reason))
     return resourceSiteErrorKeys[reason as keyof typeof resourceSiteErrorKeys];
   return code && code in errorKeys ? errorKeys[code as ErrorCode] : fallback;
