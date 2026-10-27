@@ -1,7 +1,5 @@
 # `PLA` First launch on macOS
 
-## English
-
 **If macOS says it cannot verify that Popular Link Agent is free of malware, allow it through System Settings using the steps below.** Installation and first launch take approximately 2–3 minutes, excluding the download.
 
 ### Why this appears
