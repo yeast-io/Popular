@@ -231,7 +231,7 @@ jobs:
             exit 1
           fi
 
-          cp "$DMG" "$GITHUB_WORKSPACE/release/pla-${VERSION}.dmg"
+          cp "$DMG" "$GITHUB_WORKSPACE/release/pla-${VERSION}-universal.dmg"
 
       - name: Package Windows Portable
         if: matrix.platform == 'windows'
@@ -248,7 +248,7 @@ jobs:
           New-Item -ItemType Directory -Force $bundleDir | Out-Null
           New-Item -ItemType Directory -Force $portableDir | Out-Null
 
-          $exe = Join-Path $targetDir "pla.exe"
+          $exe = Join-Path $targetDir "popular-helper-agent.exe"
 
           if (-not (Test-Path $exe)) {
             throw "Portable executable not found: $exe"
@@ -321,7 +321,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          test -s "release/pla-${VERSION}.dmg"
+          test -s "release/pla-${VERSION}-universal.dmg"
           test -s "release/pla-${VERSION}.zip"
 
           echo "Release artifacts:"
