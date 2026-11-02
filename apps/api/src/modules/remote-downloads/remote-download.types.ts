@@ -42,10 +42,15 @@ export interface RemoteControlStore {
 }
 export interface RemoteDownloadServiceOptions {
   store: RemoteControlStore;
-  torrent(command: CommandRecord, download: RemoteDownloadSource): Promise<{ url: string; torrentHash: string }>;
+  torrent(command: CommandRecord, download: RemoteDownloadSource): Promise<RemoteTorrentResult>;
   diagnostics?: RemoteClientDiagnostics;
   now?: () => number;
   report(error: unknown, fields: Record<string, unknown>): void;
+}
+
+export interface RemoteTorrentResult {
+  url: string;
+  torrentHash: string;
 }
 
 export interface RemoteCommandScan {

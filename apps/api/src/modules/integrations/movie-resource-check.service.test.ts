@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { MovieCatalogStore, MovieDetailRecord, MovieSearchProvider } from '../movies/movie.types.js';
 import { IntegrationValidationError } from './integration.service.js';
 import type { IntegrationConfigStore } from './integration.types.js';
-import { isActiveRelease, MovieResourceCheckService } from './movie-resource-check.service.js';
+import { isVisibleRelease, MovieResourceCheckService } from './movie-resource-check.service.js';
 import type {
   MTeamRelease,
   MTeamResourceSearcher,
@@ -165,7 +165,7 @@ test('consecutive manual requests share one active movie check', async () => {
   assert.equal(mteam.queries.length, 1);
 });
 
-test('IMDb checks count only exact, visible, unbanned releases with seeders', async () => {
+test('IMDb checks count exact, visible, unbanned releases regardless of seeder count', async () => {
   const { checks, mteam, service } = harness();
   mteam.releases = [
     { imdbId: 'tt0133093', visible: true, banned: false, seeders: 2 },
@@ -192,7 +192,7 @@ test('IMDb checks count only exact, visible, unbanned releases with seeders', as
   );
 });
 
-test('a successful IMDb query with only dead or hidden releases is unavailable', async () => {
+test('a successful IMDb query retains zero-seeder releases while excluding hidden releases', async () => {
   const { checks, mteam, service } = harness();
   mteam.releases = [
     { imdbId: 'tt0133093', visible: true, banned: false, seeders: 0 },
@@ -204,11 +204,11 @@ test('a successful IMDb query with only dead or hidden releases is unavailable',
   assert.equal(checks.completed[0]?.lastAttemptStatus, 'success');
   assert.equal(
     checks.completed[0] && 'availability' in checks.completed[0] ? checks.completed[0].availability : undefined,
-    'unavailable'
+    'available'
   );
   assert.equal(
     checks.completed[0] && 'expiresAt' in checks.completed[0] ? checks.completed[0].expiresAt.toISOString() : undefined,
-    '2026-10-13T06:00:00.000Z'
+    '2026-10-14T00:00:00.000Z'
   );
 });
 
@@ -291,14 +291,14 @@ test('an in-progress attempt prevents the duplicate check from calling M-Team', 
   assert.equal(mteam.queries.length, 0);
 });
 
-test('active release predicate rejects hidden, banned, and dead torrents', () => {
-  assert.equal(isActiveRelease({ visible: true, banned: false, seeders: 1 }), true);
-  assert.equal(isActiveRelease({ visible: false, banned: false, seeders: 1 }), false);
-  assert.equal(isActiveRelease({ visible: true, banned: true, seeders: 1 }), false);
-  assert.equal(isActiveRelease({ visible: true, banned: false, seeders: 0 }), false);
+test('visible release predicate rejects hidden and banned torrents but retains zero seeders', () => {
+  assert.equal(isVisibleRelease({ visible: true, banned: false, seeders: 1 }), true);
+  assert.equal(isVisibleRelease({ visible: false, banned: false, seeders: 1 }), false);
+  assert.equal(isVisibleRelease({ visible: true, banned: true, seeders: 1 }), false);
+  assert.equal(isVisibleRelease({ visible: true, banned: false, seeders: 0 }), true);
 });
 
-test('live release queries return only active exact matches and reuse the shared cache', async () => {
+test('live release queries retain zero-seeder exact matches and reuse the shared cache', async () => {
   const { checks, mteam, service } = harness();
   mteam.releases = [
     {
@@ -341,6 +341,7 @@ test('live release queries return only active exact matches and reuse the shared
       tags: ['中字'],
       releaseGroup: 'EPiC',
     },
+    { id: '2', title: 'Dead', detailsUrl: 'https://kp.m-team.cc/detail/2', seeders: 0, tags: [] },
   ]
   );
   const completion = checks.completed.at(-1);

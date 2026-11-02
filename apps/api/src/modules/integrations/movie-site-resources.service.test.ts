@@ -248,6 +248,19 @@ test('fixed batch sites ignore later account selection and enqueue failure does 
   assert.equal(next.calls.length, 1);
   await next.service.stop();
 });
+test('zero-seeder releases remain visible and count as available in lists and background checks', async () => {
+  const f = harness();
+  f.setResults([{ id: 'zero', title: 'Zero seeders', imdbId: 'tt0000603', seeders: 0 }]);
+  const result = await f.service.listReleases('alice', 603, 'hdarea');
+  assert.equal(result.availability, 'available');
+  assert.equal(result.releases[0]?.id, 'zero');
+  assert.equal(result.releases[0]?.seeders, 0);
+  assert.equal(result.releases[0]?.seedersKnown, true);
+  await f.service.checkNowDetailed('bob', 603, true, ['hdarea']);
+  assert.equal((await f.service.summary('bob', 603, ['hdarea'])).availability, 'available');
+  await f.service.stop();
+});
+
 test('unknown seeder counts remain visible and invalid pagination cannot loop forever', async () => {
   const f = harness();
   f.setResults([{ id: '42', title: 'Unknown seed count' }]);
@@ -275,9 +288,9 @@ test('background checks queue per site and duplicate queued checks do not fan ou
   assert.equal(f.calls.length, 2);
 });
 
-test('an inactive first page is followed and an empty later page cannot overwrite positive movie availability', async () => {
+test('an IMDb-mismatched first page is followed and an empty later page cannot overwrite positive movie availability', async () => {
   const f = harness();
-  f.pageResults.set(1, { releases: [{ id: '1', title: 'No seeders', seeders: 0 }], nextPage: 2 });
+  f.pageResults.set(1, { releases: [{ id: '1', title: 'Wrong movie', imdbId: 'tt9999999', seeders: 0 }], nextPage: 2 });
   f.pageResults.set(2, { releases: [{ id: '2', title: 'Active', seeders: 1 }], nextPage: 3 });
   f.pageResults.set(3, { releases: [] });
   const result = await f.service.listReleases('alice', 603, 'hdarea');

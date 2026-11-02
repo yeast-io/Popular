@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { ResourceSiteRelease } from '@movie-hub/contract';
+import type { MovieRelease, ResourceSiteRelease } from '@movie-hub/contract';
 import type { ResourceDownloads } from './resource-download.types';
 import { useI18n } from '../../i18n';
 
-const props = defineProps<{ controller: ResourceDownloads; release: ResourceSiteRelease; site: string; supportsDownload: boolean }>();
+const props = defineProps<{ controller: ResourceDownloads; release: ResourceSiteRelease & Pick<MovieRelease, 'seedersKnown'>; site: string; supportsDownload: boolean }>();
 const { t, formatDate } = useI18n();
 const { canDownload, downloadUnavailable, downloadFor, downloadActionLabel, requestDownload, submittingReleaseId,
   downloadKey, providerName, downloadStatus, downloadErrors } = props.controller;
@@ -12,7 +12,7 @@ const { canDownload, downloadUnavailable, downloadFor, downloadActionLabel, requ
                 <div class="release-download-actions">
                   <span v-if="!canDownload(release.id, site)" class="muted-copy">{{ downloadUnavailable(release.id, site) }}</span>
                   <button
-                    v-if="supportsDownload && (!downloadFor(release.id, site) || ['failed', 'missing'].includes(downloadFor(release.id, site)!.status))"
+                    v-if="supportsDownload && (release.seedersKnown === false || release.seeders !== 0) && (!downloadFor(release.id, site) || ['failed', 'missing'].includes(downloadFor(release.id, site)!.status))"
                     class="release-download-button"
                     type="button"
                     :disabled="!canDownload(release.id, site) || Boolean(submittingReleaseId)"

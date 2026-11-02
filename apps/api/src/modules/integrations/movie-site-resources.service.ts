@@ -366,8 +366,7 @@ export class MovieSiteResourcesService {
             releases = result.releases
               .filter((release) => {
                 return (
-                  (!release.imdbId || release.imdbId === identity!.imdbId)
-                  && (release.seeders === undefined || release.seeders > 0)
+                  !release.imdbId || release.imdbId === identity!.imdbId
                 );
               })
               .map((release) => {

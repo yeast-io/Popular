@@ -382,9 +382,9 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
       const exact = releases.filter((release) => release.imdbId === imdbId);
       const checkedAt = this.now();
       return {
-        availability: exact.some(isActiveRelease) ? 'available' : 'unavailable',
+        availability: exact.some(isVisibleRelease) ? 'available' : 'unavailable',
         checkedAt,
-        releases: exact.filter(isActiveRelease),
+        releases: exact.filter(isVisibleRelease),
       };
     }
 
@@ -479,8 +479,8 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }
 }
 
-export function isActiveRelease(release: MTeamRelease): boolean {
-  return release.visible && !release.banned && release.seeders > 0;
+export function isVisibleRelease(release: MTeamRelease): boolean {
+  return release.visible && !release.banned;
 }
 
 function normalizeImdbId(value: string): string {

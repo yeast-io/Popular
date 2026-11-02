@@ -1,3 +1,6 @@
+import { ConfiguredDownloadClientFactory } from './infrastructure/downloads/download-client-factory.adapter.js';
+import { DownloadSourceService } from './modules/downloads/download-source.service.js';
+import { RemoteTorrentService } from './modules/remote-downloads/remote-torrent.service.js';
 import { AiSettingsService } from './modules/integrations/ai-settings.service.js';
 import type { AiSettingsRegistry } from './modules/integrations/ai-settings.types.js';
 import { MongoAiConfigStore } from './infrastructure/mongodb/integrations/ai-config.store.js';
@@ -31,10 +34,7 @@ import { RemoteDownloadService } from './modules/remote-downloads/remote-downloa
 import { RemoteMovieDownloadService } from './modules/remote-downloads/remote-movie-download.service.js';
 import { RemoteDownloadCoordinator } from './modules/remote-downloads/remote-download-coordinator.service.js';
 import { RemoteDownloadWorker } from './modules/remote-downloads/remote-download.worker.js';
-import { readTorrentMetadata } from './modules/remote-downloads/torrent-metadata.service.js';
-import { integrationSecretContext } from './modules/integrations/integration.service.js';
-import { RpcError } from '@movie-hub/contract/socket-rpc';
-import { AiTrace, withAiTrace, currentAiTrace } from './infrastructure/logging/ai-trace.js';
+import { AiTrace, withAiTrace } from './infrastructure/logging/ai-trace.js';
 import { MongoRemoteAuthorizationStore } from './infrastructure/mongodb/remote-clients/remote-authorization.store.js';
 import { RemoteClientService } from './modules/remote-clients/remote-client.service.js';
 import { AuthorizationGatewayClient } from './modules/remote-clients/authorization-gateway.service.js';
@@ -448,32 +448,16 @@ try {
     models.remoteControl.limits.init(),
     models.movieDownloads.init(),
   ]);
+  const downloadSources = new DownloadSourceService({
+    configs: integrationConfigStore, secrets, mteam, resources: movieResourceChecks,
+    siteDownloads: { resources: movieSiteResourcesService, sites: resourceSiteService },
+  });
+  const remoteTorrents = new RemoteTorrentService(downloadSources);
   const remoteDownloads = new RemoteDownloadService({
     diagnostics: { logger: loggers.error, verbose: config.VERBOSE },
     store: new MongoRemoteControlStore(models.users, models.remoteDevices, models.movieDownloads, models.remoteControl),
     report: (err, fields) => loggers.error.error({ err, ...fields }, 'remote-download'),
-    torrent: async (command, download) => {
-      if (download.tmdbId !== undefined) await movieSiteResourcesService.releaseForDownload(
-        command.ownerId,
-        download.tmdbId,
-        command.source,
-        command.resourceId
-      );
-      let url: string;
-      if (command.source === 'hdarea')
-        url = await resourceSiteService.torrentUrl(command.ownerId, 'hdarea', command.resourceId);
-      else {
-        const credentials = await integrationConfigStore.find(command.ownerId, 'mteam');
-        if (!credentials) throw new RpcError('RESOURCE_SITE_NOT_CONFIGURED', 'not_applied');
-        url = await mteam.torrentUrl(
-          credentials.baseUrl,
-          secrets.decrypt(credentials.encryptedApiKey, integrationSecretContext(command.ownerId, 'mteam')),
-          command.resourceId
-        );
-      }
-      currentAiTrace()?.sensitive(url);
-      return { url, torrentHash: await readTorrentMetadata(url, { source: command.source }) };
-    },
+    torrent: (command, download) => remoteTorrents.resolve(command, download),
   });
   const remoteDownloadCoordinator = new RemoteDownloadCoordinator(gatewayPool, remoteDownloads);
   const remoteDownloadWorker = new RemoteDownloadWorker(remoteDownloads, remoteDownloadCoordinator);
@@ -613,16 +597,14 @@ try {
   const movieDownloadService = new MovieDownloadService(
     authService,
     new MongoMovieDownloadStore(models.movieDownloads),
-    qbittorrentConfigStore,
-    integrationConfigStore,
-    secrets,
-    qbittorrent,
-    mteam,
-    movieResourceChecks,
+    new ConfiguredDownloadClientFactory({
+      qbittorrent: { configs: qbittorrentConfigStore, client: qbittorrent },
+      transmission: { configs: transmissionConfigStore, client: transmission },
+      secrets,
+    }),
+    downloadSources,
     undefined,
-    { configs: transmissionConfigStore, client: transmission },
-    notificationService,
-    { resources: movieSiteResourcesService, sites: resourceSiteService }
+    notificationService
   );
   movieDownloadService.remote = new RemoteMovieDownloadService(new MongoMovieDownloadStore(models.movieDownloads),
     remoteClientService, remoteDownloadCoordinator);

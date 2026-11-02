@@ -1,3 +1,5 @@
+import { ConfiguredDownloadClientFactory } from '../../infrastructure/downloads/download-client-factory.adapter.js';
+import { DownloadSourceService } from './download-source.service.js';
 import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
 import assert from 'node:assert/strict';
@@ -217,11 +219,8 @@ function fixture(
       return trTorrent?.labels.includes(tag) ? trTorrent : null;
     },
   };
-  const service = new MovieDownloadService(
-    auth,
-    downloads,
-    qbConfigs,
-    {
+  const sources = new DownloadSourceService({
+    configs: {
       async find() {
         return {
           ownerId,
@@ -233,13 +232,12 @@ function fixture(
       },
     } as unknown as IntegrationConfigStore,
     secrets,
-    qb,
-    {
+    mteam: {
       async torrentUrl() {
         return 'https://tracker.example/download.php?id=991&passkey=private-key';
       },
     },
-    {
+    resources: {
       async listReleases() {
         return {
           provider: 'mteam',
@@ -252,10 +250,7 @@ function fixture(
         };
       },
     },
-    () => new Date('2026-10-17T00:00:00Z'),
-    { configs: trConfigs, client: tr },
-    notifications,
-    {
+    siteDownloads: {
       resources: {
         async releaseForDownload(owner, movie, site, id) {
           if (owner !== ownerId || movie !== 603 || !['991', '992'].includes(id))
@@ -276,8 +271,16 @@ function fixture(
           return 'https://hdarea.example/download.php?id=991&passkey=private-key';
         },
       },
-    }
+    },
+  });
+  const service = new MovieDownloadService(
+    auth, downloads, new ConfiguredDownloadClientFactory({
+      qbittorrent: { configs: qbConfigs, client: qb }, transmission: { configs: trConfigs, client: tr }, secrets,
+    }), sources,
+    () => new Date('2026-10-17T00:00:00Z'),
+    notifications
   );
+
   return {
     service,
     qbConfigs,

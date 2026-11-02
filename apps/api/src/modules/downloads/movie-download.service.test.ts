@@ -1,3 +1,5 @@
+import { ConfiguredDownloadClientFactory } from '../../infrastructure/downloads/download-client-factory.adapter.js';
+import { DownloadSourceService } from './download-source.service.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AuthService } from '../auth/auth.service.js';
@@ -89,16 +91,12 @@ test('recovers a previously misclassified failed download by its qBittorrent tag
   const service = new MovieDownloadService(
     auth,
     downloads,
-    qbittorrentConfigs,
-    mteamConfigs,
-    secrets,
-    qbittorrent,
-    {
+    new ConfiguredDownloadClientFactory({ qbittorrent: { configs: qbittorrentConfigs, client: qbittorrent }, secrets }),
+    new DownloadSourceService({ configs: mteamConfigs, secrets, mteam: {
       torrentUrl: async () => {
         throw new Error('recovery should not download the torrent again');
       },
-    },
-    resources,
+    }, resources }),
     () => now
   );
 
@@ -171,16 +169,14 @@ test('recovers a failed download while syncing an open release dialog', async ()
   const service = new MovieDownloadService(
     { requireOwnerId: async () => ownerId } as unknown as AuthService,
     downloads,
-    qbittorrentConfigs,
-    { find: async () => null } as unknown as IntegrationConfigStore,
-    secrets,
-    qbittorrent,
-    { torrentUrl: async () => 'https://tracker.example/download.php?id=991' },
-    {
-      listReleases: async () => {
-        throw new Error('not used');
-      },
-    } as unknown as Pick<MovieResourceCheckService, 'listReleases'>,
+    new ConfiguredDownloadClientFactory({ qbittorrent: { configs: qbittorrentConfigs, client: qbittorrent }, secrets }),
+    new DownloadSourceService({ configs: { find: async () => null }, secrets,
+      mteam: { torrentUrl: async () => 'https://tracker.example/download.php?id=991' },
+      resources: {
+        listReleases: async () => {
+          throw new Error('not used');
+        },
+      } as unknown as Pick<MovieResourceCheckService, 'listReleases'> }),
     () => now
   );
 

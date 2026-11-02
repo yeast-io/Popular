@@ -1,14 +1,13 @@
+import type { DownloadSourceService } from './download-source.service.js';
+import { downloadClientError } from './download-client.errors.js';
 import type { ResourceSearchService } from '../resource-search/resource-search.service.js';
 import type { CreateResourceDownloadRequest, ResourceSiteRelease } from '@movie-hub/contract';
 import { toResponse } from './movie-download.presentation.js';
 import type { RemoteMovieDownloadService } from '../remote-downloads/remote-movie-download.service.js';
 import type { Locale } from '@movie-hub/contract';
-import { siteAccountIdentityPending } from '../resource-sites/site-account.errors.js';
-import type { MovieSiteResourcesService } from '../integrations/movie-site-resources.service.js';
-import type { ResourceSiteService } from '../resource-sites/resource-site.service.js';
 import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
 import type { IntegrationPreferencesService } from '../integrations/integration-preferences.service.js';
-import type { TorrentSnapshot, DownloadClient } from './movie-download-client.types.js';
+import type { TorrentSnapshot, DownloadClientFactory } from './movie-download-client.types.js';
 import type {
   DownloadProvider,
   DownloaderChoice,
@@ -16,35 +15,12 @@ import type {
   DownloadProviderListResponse,
   MovieDownload,
   MovieDownloadListResponse,
-  MovieDownloadStatus,
 } from '@movie-hub/contract';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
-import type { IntegrationConfigStore } from '../integrations/integration.types.js';
-import { integrationSecretContext } from '../integrations/integration.service.js';
-import type { MTeamTorrentUrlProvider } from '../integrations/movie-resource-check.types.js';
-import type { MovieResourceCheckService } from '../integrations/movie-resource-check.service.js';
-import { decryptCredential, normalizeQBittorrentBaseUrl, qbittorrentAppError } from '../integrations/qbittorrent-integration.service.js';
-import type {
-  QBittorrentClientPort,
-  QBittorrentConfigStore,
-  QBittorrentTorrent,
-} from '../integrations/qbittorrent.types.js';
-import {
-  decryptCredential as decryptTransmissionCredential,
-  normalizeTransmissionBaseUrl,
-  transmissionAppError,
-} from '../integrations/transmission-integration.service.js';
-import type {
-  TransmissionClientPort,
-  TransmissionConfigStore,
-  TransmissionTorrent,
-} from '../integrations/transmission.types.js';
-import { SecretCrypto } from '../integrations/secret-crypto.js';
 import type { MovieDownloadProgress, MovieDownloadRecord, MovieDownloadStore } from './movie-download.types.js';
 import type { NotificationService } from '../notifications/notification.service.js';
-import { userExternalRequestContext } from '../external-usage/external-usage.domain.js';
 
 export class MovieDownloadService {
   remote?: RemoteMovieDownloadService;
@@ -55,19 +31,10 @@ export class MovieDownloadService {
   constructor(
     private readonly auth: AuthService,
     private readonly downloads: MovieDownloadStore,
-    private readonly qbittorrentConfigs: QBittorrentConfigStore,
-    private readonly mteamConfigs: IntegrationConfigStore,
-    private readonly secrets: SecretCrypto,
-    private readonly qbittorrent: QBittorrentClientPort,
-    private readonly mteam: MTeamTorrentUrlProvider,
-    private readonly resources: Pick<MovieResourceCheckService, 'listReleases'>,
+    private readonly clients: DownloadClientFactory,
+    private readonly sources: Pick<DownloadSourceService, 'prepareLocal'>,
     private readonly now: () => Date = () => new Date(),
-    private readonly transmission?: { configs: TransmissionConfigStore; client: TransmissionClientPort },
-    private readonly notifications?: Pick<NotificationService, 'reserve' | 'submitted'>,
-    private readonly siteDownloads?: {
-      resources: Pick<MovieSiteResourcesService, 'releaseForDownload'>;
-      sites: Pick<ResourceSiteService, 'torrentUrl'>;
-    }
+    private readonly notifications?: Pick<NotificationService, 'reserve' | 'submitted'>
   ) {}
 
   async providers(token: string | undefined): Promise<DownloadProviderListResponse> {
@@ -88,14 +55,7 @@ export class MovieDownloadService {
   }
 
   async instancesFor(ownerId: string): Promise<DownloaderChoice[]> {
-    const [qb, tr] = await Promise.all([
-      this.qbittorrentConfigs.list?.(ownerId) ?? this.qbittorrentConfigs.find(ownerId).then((record) => record ? [record] : []),
-      this.transmission?.configs.list?.(ownerId) ?? this.transmission?.configs.find(ownerId).then((record) => record ? [record] : []) ?? [],
-    ]);
-    return [
-      ...qb.map((record) => ({ downloaderInstanceId: record.downloaderInstanceId ?? 'qbittorrent', provider: 'qbittorrent' as const, name: record.name ?? 'qBittorrent' })),
-      ...tr.map((record) => ({ downloaderInstanceId: record.downloaderInstanceId ?? 'transmission', provider: 'transmission' as const, name: record.name ?? 'Transmission' })),
-    ];
+    return this.clients.instancesFor(ownerId);
   }
 
   async create(
@@ -181,43 +141,23 @@ export class MovieDownloadService {
     const provider = selected.provider;
     if (requestedProvider && requestedProvider !== provider)
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'Selected downloader type differs');
-    const client = await aiStep('download.client.load', () => this.clientFor(ownerId, provider, selected.downloaderInstanceId));
+    const client = await aiStep('download.client.load', () => this.clients.clientFor(ownerId, provider, selected.downloaderInstanceId, locale));
     if (existing && (existing.status !== 'missing'
       || (existing.executionMode !== 'remote' && existing.provider === provider
         && (!existing.downloaderInstanceId || existing.downloaderInstanceId === selected.downloaderInstanceId)))) {
       // Do not retry if recovery cannot reach the original downloader: an earlier add may have succeeded.
-      let added: TorrentSnapshot | null;
-      try {
-        added = existing.torrentHash
-          ? ((await client.list([existing.torrentHash]))[0] ?? null)
-          : await client.findByTag(existing.lookupTag);
-      } catch (error) {
-        throw providerError(provider, error);
-      }
+      const added = existing.torrentHash
+        ? ((await client.list([existing.torrentHash]))[0] ?? null)
+        : await client.findByTag(existing.lookupTag);
       if (added)
         return toResponse(
           await this.downloads.updateProgress(existing.id, withSyncTime(added, this.now(), existing.addedAt))
         );
     }
-    const mteamConfig = sourceProvider === 'mteam' ? await this.mteamConfigs.find(ownerId, 'mteam') : null;
-    if (sourceProvider === 'mteam' && !mteamConfig)
-      throw new AppError(409, 'MTEAM_NOT_CONFIGURED', 'Configure M-Team before downloading');
-    if (sourceProvider === 'mteam' && !mteamConfig?.externalUserId) throw siteAccountIdentityPending();
-    if (sourceProvider === 'hdarea' && !this.siteDownloads) throw new ResourceSiteError('notConfigured');
-    const release = await aiStep(
-      'download.resources.validate',
-      async () => {
-        if (resource) return resource;
-        if (tmdbId === undefined) throw new AppError(404, 'NOT_FOUND', '');
-        if (sourceProvider === 'hdarea')
-          return this.siteDownloads!.resources.releaseForDownload(ownerId, tmdbId, sourceProvider, releaseId);
-        const list = await this.resources.listReleases(ownerId, tmdbId);
-        const selected = list.releases.find((release) => release.id === releaseId);
-        if (!selected) throw new AppError(404, 'NOT_FOUND', '');
-        return selected;
-      },
-      { sourceProvider, releaseId }
-    );
+    const source = await this.sources.prepareLocal({
+      ownerId, tmdbId, source: sourceProvider, releaseId, resource, locale,
+    });
+    const release = source.release;
     const claim = existing
       ? existing.status === 'missing'
         ? await aiStep('download.task.redownload', () => this.downloads.claimMissing(existing, provider, selected.downloaderInstanceId, selected.name),
@@ -233,17 +173,7 @@ export class MovieDownloadService {
     if (!claim.claimed) return toResponse(record);
     let torrentUrl: string;
     try {
-      torrentUrl = await aiStep('download.torrent-url.resolve', () => {
-        if (sourceProvider === 'hdarea')
-          return this.siteDownloads!.sites.torrentUrl(ownerId, sourceProvider, releaseId);
-        return this.mteam.torrentUrl(
-          mteamConfig!.baseUrl,
-          this.secrets.decrypt(mteamConfig!.encryptedApiKey, integrationSecretContext(ownerId, 'mteam')),
-          releaseId,
-          userExternalRequestContext(ownerId, 'api_request')
-        );
-      });
-      currentAiTrace()?.sensitive(torrentUrl);
+      torrentUrl = await aiStep('download.torrent-url.resolve', () => source.torrentUrl());
     } catch (error) {
       await this.downloads.markFailed(record.id, 'MOVIE_DOWNLOAD_FAILED', this.now());
       if (error instanceof ResourceSiteError) throw error;
@@ -326,7 +256,7 @@ export class MovieDownloadService {
       return toResponse(record);
     } catch (error) {
       await this.downloads.markFailed(record.id, 'MOVIE_DOWNLOAD_FAILED', this.now());
-      throw providerError(provider, error);
+      throw downloadClientError(provider, error, locale);
     }
   }
 
@@ -346,51 +276,11 @@ export class MovieDownloadService {
       };
     }
     if (!record.provider) throw new AppError(409, 'DOWNLOAD_NOT_CONFIGURED', '');
-    const client = await this.clientFor(record.ownerId, record.provider, record.downloaderInstanceId);
+    const client = await this.clients.clientFor(record.ownerId, record.provider, record.downloaderInstanceId);
     const torrent = record.torrentHash
       ? (await client.list([record.torrentHash]))[0]
       : await client.findByTag(record.lookupTag);
     return torrent ? withSyncTime(torrent, this.now(), record.addedAt) : null;
-  }
-
-  private async clientFor(ownerId: string, provider: DownloadProvider, downloaderInstanceId?: string): Promise<DownloadClient> {
-    if (!downloaderInstanceId && (await this.instancesFor(ownerId)).filter((choice) => choice.provider === provider).length > 1)
-      throw new AppError(409, 'DOWNLOAD_PROVIDER_REQUIRED', 'Historical download has no pinned downloader instance');
-    if (provider === 'transmission') {
-      const config = await this.transmission?.configs.find(ownerId, downloaderInstanceId);
-      if (!config || !this.transmission)
-        throw new AppError(409, 'TRANSMISSION_NOT_CONFIGURED', 'Configure Transmission before downloading');
-      normalizeTransmissionBaseUrl(config.baseUrl);
-      const credential = decryptTransmissionCredential(config, this.secrets);
-      const client = this.transmission.client;
-      return {
-        add: (torrentUrl, tag) => client.addTorrent(config.baseUrl, credential, torrentUrl, tag),
-        list: async (hashes) => {
-          return (await client.listTorrents(config.baseUrl, credential, hashes)).map(transmissionSnapshot);
-        },
-        findByTag: async (tag) => {
-          const torrent = await client.findByTag(config.baseUrl, credential, tag);
-          return torrent ? transmissionSnapshot(torrent) : null;
-        },
-      };
-    }
-    const config = await this.qbittorrentConfigs.find(ownerId, downloaderInstanceId);
-    if (!config) throw new AppError(409, 'QBITTORRENT_NOT_CONFIGURED', 'Configure qBittorrent before downloading');
-    normalizeQBittorrentBaseUrl(config.baseUrl);
-    const credential = decryptCredential(config, this.secrets);
-    return {
-      add: async (torrentUrl, tag) => {
-        await this.qbittorrent.addTorrent(config.baseUrl, credential, torrentUrl, tag);
-        return undefined;
-      },
-      list: async (hashes) => {
-        return (await this.qbittorrent.listTorrents(config.baseUrl, credential, hashes)).map(qbittorrentSnapshot);
-      },
-      findByTag: async (tag) => {
-        const torrent = await this.qbittorrent.findByTag(config.baseUrl, credential, tag);
-        return torrent ? qbittorrentSnapshot(torrent) : null;
-      },
-    };
   }
 
   async listAndSync(token: string | undefined, tmdbId: number | undefined): Promise<MovieDownloadListResponse> {
@@ -428,7 +318,7 @@ export class MovieDownloadService {
       if (!provider) continue;
       const downloaderInstanceId = owned[0]!.downloaderInstanceId;
       try {
-        const client = await aiStep('download.sync.client', () => this.clientFor(ownerId, provider, downloaderInstanceId), { provider, downloaderInstanceId });
+        const client = await aiStep('download.sync.client', () => this.clients.clientFor(ownerId, provider, downloaderInstanceId), { provider, downloaderInstanceId });
         const hashes = owned.flatMap((record) => (record.torrentHash ? [record.torrentHash] : []));
         const torrents = hashes.length
           ? await aiStep(
@@ -470,57 +360,6 @@ export class MovieDownloadService {
   }
 }
 
-function qbittorrentSnapshot(torrent: QBittorrentTorrent): TorrentSnapshot {
-  const status = statusOf(torrent);
-  return {
-    torrentHash: torrent.hash,
-    name: torrent.name,
-    status,
-    progress: Math.min(100, Math.max(0, torrent.progress * 100)),
-    downloadedBytes: torrent.downloadedBytes,
-    totalBytes: torrent.totalBytes,
-    downloadSpeed: torrent.downloadSpeed,
-    etaSeconds: torrent.etaSeconds,
-  };
-}
-
-function statusOf(torrent: QBittorrentTorrent): MovieDownloadStatus {
-  if (/error|missing/i.test(torrent.state)) return 'failed';
-  if (/uploading|stalledUP|forcedUP|queuedUP|checkingUP/i.test(torrent.state)) return 'seeding';
-  if (torrent.progress >= 1 || /complete/i.test(torrent.state)) return 'completed';
-  if (/paused|stopped/i.test(torrent.state)) return 'paused';
-  return 'downloading';
-}
-
-function transmissionSnapshot(torrent: TransmissionTorrent): TorrentSnapshot {
-  const status: MovieDownloadStatus = torrent.error
-    ? 'failed'
-    : torrent.status === 5 || torrent.status === 6
-      ? 'seeding'
-      : torrent.progress >= 1
-        ? 'completed'
-        : torrent.status === 0
-          ? 'paused'
-          : 'downloading';
-  return {
-    torrentHash: torrent.hash,
-    name: torrent.name,
-    status,
-    progress: torrent.progress * 100,
-    downloadedBytes: torrent.downloadedBytes,
-    totalBytes: torrent.totalBytes,
-    downloadSpeed: torrent.downloadSpeed,
-    etaSeconds: torrent.etaSeconds,
-  };
-}
-
 function withSyncTime(snapshot: TorrentSnapshot, now: Date, addedAt?: Date): MovieDownloadProgress {
   return { ...snapshot, addedAt: addedAt ?? now, lastSyncedAt: now };
-}
-
-function providerError(provider: DownloadProvider, error: unknown): AppError {
-  if (error instanceof AppError) return error;
-  return provider === 'transmission'
-    ? transmissionAppError(error, 'Could not access the Transmission download')
-    : qbittorrentAppError(error, 'Could not access the qBittorrent download');
 }

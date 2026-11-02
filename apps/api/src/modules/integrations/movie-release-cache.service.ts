@@ -160,7 +160,7 @@ export class MovieReleaseCacheService {
       identity.ownerId, identity.site, identity.tmdbId,
       identity.imdbId ?? null, identity.locale, identity.credentialVersion,
     ])).digest('hex');
-    return `movie-releases:scope:v1:${hash}`;
+    return `movie-releases:scope:v2:${hash}`;
   }
 
   private dataKey(scopeKey: string, revision: string | null, page: number): string {

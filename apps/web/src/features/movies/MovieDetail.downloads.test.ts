@@ -12,6 +12,8 @@ async function setup(
   options: {
     locale?: 'en-US' | 'zh-CN';
     progress?: number;
+    seeders?: number;
+    seedersKnown?: boolean;
     fail?: boolean;
     defaultProvider?: DownloadProvider;
     providersFail?: boolean;
@@ -69,7 +71,7 @@ async function setup(
             ...(options.extraRelease
               ? [{ id: '990', title: 'Earlier.Release', detailsUrl: 'https://mteam.test/990', seeders: 20, tags: [] }]
               : []),
-            { id: '991', title: 'Movie.Release', detailsUrl: 'https://mteam.test/991', seeders: 20, tags: [] },
+            { id: '991', title: 'Movie.Release', detailsUrl: 'https://mteam.test/991', seeders: options.seeders ?? 20, seedersKnown: options.seedersKnown, tags: [] },
           ],
         }
         );
@@ -133,6 +135,23 @@ async function setup(
 }
 
 describe('download provider selection', () => {
+  it.each(['en-US', 'zh-CN'] as const)('retains zero-seeder releases but hides their download buttons in %s', async (locale) => {
+    const f = await setup(['qbittorrent'], { locale, seeders: 0, extraRelease: true, hdarea: true });
+    const cards = [...document.body.querySelectorAll('.release-card')];
+    const zeroSeederCards = cards.filter((card) => card.textContent?.includes('Movie.Release'));
+    expect(zeroSeederCards).toHaveLength(2);
+    expect(zeroSeederCards.every((card) => !card.querySelector('.release-download-button'))).toBe(true);
+    expect(document.body.querySelectorAll('.release-download-button')).toHaveLength(2);
+    expect(f.posts).toEqual([]);
+    f.wrapper.unmount();
+  });
+
+  it('keeps download buttons for unknown seeder counts', async () => {
+    const f = await setup(['qbittorrent'], { seeders: 0, seedersKnown: false });
+    expect(document.body.querySelector('.release-download-button')).not.toBeNull();
+    f.wrapper.unmount();
+  });
+
   it('shows saved downloader names, hides the group caption, and gives the icon-only download button a label', async () => {
     const f = await setup(['qbittorrent', 'transmission'], {
       downloaderChoices: [
