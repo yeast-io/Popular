@@ -1,4 +1,5 @@
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
+import { publicDownloaderFetch } from '../http/public-downloader-http.client.js';
 import type {
   TransmissionClientPort,
   TransmissionCredential,
@@ -6,7 +7,7 @@ import type {
 } from '../../modules/integrations/transmission.types.js';
 
 export class TransmissionClient implements TransmissionClientPort {
-  constructor(private readonly timeoutMs: number, private readonly fetchImpl: typeof fetch = fetch) {}
+  constructor(private readonly timeoutMs: number, private readonly fetchImpl: typeof fetch = publicDownloaderFetch) {}
 
   async verify(baseUrl: string, credential: TransmissionCredential): Promise<{ version: string }> {
     const args = await this.rpc(baseUrl, credential, 'session-get', { fields: ['version'] });
@@ -136,9 +137,9 @@ export class TransmissionClient implements TransmissionClientPort {
     } catch (error) {
       if (error instanceof IntegrationValidationError) throw error;
       if (signal.aborted || (error instanceof Error && error.name === 'TimeoutError')) {
-        throw new IntegrationValidationError('timeout', 'Transmission request timed out');
+        throw new IntegrationValidationError('timeout', 'Transmission request timed out', { cause: error });
       }
-      throw new IntegrationValidationError('network', 'Could not connect to Transmission');
+      throw new IntegrationValidationError('network', 'Could not connect to Transmission', { cause: error });
     }
   }
 }

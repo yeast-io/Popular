@@ -107,6 +107,7 @@ import { MovieResourceSyncService } from './modules/integrations/movie-resource-
 import { MongoQBittorrentConfigStore } from './infrastructure/mongodb/integrations/qbittorrent-config.store.js';
 import { MongoTransmissionConfigStore } from './infrastructure/mongodb/integrations/transmission-config.store.js';
 import { TransmissionClient } from './infrastructure/transmission/client.js';
+import { PublicDownloaderHttpClient } from './infrastructure/http/public-downloader-http.client.js';
 import { TransmissionIntegrationService } from './modules/integrations/transmission-integration.service.js';
 import { QBittorrentClient } from './infrastructure/qbittorrent/client.js';
 import { QBittorrentIntegrationService } from './modules/integrations/qbittorrent-integration.service.js';
@@ -354,7 +355,9 @@ try {
     mteamEndpoints
   );
   const transmissionConfigStore = new MongoTransmissionConfigStore(models.transmissionConfigs);
-  const transmission = new TransmissionClient(config.TRANSMISSION_REQUEST_TIMEOUT_MS);
+  const downloaderHttp = new PublicDownloaderHttpClient({ logger: loggers.error, verbose: config.VERBOSE });
+  shutdown.register('downloader_http', 75, () => downloaderHttp.close());
+  const transmission = new TransmissionClient(config.TRANSMISSION_REQUEST_TIMEOUT_MS, downloaderHttp.fetch);
   const transmissionIntegrationService = new TransmissionIntegrationService(
     authService,
     transmissionConfigStore,
@@ -362,7 +365,7 @@ try {
     secrets
   );
   const qbittorrentConfigStore = new MongoQBittorrentConfigStore(models.qbittorrentConfigs);
-  const qbittorrent = new QBittorrentClient(config.QBITTORRENT_REQUEST_TIMEOUT_MS);
+  const qbittorrent = new QBittorrentClient(config.QBITTORRENT_REQUEST_TIMEOUT_MS, downloaderHttp.fetch);
   const qbittorrentIntegrationService = new QBittorrentIntegrationService(
     authService,
     qbittorrentConfigStore,

@@ -1,28 +1,21 @@
 import { isIP } from 'node:net';
+import ipaddr from 'ipaddr.js';
+
+/** Only ordinary globally routed unicast addresses may be used by direct downloaders. */
+export function isPublicDownloaderIp(address: string): boolean {
+  const family = isIP(address);
+  if (!family) return false;
+  const parsed = ipaddr.parse(address);
+  if (parsed.range() !== 'unicast') return false;
+  // IPv6 outside the global unicast allocation is not a public destination.
+  return family === 4 || parsed.match(ipaddr.parse('2000::'), 3);
+}
 
 /** Reject local/private IP literals and local hostnames for direct downloader configuration. */
 export function isPublicDownloaderAddress(url: URL): boolean {
   const host = url.hostname.toLowerCase().replace(/\.$/, '');
-  if (isIP(host) === 4) {
-    const [first = 0, second = 0, third = 0] = host.split('.').map(Number);
-    return !(
-      first === 0 || first === 10 || first === 127 || first >= 224
-      || (first === 100 && second >= 64 && second <= 127)
-      || (first === 169 && second === 254)
-      || (first === 172 && second >= 16 && second <= 31)
-      || (first === 192 && ((second === 0 && (third === 0 || third === 2)) || second === 168))
-      || (first === 192 && second === 88 && third === 99)
-      || (first === 198 && (second === 18 || second === 19 || (second === 51 && third === 100)))
-      || (first === 203 && second === 0 && third === 113)
-    );
-  }
-  if (host.startsWith('[') && host.endsWith(']') && isIP(host.slice(1, -1)) === 6) {
-    const address = host.slice(1, -1);
-    const [first = 0, second = 0] = address.split(':').map((part) => Number.parseInt(part || '0', 16));
-    return first >= 0x2000 && first <= 0x3fff
-      && !(first === 0x2001 && (second === 0 || second === 0xdb8))
-      && first !== 0x2002;
-  }
+  if (isIP(host) === 4) return isPublicDownloaderIp(host);
+  if (host.startsWith('[') && host.endsWith(']')) return isPublicDownloaderIp(host.slice(1, -1));
   if (isIP(host) !== 0 || host.includes(':')) return false;
   const labels = host.split('.');
   const suffix = labels.at(-1)!;

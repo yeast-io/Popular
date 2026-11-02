@@ -1,4 +1,5 @@
 import type { FetchLike } from './qbittorrent-client.types.js';
+import { publicDownloaderFetch } from '../http/public-downloader-http.client.js';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
 import type {
   QBittorrentClientPort,
@@ -7,7 +8,7 @@ import type {
 } from '../../modules/integrations/qbittorrent.types.js';
 
 export class QBittorrentClient implements QBittorrentClientPort {
-  constructor(private readonly timeoutMs: number, private readonly fetchImpl: FetchLike = fetch) {}
+  constructor(private readonly timeoutMs: number, private readonly fetchImpl: FetchLike = publicDownloaderFetch) {}
 
   async verify(baseUrl: string, credential: QBittorrentCredential): Promise<{ version: string }> {
     const response = await this.request(baseUrl, credential, 'app/version');
