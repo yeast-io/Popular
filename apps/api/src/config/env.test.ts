@@ -96,28 +96,10 @@ test('enables OpenAI only with a complete bounded configuration', () => {
   }
   );
   assert.equal(enabled.OPENAI_MODEL, 'test-model');
-  assert.equal(enabled.OPENAI_MAX_CONTEXT_TOKENS, 8192);
-  assert.equal(enabled.OPENAI_SUMMARY_MAX_OUTPUT_TOKENS, 500);
-  assert.throws(() => {
-    return loadConfig({
-      ...valid,
-      OPENAI_MODEL: 'test-model',
-      OPENAI_MAX_CONTEXT_TOKENS: '1024',
-      OPENAI_MAX_OUTPUT_TOKENS: '1024',
-    }
-    );
-  }, /OPENAI_MAX_OUTPUT_TOKENS/
-  );
-  assert.throws(() => {
-    return loadConfig({
-      ...valid,
-      OPENAI_MODEL: 'test-model',
-      OPENAI_MAX_CONTEXT_TOKENS: '1024',
-      OPENAI_SUMMARY_MAX_OUTPUT_TOKENS: '1024',
-    }
-    );
-  }, /OPENAI_SUMMARY_MAX_OUTPUT_TOKENS/
-  );
+  assert.equal('OPENAI_MAX_CONTEXT_TOKENS' in enabled, false);
+  assert.equal('OPENAI_MAX_OUTPUT_TOKENS' in enabled, false);
+  assert.equal('OPENAI_SUMMARY_MAX_OUTPUT_TOKENS' in enabled, false);
+  assert.equal('OPENAI_HISTORY_LIMIT' in enabled, false);
 });
 
 test('Telegram bot is optional; malformed tokens fail without exposing their value', () => {

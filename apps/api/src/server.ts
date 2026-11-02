@@ -1,3 +1,11 @@
+import { AiSettingsService } from './modules/integrations/ai-settings.service.js';
+import type { AiSettingsRegistry } from './modules/integrations/ai-settings.types.js';
+import { MongoAiConfigStore } from './infrastructure/mongodb/integrations/ai-config.store.js';
+import { AI_PROVIDERS, AI_PROVIDER_NAMES, AI_PROVIDER_URLS, AI_MODEL_LIMITS, modelLimits } from './modules/integrations/ai-provider.policy.js';
+import { UserLlmService } from './modules/llm/user-llm.service.js';
+import { DeepSeekLlmAdapter } from './infrastructure/deepseek/deepseek-llm.adapter.js';
+import { ClaudeLlmAdapter } from './infrastructure/claude/claude-llm.adapter.js';
+import { probeAiModels } from './infrastructure/llm/ai-connection-probe.adapter.js';
 import { EmailVerificationService } from './modules/auth/email-verification.service.js';
 import { RedisEmailVerificationStore } from './infrastructure/redis/email-verification.store.js';
 import { MailgunClient } from './infrastructure/mailgun/mailgun.client.js';
@@ -59,7 +67,6 @@ import { MongoAssistantQueue } from './infrastructure/mongodb/assistant/assistan
 import { TelegramWorker } from './modules/telegram/telegram.worker.js';
 import { TelegramClient } from './infrastructure/telegram/client.js';
 import { MongoTelegramStore } from './infrastructure/mongodb/telegram/telegram.store.js';
-import { probeOpenAI } from './infrastructure/openai/connection-probe.js';
 import { NotificationTestService } from './modules/notifications/notification-test.service.js';
 import { MongoNotificationTestStore } from './infrastructure/mongodb/notifications/notification-test.store.js';
 import { MongoNotificationStore } from './infrastructure/mongodb/notifications/notification.store.js';
@@ -92,7 +99,6 @@ import { MongoIntegrationConfigStore } from './infrastructure/mongodb/integratio
 import { MTeamClient } from './infrastructure/mteam/client.js';
 import { IntegrationService } from './modules/integrations/integration.service.js';
 import { MongoOpenAIConfigStore } from './infrastructure/mongodb/integrations/openai-config.store.js';
-import { OpenAISettingsService } from './modules/integrations/openai-settings.service.js';
 import { SecretCrypto } from './modules/integrations/secret-crypto.js';
 import { MongoMovieResourceCheckStore } from './infrastructure/mongodb/movie-resources/movie-resource-check.store.js';
 import { MovieResourceCheckService } from './modules/integrations/movie-resource-check.service.js';
@@ -363,7 +369,11 @@ try {
     qbittorrent,
     secrets
   );
-  const openaiConfigStore = new MongoOpenAIConfigStore(models.openaiConfigs);
+  await models.aiConfigs.init();
+  const legacyOpenaiConfigStore = new MongoOpenAIConfigStore(models.openaiConfigs);
+  const aiConfigStores = Object.fromEntries(AI_PROVIDERS.map((provider) => [provider,
+    new MongoAiConfigStore(models.aiConfigs, provider, provider === 'openai' ? legacyOpenaiConfigStore : undefined),
+  ])) as Record<import('@movie-hub/contract').AiProvider, MongoAiConfigStore>;
   await models.integrationPreferences.init();
   const integrationPreferencesService = new IntegrationPreferencesService(
     new MongoIntegrationPreferencesStore(models.integrationPreferences),
@@ -372,7 +382,7 @@ try {
         resourceSearchService.list(ownerId),
         qbittorrentConfigStore.list(ownerId),
         transmissionConfigStore.list(ownerId),
-        openaiConfigStore.find(ownerId),
+        Promise.all(AI_PROVIDERS.map((provider) => aiConfigStores[provider].find(ownerId))),
       ]
       );
       return [
@@ -397,18 +407,16 @@ try {
               ? ('configured_valid' as const)
               : ('configured_unverified' as const),
         })),
-        {
-          id: 'openai',
-          name: 'OpenAI',
-          category: 'ai' as const,
-          status: !ai
-            ? ('unconfigured' as const)
-            : ai.validation?.status === 'valid'
-              ? ('configured_valid' as const)
-              : ai.validation?.status === 'failed'
-                ? ('configured_invalid' as const)
-                : ('configured_unverified' as const),
-        },
+        ...AI_PROVIDERS.map((provider, index) => ({
+          id: provider, name: AI_PROVIDER_NAMES[provider], category: 'ai' as const,
+          status: !ai[index]
+            ? 'unconfigured' as const
+            : ai[index].validation?.status === 'failed'
+              ? 'configured_invalid' as const
+              : ai[index].validation?.status === 'valid' && ai[index].model && modelLimits(provider, ai[index].model!)
+                ? 'configured_valid' as const
+                : 'configured_unverified' as const,
+        })),
       ];
     });
   for (const service of [
@@ -619,24 +627,30 @@ try {
   movieDownloadService.resourceSearch = resourceSearchService;
   const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
   const conversationService = new ConversationService(authService, conversationStore);
-  const openaiSettingsService = new OpenAISettingsService(authService, openaiConfigStore, secrets, {
-    model: config.OPENAI_MODEL,
-    recommendedModels: config.OPENAI_RECOMMENDED_MODELS,
-    verify: (apiKey) => {
-      return probeOpenAI(
-        new OpenAI({ apiKey, timeout: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000), maxRetries: 0 })
-      );
+  const aiSettings = Object.fromEntries(AI_PROVIDERS.map((provider) => {
+    const service = new AiSettingsService(authService, aiConfigStores[provider], secrets, {
+      model: provider === 'openai' ? config.OPENAI_MODEL : Object.keys(AI_MODEL_LIMITS[provider])[0]!,
+      recommendedModels: provider === 'openai' && config.OPENAI_RECOMMENDED_MODELS.length
+        ? config.OPENAI_RECOMMENDED_MODELS.filter((model) => modelLimits(provider, model))
+        : Object.keys(AI_MODEL_LIMITS[provider]),
+      verify: (apiKey) => probeAiModels({ provider, apiKey, timeoutMs: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000) }),
+    }, provider);
+    service.preferences = integrationPreferencesService;
+    return [provider, service];
+  })) as AiSettingsRegistry;
+  const userLlm = new UserLlmService({
+    defaultProvider: async (ownerId) => (await integrationPreferencesService.get(ownerId)).defaults.ai,
+    credentials: (ownerId, provider) => aiSettings[provider].requireCredentials(ownerId),
+    createClient: ({ provider, apiKey, model }, ownerId) => {
+      const accounting = { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES, provider };
+      if (provider === 'claude') return new ClaudeLlmAdapter(model, {
+        provider, apiKey, timeoutMs: config.OPENAI_REQUEST_TIMEOUT_MS,
+      }, accounting);
+      const sdk = new OpenAI({ apiKey, baseURL: AI_PROVIDER_URLS[provider], timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0 });
+      return provider === 'deepseek' ? new DeepSeekLlmAdapter(sdk, model, accounting) : new OpenAILlmClient(sdk, model, accounting);
     },
   });
-  openaiSettingsService.preferences = integrationPreferencesService;
-  const createOwnerLlmClient = async (ownerId: string) => {
-    const { apiKey, model } = await openaiSettingsService.requireCredentials(ownerId);
-    return new OpenAILlmClient(
-      new OpenAI({ apiKey, timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0 }),
-      model,
-      { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES }
-    );
-  };
+  const createOwnerLlmClient = (ownerId: string) => userLlm.create(ownerId);
   const preferenceModels = createPreferenceModels(models.users.db);
   await Promise.all(Object.values(preferenceModels).map((model) => model.init()));
   const preferenceStore = new MongoPreferenceStore(preferenceModels);
@@ -646,11 +660,11 @@ try {
     movieCatalog,
     tmdb,
     config.TMDB_LANGUAGE,
-    (ownerId) => openaiSettingsService.requireCredentials(ownerId)
+    (ownerId) => userLlm.resolve(ownerId)
   );
   const preferenceWorkflow = new PreferenceWorkflow(
     preferenceStore,
-    new PreferenceAgent(createOwnerLlmClient, config.OPENAI_MAX_CONTEXT_TOKENS),
+    new PreferenceAgent(createOwnerLlmClient),
     (job, signal) => preferenceService.enrich(job, signal)
   );
   const preferenceWorker = new PreferenceWorker(preferenceStore, preferenceWorkflow, loggers.error, config.VERBOSE);
@@ -696,8 +710,8 @@ try {
     downloads: movieDownloadService,
     diagnostics: { logger: loggers.error, verbose: config.VERBOSE },
     systemPrompt: config.OPENAI_SYSTEM_PROMPT,
-    maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
-    maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS,
+    maxContextTokens: 0,
+    maxOutputTokens: 0,
     preferences: preferenceService,
     recommendations,
     resources,
@@ -709,10 +723,10 @@ try {
     new Utf8ByteTokenCounter(),
     {
       systemPrompt: config.OPENAI_SYSTEM_PROMPT,
-      maxContextTokens: config.OPENAI_MAX_CONTEXT_TOKENS,
-      maxOutputTokens: config.OPENAI_MAX_OUTPUT_TOKENS,
-      summaryMaxOutputTokens: config.OPENAI_SUMMARY_MAX_OUTPUT_TOKENS,
-      historyLimit: config.OPENAI_HISTORY_LIMIT,
+      maxContextTokens: 0,
+      maxOutputTokens: 0,
+      summaryMaxOutputTokens: 0,
+      historyLimit: 0,
       safetyMarginTokens: 256,
       messageOverheadTokens: 4,
       reply: createAssistantConversationReply(assistantOptions),
@@ -736,6 +750,7 @@ try {
     },
     (event) => loggers.app.warn({ event }, 'Assistant workflow'),
     {
+      resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
       maxConcurrency: config.ASSISTANT_MAX_CONCURRENCY,
       scanIntervalMs: config.ASSISTANT_SCAN_INTERVAL_MS,
       scanTraceEnabled: config.SCAN_TRACE_ENABLED,
@@ -811,7 +826,8 @@ try {
     movieDownloadService,
     externalUsageService,
     conversationService,
-    openaiSettingsService,
+    openaiSettingsService: aiSettings.openai,
+    aiSettings,
     conversationTurnService,
   });
   shutdown.register('resource_sync', 60, () => movieResourceSyncService.stop());

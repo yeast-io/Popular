@@ -1,3 +1,4 @@
+import type { LlmModelSelection } from '../llm/llm-model.types.js';
 import type { TasteProfile, TasteProfileResponse } from '@movie-hub/contract';
 
 export interface PreferenceEvidence {
@@ -15,10 +16,12 @@ export interface PreferenceChange {
 }
 
 export interface PreferenceProposal {
+  generatedBy?: LlmModelSelection;
   changes: PreferenceChange[];
 }
 
 export interface PreferenceJob {
+  generatedBy?: LlmModelSelection;
   correlationId?: string;
   id: string;
   ownerId: string;

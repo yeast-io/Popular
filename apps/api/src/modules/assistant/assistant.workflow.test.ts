@@ -6,6 +6,7 @@ import test from 'node:test';
 import { AssistantWorkflow } from './assistant.workflow.js';
 import type { AssistantInputWorkflowMessage } from './assistant.types.js';
 import type { LlmGenerateInput } from '../llm/llm.types.js';
+import { LlmProviderError } from '../llm/llm.errors.js';
 
 const input: AssistantInputWorkflowMessage = {
   ownerId: 'alice',
@@ -16,6 +17,38 @@ const input: AssistantInputWorkflowMessage = {
   receivedAt: '2026-10-18T00:00:00.000Z',
 };
 const options = { systemPrompt: 'Be concise.', maxContextTokens: 8_000, maxOutputTokens: 500 };
+
+test('plain-text classification stops before preference recording or tool execution', async () => {
+  for (const text of ['下载第二个', 'download release 2']) {
+    let modelCalls = 0;
+    let preferenceCalls = 0;
+    let toolCalls = 0;
+    const unexpectedTool = async (): Promise<never> => {
+      toolCalls++;
+      throw new Error('Unexpected tool call');
+    };
+    const runner = new AssistantWorkflow(async () => ({
+      generate: async () => {
+        modelCalls++;
+        return { content: '坦白说，我这边没法向你提供帮助', inputTokens: 1, outputTokens: 1 };
+      },
+    }), { ...options, preferences: {
+      chatEvidence: async () => { preferenceCalls++; },
+    } as unknown as PreferenceService,
+    sessions: {
+      ensure: async () => {}, read: async () => null, acquire: async () => true,
+      save: unexpectedTool, release: async () => {},
+    },
+    resources: { context: unexpectedTool, active: unexpectedTool, run: unexpectedTool },
+    recommendations: { active: unexpectedTool, runResult: unexpectedTool },
+    downloads: { providersFor: unexpectedTool, createForOwner: unexpectedTool },
+    });
+    await assert.rejects(runner.run({ ...input, text }), LlmProviderError);
+    assert.equal(modelCalls, 1);
+    assert.equal(preferenceCalls, 0);
+    assert.equal(toolCalls, 0);
+  }
+});
 
 test('web workflow streams discussion through the same assistant after classification', async () => {
   let calls = 0;

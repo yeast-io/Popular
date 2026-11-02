@@ -132,6 +132,7 @@ export class MongoPreferenceStore implements PreferenceStore {
         { _id: job.id, ownerId: job.ownerId, leaseId: job.leaseId, status: 'processing' },
         {
           $set: {
+            ...(job.generatedBy ? { provider: job.generatedBy.provider, model: job.generatedBy.model } : {}),
             status: error ? (job.attempts >= 3 ? 'failed' : 'pending') : 'completed',
             error: error ?? null,
             nextAt: new Date(Date.now() + 30_000 * job.attempts),

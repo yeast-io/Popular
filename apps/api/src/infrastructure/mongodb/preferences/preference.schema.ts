@@ -18,6 +18,8 @@ export function createPreferenceModels(connection: Connection) {
       evidence: { type: Schema.Types.Mixed, required: true },
       fingerprint: String,
       correlationId: String,
+      provider: { type: String, enum: ['openai', 'deepseek', 'claude'] },
+      model: String,
       status: { type: String, default: 'pending' },
       attempts: { type: Number, default: 0 },
       leaseId: String,

@@ -30,6 +30,11 @@ const errorKeys = {
   INTEGRATION_DEFAULT_INVALID: 'integrationDefaults.invalid',
   INSUFFICIENT_MOVIE_RATINGS: 'preferences.insufficient',
   PREFERENCE_VERSION_CONFLICT: 'preferences.conflict',
+  AI_NOT_CONFIGURED: 'ai.required',
+  AI_AUTH_FAILED: 'ai.authFailed',
+  AI_QUOTA_EXCEEDED: 'ai.quotaExceeded',
+  AI_RATE_LIMITED: 'ai.rateLimited',
+  AI_MODEL_UNSUPPORTED: 'ai.unsupported',
   OPENAI_NOT_CONFIGURED: 'openai.required',
   OPENAI_AUTH_FAILED: 'openai.authFailed',
   OPENAI_QUOTA_EXCEEDED: 'openai.quotaExceeded',
@@ -90,9 +95,9 @@ export function apiErrorKey(value: unknown, fallback: TranslationKey = 'errors.u
   const error = (value as Partial<ApiError> | null)?.error;
   const code = error?.code;
   const reason = (error?.details as { reason?: unknown } | undefined)?.reason;
-  if (code === 'INTEGRATION_VALIDATION_FAILED' && (error?.details as { provider?: unknown } | undefined)?.provider === 'openai') {
+  if (code === 'INTEGRATION_VALIDATION_FAILED' && ['openai', 'deepseek', 'claude'].includes(String((error?.details as { provider?: unknown } | undefined)?.provider))) {
     const key = `openai.failure.${typeof reason === 'string' ? reason : 'request_failed'}`;
-    return Object.hasOwn(openAIFailureKeys, key) ? openAIFailureKeys[key as keyof typeof openAIFailureKeys] : 'openai.failure.request_failed';
+    return Object.hasOwn(openAIFailureKeys, key) ? openAIFailureKeys[key as keyof typeof openAIFailureKeys].replace('openai.', 'ai.') as TranslationKey : 'ai.failure.request_failed';
   }
   if (code === 'RESOURCE_SITE_FAILED' && typeof reason === 'string' && Object.hasOwn(resourceSiteErrorKeys, reason))
     return resourceSiteErrorKeys[reason as keyof typeof resourceSiteErrorKeys];

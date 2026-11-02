@@ -37,11 +37,12 @@ export class ResourceSiteService {
   }
 
   async configuration(ownerId: string, site: string): Promise<ResourceSiteConfiguration> {
-    this.adapter(site);
+    const { baseUrl } = this.adapter(site);
     const row = await this.credentials.find(ownerId, site);
     return row
       ? {
           site,
+          baseUrl,
           status: row.externalUserId ? row.status : 'configured_invalid',
           cookieMasked: maskIntegrationSecret(this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site))),
           ...(row.encryptedPasskey
@@ -53,7 +54,7 @@ export class ResourceSiteService {
             : {}),
           verifiedAt: row.verifiedAt.toISOString(),
         }
-      : { site, status: 'unconfigured' };
+      : { site, baseUrl, status: 'unconfigured' };
   }
 
   async configure(

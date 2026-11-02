@@ -19,7 +19,7 @@ export const ConversationMessagesQuerySchema = Type.Object(
 
 export const AppendConversationMessageRequestSchema = Type.Object(
   {
-    content: Type.String({ minLength: 1, maxLength: 20_000 }),
+    content: Type.String({ minLength: 1 }),
     clientRequestId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
   },
   { additionalProperties: false }
@@ -27,7 +27,7 @@ export const AppendConversationMessageRequestSchema = Type.Object(
 
 export const RunConversationTurnRequestSchema = Type.Object(
   {
-    content: Type.String({ minLength: 1, maxLength: 20_000 }),
+    content: Type.String({ minLength: 1 }),
     clientRequestId: Type.String({ minLength: 1, maxLength: 128 }),
   },
   { additionalProperties: false }

@@ -33,6 +33,7 @@ export class PreferenceWorkflow {
     const proposal = await aiStep('preference.agent.run', () => {
       return this.agent.run(evidenceJob, profile, signal);
     });
+    if (proposal.generatedBy) job.generatedBy = proposal.generatedBy;
     for (const change of proposal.changes) {
       currentAiTrace()?.sensitive(change.content);
       currentAiTrace()?.sensitive(change.reason);

@@ -44,7 +44,7 @@ it('saves and replaces the key, clears the input, then confirms deletion', async
   await wrapper.get('button.danger').trigger('click');
   await flushPromises();
   expect(wrapper.text()).toContain('Not configured');
-  expect(wrapper.text()).toContain('API key deleted');
+  expect(wrapper.text()).toContain('API key has been deleted');
   wrapper.unmount();
 });
 
@@ -151,7 +151,7 @@ it('displays fetched models and persists selection without sending the key', asy
   );
   await wrapper.get('select').setValue('model-b');
   await flushPromises();
-  expect(fetchMock).toHaveBeenLastCalledWith(
+  expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining('/openai/model'),
     expect.objectContaining({
       method: 'PUT',

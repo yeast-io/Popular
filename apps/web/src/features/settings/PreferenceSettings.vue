@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, nextTick, ref, computed } from 'vue';
-import type { TasteProfileResponse, TasteRevision, OpenAIConfiguration } from '@movie-hub/contract';
+import type { TasteProfileResponse, TasteRevision, AiConfiguration } from '@movie-hub/contract';
 import { loadWebConfig } from '../../config/env';
 import { useI18n, formatDate } from '../../i18n';
 import { localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
@@ -13,7 +13,7 @@ const expandedEntries = ref<string[]>([]);
 let entryExpansionInitialized = false;
 const busy = ref(false);
 const error = ref('');
-const aiConfig = ref<OpenAIConfiguration | null>(null);
+const aiConfig = ref<AiConfiguration | null>(null);
 const checkingAi = ref(true);
 const aiConfigError = ref('');
 const aiReady = computed(() => Boolean(aiConfig.value?.configured && aiConfig.value.validation?.status === 'valid' && aiConfig.value.model));
@@ -26,11 +26,11 @@ async function loadAIConfiguration(): Promise<boolean> {
   checkingAi.value = true;
   aiConfigError.value = '';
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/openai`, {
+    const response = await fetch(`${apiBaseUrl}/me/integrations/ai`, {
       credentials: 'include', headers: { 'accept-language': locale.value },
     });
     if (!response.ok) throw await localizedResponseError(response, 'preferences.aiUnavailable');
-    const config = await response.json() as OpenAIConfiguration;
+    const config = await response.json() as AiConfiguration;
     if (stopped || id !== aiSequence) return false;
     aiConfig.value = config;
     return aiReady.value;

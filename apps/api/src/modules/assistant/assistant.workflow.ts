@@ -37,7 +37,7 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
   constructor(
     private readonly createLlm: (
       ownerId: string
-    ) => Promise<Pick<LlmClient, 'generate'> & Partial<Pick<LlmClient, 'stream'>>>,
+    ) => Promise<Pick<LlmClient, 'generate'> & Partial<Pick<LlmClient, 'stream' | 'limits'>>>,
     private readonly options: AssistantWorkflowOptions
   ) {}
 
@@ -121,8 +121,8 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
       const llm = await aiStep('assistant.credentials.load', () => this.createLlm(input.ownerId));
       const agent = new AssistantAgent(llm, {
         systemPrompt: this.options.systemPrompt,
-        maxContextTokens: this.options.maxContextTokens,
-        maxOutputTokens: this.options.maxOutputTokens,
+        maxContextTokens: llm.limits?.contextWindow ?? this.options.maxContextTokens,
+        maxOutputTokens: llm.limits?.maxOutputTokens ?? this.options.maxOutputTokens,
       });
       const turn: AssistantWorkflowTurn = {
         locale: session.locale ?? this.options.locale ?? 'zh-CN',

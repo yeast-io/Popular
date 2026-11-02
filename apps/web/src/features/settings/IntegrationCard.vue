@@ -32,7 +32,7 @@ const defaultCategory = computed(() => {
         identity
       )
         ? 'downloader' as const
-        : identity === 'openai' ? 'ai' as const : undefined;
+        : ['openai', 'deepseek', 'claude'].includes(identity) ? 'ai' as const : undefined;
 });
 const expanded = ref(false);
 const logoFailed = ref(false);

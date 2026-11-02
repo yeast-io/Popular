@@ -11,6 +11,8 @@ export function createAssistantConversationReply(
     let inputTokens = 0,
       outputTokens = 0;
     const tracked = {
+      ...(llm.selection ? { selection: llm.selection } : {}),
+      ...(llm.limits ? { limits: llm.limits } : {}),
       stream: llm.stream.bind(llm),
       generate: async (request: Parameters<typeof llm.generate>[0]) => {
         const result = await llm.generate(request);

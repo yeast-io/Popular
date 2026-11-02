@@ -19,13 +19,18 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         { releases: [{ id: '123', title: 'Interstellar.2014.1080p', seeders: 22 }] }
       );
       return Response.json(
-        init?.method === 'PUT' ? { site: 'hdarea', status: 'configured_valid', cookieMasked: '••••••••', passkeyMasked: '••••••••' } : { site: 'hdarea', status: 'unconfigured' }
+        init?.method === 'PUT' ? { site: 'hdarea', baseUrl: 'https://custom-hdarea.example/', status: 'configured_valid', cookieMasked: '••••••••', passkeyMasked: '••••••••' } : { site: 'hdarea', baseUrl: 'https://custom-hdarea.example/', status: 'unconfigured' }
       );
     })
     );
     const wrapper = mount(ResourceSiteSettings);
     await flushPromises();
     await wrapper.get('.integration-disclosure').trigger('click');
+    expect((wrapper.get('#hdarea-base-url').element as HTMLInputElement).value).toBe('https://custom-hdarea.example/');
+    expect(wrapper.get('#hdarea-base-url').attributes('readonly')).toBeDefined();
+    expect(wrapper.text()).toContain(locale === 'zh-CN'
+      ? '通过服务端 HDAREA_BASE_URL 配置，修改后重启 API。'
+      : 'Configured through server HDAREA_BASE_URL; restart the API after changes.');
     await wrapper.get('#hdarea-cookie').setValue('uid=secret');
     await wrapper.get('#hdarea-passkey').setValue('private-passkey');
     await wrapper.findAll('form')[0]!.trigger('submit');
@@ -50,6 +55,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     const tested = calls.find((call) => call.init?.method === 'POST')!;
     expect(tested.url).toContain('/hdarea/test');
     expect(tested.init?.body).toBeUndefined();
+    expect((wrapper.get('#hdarea-base-url').element as HTMLInputElement).value).toBe('https://custom-hdarea.example/');
 
     expect(wrapper.text()).not.toContain('uid=secret');
     wrapper.unmount();

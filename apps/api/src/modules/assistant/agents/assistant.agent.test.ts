@@ -3,6 +3,7 @@ import test from 'node:test';
 import { AssistantAgent } from './assistant.agent.js';
 import type { AssistantInputWorkflowMessage } from '../assistant.types.js';
 import type { LlmGenerateInput } from '../../llm/llm.types.js';
+import { LlmProviderError } from '../../llm/llm.errors.js';
 
 const input: AssistantInputWorkflowMessage = {
   ownerId: 'alice',
@@ -13,6 +14,20 @@ const input: AssistantInputWorkflowMessage = {
   receivedAt: '2026-10-18T00:00:00.000Z',
 };
 const options = { systemPrompt: 'Be concise.', maxContextTokens: 8000, maxOutputTokens: 500 };
+
+test('classifier rejects Chinese/English prose and invalid schema without leaking model text', async () => {
+  for (const content of ['坦白说，我这边没法向你提供 private payload', 'I cannot provide private payload', '{"intent":"private payload"}']) {
+    const agent = new AssistantAgent({ generate: async () => ({ content, inputTokens: 1, outputTokens: 1 }) }, options);
+    await assert.rejects(agent.classifyRequest(input), (error: unknown) => {
+      assert.ok(error instanceof LlmProviderError);
+      assert.equal(error.diagnostics?.reason, content.startsWith('{') ? 'invalid_schema' : 'invalid_json');
+      assert.equal(error.diagnostics?.operation, 'assistant.intent');
+      assert.ok(error.cause instanceof Error);
+      assert.ok(!String(error.cause.stack).includes('private payload'));
+      return true;
+    });
+  }
+});
 
 test('assistant agent detects intent and preference evidence without business side effects', async () => {
   let calls = 0;

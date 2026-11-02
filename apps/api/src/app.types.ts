@@ -1,3 +1,4 @@
+import type { AiSettingsRegistry } from './modules/integrations/ai-settings.types.js';
 import type { TvPreferenceService } from './modules/tv-preferences/tv-preference.service.js';
 import type { WatchlistService } from './modules/watchlist/watchlist.service.js';
 import type { TvShowService } from './modules/tv-shows/tv-show.service.js';
@@ -62,6 +63,7 @@ export interface BuildAppOptions {
   qbittorrentIntegrationService?: QBittorrentIntegrationService;
   movieDownloadService?: MovieDownloadService;
   externalUsageService?: ExternalUsageService;
+  aiSettings?: AiSettingsRegistry;
   openaiSettingsService?: OpenAISettingsService;
   conversationService?: ConversationService;
   conversationTurnService?: ConversationTurnService;

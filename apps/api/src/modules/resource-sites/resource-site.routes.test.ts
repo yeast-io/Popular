@@ -72,6 +72,9 @@ test('authenticated Cookie save → search → detail → delete runs through th
     const base = '/api/v1/me/integrations/resource-sites/hdarea';
     assert.equal((await app.inject({ method: 'GET', url: base })).statusCode, 401);
     assert.equal(requests, 0);
+    const initial = await app.inject({ method: 'GET', url: base, headers: { cookie: `${config.SESSION_COOKIE_NAME}=A` } });
+    assert.equal(initial.statusCode, 200, initial.body);
+    assert.equal(initial.json().baseUrl, 'https://hdarea.club/');
     for (const owner of ['A', 'B']) {
       const saved = await app.inject({
         method: 'PUT',
@@ -81,6 +84,7 @@ test('authenticated Cookie save → search → detail → delete runs through th
       }
       );
       assert.equal(saved.statusCode, 200, saved.body);
+      assert.equal(saved.json().baseUrl, 'https://hdarea.club/');
       assert.equal(saved.body.includes(`uid=${owner}-secret`), false);
       assert.equal(saved.body.includes(`passkey-${owner}-secret`), false);
       assert.equal(saved.json().cookieMasked, maskIntegrationSecret(`uid=${owner}-secret`));

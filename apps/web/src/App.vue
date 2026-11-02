@@ -20,7 +20,7 @@ import PreferenceSettings from './features/settings/PreferenceSettings.vue';
 import TelegramSettings from './features/integrations/TelegramSettings.vue';
 import WhatsAppSettings from './features/integrations/WhatsAppSettings.vue';
 import NotificationTestPage from './features/notifications/NotificationTestPage.vue';
-import OpenAISettings from './features/integrations/OpenAISettings.vue';
+import AiProviderSettings from './features/integrations/AiProviderSettings.vue';
 import ResourceSiteSettings from './features/integrations/ResourceSiteSettings.vue';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
 import RemoteClientSettings from './features/remote-clients/RemoteClientSettings.vue';
@@ -1067,7 +1067,7 @@ function closeAccountMenu() {
             </form>
 
             <div v-if="settingsVisited.has('ai')" v-show="settingsSection === 'ai'" class="settings-form">
-              <OpenAISettings :key="user.id" />
+              <AiProviderSettings v-for="provider in (['openai', 'deepseek', 'claude'] as const)" :key="`${user.id}:${provider}`" :provider="provider" />
             </div>
             <div v-if="settingsVisited.has('resources')" v-show="settingsSection === 'resources'" class="settings-form">
               <MTeamSettings :key="user.id" />

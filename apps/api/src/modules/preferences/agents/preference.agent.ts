@@ -12,13 +12,14 @@ import { ProposalSchema } from '../preference-proposal.schema.js';
 
 export class PreferenceAgent {
   constructor(
-    private readonly createLlm: (ownerId: string) => Promise<Pick<LlmClient, 'generate'>>,
+    private readonly createLlm: (ownerId: string) => Promise<Pick<LlmClient, 'generate' | 'limits' | 'selection'>>,
     private readonly maxContextTokens = 32_000
   ) {}
 
   async run(job: PreferenceJob, profile: TasteProfile, signal: AbortSignal): Promise<PreferenceProposal> {
     const llm = await aiStep('preference.credentials.load', () => this.createLlm(job.ownerId));
-    const maxOutputTokens = Math.min(2500, Math.floor(this.maxContextTokens / 3));
+    const maxContextTokens = llm.limits?.contextWindow ?? this.maxContextTokens;
+    const maxOutputTokens = llm.limits?.maxOutputTokens ?? Math.min(2500, Math.floor(maxContextTokens / 3));
     const payload = JSON.stringify({
       mode: job.kind,
       promptVersion: PREFERENCE_PROMPT_VERSION,
@@ -28,7 +29,7 @@ export class PreferenceAgent {
     currentAiTrace()?.sensitive(payload);
     currentAiTrace()?.sensitive(PREFERENCE_SYSTEM_PROMPT);
     const messages = await aiStep('preference.context.build', async () => {
-      return buildLlmContext(PREFERENCE_SYSTEM_PROMPT, payload, [], this.maxContextTokens, maxOutputTokens);
+      return buildLlmContext(PREFERENCE_SYSTEM_PROMPT, payload, [], maxContextTokens, maxOutputTokens);
     });
     const result = await aiStep('preference.model.generate', () => {
       return llm.generate({
@@ -48,7 +49,7 @@ export class PreferenceAgent {
       } catch {
         throw new SyntaxError('Preference model returned invalid JSON');
       }
-      return ProposalSchema.parse(proposal);
+      return { ...ProposalSchema.parse(proposal), ...(llm.selection ? { generatedBy: llm.selection } : {}) };
     });
   }
 }

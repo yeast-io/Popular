@@ -1,3 +1,4 @@
+import { createAiConfigModel } from './integrations/ai-config.schema.js';
 import { createTvPreferenceModel } from './tv-preferences/tv-preference.schema.js';
 import { createResourceNotificationModel } from './resource-notifications/resource-notification.schema.js';
 import { createTvWatchlistModel } from './watchlist/tv-watchlist.schema.js';
@@ -59,6 +60,7 @@ export function createModels(connection: Connection) {
     telegramBindings: createTelegramModel(connection),
     notificationPreferences: createNotificationPreferencesModel(connection),
     whatsappSessions: createWhatsAppModel(connection),
+    aiConfigs: createAiConfigModel(connection),
     openaiConfigs: createOpenAIConfigModel(connection),
     users: createUserModel(connection),
     authIdentities: createAuthIdentityModel(connection),

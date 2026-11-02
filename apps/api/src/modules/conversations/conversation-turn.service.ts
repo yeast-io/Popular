@@ -53,7 +53,7 @@ export class ConversationTurnService {
       const llm = await aiStep('model.client', async () => {
         return typeof this.llm === 'function' ? this.llm(input.ownerId) : this.llm;
       });
-      const prepared = await aiStep('turn.prepare', () => this.prepareTurn(input, llm));
+      const prepared = await aiStep('turn.prepare', () => this.resolved(llm).prepareTurn(input, llm));
       yield { type: 'user_message', message: prepared.userMessage };
 
       if (prepared.completed) {
@@ -90,7 +90,7 @@ export class ConversationTurnService {
         for await (const event of assistantStream
           ?? llm.stream({
             messages: prepared.context.messages,
-            maxOutputTokens: this.options.maxOutputTokens,
+            maxOutputTokens: llm.limits?.maxOutputTokens ?? this.options.maxOutputTokens,
             ...(input.signal ? { signal: input.signal } : {}),
           })) {
           if (event.type === 'delta') {
@@ -123,7 +123,7 @@ export class ConversationTurnService {
     const llm = await aiStep('model.client', async () => {
       return typeof this.llm === 'function' ? this.llm(input.ownerId) : this.llm;
     });
-    const prepared = await aiStep('turn.prepare', () => this.prepareTurn(input, llm));
+    const prepared = await aiStep('turn.prepare', () => this.resolved(llm).prepareTurn(input, llm));
     if (prepared.completed) return prepared.completed;
 
     const routed = this.options.reply ? await this.options.reply(input, prepared.context.messages, llm) : undefined;
@@ -131,7 +131,7 @@ export class ConversationTurnService {
       = routed
         ?? (await this.generate(llm, {
           messages: prepared.context.messages,
-          maxOutputTokens: this.options.maxOutputTokens,
+          maxOutputTokens: llm.limits?.maxOutputTokens ?? this.options.maxOutputTokens,
           ...(input.signal ? { signal: input.signal } : {}),
         }));
     if (!generated.content.trim()) {
@@ -141,6 +141,15 @@ export class ConversationTurnService {
     const usage = { inputTokens: generated.inputTokens, outputTokens: generated.outputTokens };
     const assistantMessage = await this.appendAssistant(input, generated.content, usage);
     return { userMessage: prepared.userMessage, assistantMessage, usage };
+  }
+
+  private resolved(llm: LlmClient): ConversationTurnService {
+    if (!llm.limits) return this;
+    return new ConversationTurnService(this.conversations, llm, this.tokenCounter, {
+      ...this.options, maxContextTokens: llm.limits.contextWindow,
+      maxOutputTokens: llm.limits.maxOutputTokens, summaryMaxOutputTokens: llm.limits.maxOutputTokens,
+      historyLimit: llm.limits.contextWindow,
+    });
   }
 
   private async prepareTurn(

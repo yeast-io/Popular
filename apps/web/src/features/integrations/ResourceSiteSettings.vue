@@ -89,7 +89,11 @@ async function remove() {
   deleting.value = true;
   await action(async () => {
     await request(endpoint, { method: 'DELETE' });
-    applyConfiguration({ site: 'hdarea', status: 'unconfigured' });
+    applyConfiguration({
+      site: 'hdarea',
+      ...(configuration.value.baseUrl ? { baseUrl: configuration.value.baseUrl } : {}),
+      status: 'unconfigured',
+    });
     confirmDelete.value = false;
     emit('configuration-changed');
   });
@@ -112,6 +116,10 @@ async function retest() {
     <template v-if="!loading">
       <form class="integration-form" novalidate @submit.prevent="save">
         <div class="settings-fields integration-fields">
+          <label for="hdarea-base-url">{{ t('resourceSite.baseUrl') }}
+            <input id="hdarea-base-url" :value="configuration.baseUrl" type="url" readonly autocomplete="url" />
+            <small>{{ t('resourceSite.baseUrlHint') }}</small>
+          </label>
           <label for="hdarea-cookie">{{ t('resourceSite.cookie') }}
             <input id="hdarea-cookie" v-model="cookie" :type="configuration.cookieMasked && cookie === configuration.cookieMasked ? 'text' : 'password'" autocomplete="new-password" maxlength="16384" :required="!configured" :disabled="busy" />
             <small v-if="configuration.cookieMasked">{{ t('settings.credentialLength', { length: Array.from(configuration.cookieMasked).length }) }}</small>

@@ -26,7 +26,7 @@ describe('AI chat', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/me/integrations/openai')) return Response.json({ configured: true });
+        if (url.endsWith('/me/integrations/ai')) return Response.json({ configured: true });
         const method = init?.method ?? 'GET';
         requests.push({ url, method, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
         if (url.endsWith('/conversations') && method === 'GET') {
@@ -113,7 +113,7 @@ describe('AI chat', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith('/me/integrations/openai')) return Response.json({ configured: true });
+        if (url.endsWith('/me/integrations/ai')) return Response.json({ configured: true });
         const method = init?.method ?? 'GET';
         if (url.endsWith('/conversations') && method === 'GET') return Response.json({ items: [] });
         if (url.endsWith('/conversations') && method === 'POST') {
@@ -166,7 +166,7 @@ describe('AI account key gate', () => {
   it.each([false, 'failure'])('disables chat when key configuration is %s', async (configured) => {
     setLocale('en-US');
     const fetchMock = vi.fn(async (input: unknown) => {
-      if (String(input).endsWith('/me/integrations/openai')) {
+      if (String(input).endsWith('/me/integrations/ai')) {
         if (configured === 'failure') return Response.json({ error: { code: 'SERVICE_UNAVAILABLE' } }, { status: 503 });
         return Response.json({ configured: false });
       }

@@ -1,3 +1,4 @@
+import { assistantFailureReply } from './assistant-failure.presentation.js';
 import type { AssistantWorkerOptions } from './assistant.types.js';
 import { loadTmdbPoster } from '../../infrastructure/tmdb/poster.js';
 import type { RecommendationMovie } from '../recommendations/recommendation.types.js';
@@ -7,7 +8,6 @@ import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
-import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AssistantConversation, AssistantJob, AssistantQueue } from './assistant.types.js';
 import type { AssistantWorkflow } from './assistant.workflow.js';
 import type { AssistantInputWorkflowMessage } from './assistant.types.js';
@@ -388,7 +388,8 @@ export class AssistantWorker {
         currentAiTrace()?.fail(error, { event: 'assistant_generation_failed' });
         currentAiTrace()?.clearFailure();
         this.report('assistant_generation_failed');
-        result = { replyText: errorReply(error) };
+        const locale = await this.options.resolveLocale?.(job.input.ownerId) ?? 'zh-CN';
+        result = { replyText: assistantFailureReply(error, locale) };
       }
       signal.throwIfAborted();
       currentAiTrace()?.sensitive(result.replyText);
@@ -494,14 +495,4 @@ export class AssistantWorker {
     await this.scanning;
     await Promise.all(this.running.values());
   }
-}
-
-function errorReply(error: unknown): string {
-  if (
-    error instanceof AppError
-    && ['OPENAI_NOT_CONFIGURED', 'OPENAI_AUTH_FAILED', 'OPENAI_QUOTA_EXCEEDED', 'OPENAI_RATE_LIMITED'].includes(error.code)
-  ) {
-    return 'AI 暂时不可用，请在系统设置中检查你自己的 OpenAI API Key、额度和调用限制。';
-  }
-  return '本次 AI 处理未完成，请稍后重新发送消息。没有执行任何资源查询或下载操作。';
 }

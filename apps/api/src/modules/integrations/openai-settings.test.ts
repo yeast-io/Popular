@@ -75,14 +75,14 @@ function setup(t?: TestContext, verification?: OpenAIVerification) {
 
 test('verifies before encrypting and saving; isolates accounts and supports replacement and deletion', async (t) => {
   const f = setup(t);
-  assert.deepEqual(await f.service.get('alice'), { configured: false });
+  assert.deepEqual(await f.service.get('alice'), { configured: false, provider: 'openai' });
   const saved = await f.service.save('alice', aliceKey);
   assert.equal(saved.validation?.status, 'valid');
   assert.equal(saved.maskedApiKey, '••••1234');
   assert.equal(saved.model, 'model-a');
   assert.ok(!JSON.stringify([...f.records.values()]).includes(aliceKey));
   assert.ok(!JSON.stringify(saved).includes('encryptedApiKey'));
-  assert.deepEqual(await f.service.get('bob'), { configured: false });
+  assert.deepEqual(await f.service.get('bob'), { configured: false, provider: 'openai' });
   await f.service.save('bob', bobKey);
   assert.equal(await f.service.requireApiKey('alice'), aliceKey);
   assert.equal(await f.service.requireApiKey('bob'), bobKey);
@@ -90,7 +90,7 @@ test('verifies before encrypting and saving; isolates accounts and supports repl
   await f.service.save('alice', bobKey);
   assert.equal(await f.service.requireApiKey('alice'), bobKey);
   await f.service.delete('alice');
-  await assert.rejects(f.service.requireApiKey('alice'), { code: 'OPENAI_NOT_CONFIGURED' });
+  await assert.rejects(f.service.requireApiKey('alice'), { code: 'AI_NOT_CONFIGURED' });
   assert.equal(await f.service.requireApiKey('bob'), bobKey);
   await assert.rejects(f.service.save(undefined, aliceKey), { code: 'UNAUTHORIZED' });
   await assert.rejects(f.service.delete(undefined), { code: 'UNAUTHORIZED' });
@@ -155,7 +155,7 @@ test('replacement verification cannot restore a deleted key or overwrite another
   }
 });
 
-test('legacy saved keys hide models until verified; repeated tests share requests and enforce cooldown', async (t) => {
+test('legacy saved keys hide models until verified; repeated tests share in-flight requests without imposing a cooldown', async (t) => {
   let calls = 0;
   const f = setup(t, { model: 'model-a', verify: async (key) => {
     calls++;
@@ -169,9 +169,9 @@ test('legacy saved keys hide models until verified; repeated tests share request
   assert.deepEqual(results[0], results[1]);
   assert.equal(results[0]?.validation?.status, 'valid');
   assert.equal((await f.service.get('alice')).model, 'model-a');
-  await assert.rejects(f.service.test('alice'), { code: 'CONFLICT' });
-  await assert.rejects(f.service.save('alice', bobKey), { code: 'CONFLICT' });
-  await assert.rejects(f.service.test('bob'), { code: 'OPENAI_NOT_CONFIGURED' });
+  assert.equal((await f.service.test('alice')).validation?.status, 'valid');
+  assert.equal((await f.service.test('alice')).configured, true);
+  await assert.rejects(f.service.test('bob'), { code: 'AI_NOT_CONFIGURED' });
   await assert.rejects(f.service.test(undefined), { code: 'UNAUTHORIZED' });
 });
 
@@ -239,7 +239,7 @@ test('settings HTTP routes enforce verification, localize failures and never exp
     const failed = await app.inject({ method: 'PUT', url, headers, payload: { apiKey: bobKey } });
     assert.equal(failed.statusCode, 400);
     assert.equal(failed.json().error.details.reason, 'authentication');
-    assert.equal(failed.json().error.message, 'OpenAI 密钥验证失败');
+    assert.equal(failed.json().error.message, 'AI 密钥验证失败');
     assert.equal(await f.service.requireApiKey('alice'), aliceKey);
     assert.equal((await app.inject({ method: 'DELETE', url, headers })).statusCode, 204);
   } finally {
@@ -281,7 +281,7 @@ test('missing key blocks normal and streaming turns before any message write', a
       }
       );
       assert.equal(response.statusCode, 403);
-      assert.equal(response.json().error.code, 'OPENAI_NOT_CONFIGURED');
+      assert.equal(response.json().error.code, 'AI_NOT_CONFIGURED');
       assert.ok(!String(response.headers['content-type']).includes('event-stream'));
     }
     assert.equal(writes, 0);

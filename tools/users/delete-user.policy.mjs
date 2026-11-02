@@ -5,7 +5,7 @@ export const userOwnedCollections = [
   'conversation_threads', 'conversation_messages', 'user_movie_states',
   'user_tv_preferences', 'user_tv_watchlist', 'resource_notifications',
   'notification_preferences', 'telegram_bindings', 'whatsapp_sessions',
-  'integration_configs', 'integration_preferences', 'openai_configs',
+  'integration_configs', 'integration_preferences', 'openai_configs', 'ai_configs',
   'transmission_configs', 'qbittorrent_configs', 'resource_site_credentials',
   'remote_client_authorizations', 'remote_client_devices', 'remote_client_commands',
   'resource_download_limits', 'movie_downloads', 'movie_resource_checks',

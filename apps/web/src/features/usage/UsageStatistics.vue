@@ -53,6 +53,8 @@ function providerLabel(provider: string): string {
   if (provider === 'tmdb') return t('usage.provider.tmdb');
   if (provider === 'mteam') return t('usage.provider.mteam');
   if (provider === 'openai') return t('usage.provider.openai');
+  if (provider === 'deepseek') return t('usage.provider.deepseek');
+  if (provider === 'claude') return t('usage.provider.claude');
   return provider;
 }
 

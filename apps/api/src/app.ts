@@ -1,3 +1,5 @@
+import { registerAiSettingsRoutes, registerDefaultAiSettingsRoute } from './modules/integrations/ai-settings.routes.js';
+import { AI_PROVIDERS, modelLimits } from './modules/integrations/ai-provider.policy.js';
 import { registerTvPreferenceRoutes } from './modules/tv-preferences/tv-preference.routes.js';
 import { registerWatchlistRoutes } from './modules/watchlist/watchlist.routes.js';
 import { registerTvShowRoutes } from './modules/tv-shows/tv-show.routes.js';
@@ -63,6 +65,7 @@ export async function buildApp({
   conversationService,
   conversationTurnService,
   openaiSettingsService,
+  aiSettings,
   preferenceService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const loggers = createLoggers(config.LOG_LEVEL);
@@ -103,7 +106,17 @@ export async function buildApp({
       if (notificationTestService) registerNotificationTestRoutes(api, notificationTestService, config);
       if (notificationService) registerNotificationRoutes(api, notificationService, config);
       if (whatsappService) registerWhatsAppRoutes(api, whatsappService, config);
-      if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config, loggers.error);
+      if (aiSettings) {
+        for (const provider of AI_PROVIDERS) registerAiSettingsRoutes(api, aiSettings[provider], config, loggers.error, provider);
+        if (authService && integrationPreferencesService) registerDefaultAiSettingsRoute(api, config, loggers.error, async (token) => {
+          const ownerId = await authService.requireOwnerId(token);
+          const selected = (await integrationPreferencesService.get(ownerId)).defaults.ai;
+          if (!AI_PROVIDERS.includes(selected as import('@movie-hub/contract').AiProvider)) return { configured: false };
+          const provider = selected as import('@movie-hub/contract').AiProvider;
+          const state = await aiSettings[provider].get(token);
+          return { ...state, configured: state.configured && !!state.model && !!modelLimits(provider, state.model) };
+        });
+      } else if (openaiSettingsService) registerOpenAISettingsRoutes(api, openaiSettingsService, config, loggers.error);
       registerPublicConfigRoutes(api, config);
       registerHealthRoutes(api, healthDependencies);
       if (authService) registerAuthRoutes(api, authService, config, loggers.error);

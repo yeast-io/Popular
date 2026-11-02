@@ -25,6 +25,7 @@ import type {
   AssistantWorkflowResult,
 } from '../assistant.types.js';
 import { currentAiTrace } from '../../../infrastructure/logging/ai-trace.js';
+import { parseLlmOutput } from '../../llm/llm-output.schema.js';
 import {
   PlanSchema,
   RankSchema,
@@ -39,7 +40,7 @@ const OUTPUT_TOKEN_LIMIT = 256;
 /** Model classification, planning, ranking and generation only. Workflow owns routing and tool calls. */
 export class AssistantAgent {
   constructor(
-    private readonly llm: Pick<LlmClient, 'generate'> & Partial<Pick<LlmClient, 'stream'>>,
+    private readonly llm: Pick<LlmClient, 'generate'> & Partial<Pick<LlmClient, 'stream' | 'limits' | 'selection'>>,
     private readonly options: AssistantAgentOptions
   ) {}
 
@@ -55,7 +56,7 @@ export class AssistantAgent {
         input.text,
         history,
         this.options.maxContextTokens,
-        OUTPUT_TOKEN_LIMIT
+        this.llm.limits?.maxOutputTokens ?? OUTPUT_TOKEN_LIMIT
       ),
       maxOutputTokens: OUTPUT_TOKEN_LIMIT,
       operation: 'assistant.intent',
@@ -78,7 +79,10 @@ export class AssistantAgent {
     signal?.throwIfAborted();
     // Provider failures, malformed JSON, and invalid values must not masquerade as unclear intent.
     currentAiTrace()?.sensitive(result.content);
-    const parsed = IntentResultSchema.parse(JSON.parse(result.content));
+    const parsed = parseLlmOutput(IntentResultSchema, result.content, {
+      reason: 'invalid_json', operation: 'assistant.intent', schemaName: 'assistant_intent',
+      ...this.llm.selection,
+    });
     return {
       intent: parsed.intent,
       ...(parsed.handling ? { handling: parsed.handling } : {}),
@@ -198,7 +202,7 @@ export class AssistantAgent {
   }
 
   private async generate(input: LlmGenerateInput) {
-    const reserve = Math.min(input.maxOutputTokens, Math.floor(this.options.maxContextTokens / 3));
+    const reserve = this.llm.limits?.maxOutputTokens ?? Math.min(input.maxOutputTokens, Math.floor(this.options.maxContextTokens / 3));
     for (const message of input.messages) currentAiTrace()?.sensitive(message.content);
     const result = await this.llm.generate({
       ...input,

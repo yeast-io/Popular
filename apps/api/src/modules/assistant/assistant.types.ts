@@ -136,6 +136,7 @@ export interface AssistantQueue {
 }
 
 export interface AssistantWorkerOptions {
+  resolveLocale?: (ownerId: string) => Promise<Locale>;
   maxConcurrency: number;
   scanIntervalMs: number;
   scanTraceEnabled?: boolean;

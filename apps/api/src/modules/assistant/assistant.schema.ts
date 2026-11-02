@@ -5,6 +5,6 @@ export const AssistantInputSchema = z.object({
   channel: z.enum(['telegram', 'whatsapp', 'web']),
   chatId: z.string().min(1),
   messageId: z.string().min(1),
-  text: z.string().trim().min(1).max(8_000),
+  text: z.string().trim().min(1),
   receivedAt: z.iso.datetime(),
 });

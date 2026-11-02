@@ -4,6 +4,28 @@ import type OpenAI from 'openai';
 import { LlmProviderError } from '../../modules/llm/llm.errors.js';
 import { OpenAILlmClient } from './client.js';
 
+test('structured responses reject prose and explicit refusals with safe diagnostics', async () => {
+  for (const refusal of [false, true]) {
+    const client = new OpenAILlmClient({ responses: { create: async () => ({
+      status: 'completed', output_text: '坦白说，我这边没法向你提供 private payload',
+      output: refusal ? [{ type: 'message', content: [{ type: 'refusal', refusal: 'private refusal' }] }] : [],
+      usage: { input_tokens: 2, output_tokens: 3 },
+    }) } } as unknown as Pick<OpenAI, 'responses'>, 'test-model');
+    await assert.rejects(client.generate({ messages: [], maxOutputTokens: 256,
+      operation: 'assistant.intent', outputSchema: { name: 'assistant_intent', schema: { type: 'object' } },
+    }), (error: unknown) => {
+      assert.ok(error instanceof LlmProviderError);
+      assert.equal(error.diagnostics?.reason, refusal ? 'refusal' : 'invalid_json');
+      assert.equal(error.diagnostics?.provider, 'openai');
+      assert.equal(error.diagnostics?.model, 'test-model');
+      assert.ok(!String(error.stack).includes('坦白说'));
+      assert.ok(!String((error.cause as Error | undefined)?.stack).includes('private payload'));
+      assert.ok(!String((error.cause as Error | undefined)?.stack).includes('private refusal'));
+      return true;
+    });
+  }
+});
+
 test('maps messages to a non-persisted Responses API request and returns usage', async () => {
   let request: unknown;
   const openai = {
@@ -162,10 +184,10 @@ test('rejects a stream that ends without a completed event', async () => {
 
 test('returns sanitized actionable errors for authentication, quota and rate limits', async () => {
   for (const [status, code, expected] of [
-    [401, 'invalid_api_key', 'OPENAI_AUTH_FAILED'],
-    [403, 'permission_denied', 'OPENAI_AUTH_FAILED'],
-    [429, 'insufficient_quota', 'OPENAI_QUOTA_EXCEEDED'],
-    [429, 'rate_limit_exceeded', 'OPENAI_RATE_LIMITED'],
+    [401, 'invalid_api_key', 'AI_AUTH_FAILED'],
+    [403, 'permission_denied', 'AI_AUTH_FAILED'],
+    [429, 'insufficient_quota', 'AI_QUOTA_EXCEEDED'],
+    [429, 'rate_limit_exceeded', 'AI_RATE_LIMITED'],
   ] as const) {
     const client = new OpenAILlmClient(
       {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { OpenAIConfiguration, ConversationMessageResponse, ConversationMessagesResponse, ConversationThreadResponse, ConversationThreadsResponse, ConversationTurnStreamEvent } from '@movie-hub/contract';
+import type { AiConfiguration, ConversationMessageResponse, ConversationMessagesResponse, ConversationThreadResponse, ConversationThreadsResponse, ConversationTurnStreamEvent } from '@movie-hub/contract';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
@@ -28,9 +28,9 @@ let activeTurn: AbortController | null = null;
 onMounted(async () => {
   await loadThreads();
   try {
-    const response = await fetch(`${apiBaseUrl}/me/integrations/openai`, { credentials: 'include' });
+    const response = await fetch(`${apiBaseUrl}/me/integrations/ai`, { credentials: 'include' });
     if (!response.ok) throw await localizedResponseError(response);
-    configured.value = ((await response.json()) as OpenAIConfiguration).configured;
+    configured.value = ((await response.json()) as AiConfiguration).configured;
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
   } finally {
@@ -166,7 +166,7 @@ async function sendMessage() {
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return;
     const failure = localizedErrorMessage(error, 'ai.errors.sendMessage');
-    if (failure === t('openai.required')) configured.value = false;
+    if (failure === t('ai.required')) configured.value = false;
     await selectThread(threadId, true);
     errorMessage.value = failure;
   } finally {
@@ -285,7 +285,7 @@ async function scrollToLatest() {
 
       <div class="ai-composer-area">
         <div v-if="!loadingConfiguration && !configured" class="ai-key-required" role="status">
-          <p>{{ t('openai.required') }}</p>
+          <p>{{ t('ai.required') }}</p>
           <button type="button" class="secondary" @click="emit('open-settings')">{{ t('nav.settings') }}</button>
         </div>
         <p v-if="errorMessage" class="error ai-error" role="alert">{{ errorMessage }}</p>
@@ -293,7 +293,6 @@ async function scrollToLatest() {
           <textarea
             v-model="draft"
             rows="1"
-            maxlength="20000"
             :placeholder="t('ai.placeholder')"
             :aria-label="t('ai.placeholder')"
             :disabled="sending || loadingConfiguration || !configured"

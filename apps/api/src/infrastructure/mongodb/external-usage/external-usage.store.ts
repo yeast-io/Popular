@@ -73,7 +73,7 @@ export class MongoExternalUsageStore implements ExternalRequestRecorder, Externa
               { $sort: { requests: -1, provider: 1, operation: 1 } },
             ],
             models: [
-              { $match: { provider: 'openai' } },
+              { $match: { provider: { $in: ['openai', 'deepseek', 'claude'] } } },
               metricGroup({
                 provider: '$provider',
                 model: { $ifNull: ['$model', 'unknown'] },
@@ -211,7 +211,7 @@ function isDuplicateKey(error: unknown): boolean {
 }
 
 function tokenGroupMetrics() {
-  const llm = { $eq: ['$provider', 'openai'] };
+  const llm = { $in: ['$provider', ['openai', 'deepseek', 'claude']] };
   const known = { $and: [llm, { $isNumber: '$tokenUsage.inputTokens' }, { $isNumber: '$tokenUsage.outputTokens' }] };
   return {
     llmRequests: { $sum: { $cond: [llm, 1, 0] } },
