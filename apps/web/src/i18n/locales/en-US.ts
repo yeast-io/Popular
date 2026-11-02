@@ -689,6 +689,8 @@ const enUS = {
   'actions.retry': 'Retry',
   'actions.loadMore': 'Load more',
   'actions.loadingMore': 'Loading…',
+  'actions.top': 'Top',
+  'actions.bottom': 'Bottom',
   'actions.toTop': 'Go to the top of the page',
   'actions.toBottom': 'Go to the bottom of the page',
   'usage.eyebrow': 'Account analytics',

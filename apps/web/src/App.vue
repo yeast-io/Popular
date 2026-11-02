@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import type { ApiError, AuthResponse, AuthUser, LoginRequest, PublicConfig, RegisterRequest, RegistrationPendingResponse } from '@movie-hub/contract';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import type { PublicConfig } from '@movie-hub/contract';
+import { computed, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from './config/env';
 import MovieBrowser from './features/movies/MovieBrowser.vue';
 import LandingPage from './features/landing/LandingPage.vue';
 import LinkAgentPage from './features/link-agent/LinkAgentPage.vue';
-import BrandLogo from './features/branding/BrandLogo.vue';
 import TvShowBrowser from './features/tv-shows/TvShowBrowser.vue';
 import TvShowDetail from './features/tv-shows/TvShowDetail.vue';
 import ViewingPreferencesPage from './features/viewing-preferences/ViewingPreferencesPage.vue';
@@ -13,9 +12,7 @@ import ResourceNotificationPage from './features/resource-notifications/Resource
 import WatchlistPage from './features/watchlist/WatchlistPage.vue';
 import MovieDetail from './features/movies/MovieDetail.vue';
 import { useI18n } from './i18n';
-import { localizedApiError, localizedErrorMessage, localizedResponseError } from './i18n/api-error';
 import SettingsIcon from './features/settings/SettingsIcon.vue';
-import { settingsSectionFromSearch, settingsSectionSlug } from './features/settings/settings-navigation.domain';
 import PreferenceSettings from './features/settings/PreferenceSettings.vue';
 import TelegramSettings from './features/integrations/TelegramSettings.vue';
 import WhatsAppSettings from './features/integrations/WhatsAppSettings.vue';
@@ -27,125 +24,62 @@ import RemoteClientSettings from './features/remote-clients/RemoteClientSettings
 import DownloaderSettings from './features/integrations/DownloaderSettings.vue';
 import UsageStatistics from './features/usage/UsageStatistics.vue';
 import AiChat from './features/ai/AiChat.vue';
-import type { AuthField, Page, ListPage, SettingsSection } from './app.types.js';
+import { useAuthentication } from './features/authentication/authentication.composable';
+import AuthenticationPage from './features/authentication/AuthenticationPage.vue';
+import { useAccountSettings } from './features/account/account-settings.composable';
+import AccountSettings from './features/account/AccountSettings.vue';
+import { useNavigation } from './navigation/navigation.composable';
+import SiteHeader from './navigation/SiteHeader.vue';
+import { usePageScroll } from './scroll/page-scroll.composable';
+import ScrollControls from './scroll/ScrollControls.vue';
 
 const { apiBaseUrl } = loadWebConfig();
-const { locale, setLocale, t } = useI18n();
-const accountMenu = ref<HTMLDetailsElement | null>(null);
-const tvDetailBackLabel = computed(() => t(window.history.state?.tvShowOrigin === 'resource-notifications' ? 'resourceNotifications.back' : currentPage.value === 'tv-show-detail' && window.history.state?.tvShowOrigin === 'viewing-preferences' ? 'viewingPreferences.back' : currentPage.value === 'tv-show-detail' && window.history.state?.tvShowOrigin === 'watchlist' ? 'watchlist.back' : 'actions.backTvShows'));
-const mode = ref<'login' | 'register'>(window.location.pathname === '/register' ? 'register' : 'login');
-const verificationEmail = ref('');
-const verificationCode = ref('');
-const email = ref('');
-const password = ref('');
-const displayName = ref('');
-const user = ref<AuthUser | null>(null);
-let localeSaveQueue = Promise.resolve();
-let localeRevision = 0;
-const loading = ref(true);
-const submitting = ref(false);
-const errorMessage = ref('');
-const localeError = ref('');
-const localeSaveState = ref<'idle' | 'saving' | 'saved'>('idle');
-const successMessage = ref('');
-const profileName = ref('');
-const avatarFile = ref<File | null>(null);
-const avatarRemoved = ref(false);
-const avatarPreview = ref('');
-const avatarLimits = ref<PublicConfig['avatar'] | null>(null);
-const authFieldErrors = ref<Partial<Record<AuthField, string>>>({});
-const profileNameError = ref('');
+const { t } = useI18n();
 const notificationTestEnabled = ref(false);
 const aiAssistantEnabled = ref(false);
-const currentPage = ref<Page>(pageFromPath());
-const listScrollPositions: Record<ListPage, number> = { 'movies': 0, 'tv-shows': 0, 'viewing-preferences': 0, 'watchlist': 0, 'resource-notifications': 0 };
 const downloaderSettings = ref<InstanceType<typeof DownloaderSettings>>();
-const settingsSection = ref<SettingsSection>(settingsSectionFromSearch(window.location.search));
-const settingsVisited = ref(new Set<SettingsSection>([settingsSection.value]));
-const settingsSections = ['profile', 'language', 'ai', 'preferences', 'resources', 'downloads', 'keys', 'notifications'] as const;
-function selectSettingsSection(section: SettingsSection) {
-  settingsSection.value = section;
-  settingsVisited.value.add(section);
-  if (currentPage.value === 'settings') {
-    const url = new URL(window.location.href);
-    url.searchParams.set('section', settingsSectionSlug(section));
-    if (url.search !== window.location.search) window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`);
-  }
-}
-function selectMobileSettings(event: Event) {
-  selectSettingsSection((event.target as HTMLSelectElement).value as SettingsSection);
-}
-function openAISettings() {
-  selectSettingsSection('ai');
-  navigate('settings');
-}
-
-const selectedMovieId = ref(movieIdFromPath());
-const selectedTvShowId = ref(tvShowIdFromPath());
-const atTop = ref(true);
-const atBottom = ref(true);
-let scrollUpdateFrame: number | undefined;
-let contentObserver: MutationObserver | undefined;
-let pageScrollContainer: HTMLElement | null = null;
-let previousScrollRestoration: ScrollRestoration | undefined;
-
-const avatarSource = computed(() => {
-  return (
-    avatarPreview.value || (!avatarRemoved.value && user.value?.avatarUrl ? resolveApiUrl(user.value.avatarUrl) : '')
-  );
+const scroll = usePageScroll();
+const authentication = useAuthentication({ onAuthenticated: () => navigation.navigateToPath('/', true) });
+const { user, loading } = authentication;
+const account = useAccountSettings({ user, onUserUpdated: authentication.updateUser });
+const navigation = useNavigation({
+  isAuthenticated: () => Boolean(user.value),
+  aiEnabled: () => aiAssistantEnabled.value,
+  notificationTestEnabled: () => notificationTestEnabled.value,
+  scroll,
+  onAuthRequested: authentication.resetForm,
+  onPageChanged: (page) => {
+    authentication.clearFeedback();
+    account.clearFeedback();
+    if (page === 'login' || page === 'register') authentication.syncMode(page);
+  },
 });
-const avatarHint = computed(() => {
-  return avatarLimits.value
-    ? t('profile.avatarHint', { maxSize: formatBytes(avatarLimits.value.maxBytes) })
-    : t('profile.avatarHintUnavailable');
-});
-const profileDirty = computed(() => {
-  return (
-    Boolean(user.value)
-    && (profileName.value.trim() !== user.value?.displayName
-      || Boolean(avatarFile.value)
-      || (avatarRemoved.value && Boolean(user.value?.avatarUrl)))
-  );
-});
+const { currentPage, selectedMovieId, selectedTvShowId, settingsSection, settingsVisited, settingsSections,
+  tvDetailBackLabel, scrollControlsEnabled, selectSettingsSection, selectMobileSettings, openAISettings,
+  openMovie, openTvShow, backFromMovieDetail, backFromTvShowDetail, navigate, openAuth, navigateToPath } = navigation;
+const avatarUrl = computed(() => user.value?.avatarUrl ? account.resolveApiUrl(user.value.avatarUrl) : '');
+watch(() => user.value?.id, navigation.resetAccountNavigation, { flush: 'sync' });
 
 onMounted(async () => {
-  previousScrollRestoration = window.history.scrollRestoration;
-  window.history.scrollRestoration = 'manual';
-  window.addEventListener('popstate', syncPageFromLocation);
-  window.addEventListener('scroll', scheduleScrollControlsUpdate, { passive: true });
-  pageScrollContainer = document.getElementById('app');
-  pageScrollContainer?.addEventListener('scroll', scheduleScrollControlsUpdate, { passive: true });
-  window.addEventListener('resize', scheduleScrollControlsUpdate);
-  document.addEventListener('pointerdown', closeMenusOnOutside);
-  contentObserver = new MutationObserver(scheduleScrollControlsUpdate);
-  contentObserver.observe(document.querySelector('#app') ?? document.body, { childList: true, subtree: true });
-  scheduleScrollControlsUpdate();
   void loadPublicConfig();
-  try {
-    const response = await fetch(`${apiBaseUrl}/auth/me`, { credentials: 'include' });
-    if (response.ok) {
-      setUser(((await response.json()) as AuthResponse).user);
-      if (currentPage.value === 'home' || currentPage.value === 'login' || currentPage.value === 'register') navigateToPath('/', true);
-    }
-  } catch {
-    errorMessage.value = t('errors.serviceUnavailable');
-  } finally {
-    loading.value = false;
-    if (
-      !user.value
-      && ['settings', 'usage', 'viewing-preferences', 'watchlist', 'resource-notifications', 'ai', 'notification-tests'].includes(currentPage.value)
-    ) {
-      openAuth('login', true);
-    }
+  await authentication.restoreSession();
+  if (user.value) {
+    if (['home', 'login', 'register'].includes(currentPage.value)) navigateToPath('/', true);
+  } else if (['settings', 'usage', 'viewing-preferences', 'watchlist', 'resource-notifications', 'ai', 'notification-tests'].includes(currentPage.value)) {
+    openAuth('login', true);
   }
 });
+
+async function logout() {
+  if (await authentication.logout()) navigateToPath('/');
+}
 
 async function loadPublicConfig() {
   try {
     const response = await fetch(`${apiBaseUrl}/config`);
     if (response.ok) {
       const config = (await response.json()) as PublicConfig;
-      avatarLimits.value = config.avatar;
+      account.setAvatarLimits(config.avatar);
       notificationTestEnabled.value = config.notificationTestEnabled === true;
       aiAssistantEnabled.value = config.aiAssistantEnabled === true;
     }
@@ -156,491 +90,6 @@ async function loadPublicConfig() {
     if (!notificationTestEnabled.value && currentPage.value === 'notification-tests') navigateToPath('/', true);
   }
 }
-
-async function submit() {
-  errorMessage.value = '';
-  successMessage.value = '';
-  if (verificationEmail.value) {
-    await verifyRegistration();
-    return;
-  }
-  if (!validateAuthForm()) return;
-  submitting.value = true;
-  const body: LoginRequest | RegisterRequest
-    = mode.value === 'register'
-      ? { email: email.value.trim(), password: password.value, displayName: displayName.value.trim() }
-      : { email: email.value.trim(), password: password.value };
-  try {
-    const response = await fetch(`${apiBaseUrl}/auth/${mode.value}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json', 'accept-language': locale.value },
-      body: JSON.stringify(body),
-    });
-    const result = (await response.json()) as AuthResponse | RegistrationPendingResponse | ApiError;
-    if (!response.ok) {
-      if (mode.value === 'login' && response.status === 401) errorMessage.value = t('auth.invalidCredentials');
-      else if (mode.value === 'register' && response.status === 409) errorMessage.value = t('auth.emailRegistered');
-      else throw localizedApiError(result, 'errors.requestFailed');
-      return;
-    }
-    if (mode.value === 'register') {
-      verificationEmail.value = (result as RegistrationPendingResponse).email;
-      verificationCode.value = '';
-      return;
-    }
-    setUser((result as AuthResponse).user);
-    password.value = '';
-    navigateToPath('/', true);
-  } catch (error) {
-    errorMessage.value = localizedErrorMessage(error, 'errors.serviceUnavailable');
-  } finally {
-    submitting.value = false;
-  }
-}
-
-async function verifyRegistration() {
-  if (!/^[0-9]{6}$/.test(verificationCode.value)) {
-    errorMessage.value = t('auth.codeFormat');
-    return;
-  }
-  submitting.value = true;
-  try {
-    const response = await fetch(`${apiBaseUrl}/auth/verify-email`, {
-      method: 'POST', credentials: 'include',
-      headers: { 'content-type': 'application/json', 'accept-language': locale.value },
-      body: JSON.stringify({ email: verificationEmail.value, code: verificationCode.value, password: password.value }),
-    });
-    if (!response.ok) throw await localizedResponseError(response);
-    setUser(((await response.json()) as AuthResponse).user);
-    verificationEmail.value = '';
-    verificationCode.value = '';
-    password.value = '';
-    navigateToPath('/', true);
-  } catch (error) {
-    errorMessage.value = localizedErrorMessage(error, 'errors.serviceUnavailable');
-  } finally {
-    submitting.value = false;
-  }
-}
-
-function validateAuthForm(): boolean {
-  const errors: Partial<Record<AuthField, string>> = {};
-  const normalizedEmail = email.value.trim();
-  const normalizedDisplayName = displayName.value.trim();
-
-  if (mode.value === 'register') {
-    if (!normalizedDisplayName) errors.displayName = t('validation.displayNameRequired');
-    else if (normalizedDisplayName.length > 80) errors.displayName = t('validation.displayNameTooLong');
-  }
-  if (!normalizedEmail) errors.email = t('validation.emailRequired');
-  else if (normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-    errors.email = t('validation.emailInvalid');
-  }
-  if (!password.value) errors.password = t('validation.passwordRequired');
-  else if (password.value.length < 12 || password.value.length > 128) {
-    errors.password = t('validation.passwordLength');
-  }
-
-  authFieldErrors.value = errors;
-  return Object.keys(errors).length === 0;
-}
-
-function clearAuthFieldError(field: AuthField) {
-  if (!authFieldErrors.value[field]) return;
-  authFieldErrors.value = { ...authFieldErrors.value, [field]: undefined };
-}
-
-function setUser(nextUser: AuthUser) {
-  const accountChanged = user.value?.id !== nextUser.id;
-  if (user.value?.id !== nextUser.id) {
-    settingsSection.value = currentPage.value === 'settings' ? settingsSectionFromSearch(window.location.search) : 'profile';
-    settingsVisited.value = new Set([settingsSection.value]);
-  }
-  user.value = nextUser;
-  if (accountChanged) {
-    if (nextUser.locale) setLocale(nextUser.locale);
-    else chooseLocale(locale.value);
-  }
-  profileName.value = nextUser.displayName;
-  avatarRemoved.value = false;
-  avatarFile.value = null;
-  clearPreview();
-}
-
-function chooseAvatar(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0] ?? null;
-  errorMessage.value = '';
-  if (!file) return;
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-    errorMessage.value = t('validation.avatarType');
-    input.value = '';
-    return;
-  }
-  if (avatarLimits.value && file.size > avatarLimits.value.maxBytes) {
-    errorMessage.value = t('validation.avatarSize', { maxSize: formatBytes(avatarLimits.value.maxBytes) });
-    input.value = '';
-    return;
-  }
-  clearPreview();
-  avatarFile.value = file;
-  avatarRemoved.value = false;
-  avatarPreview.value = URL.createObjectURL(file);
-}
-
-function removeAvatar() {
-  avatarFile.value = null;
-  avatarRemoved.value = true;
-  clearPreview();
-}
-
-async function saveProfile() {
-  errorMessage.value = '';
-  successMessage.value = '';
-  const normalizedProfileName = profileName.value.trim();
-  if (!normalizedProfileName) {
-    profileNameError.value = t('validation.displayNameRequired');
-    return;
-  }
-  if (normalizedProfileName.length > 80) {
-    profileNameError.value = t('validation.displayNameTooLong');
-    return;
-  }
-  profileNameError.value = '';
-  profileName.value = normalizedProfileName;
-  submitting.value = true;
-  try {
-    const profileResponse = await fetch(`${apiBaseUrl}/users/me`, {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ displayName: normalizedProfileName }),
-    });
-    let result = await readAuthResponse(profileResponse);
-
-    if (avatarFile.value) {
-      const avatarResponse = await fetch(`${apiBaseUrl}/users/me/avatar`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'content-type': avatarFile.value.type },
-        body: avatarFile.value,
-      });
-      result = await readAuthResponse(avatarResponse);
-    } else if (avatarRemoved.value && user.value?.avatarUrl) {
-      const deleteResponse = await fetch(`${apiBaseUrl}/users/me/avatar`, { method: 'DELETE', credentials: 'include' });
-      if (!deleteResponse.ok) throw await localizedResponseError(deleteResponse);
-      const { avatarUrl: _removedAvatar, ...userWithoutAvatar } = result;
-      result = userWithoutAvatar;
-    }
-
-    setUser(result);
-    successMessage.value = t('profile.saved');
-  } catch (error) {
-    errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
-  } finally {
-    submitting.value = false;
-  }
-}
-
-async function readAuthResponse(response: Response): Promise<AuthUser> {
-  const result = (await response.json()) as AuthResponse | ApiError;
-  if (!response.ok) throw localizedApiError(result, 'errors.requestFailed');
-  return (result as AuthResponse).user;
-}
-
-function resolveApiUrl(path: string): string {
-  if (URL.canParse(path)) return path;
-  if (apiBaseUrl.startsWith('http')) return new URL(path, apiBaseUrl).toString();
-  return path;
-}
-
-function formatBytes(bytes: number): string {
-  const mebibytes = bytes / (1024 * 1024);
-  return `${Number.isInteger(mebibytes) ? mebibytes : mebibytes.toFixed(1)} MB`;
-}
-
-function clearPreview() {
-  if (avatarPreview.value) URL.revokeObjectURL(avatarPreview.value);
-  avatarPreview.value = '';
-}
-
-onBeforeUnmount(() => {
-  clearPreview();
-  window.removeEventListener('popstate', syncPageFromLocation);
-  window.removeEventListener('scroll', scheduleScrollControlsUpdate);
-  pageScrollContainer?.removeEventListener('scroll', scheduleScrollControlsUpdate);
-  window.removeEventListener('resize', scheduleScrollControlsUpdate);
-  document.removeEventListener('pointerdown', closeMenusOnOutside);
-  contentObserver?.disconnect();
-  if (scrollUpdateFrame !== undefined) window.cancelAnimationFrame(scrollUpdateFrame);
-  if (previousScrollRestoration) window.history.scrollRestoration = previousScrollRestoration;
-});
-
-async function logout() {
-  accountMenu.value?.removeAttribute('open');
-  errorMessage.value = '';
-  try {
-    const response = await fetch(`${apiBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
-    if (response.ok) {
-      user.value = null;
-      navigateToPath('/');
-    } else errorMessage.value = localizedErrorMessage(await localizedResponseError(response), 'errors.requestFailed');
-  } catch {
-    errorMessage.value = t('errors.serviceUnavailable');
-  }
-}
-
-function pageFromPath(): Page {
-  if (window.location.pathname === '/link-agent') return 'link-agent';
-  if (window.location.pathname === '/' && !user.value) return 'home';
-  if (movieIdFromPath()) return 'movie-detail';
-  if (tvShowIdFromPath()) return 'tv-show-detail';
-  if (window.location.pathname === '/tv-shows') return 'tv-shows';
-  if (window.location.pathname === '/login') return 'login';
-  if (window.location.pathname === '/register') return 'register';
-  if (window.location.pathname === '/resource-notifications') return 'resource-notifications';
-  if (window.location.pathname === '/watchlist') return 'watchlist';
-  if (window.location.pathname === '/my-movies') {
-    window.history.replaceState({}, '', '/viewing-preferences');
-    return 'viewing-preferences';
-  }
-  if (window.location.pathname === '/viewing-preferences') return 'viewing-preferences';
-  if (window.location.pathname === '/ai') return 'ai';
-  if (window.location.pathname === '/dev/notification-tests') return 'notification-tests';
-  if (window.location.pathname === '/settings') return 'settings';
-  return window.location.pathname === '/usage' ? 'usage' : 'movies';
-}
-
-function tvShowIdFromPath(): number | null {
-  const match = window.location.pathname.match(/^\/tv-shows\/([1-9]\d*)$/);
-  const id = match ? Number(match[1]) : null;
-  return id && Number.isSafeInteger(id) ? id : null;
-}
-
-function openTvShow(tmdbId: number) {
-  rememberListScroll();
-  window.history.pushState({ tvShowOrigin: ['watchlist', 'resource-notifications', 'viewing-preferences'].includes(currentPage.value) ? currentPage.value : 'tv-shows' }, '', `/tv-shows/${tmdbId}`);
-  selectedTvShowId.value = tmdbId;
-  currentPage.value = 'tv-show-detail';
-  scrollPageTo({ top: 0, behavior: 'smooth' });
-}
-
-function backFromTvShowDetail() {
-  if (['tv-shows', 'watchlist', 'resource-notifications', 'viewing-preferences'].includes(window.history.state?.tvShowOrigin)) window.history.back();
-  else navigate('tv-shows');
-}
-
-function movieIdFromPath(): number | null {
-  const match = window.location.pathname.match(/^\/movies\/(\d+)$/);
-  return match ? Number(match[1]) : null;
-}
-
-function syncPageFromLocation() {
-  const nextPage = pageFromPath();
-  if (nextPage === 'ai' && !aiAssistantEnabled.value) {
-    navigateToPath('/', true);
-    return;
-  }
-  if (nextPage === 'notification-tests' && !notificationTestEnabled.value) {
-    navigateToPath('/', true);
-    return;
-  }
-  currentPage.value = nextPage;
-  if (nextPage === 'settings') {
-    settingsSection.value = settingsSectionFromSearch(window.location.search);
-    settingsVisited.value.add(settingsSection.value);
-  }
-  if (nextPage === 'login' || nextPage === 'register') mode.value = nextPage;
-  selectedMovieId.value = movieIdFromPath();
-  selectedTvShowId.value = tvShowIdFromPath();
-  errorMessage.value = '';
-  successMessage.value = '';
-  if (nextPage === 'movies' || nextPage === 'tv-shows' || nextPage === 'viewing-preferences' || nextPage === 'watchlist' || nextPage === 'resource-notifications') restoreListScroll(nextPage);
-}
-
-function openMovie(tmdbId: number) {
-  const movieOrigin = currentPage.value === 'resource-notifications' ? 'resource-notifications' : currentPage.value === 'watchlist' ? 'watchlist' : currentPage.value === 'viewing-preferences' ? 'viewing-preferences' : 'movies';
-  rememberListScroll();
-  window.history.pushState({ movieOrigin }, '', `/movies/${tmdbId}`);
-  selectedMovieId.value = tmdbId;
-  currentPage.value = 'movie-detail';
-  scrollPageTo({ top: 0, behavior: 'smooth' });
-}
-
-function backFromMovieDetail() {
-  const movieOrigin = window.history.state?.movieOrigin;
-  if (movieOrigin === 'movies' || movieOrigin === 'viewing-preferences' || movieOrigin === 'watchlist' || movieOrigin === 'resource-notifications') window.history.back();
-  else navigate('movies');
-}
-
-function navigate(page: Page) {
-  if (page === 'ai' && !aiAssistantEnabled.value) return;
-  rememberListScroll();
-  const path
-    = page === 'home'
-      ? '/'
-      : page === 'link-agent'
-        ? '/link-agent'
-        : page === 'notification-tests'
-          ? '/dev/notification-tests'
-          : page === 'settings'
-            ? `/settings?section=${settingsSectionSlug(settingsSection.value)}`
-            : page === 'usage'
-              ? '/usage'
-              : page === 'resource-notifications'
-                ? '/resource-notifications'
-                : page === 'watchlist'
-                  ? '/watchlist'
-                  : page === 'viewing-preferences'
-                    ? '/viewing-preferences'
-                    : page === 'ai'
-                      ? '/ai'
-                      : page === 'tv-shows'
-                        ? '/tv-shows'
-                        : '/movies';
-  if (`${window.location.pathname}${window.location.search}` !== path) window.history.pushState({}, '', path);
-  currentPage.value = page;
-  errorMessage.value = '';
-  successMessage.value = '';
-  if (page === 'movies' || page === 'tv-shows' || page === 'viewing-preferences' || page === 'watchlist' || page === 'resource-notifications') restoreListScroll(page);
-  else scrollPageTo({ top: 0, behavior: 'smooth' });
-}
-
-function openAuth(nextMode: 'login' | 'register', replace = false) {
-  verificationEmail.value = '';
-  verificationCode.value = '';
-  const path = `/${nextMode}`;
-  if (replace) window.history.replaceState({}, '', path);
-  else window.history.pushState({}, '', path);
-  mode.value = nextMode;
-  currentPage.value = nextMode;
-  selectedMovieId.value = null;
-  errorMessage.value = '';
-  successMessage.value = '';
-  authFieldErrors.value = {};
-  scrollPageTo({ top: 0, behavior: 'smooth' });
-}
-
-function navigateToPath(path: string, replace = false) {
-  if (replace) window.history.replaceState({}, '', path);
-  else window.history.pushState({}, '', path);
-  currentPage.value = pageFromPath();
-  selectedMovieId.value = movieIdFromPath();
-  selectedTvShowId.value = tvShowIdFromPath();
-  errorMessage.value = '';
-  successMessage.value = '';
-  scrollPageTo({ top: 0, behavior: 'smooth' });
-}
-
-function historyState(): Record<string, unknown> {
-  return window.history.state && typeof window.history.state === 'object'
-    ? (window.history.state as Record<string, unknown>)
-    : {};
-}
-
-function activeScrollContainer() {
-  const container = document.getElementById('app');
-  return container && window.getComputedStyle(container).overflowY === 'auto' ? container : null;
-}
-
-function scrollPageTo(options: ScrollToOptions) {
-  const container = activeScrollContainer();
-  if (container) container.scrollTo(options);
-  else window.scrollTo(options);
-}
-
-function rememberListScroll() {
-  const page = currentPage.value;
-  if (page !== 'movies' && page !== 'tv-shows' && page !== 'viewing-preferences' && page !== 'watchlist' && page !== 'resource-notifications') return;
-  listScrollPositions[page] = Math.max(0, activeScrollContainer()?.scrollTop ?? window.scrollY);
-  window.history.replaceState({ ...historyState(), listPage: page, scrollY: listScrollPositions[page] }, '');
-}
-
-function restoreListScroll(page: ListPage) {
-  const state = historyState();
-  const savedScrollY
-    = state.listPage === page && typeof state.scrollY === 'number' && Number.isFinite(state.scrollY)
-      ? Math.max(0, state.scrollY)
-      : listScrollPositions[page];
-  listScrollPositions[page] = savedScrollY;
-  void nextTick(() => {
-    window.requestAnimationFrame(() => scrollPageTo({ top: savedScrollY, behavior: 'auto' }));
-  });
-}
-
-function scheduleScrollControlsUpdate() {
-  if (scrollUpdateFrame !== undefined) return;
-  scrollUpdateFrame = window.requestAnimationFrame(() => {
-    scrollUpdateFrame = undefined;
-    const container = activeScrollContainer();
-    const maxScroll = Math.max(0, (container?.scrollHeight ?? document.documentElement.scrollHeight) - (container?.clientHeight ?? window.innerHeight));
-    const scrollTop = container?.scrollTop ?? window.scrollY;
-    atTop.value = scrollTop <= 8;
-    atBottom.value = maxScroll <= 8 || scrollTop >= maxScroll - 8;
-  });
-}
-
-function scrollToEdge(edge: 'top' | 'bottom') {
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  scrollPageTo({
-    top: edge === 'top' ? 0 : (activeScrollContainer()?.scrollHeight ?? document.documentElement.scrollHeight),
-    behavior: reduceMotion ? 'auto' : 'smooth',
-  });
-}
-
-function chooseLocale(nextLocale: 'zh-CN' | 'en-US') {
-  localeError.value = '';
-  setLocale(nextLocale);
-  const ownerId = user.value?.id;
-  if (!ownerId) return;
-  const revision = ++localeRevision;
-  localeSaveState.value = 'saving';
-  localeSaveQueue = localeSaveQueue.then(async () => {
-    if (user.value?.id !== ownerId) {
-      if (revision === localeRevision) localeSaveState.value = 'idle';
-      return;
-    }
-    try {
-      const response = await fetch(`${apiBaseUrl}/users/me/locale`, {
-        method: 'PUT', credentials: 'include',
-        headers: { 'content-type': 'application/json', 'accept-language': nextLocale },
-        body: JSON.stringify({ locale: nextLocale }),
-      });
-      if (!response.ok) throw response;
-      if (user.value?.id === ownerId) {
-        user.value.locale = nextLocale;
-        if (revision === localeRevision) localeSaveState.value = 'saved';
-      }
-    } catch (error) {
-      if (user.value?.id === ownerId && revision === localeRevision) {
-        localeSaveState.value = 'idle';
-        if (user.value.locale) setLocale(user.value.locale);
-        localeError.value = localizedErrorMessage(
-          error instanceof Response ? await localizedResponseError(error) : error, 'errors.serviceUnavailable');
-      }
-    }
-  });
-}
-
-function navigateFromAccount(page: 'settings' | 'usage' | 'notification-tests' | 'watchlist' | 'resource-notifications' | 'viewing-preferences') {
-  accountMenu.value?.removeAttribute('open');
-  navigate(page);
-}
-
-function closeMenusOnOutside(event: PointerEvent) {
-  if (!(event.target instanceof Node)) return;
-  for (const menu of [accountMenu.value]) {
-    if (menu?.open && !menu.contains(event.target)) menu.removeAttribute('open');
-  }
-}
-
-function closeAccountMenu() {
-  const menu = accountMenu.value;
-  if (!menu?.open) return;
-  menu.removeAttribute('open');
-  menu.querySelector<HTMLElement>('summary')?.focus();
-}
 </script>
 
 <template>
@@ -649,116 +98,9 @@ function closeAccountMenu() {
     <LandingPage v-if="currentPage === 'home' && !loading" :ai-enabled="aiAssistantEnabled"
       @register="openAuth('register')" @login="openAuth('login')" @browse="navigate('movies')" @agent="navigate('link-agent')" />
     <LinkAgentPage v-if="currentPage === 'link-agent'" @home="navigate('home')" @login="openAuth('login')" />
-    <header v-if="currentPage !== 'home' && currentPage !== 'link-agent'" class="site-header" :class="{ 'site-header-glass': user }">
-      <button class="brand brand-button" type="button" aria-label="Popular" @click="navigate(user ? 'movies' : 'home')">
-        <BrandLogo />
-      </button>
-      <nav class="site-nav" :aria-label="t('nav.ariaLabel')">
-        <div id="header-media-search" class="header-media-search"></div>
-        <button type="button" :class="{ active: currentPage === 'movies' || currentPage === 'movie-detail' }" :aria-current="currentPage === 'movies' || currentPage === 'movie-detail' ? 'page' : undefined" @click="navigate('movies')">
-          {{ t('nav.movies') }}
-        </button>
-        <button type="button" :class="{ active: currentPage === 'tv-shows' || currentPage === 'tv-show-detail' }" :aria-current="currentPage === 'tv-shows' || currentPage === 'tv-show-detail' ? 'page' : undefined" @click="navigate('tv-shows')">
-          {{ t('nav.tvShows') }}
-        </button>
-        <button
-          v-if="user && aiAssistantEnabled"
-          type="button"
-          :class="{ active: currentPage === 'ai' }"
-          @click="navigate('ai')"
-        >
-          {{ t('nav.ai') }}
-        </button>
-        <details v-if="user" ref="accountMenu" class="account-menu" @keydown.esc.prevent="closeAccountMenu">
-          <summary class="account-trigger" :aria-label="t('a11y.accountMenu')">
-            <span class="nav-avatar"
-              ><img
-                v-if="user.avatarUrl"
-                :src="resolveApiUrl(user.avatarUrl)"
-                :alt="t('a11y.currentAvatar', { name: user.displayName })"
-              /><span v-else>{{ user.displayName.slice(0, 1).toUpperCase() }}</span></span
-            >
-            <span class="account-tooltip" role="tooltip">{{ user.displayName }}</span>
-          </summary>
-          <div class="account-options">
-            <div class="account-identity">
-              <span class="nav-avatar menu-avatar"
-                ><img v-if="user.avatarUrl" :src="resolveApiUrl(user.avatarUrl)" alt="" /><span v-else>{{
-                  user.displayName.slice(0, 1).toUpperCase()
-                }}</span></span
-              >
-              <span class="account-identity-copy"
-                ><strong>{{ user.displayName }}</strong
-                ><small>{{ user.email }}</small></span
-              >
-            </div>
-            <div class="account-action-group">
-              <button
-                type="button"
-                :class="{ active: currentPage === 'settings' }"
-                @click="navigateFromAccount('settings')"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-                  <path
-                    d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 9 19.37a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15 1.7 1.7 0 0 0 3.07 14H3v-4h.08A1.7 1.7 0 0 0 4.63 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63a1.7 1.7 0 0 0 1-1.56V3h4v.08A1.7 1.7 0 0 0 15 4.63a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9 1.7 1.7 0 0 0 20.93 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"
-                  />
-                </svg>
-                <span>{{ t('nav.settings') }}</span>
-              </button>
-              <button type="button" :class="{ active: currentPage === 'usage' }" @click="navigateFromAccount('usage')">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3" /></svg>
-                <span>{{ t('nav.usage') }}</span>
-              </button>
-            </div>
-            <div class="account-action-group account-library-group">
-              <button type="button" :class="{ active: currentPage === 'watchlist' }" @click="navigateFromAccount('watchlist')">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3Z" /></svg>
-                <span>{{ t('watchlist.title') }}</span>
-              </button>
-              <button type="button" :class="{ active: currentPage === 'resource-notifications' }" @click="navigateFromAccount('resource-notifications')">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
-                <span>{{ t('resourceNotifications.title') }}</span>
-              </button>
-              <button type="button" :class="{ active: currentPage === 'viewing-preferences' }" @click="navigateFromAccount('viewing-preferences')">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 6 1 1 2-2M10 6h10M4 12l1 1 2-2M10 12h10M4 18l1 1 2-2M10 18h10" /></svg>
-                <span>{{ t('viewingPreferences.title') }}</span>
-              </button>
-            </div>
-            <div v-if="notificationTestEnabled" class="account-action-group">
-              <button
-                type="button"
-                :class="{ active: currentPage === 'notification-tests' }"
-                @click="navigateFromAccount('notification-tests')"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9 3h6m-5 0v6l-6 10v2h16v-2L14 9V3M7 15h10" />
-                </svg>
-                <span>{{ t('notificationTest.title') }}</span>
-              </button>
-            </div>
-            <div class="account-action-group account-signout-group">
-              <button class="danger" type="button" @click="logout">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M10 17l5-5-5-5m5 5H3m11-9h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" />
-                </svg>
-                <span>{{ t('nav.logout') }}</span>
-              </button>
-            </div>
-          </div>
-        </details>
-        <button
-          v-else
-          class="account-link"
-          type="button"
-          :disabled="loading"
-          :aria-label="t('nav.loginOrRegister')"
-          @click="openAuth('login')"
-        >
-          {{ loading ? '…' : t('nav.loginOrRegister') }}
-        </button>
-      </nav>
-    </header>
+    <SiteHeader v-if="currentPage !== 'home' && currentPage !== 'link-agent'" :navigation="navigation"
+      :user="user" :loading="loading" :ai-assistant-enabled="aiAssistantEnabled"
+      :notification-test-enabled="notificationTestEnabled" :avatar-url="avatarUrl" @logout="logout" />
 
     <KeepAlive :max="2">
       <MovieBrowser
@@ -794,121 +136,8 @@ function closeAccountMenu() {
     <UsageStatistics v-if="currentPage === 'usage' && user" />
     <AiChat v-if="currentPage === 'ai' && user && aiAssistantEnabled" :key="user.id" @open-settings="openAISettings" />
 
-    <section v-if="currentPage === 'login' || currentPage === 'register'" class="auth-page">
-      <div class="page-toolbar">
-        <button class="back-button" type="button" @click="navigate(user ? 'movies' : 'home')">{{ t('actions.backHome') }}</button>
-      </div>
-      <div class="auth-layout">
-        <div class="auth-card" :class="{ 'verification-card': verificationEmail }" :aria-busy="submitting">
-          <form novalidate @submit.prevent="submit">
-            <template v-if="verificationEmail">
-              <header class="verification-heading">
-                <span class="verification-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="m4 7 8 6 8-6" /></svg>
-                </span>
-                <h1>{{ t('auth.verificationHeading') }}</h1>
-                <p role="status">{{ t('auth.codeSent') }}</p>
-                <strong class="verification-email">{{ verificationEmail }}</strong>
-              </header>
-              <div class="verification-entry">
-                <label for="auth-code">{{ t('auth.codeLabel') }}</label>
-                <input id="auth-code" v-model="verificationCode" name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" maxlength="6" placeholder="000000" required :disabled="submitting" aria-describedby="auth-code-hint" :aria-invalid="Boolean(errorMessage)" />
-                <p id="auth-code-hint" class="verification-expiry">{{ t('auth.codeExpiry') }}</p>
-              </div>
-            </template>
-            <template v-else>
-              <label v-if="mode === 'register'" for="auth-display-name">
-                {{ t('profile.displayNameLabel') }}
-                <input
-                  id="auth-display-name"
-                  v-model="displayName"
-                  name="name"
-                  autocomplete="name"
-                  maxlength="80"
-                  required
-                  :placeholder="t('profile.displayNamePlaceholder')"
-                  :aria-invalid="Boolean(authFieldErrors.displayName)"
-                  :aria-describedby="authFieldErrors.displayName ? 'auth-display-name-error' : undefined"
-                  @input="clearAuthFieldError('displayName')"
-                />
-                <small v-if="authFieldErrors.displayName" id="auth-display-name-error" class="field-error">{{
-                  authFieldErrors.displayName
-                }}</small>
-              </label>
-              <label for="auth-email">
-                {{ t('profile.authEmailLabel') }}
-                <input
-                  id="auth-email"
-                  v-model="email"
-                  name="email"
-                  type="email"
-                  autocomplete="email"
-                  maxlength="254"
-                  required
-                  :placeholder="t('profile.emailPlaceholder')"
-                  :aria-invalid="Boolean(authFieldErrors.email)"
-                  :aria-describedby="authFieldErrors.email ? 'auth-email-error' : undefined"
-                  @input="clearAuthFieldError('email')"
-                />
-                <small v-if="authFieldErrors.email" id="auth-email-error" class="field-error">{{
-                  authFieldErrors.email
-                }}</small>
-              </label>
-              <label for="auth-password">
-                {{ t('profile.passwordLabel') }}
-                <input
-                  id="auth-password"
-                  v-model="password"
-                  name="password"
-                  type="password"
-                  :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
-                  minlength="12"
-                  maxlength="128"
-                  required
-                  :placeholder="
-                    mode === 'login' ? t('profile.loginPasswordPlaceholder') : t('profile.passwordPlaceholder')
-                  "
-                  :aria-invalid="Boolean(authFieldErrors.password)"
-                  :aria-describedby="authFieldErrors.password ? 'auth-password-error' : undefined"
-                  @input="clearAuthFieldError('password')"
-                />
-                <small v-if="authFieldErrors.password" id="auth-password-error" class="field-error">{{
-                  authFieldErrors.password
-                }}</small>
-              </label>
-            </template>
-            <p v-if="errorMessage" class="error" role="alert">{{ errorMessage }}</p>
-            <button class="primary" type="submit" :disabled="submitting">
-              {{
-                verificationEmail
-                  ? submitting ? t('auth.verifying') : t('auth.verifyEmail')
-                  : submitting
-                  ? mode === 'login'
-                    ? t('account.loggingIn')
-                    : t('account.registering')
-                  : mode === 'login'
-                    ? t('account.loginTab')
-                    : t('account.createAccount')
-              }}
-            </button>
-          </form>
-          <nav v-if="verificationEmail" class="verification-navigation" :aria-label="t('auth.verificationNavigation')">
-            <button type="button" class="text-button" :disabled="submitting" @click="openAuth('register', true)">{{ t('auth.restartRegistration') }}</button>
-            <button type="button" class="text-button" :disabled="submitting" @click="openAuth('login', true)">{{ t('account.backToLogin') }}</button>
-          </nav>
-          <details v-if="verificationEmail" class="verification-help">
-            <summary>{{ t('auth.codeHelp') }}</summary>
-            <p>{{ t('auth.codeLimits') }}</p>
-          </details>
-          <p v-if="!verificationEmail" class="switch-copy">
-            {{ mode === 'login' ? t('account.noAccount') : t('account.hasAccount') }}
-            <button class="text-button" type="button" @click="openAuth(mode === 'login' ? 'register' : 'login', true)">
-              {{ mode === 'login' ? t('account.registerNow') : t('account.backToLogin') }}
-            </button>
-          </p>
-        </div>
-      </div>
-    </section>
+    <AuthenticationPage v-if="currentPage === 'login' || currentPage === 'register'" :authentication="authentication"
+      @back="navigate(user ? 'movies' : 'home')" @open-auth="openAuth($event, true)" />
 
     <section v-if="currentPage === 'settings' && (loading || user)" class="settings-page">
       <div class="page-toolbar">
@@ -966,105 +195,7 @@ function closeAccountMenu() {
                 </svg>
               </button>
             </div>
-            <div v-show="settingsSection === 'language'" class="settings-form">
-              <section class="settings-card language-settings-card" :aria-label="t('language.label')">
-                <fieldset class="locale-options">
-                  <legend class="sr-only">{{ t('language.label') }}</legend>
-                  <label v-for="choice in (['zh-CN', 'en-US'] as const)" :key="choice" class="locale-card" :class="{ active: locale === choice }">
-                    <input type="radio" name="system-language" :value="choice" :checked="locale === choice" @change="chooseLocale(choice)" />
-                    <span class="locale-card-symbol" aria-hidden="true">{{ t(`language.symbol.${choice}`) }}</span>
-                    <span class="locale-card-copy">
-                      <span class="locale-card-title" :lang="choice">{{ t(`language.native.${choice}`) }}</span>
-                      <span class="locale-card-subtitle">{{ t(`language.subtitle.${choice}`) }}</span>
-                    </span>
-                    <span class="locale-card-check" aria-hidden="true">
-                      <svg v-if="locale === choice" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 8 3 3 5-6" /></svg>
-                    </span>
-                  </label>
-                </fieldset>
-                <p class="locale-save-status" role="status" aria-live="polite">
-                  {{ localeSaveState === 'saving' ? t('language.saving') : localeSaveState === 'saved' ? t('language.saved') : t('language.autoSave') }}
-                </p>
-                <p v-if="localeError" class="error settings-message" role="alert">{{ localeError }}</p>
-              </section>
-            </div>
-            <form v-show="settingsSection === 'profile'" class="settings-form" novalidate @submit.prevent="saveProfile">
-              <section class="settings-card profile-settings-card" :aria-label="t('settings.profile')">
-                <div class="settings-card-heading profile-card-heading">
-                  <div class="profile-avatar-editor">
-                    <div class="avatar large">
-                      <img
-                        v-if="avatarSource"
-                        :src="avatarSource"
-                        :alt="t('a11y.currentAvatar', { name: profileName || user.displayName })"
-                      />
-                      <span v-else>{{ profileName.slice(0, 1).toUpperCase() || '?' }}</span>
-                    </div>
-                    <div class="avatar-actions profile-avatar-actions">
-                      <label class="upload-button">
-                        {{ t('profile.avatarChoose') }}
-                        <input
-                          class="file-input"
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          :aria-label="t('a11y.chooseAvatar')"
-                          @change="chooseAvatar"
-                        />
-                      </label>
-                      <button
-                        v-if="avatarSource || user.avatarUrl"
-                        class="text-button danger"
-                        type="button"
-                        @click="removeAvatar"
-                      >
-                        {{ t('profile.avatarRemove') }}
-                      </button>
-                      <small>{{ avatarHint }}</small>
-                    </div>
-                  </div>
-                </div>
-                <div class="settings-fields">
-                  <label for="profile-display-name">
-                    {{ t('profile.displayNameLabel') }}
-                    <input
-                      id="profile-display-name"
-                      v-model="profileName"
-                      name="displayName"
-                      autocomplete="name"
-                      maxlength="80"
-                      required
-                      :placeholder="t('profile.displayNamePlaceholder')"
-                      :aria-invalid="Boolean(profileNameError)"
-                      :aria-describedby="profileNameError ? 'profile-display-name-error' : undefined"
-                      @input="profileNameError = ''"
-                    />
-                    <small v-if="profileNameError" id="profile-display-name-error" class="field-error">{{
-                      profileNameError
-                    }}</small>
-                  </label>
-                  <div class="readonly-field">
-                    <div class="readonly-field-heading">
-                      <span>{{ t('profile.emailLabel') }}</span>
-                      <small>{{ t('profile.emailReadonlyHint') }}</small>
-                    </div>
-                    <strong>{{ user.email }}</strong>
-                  </div>
-                </div>
-                <div class="settings-card-footer">
-                  <div class="settings-feedback">
-                    <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
-                    <p v-if="successMessage" class="success settings-message" role="status" aria-live="polite">
-                      {{ successMessage }}
-                    </p>
-                  </div>
-                  <div class="settings-actions">
-                    <button class="primary" type="submit" :disabled="submitting || !profileDirty">
-                      {{ submitting ? t('profile.saving') : t('profile.save') }}
-                    </button>
-                  </div>
-                </div>
-              </section>
-            </form>
+            <AccountSettings :account="account" :user="user" :section="settingsSection" />
 
             <div v-if="settingsVisited.has('ai')" v-show="settingsSection === 'ai'" class="settings-form">
               <AiProviderSettings v-for="provider in (['openai', 'deepseek', 'claude'] as const)" :key="`${user.id}:${provider}`" :provider="provider" />
@@ -1099,20 +230,6 @@ function closeAccountMenu() {
       </template>
     </section>
 
-    <nav
-      v-if="
-        (currentPage === 'movies' || currentPage === 'tv-shows' || currentPage === 'viewing-preferences' || currentPage === 'watchlist' || currentPage === 'resource-notifications' || currentPage === 'movie-detail' || currentPage === 'tv-show-detail') &&
-        (!atTop || !atBottom)
-      "
-      class="scroll-controls"
-      :aria-label="t('a11y.pageNavigation')"
-    >
-      <button v-if="!atTop" type="button" :aria-label="t('actions.toTop')" @click="scrollToEdge('top')">
-        <span aria-hidden="true">↑</span><span>Top</span>
-      </button>
-      <button v-if="!atBottom" type="button" :aria-label="t('actions.toBottom')" @click="scrollToEdge('bottom')">
-        <span aria-hidden="true">↓</span><span>Bottom</span>
-      </button>
-    </nav>
+    <ScrollControls :scroll="scroll" :enabled="scrollControlsEnabled" />
   </main>
 </template>

@@ -1,4 +1,4 @@
-import type { SettingsSection } from '../../app.types';
+import type { SettingsSection } from '../../navigation/navigation.types';
 
 const sectionSlugs: Record<SettingsSection, string> = {
   profile: 'profile',

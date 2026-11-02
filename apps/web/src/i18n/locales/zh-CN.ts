@@ -665,6 +665,8 @@ const zhCN = {
   'actions.retry': '重试',
   'actions.loadMore': '加载更多',
   'actions.loadingMore': '正在加载…',
+  'actions.top': '顶部',
+  'actions.bottom': '底部',
   'actions.toTop': '回到页面顶部',
   'actions.toBottom': '跳到页面底部',
   'usage.eyebrow': '账户分析',
