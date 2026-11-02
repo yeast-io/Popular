@@ -162,3 +162,5 @@ vite.config.ts.timestamp-*
 docs/REMOTE_CLIENT.md
 docs/MESSAGE_CHAIN.md
 docs/AI_ASSISTANT.md
+.data/
+compose.local.yaml
