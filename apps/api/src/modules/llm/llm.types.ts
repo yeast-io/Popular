@@ -1,3 +1,5 @@
+import type { LlmModelLimits, LlmModelSelection } from './llm-model.types.js';
+
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -31,14 +33,15 @@ export type LlmStreamEvent
   = { type: 'delta'; delta: string } | { type: 'completed'; inputTokens: number; outputTokens: number };
 
 export interface LlmClient {
-  readonly selection?: { provider: NonNullable<LlmFailureDiagnostics['provider']>; model: string };
+  readonly selection?: LlmModelSelection;
+  readonly limits?: LlmModelLimits;
   generate(input: LlmGenerateInput): Promise<LlmGenerateResult>;
   stream(input: LlmGenerateInput): AsyncIterable<LlmStreamEvent>;
 }
 
 export interface LlmFailureDiagnostics {
   reason: 'missing_usage' | 'missing_completion' | 'terminal_failure' | 'upstream_exception' | 'invalid_json' | 'invalid_schema' | 'refusal';
-  provider?: 'openai' | 'deepseek' | 'claude';
+  provider?: LlmModelSelection['provider'];
   model?: string;
   operation?: LlmGenerateInput['operation'];
   schemaName?: string;

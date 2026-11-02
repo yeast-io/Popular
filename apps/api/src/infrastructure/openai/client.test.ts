@@ -184,10 +184,10 @@ test('rejects a stream that ends without a completed event', async () => {
 
 test('returns sanitized actionable errors for authentication, quota and rate limits', async () => {
   for (const [status, code, expected] of [
-    [401, 'invalid_api_key', 'OPENAI_AUTH_FAILED'],
-    [403, 'permission_denied', 'OPENAI_AUTH_FAILED'],
-    [429, 'insufficient_quota', 'OPENAI_QUOTA_EXCEEDED'],
-    [429, 'rate_limit_exceeded', 'OPENAI_RATE_LIMITED'],
+    [401, 'invalid_api_key', 'AI_AUTH_FAILED'],
+    [403, 'permission_denied', 'AI_AUTH_FAILED'],
+    [429, 'insufficient_quota', 'AI_QUOTA_EXCEEDED'],
+    [429, 'rate_limit_exceeded', 'AI_RATE_LIMITED'],
   ] as const) {
     const client = new OpenAILlmClient(
       {

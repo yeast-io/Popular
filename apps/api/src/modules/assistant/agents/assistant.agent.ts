@@ -40,7 +40,7 @@ const OUTPUT_TOKEN_LIMIT = 256;
 /** Model classification, planning, ranking and generation only. Workflow owns routing and tool calls. */
 export class AssistantAgent {
   constructor(
-    private readonly llm: Pick<LlmClient, 'generate'> & Partial<Pick<LlmClient, 'stream' | 'selection'>>,
+    private readonly llm: Pick<LlmClient, 'generate'> & Partial<Pick<LlmClient, 'stream' | 'limits' | 'selection'>>,
     private readonly options: AssistantAgentOptions
   ) {}
 
@@ -56,7 +56,7 @@ export class AssistantAgent {
         input.text,
         history,
         this.options.maxContextTokens,
-        OUTPUT_TOKEN_LIMIT
+        this.llm.limits?.maxOutputTokens ?? OUTPUT_TOKEN_LIMIT
       ),
       maxOutputTokens: OUTPUT_TOKEN_LIMIT,
       operation: 'assistant.intent',
@@ -202,7 +202,7 @@ export class AssistantAgent {
   }
 
   private async generate(input: LlmGenerateInput) {
-    const reserve = Math.min(input.maxOutputTokens, Math.floor(this.options.maxContextTokens / 3));
+    const reserve = this.llm.limits?.maxOutputTokens ?? Math.min(input.maxOutputTokens, Math.floor(this.options.maxContextTokens / 3));
     for (const message of input.messages) currentAiTrace()?.sensitive(message.content);
     const result = await this.llm.generate({
       ...input,
