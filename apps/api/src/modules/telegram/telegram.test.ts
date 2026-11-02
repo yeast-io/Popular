@@ -331,7 +331,8 @@ test('transport uses POST and strips token-bearing fetch errors and Telegram res
       (error) => {
         assert.ok(error instanceof AppError);
         assert.ok(!String(error).includes(token));
-        assert.equal(error.cause, undefined);
+        assert.ok(error.cause);
+        assert.ok(!JSON.stringify(error.cause).includes(token));
         return true;
       });
   }
@@ -438,7 +439,8 @@ test('photo upload sends actual poster bytes as multipart with HTML caption, wit
     (error) => {
       assert.ok(error instanceof AppError);
       assert.ok(!String(error).includes('123:secret'));
-      assert.equal(error.cause, undefined);
+      assert.ok(error.cause);
+      assert.ok(!JSON.stringify(error.cause).includes('123:secret'));
       return true;
     });
   const invalid = new TelegramClient('123:secret', (async () => {

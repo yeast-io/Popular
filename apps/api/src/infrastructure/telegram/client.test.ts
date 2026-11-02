@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { TelegramClient } from './client.js';
+import { telegramNetworkDiagnostics } from './telegram-network.client.js';
 
 const token = '123456789:private-bot-credential';
 test('typing uses sendChatAction with the chat and propagates cancellation', async () => {
@@ -61,38 +62,88 @@ test('HTTP diagnostics preserve network causes while redacting token, URL creden
     });
   }) as typeof fetch;
   const client = new TelegramClient(token, fetcher, logger);
-  await assert.rejects(client.send('101', text), { code: 'SERVICE_UNAVAILABLE' });
+  await assert.rejects(client.send('101', text), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    const serialized = JSON.stringify(error.cause);
+    assert.match(serialized, /ECONNREFUSED/);
+    assert.match(serialized, /stack/);
+    for (const secret of [token, text, 'proxy-password']) assert.ok(!serialized.includes(secret));
+    return true;
+  });
   const output = JSON.stringify(logs);
   assert.match(output, /ECONNREFUSED/);
   assert.match(output, /stack/);
   for (const secret of [token, text, 'proxy-password']) assert.ok(!output.includes(secret));
 });
 
-test('routine getUpdates HTTP logs follow the poll switch, while sends remain visible', async () => {
-  for (const enabled of [false, true]) {
+test('routine HTTP logs require verbose and polling additionally requires the poll switch', async () => {
+  for (const verbose of [false, true]) {
+    for (const enabled of [false, true]) {
+      const { logs, logger } = logFixture();
+      const client = new TelegramClient(
+        token,
+        (async () => {
+          return new Response(JSON.stringify({ ok: true, result: [] }));
+        }) as typeof fetch,
+        logger,
+        enabled,
+        verbose
+      );
+      await client.updates(0);
+      assert.equal(
+        logs.some((line) => line.method === 'getUpdates'),
+        verbose && enabled
+      );
+      const sender = new TelegramClient(
+        token,
+        (async () => {
+          return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }));
+        }) as typeof fetch,
+        logger,
+        enabled,
+        verbose
+      );
+      await sender.send('101', 'private reply');
+      assert.equal(logs.some((line) => line.method === 'sendMessage'), verbose);
+    }
+  }
+});
+
+test('proxy diagnostics expose endpoints and switches without credentials, paths or bypass lists', () => {
+  const network = telegramNetworkDiagnostics({
+    HTTPS_PROXY: 'http://private-user:private-password@127.0.0.1:7890/private-path?token=private-token',
+    ALL_PROXY: 'invalid-private-value',
+    NO_PROXY: 'private.internal',
+    NODE_USE_ENV_PROXY: '1',
+  });
+  assert.deepEqual(network.proxyEnvironment.HTTPS_PROXY, {
+    configured: true,
+    protocol: 'http:',
+    hostname: '127.0.0.1',
+    port: '7890',
+    authenticationConfigured: true,
+  });
+  assert.deepEqual(network.proxyEnvironment.ALL_PROXY, { configured: true, invalidUrl: true });
+  assert.equal(network.nodeUseEnvProxy, true);
+  assert.equal(network.noProxyConfigured, true);
+  assert.equal(network.proxyRoute, 'unverified');
+  assert.ok(!JSON.stringify(network).includes('private-'));
+  assert.ok(!JSON.stringify(network).includes('private.internal'));
+});
+
+test('poll failures retain network diagnostics even with routine polling logs disabled', async () => {
+  for (const verbose of [false, true]) {
     const { logs, logger } = logFixture();
-    const client = new TelegramClient(
-      token,
-      (async () => {
-        return new Response(JSON.stringify({ ok: true, result: [] }));
-      }) as typeof fetch,
-      logger,
-      enabled
-    );
-    await client.updates(0);
-    assert.equal(
-      logs.some((line) => line.method === 'getUpdates'),
-      enabled
-    );
-    const sender = new TelegramClient(
-      token,
-      (async () => {
-        return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }));
-      }) as typeof fetch,
-      logger,
-      enabled
-    );
-    await sender.send('101', 'private reply');
-    assert.ok(logs.some((line) => line.method === 'sendMessage'));
+    const client = new TelegramClient(token, (async () => {
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('connect timeout'), {
+        code: 'UND_ERR_CONNECT_TIMEOUT',
+      }) });
+    }) as typeof fetch, logger, false, verbose);
+    await assert.rejects(client.updates(0));
+    const failure = logs.find((line) => line.event === 'telegram_http_failed');
+    assert.ok(failure);
+    assert.equal(failure.failureStage, 'fetch');
+    assert.equal(Boolean(failure.network), verbose);
+    assert.match(JSON.stringify(failure), /UND_ERR_CONNECT_TIMEOUT/);
   }
 });

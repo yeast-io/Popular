@@ -1,6 +1,8 @@
 import { AiTrace, currentAiTrace } from '../logging/ai-trace.js';
 import type { AiLogger } from '../logging/ai-trace.types.js';
 import { AppError } from '../http/app-error.js';
+import { serializeDiagnosticError } from '../logging/diagnostic-error.js';
+import { telegramNetworkDiagnostics } from './telegram-network.client.js';
 import type { TelegramTransport, TelegramUpdate } from '../../modules/telegram/telegram.types.js';
 
 export class TelegramClient implements TelegramTransport {
@@ -10,21 +12,28 @@ export class TelegramClient implements TelegramTransport {
     private readonly token: string,
     private readonly fetcher: typeof fetch = fetch,
     private readonly logger?: AiLogger,
-    private readonly pollTraceEnabled = false
+    private readonly pollTraceEnabled = false,
+    private readonly verbose = false
   ) {}
 
   private async call<T>(method: string, payload: object | FormData, signal?: AbortSignal): Promise<T> {
-    const trace = currentAiTrace() ?? new AiTrace(this.logger, { event: 'telegram_http' }, '', 'telegram.http');
+    const parentTrace = currentAiTrace();
+    const trace = new AiTrace(this.logger, {
+      event: 'telegram_http',
+      correlationId: parentTrace?.correlationId,
+    }, '', 'telegram.http', this.verbose);
     trace.sensitive(this.token);
     const text = payload instanceof FormData ? payload.get('caption') : (payload as { text?: unknown }).text;
     if (typeof text === 'string') trace.sensitive(text);
-    const traceRequests = method !== 'getUpdates' || this.pollTraceEnabled;
+    const traceRequests = this.verbose && (method !== 'getUpdates' || this.pollTraceEnabled);
     const started = Date.now();
     let httpStatus: number | undefined;
     let telegramErrorCode: number | undefined;
     let retryAfterSeconds: number | undefined;
-    if (traceRequests) trace.event('telegram.http.started', { method });
-    // Never propagate fetch errors: their messages/causes may include the token-bearing URL.
+    let failureStage = 'fetch';
+    const network = this.verbose ? telegramNetworkDiagnostics() : undefined;
+    if (traceRequests) trace.event('telegram.http.started', { method, network });
+    // Only propagate sanitized causes: fetch errors may include the token-bearing URL.
     try {
       const response = await this.fetcher(`https://api.telegram.org/bot${this.token}/${method}`, {
         method: 'POST',
@@ -34,6 +43,7 @@ export class TelegramClient implements TelegramTransport {
         signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
       });
       httpStatus = response.status;
+      failureStage = 'response.json';
       const body = (await response.json()) as {
         ok?: boolean;
         result?: T;
@@ -50,6 +60,7 @@ export class TelegramClient implements TelegramTransport {
           telegramErrorCode,
           retryAfterSeconds,
         });
+      failureStage = 'telegram.response';
       if (!response.ok || body.ok !== true || body.result === undefined) throw new Error('rejected');
       return body.result;
     } catch (error) {
@@ -65,11 +76,17 @@ export class TelegramClient implements TelegramTransport {
         telegramErrorCode,
         retryAfterSeconds,
         durationMs: Date.now() - started,
+        failureStage,
+        outcome: 'failed',
+        network,
       });
+      const safeError = serializeDiagnosticError(error, [this.token, ...(typeof text === 'string' ? [text] : [])]);
       throw new AppError(
         502,
         'SERVICE_UNAVAILABLE',
-        'Telegram request failed; check Bot configuration, connectivity, or whether the Bot is blocked'
+        'Telegram request failed; check Bot configuration, connectivity, or whether the Bot is blocked',
+        undefined,
+        { cause: { ...safeError, name: safeError.type } }
       );
     }
   }

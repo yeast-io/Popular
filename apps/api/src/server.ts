@@ -506,7 +506,7 @@ try {
     loggers.app
   );
   const telegramClient = config.TELEGRAM_BOT_TOKEN
-    ? new TelegramClient(config.TELEGRAM_BOT_TOKEN, undefined, loggers.app, config.TELEGRAM_POLL_TRACE_ENABLED)
+    ? new TelegramClient(config.TELEGRAM_BOT_TOKEN, undefined, loggers.app, config.TELEGRAM_POLL_TRACE_ENABLED, config.VERBOSE)
     : undefined;
   const receiveMessage = async (
     ownerId: string,
@@ -545,8 +545,8 @@ try {
             );
           },
           loggers.app,
-          config.REDIS_LOCK_TRACE_ENABLED,
-          config.TELEGRAM_POLL_TRACE_ENABLED
+          config.REDIS_LOCK_TRACE_ENABLED && config.VERBOSE,
+          config.TELEGRAM_POLL_TRACE_ENABLED && config.VERBOSE
         )
       : undefined;
   shutdown.register('telegram_worker', 10, () => telegramWorker?.stop());
