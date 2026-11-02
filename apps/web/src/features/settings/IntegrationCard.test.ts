@@ -4,6 +4,9 @@ import { expect, it } from 'vitest';
 import IntegrationCard from './IntegrationCard.vue';
 import hdareaLine from '../../assets/integrations/hdarea-line.svg';
 import mteamLine from '../../assets/integrations/mteam-line.svg';
+import deepseekLogo from '../../assets/integrations/deepseek.svg';
+import claudeLogo from '../../assets/integrations/claude.svg';
+import { setLocale } from '../../i18n';
 
 const props = {
   id: 'telegram',
@@ -43,6 +46,21 @@ it('shows letters for a service without a logo and preserves the card controls',
 it.each(['hdarea', 'mteam'])('uses the bundled %s line logo', (id) => {
   const wrapper = mount(IntegrationCard, { props: { ...props, id, title: id, badge: 'HD' } });
   expect(wrapper.get('.connection-badge img').attributes('src')).toBe(id === 'hdarea' ? hdareaLine : mteamLine);
+  expect(wrapper.get('.connection-badge').text()).toBe('');
+  wrapper.unmount();
+});
+
+it.each([
+  ['deepseek', deepseekLogo, 'en-US'],
+  ['deepseek', deepseekLogo, 'zh-CN'],
+  ['claude', claudeLogo, 'en-US'],
+  ['claude', claudeLogo, 'zh-CN'],
+] as const)('shows the %s logo (%s, %s) for an account-specific AI card', (provider, logo, locale) => {
+  setLocale(locale);
+  const wrapper = mount(IntegrationCard, {
+    props: { ...props, id: `${provider}-account`, provider, title: provider, badge: provider.slice(0, 2) },
+  });
+  expect(wrapper.get('.connection-badge img').attributes('src')).toBe(logo);
   expect(wrapper.get('.connection-badge').text()).toBe('');
   wrapper.unmount();
 });
