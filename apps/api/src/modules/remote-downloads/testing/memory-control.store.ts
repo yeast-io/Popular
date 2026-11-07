@@ -46,7 +46,7 @@ export class MemoryControlStore implements RemoteControlStore {
     const rest = commands.filter((c) => !cursor || c.queueExpiresAt! > Number(expiry)
       || (c.queueExpiresAt === Number(expiry) && c.commandId > id!));
     const items = rest.slice(0, 50).map((c) => ({ commandId: c.commandId, resourceId: c.resourceId,
-      source: c.source as 'mteam' | 'hdarea', title: null, enqueuedAt: c.createdAt,
+      source: c.source as 'mteam' | 'hdarea' | 'hdwing', title: null, enqueuedAt: c.createdAt,
       expiresAt: c.queueExpiresAt!, reason: queueReason(c),
       ...(c.limitDetectedAt ? { limitDetectedAt: c.limitDetectedAt } : {}),
       ...(c.lastAttemptAt ? { lastAttemptAt: c.lastAttemptAt } : {}),

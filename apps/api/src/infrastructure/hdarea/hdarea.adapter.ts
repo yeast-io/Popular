@@ -6,6 +6,7 @@ import { parseAuthenticatedUserId, parseSearch, parseDetail } from './hdarea.par
 export class HDAreaAdapter implements ResourceSiteAdapter {
   readonly id = 'hdarea';
   readonly name = 'HDArea';
+  readonly requiresPasskey = true;
   readonly baseUrl: string;
 
   constructor(baseUrl: string) {

@@ -292,3 +292,34 @@ for (const verbose of [false, true]) {
     assert.doesNotMatch(JSON.stringify([...infos, ...errors]), /我一直喜欢战争片/);
   });
 }
+
+test('a workflow ignoring cancellation cannot complete a job after its deadline', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const finishes: Array<string | undefined> = [];
+  let signal: AbortSignal | undefined;
+  const store = {
+    claim: async () => job,
+    renew: async () => true,
+    finish: async (_job: PreferenceJob, error?: string) => {
+      finishes.push(error);
+    },
+  } as unknown as PreferenceStore;
+  const worker = new PreferenceWorker(store, { run: async (_job, stopSignal) => {
+    signal = stopSignal;
+    await gate;
+    return true;
+  } }, { error: () => {} });
+  const run = worker.tick();
+  for (let index = 0; index < 10 && !signal; index++) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.ok(signal);
+  t.mock.timers.tick(150_000);
+  assert.equal(signal.aborted, true);
+  release();
+  await run;
+  assert.equal(finishes.length, 1);
+  assert.equal(typeof finishes[0], 'string');
+});

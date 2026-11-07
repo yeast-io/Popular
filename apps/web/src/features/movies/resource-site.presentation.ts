@@ -1,7 +1,8 @@
 import mteamLine from '../../assets/integrations/mteam-line.svg';
+import hdwingLine from '../../assets/integrations/hdwing-line.svg';
 import hdareaLine from '../../assets/integrations/hdarea-line.svg';
 
-const icons = new Map([['mteam', mteamLine], ['hdarea', hdareaLine]]);
+const icons = new Map([['mteam', mteamLine], ['hdarea', hdareaLine], ['hdwing', hdwingLine]]);
 
 export function resourceSiteIconStyle(id: string) {
   const icon = icons.get(id);

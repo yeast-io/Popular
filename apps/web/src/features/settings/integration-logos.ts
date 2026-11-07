@@ -1,6 +1,7 @@
 import openaiLogo from '../../assets/integrations/openai.svg';
 import deepseekLogo from '../../assets/integrations/deepseek.svg';
 import claudeLogo from '../../assets/integrations/claude.svg';
+import hdwingLogo from '../../assets/integrations/hdwing-line.svg';
 import hdareaLogo from '../../assets/integrations/hdarea-line.svg';
 import mteamLogo from '../../assets/integrations/mteam-line.svg';
 import qbittorrentLogo from '../../assets/integrations/qbittorrent.svg';
@@ -16,6 +17,7 @@ const integrationLogos = new Map<string, string>([
   ['claude', claudeLogo],
   ['mteam', mteamLogo],
   ['hdarea', hdareaLogo],
+  ['hdwing', hdwingLogo],
   ['qbittorrent', qbittorrentLogo],
   ['transmission', transmissionLogo],
   ['telegram', telegramLogo],

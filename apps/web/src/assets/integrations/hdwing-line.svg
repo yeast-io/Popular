@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <title>HDWing — outline</title>
+  <!-- Redrawn from https://hdwing.org/favicon.ico: pixel HDC / club monogram. -->
+  <g stroke="currentColor" stroke-width="1.25" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M3 3v9M7 3v9M3 7.5h4M10 3h3l1 1v7l-1 1h-3ZM21 4l-1-1h-3v9h3l1-1"/>
+    <path d="M5 16H3v5h2M8 15v6h3M13 16v5h3v-5M19 15v6h3v-3h-3"/>
+  </g>
+  <style>:root{color:#A3A3A0}</style>
+</svg>

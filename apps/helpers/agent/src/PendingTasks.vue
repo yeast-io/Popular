@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import messages from './locales/messages.json';
-import { queueDate, queueRemaining } from './queue.presentation';
+import { queueDate, queueRemaining, queueSiteName } from './queue.presentation';
 import type { QueuePageProps, QueueView } from './queue.types';
 
 const props = defineProps<QueuePageProps>();
@@ -62,12 +62,12 @@ onUnmounted(() => clearInterval(timer));
     <ol v-if="view.snapshot?.items.length" class="queue-list">
       <li v-for="item in view.snapshot.items" :key="item.commandId" class="queue-card">
         <div class="queue-card-heading">
-          <span class="queue-site">{{ item.source === 'mteam' ? 'M-Team' : 'HDArea' }}</span>
+          <span class="queue-site">{{ queueSiteName(item.source) }}</span>
           <span class="queue-reason">{{ text[`queueReason_${item.reason}`] }}</span>
         </div>
         <h3>{{ item.title || text.queueResource.replace('{id}', item.resourceId) }}</h3>
         <p v-if="item.reason === 'torrent_daily_limit'" class="queue-limit" role="status">
-          {{ text.queueLimitExplanation.replace('{site}', item.source === 'mteam' ? 'M-Team' : 'HDArea') }}
+          {{ text.queueLimitExplanation.replace('{site}', queueSiteName(item.source)) }}
           {{ item.nextAttemptAt && item.nextAttemptAt > now ? text.queueLimitPaused : text.queueLimitDue }}
         </p>
         <dl>

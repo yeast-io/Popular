@@ -470,7 +470,7 @@ describe('settings workspace', () => {
     wrapper = mount(App);
     await flushPromises();
     expect(wrapper.get('[data-settings-section="downloads"]').attributes('aria-current')).toBe('page');
-    expect(wrapper.get('.settings-content-heading h2').text()).toBe(locale === 'zh-CN' ? '工具' : 'Tools');
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe(locale === 'zh-CN' ? '下载工具' : 'Tools');
     expect(wrapper.findAll('.connection-copy h3').map((heading) => heading.text())).toEqual(['qBittorrent', 'Transmission']);
     wrapper.unmount();
   });
@@ -550,12 +550,13 @@ describe('settings workspace', () => {
   });
 
   it.each([
-    ['en-US', 'Sources', 'Tools', 'Keys'],
-    ['zh-CN', '资源', '工具', '密钥'],
+    ['en-US', 'Sites', 'Tools', 'Keys'],
+    ['zh-CN', '站点', '下载工具', '密钥'],
   ] as const)('separates sources and tools in desktop and mobile navigation (%s)', async (locale, resources, tools, keys) => {
     setLocale(locale);
     const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
+    await wrapper.get('[data-settings-group="resources"]').trigger('click');
     expect(wrapper.get('[data-settings-section="resources"]').text()).toContain(resources);
     expect(wrapper.get('[data-settings-section="downloads"]').text()).toContain(tools);
     await wrapper.get('[data-settings-section="resources"]').trigger('click');
@@ -563,7 +564,7 @@ describe('settings workspace', () => {
     expect(wrapper.get('.settings-content-heading h2').text()).toBe(resources);
     expect(wrapper.find('.resource-search').exists()).toBe(false);
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/resource-search/sources'))).toBe(false);
-    expect(wrapper.findAll('.connection-copy h3').map((node) => node.text())).toEqual(['M-Team', 'HDArea']);
+    expect(wrapper.findAll('.connection-copy h3').map((node) => node.text())).toEqual(['M-Team', 'HDArea', 'HDWing']);
     expect(vi.mocked(fetch).mock.calls.some(([url]) => /\/(qbittorrent|transmission)$/.test(String(url)))).toBe(false);
     await wrapper.get('#settings-category').setValue('downloads');
     await flushPromises();
@@ -591,7 +592,7 @@ describe('settings workspace', () => {
     expect(
       wrapper.findAll('.connection-copy h3').filter((node) => node.isVisible()).map((node) => node.text())
     ).toEqual(
-      ['M-Team', 'HDArea']
+      ['M-Team', 'HDArea', 'HDWing']
     );
     wrapper.unmount();
   });

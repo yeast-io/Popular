@@ -1,3 +1,6 @@
+import { TaskLease } from '../../infrastructure/background-tasks/task-lease.worker.js';
+import { beginTaskStatistics } from '../../infrastructure/background-tasks/task-statistics.adapter.js';
+import type { TaskStatistics } from '../../infrastructure/background-tasks/background-task.types.js';
 import { randomUUID } from 'node:crypto';
 import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
@@ -15,7 +18,8 @@ export class PreferenceWorker {
     private readonly store: PreferenceStore,
     private readonly workflow: Pick<PreferenceWorkflow, 'run'>,
     private readonly logger: AiLogger,
-    private readonly verbose = false
+    private readonly verbose = false,
+    private readonly statistics?: TaskStatistics
   ) {}
 
   start() {
@@ -60,30 +64,18 @@ export class PreferenceWorker {
     for (const item of job.evidence) trace.sensitive(item.text);
     await withAiTrace(trace, async () => {
       trace.event('preference.task.claimed');
-      const controller = new AbortController();
-      const deadline = setTimeout(
-        () => controller.abort(new Error('Preference task exceeded 150 second deadline')),
-        150_000
-      );
-      const heartbeat = setInterval(() => {
-        void this.store
-          .renew(job)
-          .then((owned) => {
-            if (!owned) controller.abort(new Error('Preference task lease lost'));
-          })
-          .catch((error) => {
-            return controller.abort(new Error('Preference task lease renewal failed', { cause: error }));
-          });
-      }, 30_000
-      );
-      deadline.unref();
-      heartbeat.unref();
+      const lease = new TaskLease({ intervalMs: 30_000, renew: () => this.store.renew(job) });
+      const finishStatistics = beginTaskStatistics(this.statistics, 'preferences', 'job');
+      let outcome: 'success' | 'failure' | 'cancelled' = 'success';
+      lease.start();
       try {
-        if (await trace.step('preference.workflow.run', () => this.workflow.run(job, controller.signal))) {
+        if (await lease.withDeadline(150_000, () => trace.step('preference.workflow.run', () => this.workflow.run(job, lease.signal)))) {
+          lease.signal.throwIfAborted();
           await trace.step('preference.task.complete', () => this.store.finish(job));
           trace.event('preference.task.completed', { outcome: 'success' });
         }
       } catch (error) {
+        outcome = 'failure';
         // Report the original failure before attempting storage, which may fail independently.
         trace.fail(error, { event: 'preference_task_failed', willRetry: job.attempts < 3 });
         try {
@@ -97,9 +89,8 @@ export class PreferenceWorker {
           );
         }
       } finally {
-        clearInterval(heartbeat);
-        clearTimeout(deadline);
-        controller.abort();
+        await lease.stop();
+        finishStatistics(outcome);
       }
     });
   }

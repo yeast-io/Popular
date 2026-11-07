@@ -1,3 +1,5 @@
+import { TaskLease } from '../../infrastructure/background-tasks/task-lease.worker.js';
+import { beginTaskStatistics } from '../../infrastructure/background-tasks/task-statistics.adapter.js';
 import { assistantFailureReply } from './assistant-failure.presentation.js';
 import type { AssistantWorkerOptions } from './assistant.types.js';
 import { loadTmdbPoster } from '../../infrastructure/tmdb/poster.js';
@@ -141,10 +143,8 @@ export class AssistantWorker {
     let slot: string | undefined;
     const controller = new AbortController();
     this.controllers.add(controller);
-    let heartbeat: ReturnType<typeof setTimeout> | undefined;
-    let renewing: Promise<void> | undefined;
     let job: AssistantJob | null = null;
-    const renew = async (): Promise<void> => {
+    const renewOwned = async (): Promise<boolean> => {
       controller.signal.throwIfAborted();
       if (
         (await this.lockTrace.run('renew', [lock, slot!], () => this.redis.eval(RENEW, 2, lock, slot!, leaseId), {
@@ -162,28 +162,17 @@ export class AssistantWorker {
         throw new Error('Assistant message lease lost');
       }
       controller.signal.throwIfAborted();
+      return true;
     };
-    const beat = (): void => {
-      heartbeat = setTimeout(() => {
-        renewing = renew()
-          .catch((error) => {
-            this.logger?.error(
-              {
-                event: 'assistant_lease_renew_failed',
-                ...conversation,
-                jobId: job?.id,
-                error: serializeDiagnosticError(error),
-              },
-              'Assistant lease renewal failed'
-            );
-            controller.abort();
-          })
-          .finally(() => {
-            if (!controller.signal.aborted) beat();
-          });
-      }, 15_000
-      );
-      heartbeat.unref();
+    const lease = new TaskLease({
+      controller, intervalMs: 15_000, renew: renewOwned,
+      onError: (error) => this.logger?.error({
+        event: 'assistant_lease_renew_failed', ...conversation, jobId: job?.id, correlationId: job?.id ?? leaseId,
+        error: serializeDiagnosticError(error),
+      }, 'Assistant lease renewal failed'),
+    });
+    const renew = async (): Promise<void> => {
+      if (!(await lease.renew())) lease.signal.throwIfAborted();
     };
     try {
       if (
@@ -222,7 +211,7 @@ export class AssistantWorker {
           );
         return;
       }
-      beat();
+      lease.start();
       while (!this.stopped && !controller.signal.aborted) {
         await renew();
         job = await this.queue.claim(conversation, leaseId);
@@ -251,15 +240,16 @@ export class AssistantWorker {
         trace.event('assistant.job.claimed', { reusedReply: Boolean(job.result) });
         const finishRenewal = async (): Promise<void> => {
           job = null;
-          await renewing;
+          await lease.waitForRenewal();
         };
-        const deadline = setTimeout(() => controller.abort(), 240_000);
-        deadline.unref();
+        const finishStatistics = withAiTrace(trace, () => beginTaskStatistics(this.options.statistics, 'assistant', 'job'));
+        let outcome: 'success' | 'failure' = 'success';
         try {
-          await withAiTrace(trace, () => {
+          await lease.withDeadline(240_000, () => withAiTrace(trace, () => {
             return this.execute(currentJob, leaseId, controller.signal, renew, finishRenewal);
-          });
+          }));
         } catch (error) {
+          outcome = 'failure';
           trace.fail(error, { aborted: controller.signal.aborted, exhausted: currentJob.attempts >= 5 });
           this.report('assistant_delivery_or_execution_failed');
           await finishRenewal();
@@ -273,16 +263,14 @@ export class AssistantWorker {
           }
           return;
         } finally {
-          clearTimeout(deadline);
+          finishStatistics(outcome);
           // A renewal already in flight must finish before the next job replaces this one.
-          await renewing;
+          await lease.waitForRenewal();
           job = null;
         }
       }
     } finally {
-      controller.abort();
-      if (heartbeat) clearTimeout(heartbeat);
-      await renewing;
+      await lease.stop();
       this.controllers.delete(controller);
       // Token checks prevent an expired owner from releasing a replacement worker's locks.
       const released = await Promise.allSettled([

@@ -77,15 +77,15 @@ test('remote movie delivery revalidates before loading credentials and retrievin
   assert.deepEqual(f.calls, ['movie:alice:603:mteam:42', 'config:alice:mteam', 'mteam-url:remote']);
 });
 
-test('local and remote HDArea downloads share site resolution without touching M-Team credentials', async () => {
+for (const source of ['hdarea', 'hdwing']) test(`local and remote ${source} downloads share site resolution without touching M-Team credentials`, async () => {
   const f = fixture();
-  const request = { ownerId: 'alice', tmdbId: 603, source: 'hdarea', releaseId: '42' };
+  const request = { ownerId: 'alice', tmdbId: 603, source, releaseId: '42' };
   const prepared = await f.service.prepareLocal({ ...request, locale: 'zh-CN' });
   const localUrl = await prepared.torrentUrl();
   assert.equal(await f.service.resolveRemote(request), localUrl);
   assert.deepEqual(f.calls, [
-    'movie:alice:603:hdarea:42', 'site-url:alice:hdarea:42',
-    'movie:alice:603:hdarea:42', 'site-url:alice:hdarea:42',
+    `movie:alice:603:${source}:42`, `site-url:alice:${source}:42`,
+    `movie:alice:603:${source}:42`, `site-url:alice:${source}:42`,
   ]);
 });
 
@@ -101,7 +101,7 @@ test('TV resources keep their pre-enqueue validation and do not require a movie 
 
 test('validation failures preserve the original error and never retrieve torrent URLs', async () => {
   const error = new ResourceSiteError('authentication');
-  for (const source of ['mteam', 'hdarea']) {
+  for (const source of ['mteam', 'hdarea', 'hdwing']) {
     const f = fixture({ validationError: error });
     const request = { ownerId: 'alice', tmdbId: 603, source, releaseId: '42' };
     await assert.rejects(f.service.prepareLocal({ ...request, locale: 'en-US' }), (actual) => actual === error);

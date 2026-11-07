@@ -3,7 +3,7 @@ import type { Locale } from './settings.types';
 export interface QueueItem {
   commandId: string;
   resourceId: string;
-  source: 'mteam' | 'hdarea';
+  source: 'mteam' | 'hdarea' | 'hdwing';
   title: string | null;
   enqueuedAt: number;
   expiresAt: number;

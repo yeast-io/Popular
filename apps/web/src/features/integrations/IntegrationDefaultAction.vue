@@ -66,7 +66,7 @@ watch(() => props.status, () => window.dispatchEvent(new Event('integration-pref
       {{ t('integrationDefaults.setDefault') }}
     </button>
     <button v-if="category === 'resource'" type="button" role="switch" class="resource-site-switch"
-      :aria-label="t('resourceSelection.enableSite', { name: id === 'mteam' ? 'M-Team' : id === 'hdarea' ? 'HDArea' : id })"
+      :aria-label="t('resourceSelection.enableSite', { name: id === 'mteam' ? 'M-Team' : id === 'hdarea' ? 'HDArea' : id === 'hdwing' ? 'HDWing' : id })"
       :aria-checked="preferences?.effectiveSites?.includes(id) ?? false"
       :title="t(isDefault ? 'resourceSelection.defaultRequired' : 'resourceSelection.hint')"
       :disabled="busy || disabled || !preferences || isDefault || status === 'unconfigured'" @click="toggleResourceSite">

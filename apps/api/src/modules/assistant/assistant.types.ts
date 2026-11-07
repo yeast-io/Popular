@@ -1,3 +1,4 @@
+import type { TaskStatistics } from '../../infrastructure/background-tasks/background-task.types.js';
 import type { LlmMessage } from '../llm/llm.types.js';
 
 import type { messages } from './assistant.presentation.js';
@@ -136,6 +137,7 @@ export interface AssistantQueue {
 }
 
 export interface AssistantWorkerOptions {
+  statistics?: TaskStatistics;
   resolveLocale?: (ownerId: string) => Promise<Locale>;
   maxConcurrency: number;
   scanIntervalMs: number;

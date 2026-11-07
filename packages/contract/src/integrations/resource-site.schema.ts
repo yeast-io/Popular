@@ -7,6 +7,7 @@ export const ResourceSiteReleaseParamsSchema = Type.Object({
 });
 export const ResourceSiteConfigurationSchema = Type.Object({
   site: Type.String(), status: IntegrationStatusSchema,
+  requiresPasskey: Type.Optional(Type.Boolean()),
   baseUrl: Type.Optional(Type.String({ format: 'uri' })),
   cookieMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
   passkeyMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),

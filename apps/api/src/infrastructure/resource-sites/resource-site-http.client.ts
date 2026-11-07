@@ -1,21 +1,21 @@
 import { CookieJar } from 'tough-cookie';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { HDAreaHttpOptions, HDAreaHttpLane } from './hdarea-http.types.js';
+import type { ResourceSiteHttpOptions, ResourceSiteHttpLane } from './resource-site-http.types.js';
 import type { ResourceSiteSession, ResourceSiteHttpClientPort } from '../../modules/resource-sites/resource-site.types.js';
 import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
 import {
-  HDAREA_HTTP_INTERVAL_MS,
-  HDAREA_HTTP_MAX_BYTES,
-  HDAREA_HTTP_MAX_PENDING,
-  HDAREA_HTTP_TIMEOUT_MS,
-} from './hdarea.policy.js';
+  RESOURCE_SITE_HTTP_INTERVAL_MS,
+  RESOURCE_SITE_HTTP_MAX_BYTES,
+  RESOURCE_SITE_HTTP_MAX_PENDING,
+  RESOURCE_SITE_HTTP_TIMEOUT_MS,
+} from './resource-site-http.policy.js';
 import { aiStep, currentAiTrace } from '../logging/ai-trace.js';
 
 /** Scheduling is shared; Cookie jars are created for each credential-bound operation. */
-export class HDAreaHttpClient implements ResourceSiteHttpClientPort {
-  private readonly lanes = new Map<string, HDAreaHttpLane>();
+export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
+  private readonly lanes = new Map<string, ResourceSiteHttpLane>();
 
-  constructor(private readonly options: HDAreaHttpOptions = {}) {}
+  constructor(private readonly options: ResourceSiteHttpOptions = {}) {}
 
   async session(baseUrl: string, cookie: string): Promise<ResourceSiteSession> {
     const origin = new URL(baseUrl).origin;
@@ -30,7 +30,7 @@ export class HDAreaHttpClient implements ResourceSiteHttpClientPort {
         const url = new URL(path, baseUrl);
         if (url.origin !== origin || url.username || url.password || url.protocol !== 'https:')
           throw new ResourceSiteError('invalidResponse');
-        const budget = AbortSignal.timeout(this.options.timeoutMs ?? HDAREA_HTTP_TIMEOUT_MS);
+        const budget = AbortSignal.timeout(this.options.timeoutMs ?? RESOURCE_SITE_HTTP_TIMEOUT_MS);
         const bounded = signal ? AbortSignal.any([budget, signal]) : budget;
         try {
           return await this.schedule(origin, bounded, async () => {
@@ -66,7 +66,7 @@ export class HDAreaHttpClient implements ResourceSiteHttpClientPort {
                 if (/login|verify|captcha/i.test(next.pathname)) throw new ResourceSiteError('authentication');
                 current = next;
                 // Redirects also consume the site's request interval.
-                await delay(this.options.intervalMs ?? HDAREA_HTTP_INTERVAL_MS, undefined, { signal: bounded });
+                await delay(this.options.intervalMs ?? RESOURCE_SITE_HTTP_INTERVAL_MS, undefined, { signal: bounded });
                 continue;
               }
               if (!response.ok) {
@@ -83,7 +83,7 @@ export class HDAreaHttpClient implements ResourceSiteHttpClientPort {
                   response.status === 401 ? 'authentication' : response.status === 403 ? 'blocked' : 'network'
                 );
               }
-              const max = this.options.maxBytes ?? HDAREA_HTTP_MAX_BYTES;
+              const max = this.options.maxBytes ?? RESOURCE_SITE_HTTP_MAX_BYTES;
               if (Number(response.headers.get('content-length')) > max) {
                 await response.body?.cancel();
                 throw new ResourceSiteError('invalidResponse');
@@ -127,7 +127,7 @@ export class HDAreaHttpClient implements ResourceSiteHttpClientPort {
       lane = { tail: Promise.resolve(), pending: 0, nextAt: 0, blockedUntil: 0 };
       this.lanes.set(origin, lane);
     }
-    if (lane.pending >= HDAREA_HTTP_MAX_PENDING || lane.blockedUntil > Date.now())
+    if (lane.pending >= RESOURCE_SITE_HTTP_MAX_PENDING || lane.blockedUntil > Date.now())
       throw new ResourceSiteError('rateLimited');
     const previous = lane.tail;
     let release!: () => void;
@@ -156,7 +156,7 @@ export class HDAreaHttpClient implements ResourceSiteHttpClientPort {
     } finally {
       // Preserve queue order when an aborted waiter leaves before its predecessor.
       previous.then(() => {
-        lane.nextAt = Date.now() + (this.options.intervalMs ?? HDAREA_HTTP_INTERVAL_MS);
+        lane.nextAt = Date.now() + (this.options.intervalMs ?? RESOURCE_SITE_HTTP_INTERVAL_MS);
         lane.pending--;
         release();
       });

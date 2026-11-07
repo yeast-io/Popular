@@ -1,3 +1,7 @@
+import { TaskLease } from '../../infrastructure/background-tasks/task-lease.worker.js';
+import { beginTaskStatistics } from '../../infrastructure/background-tasks/task-statistics.adapter.js';
+import type { TaskStatistics } from '../../infrastructure/background-tasks/background-task.types.js';
+import { TaskRunner } from '../../infrastructure/background-tasks/task-runner.worker.js';
 import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { remoteDownloadMessages } from '../remote-downloads/remote-download.messages.js';
 import { loadTmdbPoster as loadPoster } from '../../infrastructure/tmdb/poster.js';
@@ -9,9 +13,7 @@ import type { NotificationService } from './notification.service.js';
 import type { ClaimedDownload, DownloadNotification, NotificationLocaleOptions } from './notification.types.js';
 
 export class NotificationWorker {
-  private timer?: ReturnType<typeof setInterval>;
-  private running: Promise<void> | undefined;
-  private stopped = false;
+  private readonly runner: TaskRunner;
 
   constructor(
     private readonly service: NotificationService,
@@ -24,44 +26,28 @@ export class NotificationWorker {
     },
     private readonly now: () => Date = () => new Date(),
     private readonly poster: (path: string) => Promise<Buffer | undefined> = loadPoster,
-    private readonly scanTraceEnabled = false,
-    private readonly localeOptions: NotificationLocaleOptions = {}
-  ) {}
-
-  start() {
-    this.stopped = false;
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, 5_000);
-    this.timer.unref();
-    void this.tick();
+    scanTraceEnabled = false,
+    private readonly localeOptions: NotificationLocaleOptions = {},
+    private readonly statistics?: TaskStatistics
+  ) {
+    this.runner = new TaskRunner({
+      statistics,
+      name: 'download-notifications', intervalMs: 5_000,
+      logger: localeOptions.logger, verbose: localeOptions.verbose === true && scanTraceEnabled,
+      run: ({ signal }) => this.run(signal),
+      onError: (error) => this.report('SCAN_FAILED', { error: serializeDiagnosticError(error) }),
+    });
   }
 
-  async stop() {
-    this.stopped = true;
-    if (this.timer) clearInterval(this.timer);
-    await this.running;
-  }
+  start() { this.runner.start(); }
 
-  async tick(): Promise<void> {
-    if (this.running || this.stopped) return this.running;
-    const started = Date.now();
-    if (this.scanTraceEnabled) this.report('SCAN_STARTED');
-    this.running = this.run()
-      .then(() => {
-        if (this.scanTraceEnabled) this.report('SCAN_COMPLETED', { durationMs: Date.now() - started });
-      })
-      .catch((error) => this.report('SCAN_FAILED', { error: serializeDiagnosticError(error) }));
-    try {
-      await this.running;
-    } finally {
-      this.running = undefined;
-    }
-  }
+  stop() { return this.runner.stop(); }
 
-  private async run() {
+  tick() { return this.runner.tick(); }
+
+  private async run(signal: AbortSignal) {
     const store = this.service.store;
-    for (let i = 0; i < 20 && !this.stopped; i++) {
+    for (let i = 0; i < 20 && !signal.aborted; i++) {
       const intent = await store.claimIntent(this.now());
       if (!intent) break;
       try {
@@ -79,33 +65,36 @@ export class NotificationWorker {
         this.report('INTENT_RECOVERY_FAILED');
       }
     }
-    for (let i = 0; i < 20 && !this.stopped; i++) {
+    for (let i = 0; i < 20 && !signal.aborted; i++) {
       const claim = await store.claimTask(this.now());
       if (!claim) break;
       const trace = new AiTrace(this.localeOptions.logger, { taskId: claim.task.id, downloadId: claim.record.id },
         '', 'notification.download', this.localeOptions.verbose === true);
       await withAiTrace(trace, async () => {
         trace.event('notification.started');
-        await this.process(claim);
+        await this.process(claim, signal);
       });
     }
   }
 
-  private async active(claim: ClaimedDownload) {
+  private async active(claim: ClaimedDownload, signal: AbortSignal) {
     const preferences = await this.service.store.preferences(claim.record.ownerId);
-    if (this.stopped) return false;
+    if (signal.aborted) return false;
     if (!preferences.enabled || preferences.epoch !== claim.task.epoch) {
       await this.service.store.cancel(claim);
       return false;
     }
-    return this.service.store.renew(claim, this.now());
+    return true;
   }
 
-  private async process(claim: ClaimedDownload) {
+  private async process(claim: ClaimedDownload, signal: AbortSignal) {
     const store = this.service.store;
     let error: string | undefined;
+    const lease = new TaskLease({ signal, intervalMs: 30_000, renew: () => store.renew(claim, this.now()) });
+    const finishStatistics = beginTaskStatistics(this.statistics, 'download-notifications', 'job');
+    lease.start();
     try {
-      if (!(await this.active(claim))) return;
+      if (!(await this.active(claim, lease.signal)) || !(await lease.renew())) return;
       if (!claim.task.downloaded) {
         const progress = await aiStep('notification.download.inspect', () => this.downloads.inspect(claim.record));
         if (!progress) {
@@ -117,13 +106,14 @@ export class NotificationWorker {
       const payload = await this.payload(claim);
       for (const target of claim.task.channels) {
         if (target.notified) continue;
-        if (!(await this.active(claim))) return;
+        if (!(await this.active(claim, lease.signal)) || !(await lease.renew())) return;
         const channel = this.service.channel(target.channel);
         try {
           if (!channel || !(await channel.isConfigured(claim.record.ownerId))) {
             error = 'CHANNEL_UNAVAILABLE';
             continue;
           }
+          if (!(await lease.renew())) return;
           const sent = await aiStep('notification.channel.send', () => channel.send(claim.record.ownerId, payload), { channel: target.channel });
           if (!(await store.channelNotified(claim, target.channel, sent.messageId))) return;
         } catch (cause) {
@@ -136,9 +126,17 @@ export class NotificationWorker {
       currentAiTrace()?.fail(cause);
       error = 'DOWNLOAD_CHECK_FAILED';
     } finally {
-      await store.finish(claim, this.now(), error);
-      if (error) this.report(error);
-      currentAiTrace()?.event('notification.completed', { outcome: error ?? 'success' });
+      const cancelled = lease.signal.aborted;
+      await lease.stop();
+      let persisted = false;
+      try {
+        await store.finish(claim, this.now(), error);
+        persisted = true;
+        if (error) this.report(error);
+        currentAiTrace()?.event('notification.completed', { outcome: error ?? 'success' });
+      } finally {
+        finishStatistics(!persisted ? 'failure' : cancelled ? 'cancelled' : error ? 'failure' : 'success');
+      }
     }
   }
 

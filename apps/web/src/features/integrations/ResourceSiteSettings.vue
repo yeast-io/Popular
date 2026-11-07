@@ -8,9 +8,10 @@ import { loadWebConfig } from '../../config/env';
 import { t } from '../../i18n';
 import { localizedApiError, LocalizedApiError, localizedErrorMessage } from '../../i18n/api-error';
 
+const props = withDefaults(defineProps<{ site?: string; name?: string }>(), { site: 'hdarea', name: 'HDArea' });
 const emit = defineEmits<{ 'configuration-changed': [] }>();
 const { apiBaseUrl } = loadWebConfig();
-const configuration = ref<ResourceSiteConfiguration>({ site: 'hdarea', status: 'unconfigured' });
+const configuration = ref<ResourceSiteConfiguration>({ site: props.site, status: 'unconfigured' });
 const cookie = ref('');
 const passkey = ref('');
 const busy = ref(false);
@@ -20,8 +21,9 @@ const confirmDelete = ref(false);
 const notice = ref('');
 const feedback = ref('');
 let controller: AbortController | undefined;
+const requiresPasskey = computed(() => configuration.value.requiresPasskey ?? props.site === 'hdarea');
 const configured = computed(() => configuration.value.status !== 'unconfigured');
-const endpoint = `${apiBaseUrl}/me/integrations/resource-sites/hdarea`;
+const endpoint = `${apiBaseUrl}/me/integrations/resource-sites/${props.site}`;
 onMounted(async () => {
   await action(async () => {
     applyConfiguration(await request(endpoint));
@@ -45,7 +47,7 @@ async function action(work: () => Promise<void>) {
   try {
     await work();
   } catch (error) {
-    notice.value = localizedErrorMessage(error, 'resourceSite.error.network');
+    notice.value = `${props.name}: ${localizedErrorMessage(error, 'resourceSite.error.network')}`;
     if (configured.value && error instanceof LocalizedApiError
       && ['resourceSite.error.authentication', 'resourceSite.error.blocked'].includes(error.translationKey))
       configuration.value = { ...configuration.value, status: 'configured_invalid' };
@@ -70,7 +72,7 @@ async function save() {
                 cookie.value, configuration.value.cookieMasked
               ) }
             : {}),
-          ...(replacementSecret(
+          ...(requiresPasskey.value && replacementSecret(
             passkey.value, configuration.value.passkeyMasked
           )
             ? { passkey: replacementSecret(
@@ -82,7 +84,7 @@ async function save() {
     )
     );
     emit('configuration-changed');
-    feedback.value = t('resourceSite.saved');
+    feedback.value = t('resourceSite.saved', { site: props.name });
   });
 }
 async function remove() {
@@ -90,7 +92,7 @@ async function remove() {
   await action(async () => {
     await request(endpoint, { method: 'DELETE' });
     applyConfiguration({
-      site: 'hdarea',
+      site: props.site,
       ...(configuration.value.baseUrl ? { baseUrl: configuration.value.baseUrl } : {}),
       status: 'unconfigured',
     });
@@ -103,30 +105,30 @@ async function retest() {
   confirmDelete.value = false;
   await action(async () => {
     applyConfiguration(await request<ResourceSiteConfiguration>(`${endpoint}/test`, { method: 'POST' }));
-    feedback.value = t('resourceSite.retested');
+    feedback.value = t('resourceSite.retested', { site: props.name });
     emit('configuration-changed');
   });
 }
 </script>
 
 <template>
-  <IntegrationCard id="hdarea" :title="t('resourceSite.title')" badge="HD" :description="t('resourceSite.description')"
+  <IntegrationCard :id="props.site" :title="props.name" badge="HD" :description="t('resourceSite.description', { site: props.name })"
     :status-label="t(`mteam.status.${configuration.status}`)" :status-class="configuration.status"
     :configured="configured" :busy="busy" :loading="loading" :notice="notice">
     <template v-if="!loading">
       <form class="integration-form" novalidate @submit.prevent="save">
         <div class="settings-fields integration-fields">
-          <label for="hdarea-base-url">{{ t('resourceSite.baseUrl') }}
-            <input id="hdarea-base-url" :value="configuration.baseUrl" type="url" readonly autocomplete="url" />
-            <small>{{ t('resourceSite.baseUrlHint') }}</small>
+          <label :for="`${props.site}-base-url`">{{ t('resourceSite.baseUrl') }}
+            <input :id="`${props.site}-base-url`" :value="configuration.baseUrl" type="url" readonly autocomplete="url" />
+            <small>{{ t('resourceSite.baseUrlHint', { variable: `${props.site.toUpperCase()}_BASE_URL` }) }}</small>
           </label>
-          <label for="hdarea-cookie">{{ t('resourceSite.cookie') }}
-            <input id="hdarea-cookie" v-model="cookie" :type="configuration.cookieMasked && cookie === configuration.cookieMasked ? 'text' : 'password'" autocomplete="new-password" maxlength="16384" :required="!configured" :disabled="busy" />
+          <label :for="`${props.site}-cookie`">{{ t('resourceSite.cookie') }}
+            <input :id="`${props.site}-cookie`" v-model="cookie" :type="configuration.cookieMasked && cookie === configuration.cookieMasked ? 'text' : 'password'" autocomplete="new-password" maxlength="16384" :required="!configured" :disabled="busy" />
             <small v-if="configuration.cookieMasked">{{ t('settings.credentialLength', { length: Array.from(configuration.cookieMasked).length }) }}</small>
-            <small>{{ t('resourceSite.cookieHint') }}</small>
+            <small>{{ t('resourceSite.cookieHint', { site: props.name }) }}</small>
           </label>
-          <label for="hdarea-passkey">{{ t('resourceSite.passkey') }}
-            <input id="hdarea-passkey" v-model="passkey" :type="configuration.passkeyMasked && passkey === configuration.passkeyMasked ? 'text' : 'password'" autocomplete="new-password" maxlength="512" :disabled="busy" />
+          <label v-if="requiresPasskey" :for="`${props.site}-passkey`">{{ t('resourceSite.passkey') }}
+            <input :id="`${props.site}-passkey`" v-model="passkey" :type="configuration.passkeyMasked && passkey === configuration.passkeyMasked ? 'text' : 'password'" autocomplete="new-password" maxlength="512" :disabled="busy" />
             <small v-if="configuration.passkeyMasked">{{ t('settings.credentialLength', { length: Array.from(configuration.passkeyMasked).length }) }}</small>
             <small>{{ t('resourceSite.passkeyHint') }}</small>
           </label>
@@ -141,14 +143,14 @@ async function retest() {
             :configured="configured"
             :busy="busy"
             :deleting="deleting"
-            :delete-prompt="t('resourceSite.deleteConfirm')"
+            :delete-prompt="t('resourceSite.deleteConfirm', { site: props.name })"
             :can-save="configured || Boolean(cookie.trim())"
             @delete="remove"
             @retest="retest"
           />
         </div>
       </form>
-      <p v-if="busy" role="status">{{ t('resourceSite.working') }}</p>
+      <p v-if="busy" role="status">{{ t('resourceSite.working', { site: props.name }) }}</p>
     </template>
   </IntegrationCard>
 </template>

@@ -1,6 +1,6 @@
 import { Static, Type } from '@sinclair/typebox';
 
-export const DownloadSourceSchema = Type.Union([Type.Literal('mteam'), Type.Literal('hdarea')]);
+export const DownloadSourceSchema = Type.Union([Type.Literal('mteam'), Type.Literal('hdarea'), Type.Literal('hdwing')]);
 export type DownloadSource = Static<typeof DownloadSourceSchema>;
 
 export const DownloadProviderSchema = Type.Union([Type.Literal('qbittorrent'), Type.Literal('transmission')]);

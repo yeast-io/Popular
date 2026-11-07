@@ -37,7 +37,7 @@ test('routine aggregation scans follow the switch while errors remain visible', 
     const events: string[] = [];
     const logger = {
       info: (line: Record<string, unknown>) => {
-        events.push(String(line.event));
+        events.push(String(line.stage));
       },
       error: () => {
         events.push('error');
@@ -56,7 +56,7 @@ test('routine aggregation scans follow the switch while errors remain visible', 
     );
     service.start();
     await service.stop();
-    assert.deepEqual(events, enabled ? ['external_usage_scan_started', 'external_usage_scan_completed'] : []);
+    assert.deepEqual(events, enabled ? ['background-task.run.started', 'background-task.run.completed', 'background-task.finished'] : []);
   }
   let errors = 0;
   const service = new ExternalUsageAggregationService(
@@ -74,4 +74,27 @@ test('routine aggregation scans follow the switch while errors remain visible', 
   service.start();
   await service.stop();
   assert.equal(errors, 1);
+});
+
+test('startup uses the retention window while periodic runs use the recent window, including after restart', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const windows: Date[] = [];
+  const now = new Date('2026-11-07T12:00:00Z');
+  const service = new ExternalUsageAggregationService({ rebuildDaily: async (since) => {
+    windows.push(since);
+  } },
+  { error() {} }, 100, () => now);
+  t.after(() => service.stop());
+  service.start();
+  service.start();
+  await setImmediate();
+  assert.equal(windows.length, 1);
+  assert.ok(windows[0]! < new Date('2026-11-06T00:00:00Z'));
+  t.mock.timers.tick(100);
+  await setImmediate();
+  assert.equal(windows[1]!.toISOString(), '2026-11-06T00:00:00.000Z');
+  await service.stop();
+  service.start();
+  await setImmediate();
+  assert.equal(windows[2]!.getTime(), windows[0]!.getTime());
 });

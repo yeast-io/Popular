@@ -7,7 +7,7 @@ import { loadConfig } from '../../config/env.js';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import type { AuthService } from '../auth/auth.service.js';
 import { ResourceSiteService } from './resource-site.service.js';
-import { HDAreaHttpClient } from '../../infrastructure/hdarea/hdarea-http.client.js';
+import { ResourceSiteHttpClient } from '../../infrastructure/resource-sites/resource-site-http.client.js';
 import { SecretCrypto } from '../integrations/secret-crypto.js';
 import { HDAreaAdapter } from '../../infrastructure/hdarea/hdarea.adapter.js';
 import type { ResourceSiteCredential } from './resource-site.types.js';
@@ -49,7 +49,7 @@ test('authenticated Cookie save → search → detail → delete runs through th
       },
     },
     new SecretCrypto('test-resource-sites-secret-that-is-long-enough'),
-    new HDAreaHttpClient({
+    new ResourceSiteHttpClient({
       intervalMs: 0,
       fetch: async (input, init) => {
         requests++;
@@ -140,7 +140,7 @@ test('site account conflicts and pending legacy identities use safe localized HT
       delete: async () => {},
     },
     new SecretCrypto('test-integration-key-at-least-32-characters'),
-    new HDAreaHttpClient({ intervalMs: 0, fetch: async () => {
+    new ResourceSiteHttpClient({ intervalMs: 0, fetch: async () => {
       return new Response('<a href="usercp.php">Account</a><div id="info_block"><a href="userdetails.php?id=123">Me</a></div>');
     } }),
     { logger: { error() {} }, verbose: false }

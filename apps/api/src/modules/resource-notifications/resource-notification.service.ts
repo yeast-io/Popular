@@ -47,6 +47,7 @@ export class ResourceNotificationService {
           ...(poster ? { posterUrl: `https://image.tmdb.org/t/p/w342${poster}` } : {}),
           status: entry.status,
           createdAt: entry.createdAt.toISOString(),
+          ...(entry.status === 'pending' ? { nextCheckAt: entry.nextRunAt.toISOString() } : {}),
           ...(entry.notifiedAt ? { notifiedAt: entry.notifiedAt.toISOString() } : {}),
           ...(entry.lastOutcome ? { lastOutcome: entry.lastOutcome } : {}),
         };

@@ -114,6 +114,7 @@ export const EnvSchema = z
       .optional()
       .or(z.literal('').transform(() => undefined)),
     INTEGRATION_SECRET_KEY: z.string().min(32),
+    HDWING_BASE_URL: resourceSiteOrigin.default('https://hdwing.org'),
     HDAREA_BASE_URL: resourceSiteOrigin.default('https://hdarea.club'),
     MTEAM_BASE_URL: resourceSiteOrigin.default('https://api.m-team.cc'),
     MTEAM_WEB_BASE_URL: resourceSiteOrigin.default('https://kp.m-team.cc'),

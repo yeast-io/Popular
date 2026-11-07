@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
                   <div v-if="release.publishedAt"><dt>{{ t('movie.releases.publishedAt') }}</dt><dd>{{ release.publishedAt }}</dd></div>
                 </dl>
                 <div v-if="release.tags?.length" class="release-tags"><span v-for="tag in release.tags" :key="tag">{{ tag === 'chinese-subtitles' ? t('movie.releases.tags.chineseSubtitles') : tag }}</span></div>
-                <ResourceDownloadActions :controller="resourceDownloads" :release="release" :site="group.site" :supports-download="group.site === 'mteam' || group.site === 'hdarea'" />
+                <ResourceDownloadActions :controller="resourceDownloads" :release="release" :site="group.site" :supports-download="['mteam', 'hdarea', 'hdwing'].includes(group.site)" />
               </li>
             </ol>
             </ResourceReleaseFilter>

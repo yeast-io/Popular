@@ -38,6 +38,10 @@ test('resource notification routes enforce sessions and schemas, serialize state
             createdAt: '2026-10-26T00:00:00Z',
             notifiedAt: '2026-10-26T01:00:00Z',
           },
+          {
+            id: 'pending-entry', tmdbId: 2, mediaType: 'tv', title: 'Show', status: 'pending',
+            createdAt: '2026-10-26T00:00:00Z', lastOutcome: 'no-resources', nextCheckAt: '2026-10-26T03:00:00Z',
+          },
         ],
       };
     },
@@ -81,6 +85,9 @@ test('resource notification routes enforce sessions and schemas, serialize state
     const list = await app.inject({ url: '/me/resource-notifications?locale=en-US', headers });
     assert.equal(list.statusCode, 200);
     assert.equal(list.json().items[0].status, 'notified');
+    assert.equal(list.json().items[0].nextCheckAt, undefined);
+    assert.equal(list.json().items[1].nextCheckAt, '2026-10-26T03:00:00Z');
+    assert.equal(list.json().items[1].lastOutcome, 'no-resources');
     assert.deepEqual(calls.shift(), ['session-owner', 'en-US']);
     assert.equal((await app.inject({ url: '/me/resource-notifications/tv/1', headers })).json().status, 'notified');
     assert.deepEqual(calls.shift(), ['session-owner', 'tv', 1]);

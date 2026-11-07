@@ -3857,6 +3857,25 @@ body:has(.settings-page)::after {
 .settings-category-nav button.active .settings-nav-indicator {
   opacity: 0.85;
 }
+.settings-group-chevron {
+  margin-left: auto;
+  font-size: 1.1rem;
+  transition: transform 150ms;
+}
+.settings-group-chevron.expanded {
+  transform: rotate(90deg);
+}
+.settings-resource-children {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 4px 21px;
+  padding-left: 9px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+.settings-resource-children button {
+  min-height: 40px;
+  padding: 8px 10px;
+}
 .settings-sidebar-note {
   display: flex;
   align-items: center;

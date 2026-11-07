@@ -43,6 +43,7 @@ export class ResourceSiteService {
       ? {
           site,
           baseUrl,
+          requiresPasskey: this.adapter(site).requiresPasskey ?? false,
           status: row.externalUserId ? row.status : 'configured_invalid',
           cookieMasked: maskIntegrationSecret(this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site))),
           ...(row.encryptedPasskey
@@ -54,7 +55,7 @@ export class ResourceSiteService {
             : {}),
           verifiedAt: row.verifiedAt.toISOString(),
         }
-      : { site, baseUrl, status: 'unconfigured' };
+      : { site, baseUrl, requiresPasskey: this.adapter(site).requiresPasskey ?? false, status: 'unconfigured' };
   }
 
   async configure(
@@ -129,6 +130,13 @@ export class ResourceSiteService {
       if (!row) throw new ResourceSiteError('notConfigured');
       if (!row.externalUserId) throw siteAccountIdentityPending();
       if (row.status !== 'configured_valid') throw new ResourceSiteError('authentication');
+      if (adapter.resolveTorrentUrl) {
+        return this.run(ownerId, site, 'download-link', async (siteAdapter, session) => {
+          const url = await siteAdapter.resolveTorrentUrl!(session, id, row.externalUserId!);
+          currentAiTrace()?.sensitive(url);
+          return url;
+        });
+      }
       if (!row.encryptedPasskey) throw new ResourceSiteError('passkeyRequired');
       if (!adapter.torrentUrl) throw new ResourceSiteError('invalidResponse');
       const passkey = this.secrets.decrypt(row.encryptedPasskey, `${this.context(ownerId, site)}:passkey`);

@@ -1,3 +1,4 @@
+import { RedisTaskStatisticsStore } from './infrastructure/redis/task-statistics.store.js';
 import { ConfiguredDownloadClientFactory } from './infrastructure/downloads/download-client-factory.adapter.js';
 import { DownloadSourceService } from './modules/downloads/download-source.service.js';
 import { RemoteTorrentService } from './modules/remote-downloads/remote-torrent.service.js';
@@ -50,8 +51,10 @@ import { ResourceSearchService } from './modules/resource-search/resource-search
 import { MTeamSearchSource } from './modules/resource-search/mteam-search.source.js';
 import { ResourceSiteSearchSource } from './modules/resource-search/resource-site-search.source.js';
 import { ResourceSiteService } from './modules/resource-sites/resource-site.service.js';
+import type { ResourceSiteAdapter } from './modules/resource-sites/resource-site.types.js';
+import { HDWingAdapter } from './infrastructure/hdwing/hdwing.adapter.js';
 import { HDAreaAdapter } from './infrastructure/hdarea/hdarea.adapter.js';
-import { HDAreaHttpClient } from './infrastructure/hdarea/hdarea-http.client.js';
+import { ResourceSiteHttpClient } from './infrastructure/resource-sites/resource-site-http.client.js';
 import { MongoResourceSiteCredentialStore } from './infrastructure/mongodb/resource-sites/resource-site-credential.store.js';
 import { ResourceSiteResourceProvider } from './modules/resource-query/resource-site-resource.provider.js';
 import { MTeamResourceProvider } from './modules/resource-query/mteam-resource.provider.js';
@@ -151,6 +154,7 @@ const shutdownHandlers = installShutdownHandlers(shutdown, process, async () => 
 try {
   await connectInfrastructure(infrastructure);
   shutdown.assertRunning();
+  const taskStatistics = new RedisTaskStatisticsStore(infrastructure.redis.getClient());
   const models = createModels(infrastructure.mongodb.getConnection());
   await Promise.all([
     models.resourceNotifications.init(),
@@ -172,7 +176,8 @@ try {
     },
     undefined,
     undefined,
-    config.SCAN_TRACE_ENABLED
+    config.SCAN_TRACE_ENABLED && config.VERBOSE,
+    taskStatistics
   );
   shutdown.register('external_usage_aggregation', 45, () => externalUsageAggregation.stop());
   await Promise.all([models.users.init(), models.remoteDevices.init()]);
@@ -213,7 +218,7 @@ try {
   const remoteClientWorker = new RemoteClientWorker(remoteClientService, {
     logger: loggers.error,
     verbose: config.VERBOSE,
-  });
+  }, taskStatistics);
   shutdown.register('remote_client_notifications', 31, () => remoteClientWorker.stop());
   remoteClientWorker.start();
   const userStore = new MongoAuthUserStore(models.users, models.authIdentities);
@@ -323,10 +328,10 @@ try {
   await Promise.all([models.integrationConfigs.init(), models.resourceSiteCredentials.init()]);
   const hdarea = new HDAreaAdapter(config.HDAREA_BASE_URL);
   const resourceSiteService = new ResourceSiteService(
-    new Map([[hdarea.id, hdarea]]),
+    new Map<string, ResourceSiteAdapter>([[hdarea.id, hdarea], ['hdwing', new HDWingAdapter(config.HDWING_BASE_URL)]]),
     new MongoResourceSiteCredentialStore(models.resourceSiteCredentials),
     secrets,
-    new HDAreaHttpClient(),
+    new ResourceSiteHttpClient(),
     { logger: loggers.error, verbose: config.VERBOSE }
   );
   const resourceSearchService: ResourceSearchService = new ResourceSearchService([
@@ -460,7 +465,7 @@ try {
     torrent: (command, download) => remoteTorrents.resolve(command, download),
   });
   const remoteDownloadCoordinator = new RemoteDownloadCoordinator(gatewayPool, remoteDownloads);
-  const remoteDownloadWorker = new RemoteDownloadWorker(remoteDownloads, remoteDownloadCoordinator);
+  const remoteDownloadWorker = new RemoteDownloadWorker(remoteDownloads, remoteDownloadCoordinator, taskStatistics);
   shutdown.register('remote_downloads', 32, () => remoteDownloadWorker.stop());
   await remoteDownloads.sweep();
   remoteDownloadWorker.start();
@@ -592,7 +597,7 @@ try {
     logger: loggers.error, verbose: config.VERBOSE, webOrigin: config.WEB_ORIGIN,
     intervalMs: config.RESOURCE_NOTIFICATION_INTERVAL_MS,
   });
-  const resourceNotificationWorker = new ResourceNotificationWorker(resourceNotificationService);
+  const resourceNotificationWorker = new ResourceNotificationWorker(resourceNotificationService, taskStatistics);
   shutdown.register('resource_notification_worker', 29, () => resourceNotificationWorker.stop());
   const movieDownloadService = new MovieDownloadService(
     authService,
@@ -652,7 +657,7 @@ try {
     new PreferenceAgent(createOwnerLlmClient),
     (job, signal) => preferenceService.enrich(job, signal)
   );
-  const preferenceWorker = new PreferenceWorker(preferenceStore, preferenceWorkflow, loggers.error, config.VERBOSE);
+  const preferenceWorker = new PreferenceWorker(preferenceStore, preferenceWorkflow, loggers.error, config.VERBOSE, taskStatistics);
   shutdown.register('preference_worker', 21, () => preferenceWorker.stop());
   const recommendationModel = createRecommendationModel(models.users.db);
   await recommendationModel.init();
@@ -736,6 +741,7 @@ try {
     (event) => loggers.app.warn({ event }, 'Assistant workflow'),
     {
       resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
+      statistics: taskStatistics,
       maxConcurrency: config.ASSISTANT_MAX_CONCURRENCY,
       scanIntervalMs: config.ASSISTANT_SCAN_INTERVAL_MS,
       scanTraceEnabled: config.SCAN_TRACE_ENABLED,
@@ -766,7 +772,8 @@ try {
     undefined,
     config.SCAN_TRACE_ENABLED,
     { resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
-      logger: loggers.app, verbose: config.VERBOSE }
+      logger: loggers.app, verbose: config.VERBOSE },
+    taskStatistics
   );
   shutdown.register('notification_worker', 30, () => notificationWorker.stop());
   const notificationTestService = new NotificationTestService(

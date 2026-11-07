@@ -42,7 +42,7 @@ export class DownloadSourceService {
   private async validateRelease(input: DownloadSourceRequest, remote: boolean) {
     if (input.tmdbId === undefined) throw new AppError(404, 'NOT_FOUND', '');
     // Preserve the remote movie/catalog check and the local M-Team validation contract.
-    if (remote || input.source === 'hdarea') {
+    if (remote || input.source !== 'mteam') {
       if (!this.dependencies.siteDownloads) throw new ResourceSiteError('notConfigured');
       return this.dependencies.siteDownloads.resources.releaseForDownload(
         input.ownerId, input.tmdbId, input.source, input.releaseId
@@ -55,7 +55,7 @@ export class DownloadSourceService {
   }
 
   private async configuration(input: DownloadSourceRequest, remote: boolean, locale: Locale = 'en-US') {
-    if (input.source === 'hdarea') {
+    if (input.source !== 'mteam') {
       if (!this.dependencies.siteDownloads) throw new ResourceSiteError('notConfigured');
       return null;
     }
@@ -71,7 +71,7 @@ export class DownloadSourceService {
 
   private async torrentUrl(input: DownloadSourceRequest, config: IntegrationConfigRecord | null, remote: boolean) {
     return aiStep('download.source.torrent-url', async () => {
-      const url = input.source === 'hdarea'
+      const url = input.source !== 'mteam'
         ? await this.dependencies.siteDownloads!.sites.torrentUrl(input.ownerId, input.source, input.releaseId)
         : await this.dependencies.mteam.torrentUrl(
             config!.baseUrl,

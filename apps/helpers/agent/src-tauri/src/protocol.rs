@@ -383,7 +383,7 @@ pub fn command(
         ]
         .iter()
         .all(|s| id(s))
-        || !matches!(command.source.as_str(), "mteam" | "hdarea")
+        || !matches!(command.source.as_str(), "mteam" | "hdarea" | "hdwing")
         || !matches!(command.torrent_hash.len(), 40 | 64)
         || !command
             .torrent_hash

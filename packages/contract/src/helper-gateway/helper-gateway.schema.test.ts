@@ -13,3 +13,11 @@ test('queue snapshots carry bounded per-torrent cooldown metadata without accept
   for (const nextAttemptAt of [-1, 'tomorrow', Number.MAX_SAFE_INTEGER + 1])
     assert.equal(Value.Check(AgentQueueSnapshotSchema, { ...snapshot, items: [{ ...item, nextAttemptAt }] }), false);
 });
+
+test('HDWing queue metadata is accepted without exposing signed download URLs', () => {
+  const item = { commandId: 'wing-command', resourceId: '42', source: 'hdwing', title: 'Movie',
+    enqueuedAt: 1000, expiresAt: 86400000, reason: 'queued' };
+  const snapshot = { observedAt: 3000, total: 1, nextCursor: null, items: [item] };
+  assert.equal(Value.Check(AgentQueueSnapshotSchema, snapshot), true);
+  assert.equal(Value.Check(AgentQueueSnapshotSchema, { ...snapshot, items: [{ ...item, torrentUrl: 'private' }] }), false);
+});

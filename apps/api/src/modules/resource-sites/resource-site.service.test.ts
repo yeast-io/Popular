@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ResourceSiteCredential, ResourceSiteCredentialStore } from './resource-site.types.js';
 import { ResourceSiteService } from './resource-site.service.js';
+import { HDWingAdapter } from '../../infrastructure/hdwing/hdwing.adapter.js';
+import type { ResourceSiteAdapter } from './resource-site.types.js';
 import { HDAreaAdapter } from '../../infrastructure/hdarea/hdarea.adapter.js';
 import { SecretCrypto } from '../integrations/secret-crypto.js';
-import { HDAreaHttpClient } from '../../infrastructure/hdarea/hdarea-http.client.js';
+import { ResourceSiteHttpClient } from '../../infrastructure/resource-sites/resource-site-http.client.js';
 import { ResourceSiteError } from './resource-site.errors.js';
 
-function fixture() {
+function fixture(site = 'hdarea') {
   const rows = new Map<string, ResourceSiteCredential>();
   const seen: string[] = [];
   const logs: unknown[] = [];
@@ -27,15 +29,15 @@ function fixture() {
     },
   };
   const service = new ResourceSiteService(
-    new Map([['hdarea', new HDAreaAdapter('https://hdarea.club/')]]),
+    new Map<string, ResourceSiteAdapter>([[site, site === 'hdwing' ? new HDWingAdapter('https://hdwing.org/') : new HDAreaAdapter('https://hdarea.club/')]]),
     store,
     new SecretCrypto('test-key-at-least-thirty-two-characters'),
-    new HDAreaHttpClient({
+    new ResourceSiteHttpClient({
       intervalMs: 0,
       fetch: async (_input, init) => {
         seen.push(new Headers(init?.headers).get('cookie')!);
         const id = new Headers(init?.headers).get('cookie')?.includes('uid=B') ? '202' : '101';
-        return new Response(expired ? '<input type="password">' : `<a href="usercp.php">Account</a><div id="info_block"><a href="userdetails.php?id=${id}">Me</a></div><p>没有找到</p>`);
+        return new Response(expired ? '<input type="password">' : `<a href="usercp.php">Account</a><div id="info_block"><a href="userdetails.php?id=${id}">Me</a></div><div id="site_header"><div class="userinfo"><a href="userdetails.php?id=${id}">Me</a></div></div><div id="site_content"><p>没有找到</p><a href="download.php?hash=${Buffer.from(`1\n42\n${id}`).toString('base64url')}.signature&amp;uid=${id}">Download</a></div>`);
       },
     }),
     {
@@ -158,4 +160,20 @@ test('unresolved legacy identity is shown as invalid and cannot search, fetch de
   assert.equal(f.seen.length, calls);
   await f.service.configure('A', 'hdarea');
   assert.equal(await f.service.status('A', 'hdarea'), 'configured_valid');
+});
+
+test('HDWing resolves links through owner Cookie sessions without a Passkey and invalidates expired sessions', async () => {
+  const f = fixture('hdwing');
+  const config = await f.service.configure('A', 'hdwing', 'uid=A; session=private-hdwing-cookie');
+  assert.equal(config.requiresPasskey, false);
+  assert.equal(config.passkeyMasked, undefined);
+  const before = f.seen.length;
+  const url = new URL(await f.service.torrentUrl('A', 'hdwing', '42'));
+  assert.equal(url.searchParams.get('uid'), '101');
+  assert.equal(f.seen.length, before + 1);
+  assert.equal(f.seen.at(-1), 'uid=A; session=private-hdwing-cookie');
+  f.expire();
+  await assert.rejects(f.service.torrentUrl('A', 'hdwing', '42'), ResourceSiteError);
+  assert.equal(await f.service.status('A', 'hdwing'), 'configured_invalid');
+  assert.equal(JSON.stringify(f.logs).includes('private-hdwing-cookie'), false);
 });

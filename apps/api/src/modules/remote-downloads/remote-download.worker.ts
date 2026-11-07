@@ -1,34 +1,29 @@
-import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { TaskStatistics } from '../../infrastructure/background-tasks/background-task.types.js';
+import { TaskRunner } from '../../infrastructure/background-tasks/task-runner.worker.js';
 import type { RemoteDownloadCoordinator } from './remote-download-coordinator.service.js';
 import type { RemoteDownloadService } from './remote-download.service.js';
 
 export class RemoteDownloadWorker {
-  private timer?: ReturnType<typeof setInterval>;
-  private running: Promise<void> | undefined;
+  private readonly runner: TaskRunner;
 
-  constructor(readonly service: RemoteDownloadService, readonly coordinator?: RemoteDownloadCoordinator) {}
-
-  start() {
-    this.timer = setInterval(() => {
-      if (!this.running)
-        this.running = withAiTrace(
-          new AiTrace(this.service.options.diagnostics?.logger, {}, '', 'remote-queue.sweep',
-            this.service.options.diagnostics?.verbose ?? false),
-          () => this.service.sweep()
-        )
-          .then(() => this.coordinator?.retryQueued())
-          .catch(
-            (error) => this.service.options.report(error, { stage: 'remote-download.scan' })
-          )
-          .finally(() => {
-            this.running = undefined;
-          });
-    }, 5000);
-    this.timer.unref();
+  constructor(
+    readonly service: RemoteDownloadService,
+    readonly coordinator?: RemoteDownloadCoordinator,
+    statistics?: TaskStatistics
+  ) {
+    this.runner = new TaskRunner({
+      statistics,
+      name: 'remote-downloads', intervalMs: 5_000, runOnStart: false,
+      logger: service.options.diagnostics?.logger, verbose: service.options.diagnostics?.verbose ?? false,
+      run: async ({ signal }) => {
+        await service.sweep();
+        if (!signal.aborted) await coordinator?.retryQueued();
+      },
+      onError: (error) => service.options.report(error, { stage: 'remote-download.scan' }),
+    });
   }
 
-  async stop() {
-    clearInterval(this.timer);
-    await this.running;
-  }
+  start() { this.runner.start(); }
+
+  stop() { return this.runner.stop(); }
 }

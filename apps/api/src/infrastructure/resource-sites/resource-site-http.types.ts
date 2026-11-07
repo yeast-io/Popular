@@ -1,10 +1,10 @@
-export interface HDAreaHttpOptions {
+export interface ResourceSiteHttpOptions {
   fetch?: typeof fetch;
   intervalMs?: number;
   timeoutMs?: number;
   maxBytes?: number;
 }
-export interface HDAreaHttpLane {
+export interface ResourceSiteHttpLane {
   tail: Promise<void>;
   pending: number;
   nextAt: number;

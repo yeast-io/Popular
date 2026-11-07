@@ -24,7 +24,7 @@ const props = defineProps<{
 const emit = defineEmits<{ open: [] }>();
 const defaultCategory = computed(() => {
   const identity = props.provider ?? props.id;
-  return ['mteam', 'hdarea'].includes(
+  return ['mteam', 'hdarea', 'hdwing'].includes(
     identity
   )
     ? 'resource' as const

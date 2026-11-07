@@ -12,6 +12,7 @@ import ResourceNotificationPage from './features/resource-notifications/Resource
 import WatchlistPage from './features/watchlist/WatchlistPage.vue';
 import MovieDetail from './features/movies/MovieDetail.vue';
 import { useI18n } from './i18n';
+import SettingsNavigation from './features/settings/SettingsNavigation.vue';
 import SettingsIcon from './features/settings/SettingsIcon.vue';
 import PreferenceSettings from './features/settings/PreferenceSettings.vue';
 import TelegramSettings from './features/integrations/TelegramSettings.vue';
@@ -151,35 +152,8 @@ async function loadPublicConfig() {
           <p>{{ t('account.settingsDescription') }}</p>
         </div>
         <div class="settings-layout">
-          <aside class="settings-sidebar">
-            <p class="settings-nav-caption">{{ t('settings.workspace') }}</p>
-            <nav class="settings-category-nav" :aria-label="t('settings.categories')">
-              <button
-                v-for="section in settingsSections"
-                :key="section"
-                type="button"
-                :class="{ active: settingsSection === section }"
-                :aria-current="settingsSection === section ? 'page' : undefined"
-                :data-settings-section="section"
-                @click="selectSettingsSection(section)"
-              >
-                <SettingsIcon :name="section" />
-                <span>{{ t(`settings.${section}`) }}</span>
-                <span class="settings-nav-indicator" aria-hidden="true">›</span>
-              </button>
-            </nav>
-            <label class="settings-mobile-category" for="settings-category">
-              {{ t('settings.categories') }}
-              <select id="settings-category" :value="settingsSection" @change="selectMobileSettings">
-                <option v-for="section in settingsSections" :key="section" :value="section">
-                  {{ t(`settings.${section}`) }}
-                </option>
-              </select>
-            </label>
-            <div class="settings-sidebar-note">
-              <span class="settings-private-dot" aria-hidden="true"></span>{{ t('settings.private') }}
-            </div>
-          </aside>
+          <SettingsNavigation :section="settingsSection" :sections="settingsSections"
+            @select="selectSettingsSection" @select-mobile="selectMobileSettings" />
           <div class="settings-content">
             <div class="settings-content-heading">
               <span class="settings-section-icon"><SettingsIcon :name="settingsSection" /></span>
@@ -202,7 +176,8 @@ async function loadPublicConfig() {
             </div>
             <div v-if="settingsVisited.has('resources')" v-show="settingsSection === 'resources'" class="settings-form">
               <MTeamSettings :key="user.id" />
-              <ResourceSiteSettings :key="`resource-sites-${user.id}`" />
+              <ResourceSiteSettings :key="`resource-sites-hdarea-${user.id}`" />
+              <ResourceSiteSettings :key="`resource-sites-hdwing-${user.id}`" site="hdwing" name="HDWing" />
             </div>
             <div v-if="settingsVisited.has('downloads')" v-show="settingsSection === 'downloads'" class="settings-form">
               <DownloaderSettings :key="user.id" ref="downloaderSettings" />

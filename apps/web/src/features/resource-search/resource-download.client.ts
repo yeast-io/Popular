@@ -129,7 +129,7 @@ export function useResourceDownloads(context: ResourceDownloadContext) {
   }
 
   function canDownload(releaseId: string, site = 'mteam'): boolean {
-    if (site !== 'mteam' && site !== 'hdarea') return false;
+    if (site !== 'mteam' && site !== 'hdarea' && site !== 'hdwing') return false;
     const existing = downloadFor(releaseId, site);
     return existing
       ? existing.status === 'missing'
@@ -141,7 +141,7 @@ export function useResourceDownloads(context: ResourceDownloadContext) {
   }
 
   function downloadUnavailable(releaseId: string, site = 'mteam'): string {
-    if (site !== 'mteam' && site !== 'hdarea') return t('resourceSelection.downloadUnsupported');
+    if (site !== 'mteam' && site !== 'hdarea' && site !== 'hdwing') return t('resourceSelection.downloadUnsupported');
     return (
       downloadProvidersError.value
       || (downloadFor(releaseId, site) ? t('movie.download.originalUnconfigured') : t('movie.download.unconfigured'))
@@ -149,7 +149,7 @@ export function useResourceDownloads(context: ResourceDownloadContext) {
   }
 
   function requestDownload(release: ResourceSiteRelease, site = 'mteam') {
-    if (site !== 'mteam' && site !== 'hdarea') return;
+    if (site !== 'mteam' && site !== 'hdarea' && site !== 'hdwing') return;
     if (!canDownload(release.id, site) || submittingReleaseId.value) return;
     downloadTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previous = downloadFor(release.id, site);

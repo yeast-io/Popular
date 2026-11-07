@@ -25,7 +25,9 @@ export interface ResourceSiteAdapter {
   readonly name: string;
   readonly baseUrl: string;
   detailsUrl?(id: string): string;
+  readonly requiresPasskey?: boolean;
   torrentUrl?(id: string, passkey: string): string;
+  resolveTorrentUrl?(session: ResourceSiteSession, id: string, externalUserId: string, signal?: AbortSignal): Promise<string>;
   verify(session: ResourceSiteSession, signal?: AbortSignal): Promise<string>;
   search(
     session: ResourceSiteSession,

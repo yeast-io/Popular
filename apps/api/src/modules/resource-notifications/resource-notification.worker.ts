@@ -1,3 +1,7 @@
+import { TaskLease } from '../../infrastructure/background-tasks/task-lease.worker.js';
+import { beginTaskStatistics } from '../../infrastructure/background-tasks/task-statistics.adapter.js';
+import type { TaskStatistics } from '../../infrastructure/background-tasks/background-task.types.js';
+import { TaskRunner } from '../../infrastructure/background-tasks/task-runner.worker.js';
 import { setTimeout as wait } from 'node:timers/promises';
 import { MTEAM_SEARCH_MINIMUM_INTERVAL_MS } from '../resource-search/resource-search.policy.js';
 import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
@@ -8,54 +12,32 @@ import { matchesTvResource } from './resource-notification.domain.js';
 import { RESOURCE_NOTIFICATION_SCAN_MS } from './resource-notification.policy.js';
 
 export class ResourceNotificationWorker {
-  private timer?: ReturnType<typeof setInterval>;
-  private running: Promise<void> | undefined;
-  private stopped = false;
+  private readonly runner: TaskRunner;
   private readonly siteReadyAt = new Map<string, number>();
 
-  constructor(private readonly service: ResourceNotificationService) {
-    service.wake = () => {
-      void this.tick();
-    };
+  constructor(private readonly service: ResourceNotificationService, private readonly statistics?: TaskStatistics) {
+    this.runner = new TaskRunner({
+      statistics,
+      name: 'resource-notifications', intervalMs: RESOURCE_NOTIFICATION_SCAN_MS,
+      logger: service.dependencies.logger, verbose: service.dependencies.verbose,
+      run: ({ signal }) => this.run(signal),
+    });
+    service.wake = () => this.runner.wake();
   }
 
-  start() {
-    this.stopped = false;
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, RESOURCE_NOTIFICATION_SCAN_MS);
-    this.timer.unref();
-    void this.tick();
-  }
+  start() { this.runner.start(); }
 
-  async stop() {
-    this.stopped = true;
-    if (this.timer) clearInterval(this.timer);
-    await this.running;
-  }
+  stop() { return this.runner.stop(); }
 
-  tick(): Promise<void> {
-    if (this.running || this.stopped) return this.running ?? Promise.resolve();
-    this.running = this.run()
-      .catch((error) => {
-        this.service.dependencies.logger.error(
-          { err: error, stage: 'resource-notification.scan' },
-          'Resource notification scan failed'
-        );
-      })
-      .finally(() => {
-        this.running = undefined;
-      });
-    return this.running;
-  }
+  tick() { return this.runner.tick(); }
 
   private now() {
     return this.service.dependencies.now?.() ?? new Date();
   }
 
-  private async run() {
+  private async run(signal: AbortSignal) {
     const { store, dependencies } = this.service;
-    for (let count = 0; count < 50 && !this.stopped; count++) {
+    for (let count = 0; count < 50 && !signal.aborted; count++) {
       const now = this.now();
       const claim = await store.claim(now, new Date(now.getTime() + dependencies.intervalMs));
       if (!claim) break;
@@ -72,13 +54,14 @@ export class ResourceNotificationWorker {
         'resource-notification.worker',
         dependencies.verbose
       );
-      await withAiTrace(trace, () => aiStep('resource-notification.execute', () => this.process(claim)));
+      await withAiTrace(trace, () => aiStep('resource-notification.execute', () => this.process(claim, signal)));
     }
   }
 
   private async find(
     claim: ResourceNotificationClaim,
-    locale: Locale
+    locale: Locale,
+    stopSignal: AbortSignal
   ): Promise<{ release: ResourceSiteRelease; site: string } | undefined> {
     const { dependencies } = this.service;
     const { ownerId, entry } = claim;
@@ -98,15 +81,15 @@ export class ResourceNotificationWorker {
     const sites = await aiStep('resource-notification.sites.read', () => dependencies.enabledSites(ownerId));
     let lastFailure: unknown;
     for (const site of sites) {
-      if (this.stopped) return;
+      if (stopSignal.aborted) return;
       const key = `${ownerId}:${site}`;
       try {
-        const signal = AbortSignal.timeout(60_000);
+        const signal = AbortSignal.any([stopSignal, AbortSignal.timeout(60_000)]);
         let page: number | undefined = 1;
-        while (page !== undefined && !this.stopped) {
+        while (page !== undefined && !signal.aborted) {
           const delay = (this.siteReadyAt.get(key) ?? 0) - Date.now();
           if (delay > 0) await wait(delay, undefined, { signal });
-          if (this.stopped) return;
+          if (stopSignal.aborted) return;
           const currentPage: number = page;
           const result = await aiStep(
             'resource-notification.site.search',
@@ -144,23 +127,12 @@ export class ResourceNotificationWorker {
     if (lastFailure) throw lastFailure;
   }
 
-  private async process(claim: ResourceNotificationClaim) {
+  private async process(claim: ResourceNotificationClaim, signal: AbortSignal) {
     const { store, dependencies } = this.service;
     let outcome: 'no-channels' | 'no-resources' | 'failed' | 'notified' = 'failed';
-    let leaseAlive = true;
-    let renewal: Promise<void> = Promise.resolve();
-    const heartbeat = setInterval(() => {
-      renewal = renewal.then(async () => {
-        if (!leaseAlive) return;
-        try {
-          leaseAlive = await store.renew(claim, this.now());
-        } catch (error) {
-          leaseAlive = false;
-          currentAiTrace()?.fail(error, { stage: 'resource-notification.lease.renew' });
-        }
-      });
-    }, 30_000);
-    heartbeat.unref();
+    const lease = new TaskLease({ signal, intervalMs: 30_000, renew: () => store.renew(claim, this.now()) });
+    const finishStatistics = beginTaskStatistics(this.statistics, 'resource-notifications', 'job');
+    lease.start();
     try {
       if (
         !(
@@ -173,7 +145,8 @@ export class ResourceNotificationWorker {
         return;
       }
       const locale = await aiStep('resource-notification.locale.read', () => dependencies.resolveLocale(claim.ownerId));
-      const match = await this.find(claim, locale);
+      const match = await this.find(claim, locale, lease.signal);
+      if (lease.signal.aborted) return;
       if (!match) {
         outcome = 'no-resources';
         return;
@@ -196,7 +169,7 @@ export class ResourceNotificationWorker {
         return;
       }
       for (const target of channels.filter((channel) => channel.configured)) {
-        if (this.stopped || !leaseAlive || !(await store.renew(claim, this.now()))) return;
+        if (!(await lease.renew())) return;
         const channel = dependencies.notifications.channel(target.id);
         if (!channel?.sendResource) continue;
         try {
@@ -206,6 +179,7 @@ export class ResourceNotificationWorker {
             }))
           )
             continue;
+          if (!(await lease.renew())) return;
           await aiStep('resource-notification.channel.send', () => channel.sendResource!(claim.ownerId, payload), {
             channel: target.id,
           });
@@ -224,9 +198,15 @@ export class ResourceNotificationWorker {
     } catch (error) {
       currentAiTrace()?.fail(error);
     } finally {
-      clearInterval(heartbeat);
-      await renewal;
-      await aiStep('resource-notification.finish', () => store.finish(claim, outcome), { outcome });
+      const cancelled = lease.signal.aborted;
+      await lease.stop();
+      let persisted = false;
+      try {
+        await aiStep('resource-notification.finish', () => store.finish(claim, outcome), { outcome });
+        persisted = true;
+      } finally {
+        finishStatistics(!persisted ? 'failure' : cancelled ? 'cancelled' : outcome === 'failed' ? 'failure' : 'success');
+      }
     }
   }
 }

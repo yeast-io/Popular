@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { RpcIdSchema as id } from './socket-rpc.schema.js';
+import { DownloadSourceSchema } from '../downloads/movie-download.schema.js';
 import { RemoteAuthorizationChangeSchema } from '../remote-client.schema.js';
 
 const integer = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
@@ -19,7 +20,7 @@ export const GatewayDeviceStatusSchema = Type.Object({
   session: Type.Optional(GatewaySessionSchema), agentStatus: Type.Optional(Type.Union([GatewayAgentStatusSchema, Type.Null()])),
 }, object);
 export const GatewayDownloadSchema = Type.Object({ commandId: id, downloadId: id, ownerId: id, deviceId: id,
-  authVersion: integer, deviceVersion: integer, source: Type.Union([Type.Literal('mteam'), Type.Literal('hdarea')]),
+  authVersion: integer, deviceVersion: integer, source: DownloadSourceSchema,
   resourceId: id, correlationId: id }, object);
 export const GatewayEvidenceSchema = Type.Object({ downloaderType: Type.Union([Type.Literal('qbittorrent'), Type.Literal('transmission')]),
   instanceId: id, torrentHash: hash, taskId: id, marker: Type.String({ minLength: 1, maxLength: 168, pattern: '^[A-Za-z0-9_-]+$' }) }, object);
@@ -37,7 +38,7 @@ export const AgentQueueRequestSchema = Type.Object({
   cursor: Type.Optional(Type.String({ maxLength: 200, pattern: '^[0-9]+:[A-Za-z0-9_-]+$' })),
 }, object);
 export const AgentQueueItemSchema = Type.Object({
-  commandId: id, resourceId: id, source: Type.Union([Type.Literal('mteam'), Type.Literal('hdarea')]),
+  commandId: id, resourceId: id, source: DownloadSourceSchema,
   title: Type.Union([Type.String({ maxLength: 512 }), Type.Null()]),
   enqueuedAt: integer, expiresAt: integer,
   limitDetectedAt: Type.Optional(integer), nextAttemptAt: Type.Optional(integer), lastAttemptAt: Type.Optional(integer),

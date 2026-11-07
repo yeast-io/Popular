@@ -87,7 +87,7 @@ impl Snapshot {
             && self.items.iter().all(|item| {
                 protocol::id(&item.command_id)
                     && protocol::id(&item.resource_id)
-                    && matches!(item.source.as_str(), "mteam" | "hdarea")
+                    && matches!(item.source.as_str(), "mteam" | "hdarea" | "hdwing")
                     && item.title.as_ref().is_none_or(|v| v.chars().count() <= 512)
                     && protocol::positive(item.enqueued_at)
                     && protocol::positive(item.expires_at)
@@ -232,6 +232,16 @@ pub fn select_page(app: tauri::AppHandle, page: String) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn hdwing_snapshots_are_supported_without_accepting_unknown_sources() {
+        let mut data = json!({"observedAt":1000,"total":1,"nextCursor":null,"items":[{
+            "commandId":"wing","resourceId":"42","source":"hdwing","title":null,
+            "enqueuedAt":100,"expiresAt":900000000,"reason":"queued"
+        }]});
+        assert!(protocol::parse::<Snapshot>(&data).unwrap().valid());
+        data["items"][0]["source"] = json!("unknown");
+        assert!(!protocol::parse::<Snapshot>(&data).unwrap().valid());
+    }
     #[test]
     fn snapshots_are_scoped_cached_and_pagination_never_authorizes_execution() {
         let directory = tempfile::tempdir().unwrap();

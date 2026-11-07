@@ -89,3 +89,36 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     });
   }
 }
+
+for (const locale of ['zh-CN', 'en-US'] as const) {
+  it(`keeps HDWing and HDArea credentials independent and hides HDWing Passkey in ${locale}`, async () => {
+    setLocale(locale);
+    const calls: Array<{ url: string; body: string | undefined }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const site = url.includes('/hdwing') ? 'hdwing' : 'hdarea';
+      calls.push({ url, body: init?.body as string | undefined });
+      return Response.json({ site, requiresPasskey: site === 'hdarea', baseUrl: `https://${site}.example/`,
+        status: init?.method === 'PUT' ? 'configured_valid' : 'unconfigured',
+        ...(init?.method === 'PUT' ? { cookieMasked: '••••••••' } : {}) });
+    }));
+    const area = mount(ResourceSiteSettings);
+    const wing = mount(ResourceSiteSettings, { props: { site: 'hdwing', name: 'HDWing' } });
+    await flushPromises();
+    expect(area.find('#hdarea-passkey').exists()).toBe(true);
+    expect(wing.find('#hdwing-passkey').exists()).toBe(false);
+    expect(wing.text()).toContain('HDWing');
+    expect(wing.text()).toContain('HDWING_BASE_URL');
+    expect(wing.text()).not.toContain('HDArea');
+    await wing.get('#hdwing-cookie').setValue('hdchina=private-cookie');
+    await wing.get('form').trigger('submit');
+    await flushPromises();
+    const saved = calls.find((call) => call.body);
+    expect(saved?.url).toContain('/resource-sites/hdwing');
+    expect(JSON.parse(saved!.body!)).toEqual({ cookie: 'hdchina=private-cookie' });
+    expect((area.get('#hdarea-cookie').element as HTMLInputElement).value).toBe('');
+    expect(wing.text()).not.toContain('private-cookie');
+    area.unmount();
+    wing.unmount();
+  });
+}

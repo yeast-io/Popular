@@ -13,3 +13,7 @@ export function queueRemaining(expiry: number, now: number, locale: Locale): str
   const count = unit === 'day' ? Math.ceil(minutes / 1440) : unit === 'hour' ? Math.ceil(minutes / 60) : minutes;
   return new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'short' }).format(count);
 }
+
+export function queueSiteName(source: string): string {
+  return source === 'mteam' ? 'M-Team' : source === 'hdarea' ? 'HDArea' : source === 'hdwing' ? 'HDWing' : source;
+}

@@ -52,3 +52,9 @@ test('only remote queued downloads may omit a not-yet-reported downloader type',
   assert.equal(Value.Check(MovieDownloadSchema, { ...record, executionMode: 'remote' }), true);
   assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceReleaseId: '991', remoteDeviceId: 'device-a' }), true);
 });
+
+test('HDWing requests accept only resource identity and keep signed URLs server-side', () => {
+  assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceProvider: 'hdwing', sourceReleaseId: '123' }), true);
+  assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceProvider: 'hdwing', sourceReleaseId: '123', cookie: 'private' }), false);
+  assert.equal(Value.Check(CreateMovieDownloadRequestSchema, { sourceProvider: 'hdwing', sourceReleaseId: '123', torrentUrl: 'https://hdwing.org/download.php?hash=private' }), false);
+});

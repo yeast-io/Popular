@@ -9,6 +9,7 @@ export const ResourceNotificationItemSchema = Type.Composite(
       id: Type.String(),
       status: Type.Union([Type.Literal('pending'), Type.Literal('notified')]),
       createdAt: Type.String({ format: 'date-time' }),
+      nextCheckAt: Type.Optional(Type.String({ format: 'date-time' })),
       notifiedAt: Type.Optional(Type.String({ format: 'date-time' })),
       lastOutcome: Type.Optional(
         Type.Union([

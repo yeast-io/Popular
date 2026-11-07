@@ -348,3 +348,51 @@ test('persisted correlation IDs connect the API enqueue with worker logs and ret
     })
   );
 });
+
+test('list exposes the stored next check for pending entries and omits it after notification', async () => {
+  const f = fixture();
+  await f.add();
+  const entry = f.rows.get('alice')![0]!;
+  entry.nextRunAt = new Date('2026-10-26T03:00:00Z');
+  entry.lastOutcome = 'no-resources';
+  const pending = (await f.service.list('alice', 'en-US')).items[0]!;
+  assert.equal(pending.nextCheckAt, '2026-10-26T03:00:00.000Z');
+  assert.equal(pending.lastOutcome, 'no-resources');
+  entry.status = 'notified';
+  entry.lastOutcome = 'notified';
+  const notified = (await f.service.list('alice', 'zh-CN')).items[0]!;
+  assert.equal(notified.status, 'notified');
+  assert.equal(notified.nextCheckAt, undefined);
+});
+
+test('heartbeat lease loss cancels an active search and prevents notification delivery', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture();
+  await f.add();
+  let searchSignal: AbortSignal | undefined;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.dependencies.search.search = async (_owner, _site, _query, signal) => {
+    searchSignal = signal;
+    await gate;
+    return { releases: [] };
+  };
+  f.store.renew = async () => false;
+  const worker = new ResourceNotificationWorker(f.service);
+  const run = worker.tick();
+  t.after(async () => {
+    release();
+    await worker.stop();
+  });
+  for (let index = 0; index < 30 && !searchSignal; index++) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.ok(searchSignal);
+  t.mock.timers.tick(30_000);
+  for (let index = 0; index < 10; index++) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(searchSignal.aborted, true);
+  release();
+  await run;
+  assert.equal(f.sent.length, 0);
+  assert.equal(f.rows.get('alice')![0]!.status, 'pending');
+});

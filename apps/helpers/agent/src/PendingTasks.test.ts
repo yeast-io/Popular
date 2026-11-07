@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import PendingTasks from './PendingTasks.vue';
 import type { QueueView } from './queue.types';
-import { queueRemaining } from './queue.presentation';
+import { queueRemaining, queueSiteName } from './queue.presentation';
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
@@ -87,3 +87,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     });
   });
 }
+
+it('displays HDWing queue sources without falling back to HDArea', () => {
+  expect(queueSiteName('hdwing')).toBe('HDWing');
+  expect(queueSiteName('hdarea')).toBe('HDArea');
+});

@@ -1,53 +1,36 @@
+import type { TaskStatistics } from '../../infrastructure/background-tasks/background-task.types.js';
+import { TaskRunner } from '../../infrastructure/background-tasks/task-runner.worker.js';
 import type { ExternalUsageAggregator, ExternalUsageAggregationLogger } from './external-usage-aggregation.types.js';
 import { EXTERNAL_USAGE_RETENTION_DAYS } from '../../infrastructure/mongodb/external-usage/external-request-event.schema.js';
 
 export class ExternalUsageAggregationService {
-  private timer: NodeJS.Timeout | undefined;
-  private running: Promise<void> | undefined;
+  private readonly runner: TaskRunner;
 
   constructor(
-    private readonly store: ExternalUsageAggregator,
-    private readonly logger: ExternalUsageAggregationLogger,
-    private readonly intervalMs = 5 * 60 * 1_000,
-    private readonly now: () => Date = () => new Date(),
-    private readonly scanTraceEnabled = false
-  ) {}
-
-  start(): void {
-    if (this.timer) return;
-    void this.rebuild(retentionStart(this.now()));
-    this.timer = setInterval(() => void this.rebuild(recentStart(this.now())), this.intervalMs);
-    this.timer.unref();
+    store: ExternalUsageAggregator,
+    logger: ExternalUsageAggregationLogger,
+    intervalMs = 5 * 60 * 1_000,
+    now: () => Date = () => new Date(),
+    scanTraceEnabled = false,
+    statistics?: TaskStatistics
+  ) {
+    this.runner = new TaskRunner({
+      statistics,
+      name: 'external-usage-aggregation', intervalMs, verbose: scanTraceEnabled,
+      logger: {
+        error: (fields: unknown, message?: string) => logger.error(fields as Record<string, unknown>, message ?? ''),
+        info: (fields: unknown, message?: string) => logger.info?.(fields as Record<string, unknown>, message ?? ''),
+      },
+      run: async ({ trigger }) => {
+        const since = trigger === 'startup' ? retentionStart(now()) : recentStart(now());
+        await store.rebuildDaily(since);
+      },
+    });
   }
 
-  async stop(): Promise<void> {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = undefined;
-    await this.running;
-  }
+  start(): void { this.runner.start(); }
 
-  private rebuild(since: Date): Promise<void> {
-    if (this.running) return this.running;
-    const started = Date.now();
-    if (this.scanTraceEnabled)
-      this.logger.info?.({ event: 'external_usage_scan_started', since }, 'External usage aggregation started');
-    this.running = this.store
-      .rebuildDaily(since)
-      .then(() => {
-        if (this.scanTraceEnabled)
-          this.logger.info?.(
-            { event: 'external_usage_scan_completed', since, durationMs: Date.now() - started },
-            'External usage aggregation completed'
-          );
-      })
-      .catch((error) => {
-        this.logger.error({ err: error, since }, 'Could not rebuild external usage aggregates');
-      })
-      .finally(() => {
-        this.running = undefined;
-      });
-    return this.running;
-  }
+  stop(): Promise<void> { return this.runner.stop(); }
 }
 
 function startOfUtcDay(value: Date): Date {

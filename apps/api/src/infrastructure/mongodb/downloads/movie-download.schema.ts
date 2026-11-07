@@ -51,7 +51,7 @@ const movieDownloadSchema = new Schema(
     ownerId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     tmdbId: { type: Number, min: 1 },
     sourceDetailsUrl: String,
-    sourceProvider: { type: String, required: true, enum: ['mteam', 'hdarea'] },
+    sourceProvider: { type: String, required: true, enum: ['mteam', 'hdarea', 'hdwing'] },
     sourceReleaseId: { type: String, required: true },
     provider: { type: String, required: function () { return this.executionMode !== 'remote'; }, enum: ['qbittorrent', 'transmission'] },
     downloaderInstanceId: { type: String },
