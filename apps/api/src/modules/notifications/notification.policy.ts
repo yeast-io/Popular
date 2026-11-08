@@ -1,1 +1,2 @@
 export const CHECK_INTERVAL_MS = 120_000;
+export const DOWNLOAD_NOTIFICATION_SCAN_MS = 30_000;

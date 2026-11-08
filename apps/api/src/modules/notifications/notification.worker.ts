@@ -4,6 +4,7 @@ import type { TaskStatistics } from '../../infrastructure/background-tasks/backg
 import { TaskRunner } from '../../infrastructure/background-tasks/task-runner.worker.js';
 import { AiTrace, aiStep, currentAiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { remoteDownloadMessages } from '../remote-downloads/remote-download.messages.js';
+import { DOWNLOAD_NOTIFICATION_SCAN_MS } from './notification.policy.js';
 import { loadTmdbPoster as loadPoster } from '../../infrastructure/tmdb/poster.js';
 import { serializeDiagnosticError } from '../../infrastructure/logging/diagnostic-error.js';
 import type { Locale } from '@movie-hub/contract';
@@ -32,7 +33,7 @@ export class NotificationWorker {
   ) {
     this.runner = new TaskRunner({
       statistics,
-      name: 'download-notifications', intervalMs: 5_000,
+      name: 'download-notifications', intervalMs: DOWNLOAD_NOTIFICATION_SCAN_MS,
       logger: localeOptions.logger, verbose: localeOptions.verbose === true && scanTraceEnabled,
       run: ({ signal }) => this.run(signal),
       onError: (error) => this.report('SCAN_FAILED', { error: serializeDiagnosticError(error) }),

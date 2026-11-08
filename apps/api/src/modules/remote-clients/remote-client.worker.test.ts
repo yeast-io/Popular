@@ -3,7 +3,7 @@ import test from 'node:test';
 import { RemoteClientWorker } from './remote-client.worker.js';
 import type { RemoteClientService } from './remote-client.service.js';
 
-test('worker scans at five seconds, prevents overlapping scans, and stop waits for active work', async (t) => {
+test('worker scans at sixty seconds, prevents overlapping scans, and stop waits for active work', async (t) => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   let scans = 0;
   let complete!: () => void;
@@ -20,15 +20,15 @@ test('worker scans at five seconds, prevents overlapping scans, and stop waits f
   worker.start();
   worker.start();
   assert.equal(scans, 1);
-  t.mock.timers.tick(10_000);
+  t.mock.timers.tick(120_000);
   assert.equal(scans, 1);
   complete();
   await worker.tick();
-  t.mock.timers.tick(4999);
+  t.mock.timers.tick(59_999);
   assert.equal(scans, 1);
   t.mock.timers.tick(1);
   assert.equal(scans, 2);
   await worker.stop();
-  t.mock.timers.tick(5000);
+  t.mock.timers.tick(60_000);
   assert.equal(scans, 2);
 });

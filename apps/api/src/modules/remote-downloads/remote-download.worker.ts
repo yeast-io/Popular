@@ -1,5 +1,6 @@
 import type { TaskStatistics } from '../../infrastructure/background-tasks/background-task.types.js';
 import { TaskRunner } from '../../infrastructure/background-tasks/task-runner.worker.js';
+import { REMOTE_DOWNLOAD_SCAN_MS } from './remote-download.policy.js';
 import type { RemoteDownloadCoordinator } from './remote-download-coordinator.service.js';
 import type { RemoteDownloadService } from './remote-download.service.js';
 
@@ -13,7 +14,7 @@ export class RemoteDownloadWorker {
   ) {
     this.runner = new TaskRunner({
       statistics,
-      name: 'remote-downloads', intervalMs: 5_000, runOnStart: false,
+      name: 'remote-downloads', intervalMs: REMOTE_DOWNLOAD_SCAN_MS, runOnStart: false,
       logger: service.options.diagnostics?.logger, verbose: service.options.diagnostics?.verbose ?? false,
       run: async ({ signal }) => {
         await service.sweep();

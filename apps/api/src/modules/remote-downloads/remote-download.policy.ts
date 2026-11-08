@@ -1,5 +1,6 @@
 export const REMOTE_QUEUE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const REMOTE_QUEUE_RETRY_MS = 60_000;
+export const REMOTE_DOWNLOAD_SCAN_MS = 15_000;
 export const REMOTE_QUEUE_WAIT_CODES: readonly string[] = [
   'DEVICE_OFFLINE',
   'DOWNLOADER_UNAVAILABLE',
