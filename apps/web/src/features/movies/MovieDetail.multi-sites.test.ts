@@ -253,32 +253,50 @@ it('refreshes only the chosen site without toggling its disclosure or replacing 
   wrapper.unmount();
 });
 
-it.each(['en-US', 'zh-CN'] as const)('refills movie refresh countdown from the backend without replacing resources in %s', async (locale) => {
-  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+it.each([
+  ['en-US', 'success'], ['zh-CN', 'success'],
+  ['en-US', 'empty'], ['zh-CN', 'empty'],
+  ['en-US', 'failure'], ['zh-CN', 'failure'],
+] as const)('blocks duplicate movie refreshes only while pending in %s (%s)', async (locale, outcome) => {
   setLocale(locale);
   fixture();
   const base = globalThis.fetch;
+  const result = await (await base('/api/v1/me/movies/603/resources/mteam/releases')).json();
+  let finish!: (response: Response) => void;
+  let refreshes = 0;
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (String(input).endsWith('/releases/refresh')) return Response.json({ error: {
-      code: 'RESOURCE_REFRESH_RATE_LIMITED', details: { retryAfterSeconds: 12 },
-    } }, { status: 429 });
+    if (String(input).endsWith('/releases/refresh')) {
+      refreshes += 1;
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    }
     return base(input, init);
   }));
   const wrapper = mount(MovieDetail, { props: { tmdbId: 603, authenticated: true } });
   await flushPromises();
   await wrapper.get('.resource-status-button').trigger('click');
   await flushPromises();
-  const group = document.querySelector('.release-site-group')!;
-  const originalTitle = group.querySelector('.release-card h3')?.textContent;
+  const groups = document.querySelectorAll('.release-site-group');
+  const group = groups[0]!;
   const button = group.querySelector<HTMLButtonElement>('.release-site-refresh')!;
   button.click();
+  button.click();
   await flushPromises();
-  expect(button.textContent).toContain(locale === 'en-US' ? 'Refresh in 12s' : '12 秒后可重新获取');
+  expect(refreshes).toBe(1);
   expect(button.disabled).toBe(true);
-  expect(group.querySelector('.browse-error')).toBeNull();
-  expect(group.querySelector('.release-card h3')?.textContent).toBe(originalTitle);
-  await vi.advanceTimersByTimeAsync(12_000);
+  expect(groups[1]!.querySelector<HTMLButtonElement>('.release-site-refresh')!.disabled).toBe(false);
+  finish(outcome === 'failure'
+    ? Response.json({ error: { code: 'RESOURCE_SITE_FAILED' } }, { status: 502 })
+    : Response.json({ ...result, releases: outcome === 'empty' ? [] : result.releases }));
+  await flushPromises();
   expect(button.disabled).toBe(false);
+  expect(button.textContent).toContain(locale === 'en-US' ? 'Refresh' : '重新获取');
+  button.click();
+  await flushPromises();
+  expect(refreshes).toBe(2);
+  finish(Response.json({ ...result, releases: [] }));
+  await flushPromises();
   wrapper.unmount();
 });
 

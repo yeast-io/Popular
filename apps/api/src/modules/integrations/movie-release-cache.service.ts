@@ -1,11 +1,7 @@
-import { AppError } from '../../infrastructure/http/app-error.js';
-import { RESOURCE_REFRESH_INTERVAL_MS } from '@movie-hub/contract';
-import { resourceSearchMessages } from '../resource-search/resource-search.messages.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type {
   ReleaseCacheIdentity,
-  ResourceRefreshStore,
   MovieReleaseCacheQuery,
   MovieReleaseCacheStore,
 } from './movie-release-cache.types.js';
@@ -15,31 +11,13 @@ export class MovieReleaseCacheService {
   private readonly pending = new Map<string, Promise<unknown>>();
   private readonly refreshing = new Map<string, Promise<unknown>>();
 
-  constructor(
-    private readonly store: MovieReleaseCacheStore,
-    private readonly ttlMs: number,
-    private readonly refreshStore?: ResourceRefreshStore
-  ) {}
+  constructor(private readonly store: MovieReleaseCacheStore, private readonly ttlMs: number) {}
 
   async getOrFetch<T extends { cached: boolean; cacheExpiresAt?: string }>(query: MovieReleaseCacheQuery<T>): Promise<T> {
     const scopeKey = this.scopeKey(query.identity);
     const refreshKey = `${scopeKey}:refresh:${query.identity.page}`;
     const fields = { provider: query.identity.site, tmdbId: query.identity.tmdbId, page: query.identity.page };
     if (query.force) {
-      if (this.refreshStore) {
-        let remainingMs: number;
-        try {
-          remainingMs = await aiStep('resource-refresh.claim', () => this.refreshStore!.claim(query.identity.ownerId, query.identity.site, RESOURCE_REFRESH_INTERVAL_MS), fields);
-        } catch (error) {
-          throw new MovieReleaseCacheError('read', error);
-        }
-        if (remainingMs > 0) {
-          const retryAfterSeconds = Math.ceil(remainingMs / 1000);
-          currentAiTrace()?.event('resource-refresh.limited', { ...fields, retryAfterSeconds, outcome: 'rate_limited' });
-          throw new AppError(429, 'RESOURCE_REFRESH_RATE_LIMITED',
-            resourceSearchMessages[query.identity.locale === 'zh-CN' ? 'zh' : 'en'].refreshRateLimited, { retryAfterSeconds });
-        }
-      }
       const refreshing = this.refreshing.get(refreshKey);
       if (refreshing) {
         currentAiTrace()?.event('movie-resources.releases.cache', { ...fields, outcome: 'shared', cache: 'in_flight', forced: true });

@@ -3,7 +3,7 @@ import type { ResourceQueryGroup } from './resource-query.types';
 import { ref } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
-import { LocalizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
+import { localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
 
 export function useResourceQuery(query: () => string, mediaType: () => 'movie' | 'tv') {
   const { apiBaseUrl } = loadWebConfig();
@@ -52,9 +52,7 @@ export function useResourceQuery(query: () => string, mediaType: () => 'movie' |
       group.queriedAt = result.queriedAt ?? new Date().toISOString();
     } catch (cause) {
       if (current === generation && !signal.aborted) {
-        if (cause instanceof LocalizedApiError && cause.code === 'RESOURCE_REFRESH_RATE_LIMITED' && cause.retryAfterSeconds !== undefined)
-          group.refreshAvailableAt = Date.now() + cause.retryAfterSeconds * 1000;
-        else group.error = localizedErrorMessage(cause, 'resourceQuery.error');
+        group.error = localizedErrorMessage(cause, 'resourceQuery.error');
       }
     } finally {
       if (current === generation) group.loading = false;

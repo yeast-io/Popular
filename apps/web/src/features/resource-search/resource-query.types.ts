@@ -6,7 +6,6 @@ export interface ResourceQueryGroup {
   name: string;
   loading: boolean;
   error: string;
-  refreshAvailableAt?: number;
   retryPage: number;
   result?: ResourceSiteSearchResult;
   queriedAt?: string;

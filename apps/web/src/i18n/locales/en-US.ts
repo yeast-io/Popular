@@ -28,8 +28,6 @@ const enUS = {
   'resourceNotifications.empty': 'No resource notifications. Add a title using the bell on its detail page.',
   'resourceNotifications.back': '← Back to resource notifications',
 
-  'resourceSelection.refreshRateLimited': 'Wait for the countdown before refreshing this resource site again.',
-  'resourceSelection.refreshCountdown': 'Refresh in {seconds}s',
   'resourceFilters.label': 'Filter resources by tags',
   'resourceFilters.hint': 'Selected tags must all match. Only loaded resources are filtered.',
   'resourceFilters.reset': 'Reset',

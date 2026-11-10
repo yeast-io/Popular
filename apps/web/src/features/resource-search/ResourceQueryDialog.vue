@@ -103,7 +103,7 @@ onBeforeUnmount(() => {
             <span v-if="group.site === defaultSite" class="integration-default-badge">{{ t('integrationDefaults.default') }}</span>
             <span class="release-site-status">{{ group.loading ? t('resourceQuery.loading') : group.error ? t('movie.resource.checkFailed') : '' }}</span>
             <button class="release-site-reset" type="button" @click.stop.prevent="selectedReleaseTags[group.site] = []">{{ t('resourceFilters.reset') }}</button>
-            <ResourceSiteRefresh :site="group.site" :name="group.name" :loading="group.loading" :retry-at="group.refreshAvailableAt" :count="group.result?.releases.length" @refresh="loadGroup(group, 1, true)" />
+            <ResourceSiteRefresh :site="group.site" :name="group.name" :loading="group.loading" :count="group.result?.releases.length" @refresh="loadGroup(group, 1, true)" />
           </summary>
           <div class="release-site-content" :aria-busy="group.loading">
             <p v-if="group.loading && !group.result" class="muted-copy" role="status">{{ t('resourceQuery.loading') }}</p>

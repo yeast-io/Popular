@@ -115,32 +115,50 @@ describe('resource query dialog', () => {
     expect(fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search'))).toHaveLength(3);
   });
 
-  it.each(['en-US', 'zh-CN'] as const)('uses the backend remaining time instead of a rate-limit message in %s', async (locale) => {
-    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+  it.each([
+    ['en-US', 'success'], ['zh-CN', 'success'],
+    ['en-US', 'empty'], ['zh-CN', 'empty'],
+    ['en-US', 'failure'], ['zh-CN', 'failure'],
+  ] as const)('blocks duplicate TV refreshes only while pending in %s (%s)', async (locale, outcome) => {
     setLocale(locale);
+    let finish!: (response: Response) => void;
+    let refreshes = 0;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), 'http://localhost');
       if (url.pathname.endsWith('integration-preferences')) return Response.json(preferences);
       if (url.pathname.endsWith('download-providers')) return Response.json({ providers: [] });
       if (url.pathname.endsWith('remote-client')) return Response.json({ hasKey: false, devices: [] });
       if (url.pathname.endsWith('resource-downloads')) return Response.json({ items: [] });
-      if (url.searchParams.get('refresh') === 'true') return Response.json({ error: {
-        code: 'RESOURCE_REFRESH_RATE_LIMITED', message: 'Do not show this error text', details: { retryAfterSeconds: 12 },
-      } }, { status: 429, headers: { 'Retry-After': '12' } });
-      return Response.json({ releases: [{ id: '1', title: 'Retained release' }] });
+      if (url.searchParams.get('refresh') === 'true') {
+        refreshes += 1;
+        return new Promise<Response>((resolve) => {
+          finish = resolve;
+        });
+      }
+      return Response.json({ releases: [{ id: '1', title: 'Retained release' }], nextPage: 2 });
     }));
     render();
     await flushPromises();
-    await click('.release-site-refresh');
     const button = document.querySelector<HTMLButtonElement>('.release-site-refresh')!;
-    expect(button.textContent).toContain(locale === 'en-US' ? 'Refresh in 12s' : '12 秒后可重新获取');
+    button.click();
+    button.click();
+    await flushPromises();
+    expect(refreshes).toBe(1);
     expect(button.disabled).toBe(true);
-    expect(document.querySelector('.browse-error')).toBeNull();
-    expect(document.querySelectorAll('.release-card')).toHaveLength(2);
     expect(document.querySelectorAll<HTMLButtonElement>('.release-site-refresh')[1]?.disabled).toBe(false);
-    await vi.advanceTimersByTimeAsync(12_000);
+    const more = document.querySelector<HTMLButtonElement>('.release-site-content > button.text-button');
+    expect(more?.disabled).toBe(true);
+    finish(outcome === 'failure'
+      ? Response.json({ error: { code: 'RESOURCE_SITE_FAILED' } }, { status: 502 })
+      : Response.json({ releases: outcome === 'empty' ? [] : [{ id: '2', title: 'Fresh release' }] }));
+    await flushPromises();
     expect(button.disabled).toBe(false);
     expect(button.textContent).toContain(locale === 'en-US' ? 'Refresh' : '重新获取');
+    button.click();
+    await flushPromises();
+    expect(refreshes).toBe(2);
+    finish(Response.json({ releases: [] }));
+    await flushPromises();
   });
 
   it('aborts on close, ignores late responses and restores scroll and focus', async () => {

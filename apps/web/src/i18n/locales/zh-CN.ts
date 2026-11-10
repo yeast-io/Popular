@@ -26,8 +26,6 @@ const zhCN = {
   'resourceNotifications.empty': '暂无资源通知，可在作品详情页点击铃铛加入。',
   'resourceNotifications.back': '← 返回资源通知列表',
 
-  'resourceSelection.refreshRateLimited': '请等待倒计时结束后再重新获取该资源站的资源。',
-  'resourceSelection.refreshCountdown': '{seconds} 秒后可重新获取',
   'resourceFilters.label': '按资源标签筛选',
   'resourceFilters.hint': '多选需同时满足所有标签并仅筛选已加载的资源',
   'resourceFilters.reset': '重置',

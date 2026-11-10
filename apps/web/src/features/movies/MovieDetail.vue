@@ -13,7 +13,7 @@ import { resourceSiteIconStyle } from './resource-site.presentation';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
-import { LocalizedApiError, localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
+import { localizedApiError, localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
 
 const resourceNotificationFeedback = ref<ResourceNotificationFeedbackState | null>(null);
 const props = defineProps<{ tmdbId: number; authenticated: boolean }>();
@@ -303,6 +303,7 @@ function groupToggled(site: string, event: Event) {
       });
 }
 async function loadReleaseGroup(group: MovieSiteReleaseGroup, more = false, refresh = false) {
+  if (group.loading) return;
   const generation = releaseGeneration;
   const requestedTmdbId = props.tmdbId;
   group.loading = true;
@@ -327,9 +328,7 @@ async function loadReleaseGroup(group: MovieSiteReleaseGroup, more = false, refr
     if (group.site === 'mteam') releases.value = result.releases;
   } catch (error) {
     if (generation === releaseGeneration && !(error instanceof DOMException && error.name === 'AbortError')) {
-      if (error instanceof LocalizedApiError && error.code === 'RESOURCE_REFRESH_RATE_LIMITED' && error.retryAfterSeconds !== undefined)
-        group.refreshAvailableAt = Date.now() + error.retryAfterSeconds * 1000;
-      else group.error = localizedErrorMessage(error, 'errors.loadMovieReleases');
+      group.error = localizedErrorMessage(error, 'errors.loadMovieReleases');
     }
   } finally { if (generation === releaseGeneration) group.loading = false; }
 }
@@ -384,7 +383,7 @@ async function showReleases() {
     releaseGroups.value = sites.map((site) => {
       return ({ site, name: preferences.choices.find(
         (choice) => choice.category === 'resource' && choice.id === site
-      )?.name ?? site, supportsDownload: site === 'mteam', loading: true, error: '' });
+      )?.name ?? site, supportsDownload: site === 'mteam', loading: false, error: '' });
     });
     await Promise.all([loadDownloadProviders(), loadRemoteDevices(), loadDownloads(), ...releaseGroups.value.map((group) => {
       return loadReleaseGroup(group);
@@ -760,7 +759,7 @@ function syncedAtLabel(syncedAt: string): string {
                 <span v-else-if="group.error" class="release-site-status">{{ t('movie.resource.checkFailed') }}</span>
                 <span v-else class="release-site-status" />
                 <button type="button" class="release-site-reset" @click.stop.prevent="selectedReleaseTags[group.site] = []">{{ t('resourceFilters.reset') }}</button>
-                <ResourceSiteRefresh :site="group.site" :name="group.name" :loading="group.loading" :retry-at="group.refreshAvailableAt" :count="group.result?.releases.length" @refresh="refreshReleaseGroup(group)" />
+                <ResourceSiteRefresh :site="group.site" :name="group.name" :loading="group.loading" :count="group.result?.releases.length" @refresh="refreshReleaseGroup(group)" />
               </summary>
               <div class="release-site-content" :aria-busy="group.loading">
                 <p v-if="group.loading && !group.result" role="status">{{ t('movie.releases.loading') }}</p>

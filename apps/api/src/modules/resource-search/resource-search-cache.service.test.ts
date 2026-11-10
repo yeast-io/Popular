@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { MovieReleaseCacheEntry, MovieReleaseCacheStore, ResourceRefreshStore } from '../integrations/movie-release-cache.types.js';
+import type { MovieReleaseCacheEntry, MovieReleaseCacheStore } from '../integrations/movie-release-cache.types.js';
 import { MovieReleaseCacheService } from '../integrations/movie-release-cache.service.js';
 import { ResourceSearchService } from './resource-search.service.js';
 
@@ -11,7 +11,6 @@ function fixture() {
   let fail = false;
   const rows = new Map<string, MovieReleaseCacheEntry>();
   const revisions = new Map<string, string>();
-  const deadlines = new Map<string, number>();
   const store: MovieReleaseCacheStore = {
     async read(key) {
       const row = rows.get(key);
@@ -25,15 +24,7 @@ function fixture() {
     async readRevision(key) { return revisions.get(key) ?? null; },
     async activateRevision(key, revision) { revisions.set(key, revision); },
   };
-  const limiter: ResourceRefreshStore = {
-    async claim(owner, site, interval) {
-      const key = `${owner}:${site}`;
-      const remaining = Math.max(0, (deadlines.get(key) ?? 0) - now);
-      if (!remaining) deadlines.set(key, now + interval);
-      return remaining;
-    },
-  };
-  const createCache = () => new MovieReleaseCacheService(store, 1_800_000, limiter);
+  const createCache = () => new MovieReleaseCacheService(store, 1_800_000);
   const createService = () => new ResourceSearchService(['mteam', 'hdarea'].map((id) => ({
     id, name: id, details: false, status: async () => 'configured_valid' as const,
     search: async () => {
@@ -85,7 +76,7 @@ test('TV cache isolates users, sites, seasons, pages, locale and credential revi
   assert.equal(f.calls(), 7);
 });
 
-test('refresh bypasses cache, invalidates old pages and enforces a shared 30-second quota', async () => {
+test('refresh bypasses cache, invalidates old pages and allows immediate subsequent refreshes', async () => {
   const f = fixture();
   const first = f.createService();
   const second = f.createService();
@@ -93,18 +84,16 @@ test('refresh bypasses cache, invalidates old pages and enforces a shared 30-sec
   await first.search('alice', 'mteam', { ...input, page: 2 }, signal());
   const refreshed = await first.search('alice', 'mteam', { ...input, refresh: true }, signal());
   assert.equal(refreshed.cached, false);
-  await assert.rejects(second.search('alice', 'mteam', { ...input, query: 'Other S02', refresh: true }, signal()),
-    { statusCode: 429, code: 'RESOURCE_REFRESH_RATE_LIMITED', details: { retryAfterSeconds: 30 } });
-  assert.equal(f.calls(), 3);
+  await second.search('alice', 'mteam', { ...input, query: 'Other S02', refresh: true }, signal());
+  assert.equal(f.calls(), 4);
   assert.equal((await second.search('alice', 'mteam', { ...input, page: 2, cacheOnly: true }, signal())).cacheMiss, true);
   await second.search('bob', 'mteam', { ...input, refresh: true }, signal());
   await second.search('alice', 'hdarea', { ...input, refresh: true }, signal());
-  f.expire(30_000);
   await second.search('alice', 'mteam', { ...input, refresh: true }, signal());
-  assert.equal(f.calls(), 6);
+  assert.equal(f.calls(), 7);
 });
 
-test('movie refresh and TV refresh share the same user/site quota', async () => {
+test('movie refresh does not delay a TV refresh for the same user and site', async () => {
   const f = fixture();
   const cache = f.createCache();
   await cache.getOrFetch({
@@ -112,11 +101,11 @@ test('movie refresh and TV refresh share the same user/site quota', async () => 
     force: true, validate: (value): value is { cached: boolean } => typeof value === 'object' && value !== null && 'cached' in value,
     fetch: async () => ({ cached: false }),
   });
-  await assert.rejects(f.createService().search('alice', 'mteam', { ...input, refresh: true }, signal()), { code: 'RESOURCE_REFRESH_RATE_LIMITED' });
-  assert.equal(f.calls(), 0);
+  await f.createService().search('alice', 'mteam', { ...input, refresh: true }, signal());
+  assert.equal(f.calls(), 1);
 });
 
-test('a failed refresh preserves the previous cache without releasing the rate limit', async () => {
+test('a failed refresh preserves the previous cache and allows immediate retry', async () => {
   const f = fixture();
   const service = f.createService();
   const original = await service.search('alice', 'mteam', input, signal());
@@ -125,6 +114,7 @@ test('a failed refresh preserves the previous cache without releasing the rate l
   f.fail(false);
   const restored = await service.search('alice', 'mteam', { ...input, cacheOnly: true }, signal());
   assert.deepEqual(restored.releases, original.releases);
-  await assert.rejects(service.search('alice', 'mteam', { ...input, refresh: true }, signal()), { code: 'RESOURCE_REFRESH_RATE_LIMITED' });
-  assert.equal(f.calls(), 2);
+  const retried = await service.search('alice', 'mteam', { ...input, refresh: true }, signal());
+  assert.equal(retried.cached, false);
+  assert.equal(f.calls(), 3);
 });

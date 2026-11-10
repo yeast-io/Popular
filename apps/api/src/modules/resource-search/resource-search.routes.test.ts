@@ -105,10 +105,9 @@ test('source search endpoints authenticate, isolate failed sources, validate inp
   }
 });
 
-test('TV HTTP cache restoration avoids source calls and refresh returns 429 with Retry-After', async () => {
+test('TV HTTP cache restoration avoids source calls and successive refreshes return fresh results', async () => {
   const rows = new Map<string, { value: unknown; expiresAt: string }>();
   const revisions = new Map<string, string>();
-  let claimed = false;
   let calls = 0;
   const cache = new MovieReleaseCacheService({
     async read(key) { return rows.get(key) ?? null; },
@@ -119,11 +118,7 @@ test('TV HTTP cache restoration avoids source calls and refresh returns 429 with
     },
     async readRevision(key) { return revisions.get(key) ?? null; },
     async activateRevision(key, revision) { revisions.set(key, revision); },
-  }, 1_800_000, { async claim() {
-    if (claimed) return 30_000;
-    claimed = true;
-    return 0;
-  } });
+  }, 1_800_000);
   const service = new ResourceSearchService([{
     id: 'mteam', name: 'M-Team', details: false, status: async () => 'configured_valid',
     search: async () => {
@@ -144,12 +139,11 @@ test('TV HTTP cache restoration avoids source calls and refresh returns 429 with
     assert.equal(hit.json().cached, true);
     assert.equal(calls, 1);
     assert.equal((await app.inject({ method: 'GET', url: `${base}&refresh=true` })).statusCode, 200);
-    const rejected = await app.inject({ method: 'GET', url: `${base}&refresh=true` });
-    assert.equal(rejected.statusCode, 429);
-    assert.equal(rejected.headers['retry-after'], '30');
-    assert.equal(rejected.json().error.code, 'RESOURCE_REFRESH_RATE_LIMITED');
-    assert.equal(rejected.json().error.details.retryAfterSeconds, 30);
-    assert.equal(calls, 2);
+    const refreshed = await app.inject({ method: 'GET', url: `${base}&refresh=true` });
+    assert.equal(refreshed.statusCode, 200);
+    assert.equal(refreshed.json().cached, false);
+    assert.equal(refreshed.headers['retry-after'], undefined);
+    assert.equal(calls, 3);
   } finally {
     await app.close();
   }

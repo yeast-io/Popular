@@ -35,7 +35,3 @@ export interface MovieReleaseCacheQuery<T extends { cached: boolean; cacheExpire
   validate(value: unknown): value is T;
   fetch(): Promise<T>;
 }
-
-export interface ResourceRefreshStore {
-  claim(ownerId: string, site: string, intervalMs: number): Promise<number>;
-}

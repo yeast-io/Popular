@@ -85,7 +85,7 @@ import { createLoggers } from './infrastructure/logging/logger.js';
 import { createModels } from './infrastructure/mongodb/models.js';
 import { MongoAuthUserStore } from './infrastructure/mongodb/users/user.store.js';
 import { RedisSessionStore } from './infrastructure/redis/session.store.js';
-import { RedisMovieReleaseCacheStore, RedisResourceRefreshStore } from './infrastructure/redis/movie-release-cache.store.js';
+import { RedisMovieReleaseCacheStore } from './infrastructure/redis/movie-release-cache.store.js';
 import { MovieReleaseCacheService } from './modules/integrations/movie-release-cache.service.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { MinioAvatarStore } from './infrastructure/minio/avatar.store.js';
@@ -287,8 +287,7 @@ try {
   );
   const movieReleaseCache = new MovieReleaseCacheService(
     new RedisMovieReleaseCacheStore(infrastructure.redis.getClient()),
-    config.RESOURCE_RELEASE_CACHE_TTL_SECONDS * 1_000,
-    new RedisResourceRefreshStore(infrastructure.redis.getClient())
+    config.RESOURCE_RELEASE_CACHE_TTL_SECONDS * 1_000
   );
   const movieResourceChecks = new MovieResourceCheckService(
     movieResourceCheckStore,
