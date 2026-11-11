@@ -508,7 +508,7 @@ describe('settings workspace', () => {
     window.history.replaceState({}, '', '/settings?section=keys&source=test');
     window.dispatchEvent(new PopStateEvent('popstate'));
     await flushPromises();
-    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Keys');
+    expect(wrapper.get('.settings-content-heading h2').text()).toBe('Agent Key');
     wrapper.unmount();
   });
 
@@ -550,8 +550,8 @@ describe('settings workspace', () => {
   });
 
   it.each([
-    ['en-US', 'Sites', 'Tools', 'Keys'],
-    ['zh-CN', '站点', '下载工具', '密钥'],
+    ['en-US', 'Sites', 'Tools', 'Agent Key'],
+    ['zh-CN', '站点', '下载工具', 'Agent Key'],
   ] as const)('separates sources and tools in desktop and mobile navigation (%s)', async (locale, resources, tools, keys) => {
     setLocale(locale);
     const wrapper = mount(App, { attachTo: document.body });

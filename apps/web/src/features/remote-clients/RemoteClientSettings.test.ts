@@ -34,7 +34,7 @@ it.each(['en-US', 'zh-CN'] as const)('generates and displays a reusable RCCK wit
   expect((wrapper.get('input').element as HTMLInputElement).value).toBe('premote_secret');
   expect(wrapper.text()).toContain(locale === 'zh-CN'
     ? 'RCCK 密钥用于下载器代理与服务器之间通信验证'
-    : 'The RCCK verifies communication between the downloader agent and the server.'
+    : 'The RCCK verifies communication between the agent and the server.'
   );
   expect(wrapper.text()).not.toContain(locale === 'zh-CN' ? '密钥已加密保存' : 'Your key is stored encrypted');
   expect(wrapper.get('[data-action="show-key"]').attributes('aria-label')).toBe(

@@ -376,7 +376,7 @@ const zhCN = {
   'settings.ai': 'AI 助手',
   'settings.resourcesGroup': '资源',
   'settings.resources': '站点',
-  'settings.keys': '密钥',
+  'settings.keys': 'Agent Key',
   'settings.keysDescription': '管理远程客户端的通信密钥',
   'settings.downloads': '下载工具',
   'settings.notifications': '消息',
