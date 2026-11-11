@@ -1,3 +1,16 @@
+# GHCR 双架构发布（2026-11-11）
+
+源码提交 `647526a803efd0d4bc22ee5b179e4c56e03dfd0f` 已通过 GitHub Actions 原生构建并发布到 `ghcr.io/yeast-io/popular-agent`。
+
+- 工作流：[Publish Agent Docker / 43034118917](https://github.com/yeast-io/Popular/actions/runs/43034118917)，最终结论 `success`。
+- `linux/amd64`、`linux/arm64` 均通过 Docker 架构检查和非 root/只读容器的健康、登录、加密卷持久化、重启及注销验收后推送。
+- 组合清单校验包含且仅包含上述两个 Linux 架构。共享标签为 `0.1.1-beta.1-647526a803ef` 与 `edge`；另有 `-amd64`、`-arm64` 版本标签。
+- 发布后的匿名拉取检查返回 HTTP 401；包公开前需要授权登录。若需用户免登录拉取，应在 GHCR 包设置将可见性改为 Public。
+
+本次关闭了此前“Docker 镜像构建/容器生命周期尚未验收”的待办；下方各批次记录保留当时状态。真实 PT、真实下载器、真实 Mongo、OS keychain 写入和桌面安装包仍不由这次 Docker smoke test 证明。API/Web/Gateway 的生产 `release` 分支未推进。
+
+---
+
 # Agent 资源执行（第 5 批，2026-11-11）
 
 本批源码接通 Popular → Gateway → Core 的站点业务请求，以及本地票据 → 执行授权 → Agent 下载器的下载路径。Resources 增加单设备 Agent 模式胶囊；云端默认站点与 Agent 默认站点分别保留。AI 下载沿用选定设备。凭据和真实种子 URL 不回传云端，离线不回退云端。

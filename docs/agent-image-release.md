@@ -33,3 +33,7 @@ docker compose -f apps/helpers/agent/web/compose.yaml up -d --no-build agent
 Set `AGENT_WEB_ORIGIN`, bind address and port for the intended local/LAN deployment as described in [Agent Web](agent-web.md). Prefer the commit-qualified version tag when pinning an installation. Both the initializer and service use `AGENT_IMAGE`; leaving it unset retains the existing local-build behavior.
 
 New GHCR packages may initially be private even for a public source repository. Check package visibility and anonymous pull access after the first successful publication. If private access is intentional, users need their own authorized registry login. Never bake a registry token, site credential, downloader password, master key or initialized data volume into the image. The Dockerfile-specific context allowlist excludes local secrets and generated data.
+
+## First verified publication
+
+[Run 43034118917](https://github.com/yeast-io/Popular/actions/runs/43034118917) succeeded for source commit `647526a803efd0d4bc22ee5b179e4c56e03dfd0f`. Both native architectures passed the Docker lifecycle check. Published tags are `0.1.1-beta.1-647526a803ef`, `0.1.1-beta.1-647526a803ef-amd64`, `0.1.1-beta.1-647526a803ef-arm64` and `edge`. Anonymous pull verification returned HTTP 401; use an authorized registry login or change the package visibility to Public before distributing an anonymous pull command.
