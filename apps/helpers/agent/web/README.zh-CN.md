@@ -102,7 +102,7 @@ WEB_LOGIN_PASSWORD=replace-with-your-private-password
 1. 在 **Popular → 设置 → Agent Key** 生成或复制 Agent Key。
 2. 在 **Agent → 设置 → Gateway** 填写 Gateway HTTPS 基础地址和 Agent Key，点击「连接」。
 3. 在 **Agent → 下载器** 选择 qBittorrent 或 Transmission，填写地址和凭据，点击「连接」。
-4. 在 **Agent → 资源站点** 配置、验证并启用站点。M-Team：API Key；HDArea：Cookie + Passkey；HDWing：Cookie。
+4. 在 **Agent → 资源站点** 配置、验证并启用站点。M-Team：API Key；HDArea：Cookie；HDWing：Cookie。
 5. 在 **Popular → 设置 → Resources（站点）** 开启 Agent 资源请求，选择设备及默认站点。
 
 Gateway 地址由 Popular 部署者提供。管理密码用于 Web 登录，Agent Key 用于账号绑定。下载器地址需从容器内可达，例如 `http://192.168.1.10:8080`；`127.0.0.1` 指向 Agent 容器自身。

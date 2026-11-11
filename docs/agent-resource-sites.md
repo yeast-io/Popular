@@ -32,12 +32,12 @@ apps/helpers/agent/
 | Site | Inputs | Verification |
 | --- | --- | --- |
 | M-Team | Trusted API origin and API key | POST `/api/member/profile` with `x-api-key`; validates a successful payload and current account ID |
-| HDArea | Trusted origin, Cookie and Passkey | GET `/index.php` with Cookie; requires authenticated navigation and one current-user link inside `#info_block` |
+| HDArea | Trusted origin and Cookie | GET `/index.php` with Cookie; requires authenticated navigation and one current-user link inside `#info_block` |
 | HDWing | Trusted origin and Cookie | GET `/index.php` with Cookie; requires one current-user link inside `#site_header .userinfo` |
 
 Defaults match the current repository: `https://api.m-team.cc`, `https://hdarea.club`, `https://hdwing.org`. The owner may explicitly enter another trusted HTTPS origin. M-Team also accepts `/api` as the API base path. Credentials, query strings, fragments and unrelated paths are rejected in the configured address. Changing a destination requires new credentials; no fallback or automatic cross-origin credential forwarding is permitted.
 
-Verification checks authentication and the current account identity. HDArea Passkey is saved locally but is not submitted or tested by this login check. A new HDArea account requires entering its Passkey explicitly rather than retaining the previous account's value. Large string account IDs stay strings; unsafe JSON numbers, duplicate IDs, cross-origin account links and ambiguous current-user identities are rejected.
+Verification checks authentication and the current account identity. HDArea uses Cookie authentication for both page reads and torrent retrieval; no Passkey configuration is required. Download links are extracted from the details page, and the validated torrent contents are submitted to the downloader without forwarding the site Cookie. Large string account IDs stay strings; unsafe JSON numbers, duplicate IDs, cross-origin account links and ambiguous current-user identities are rejected.
 
 Requests have a 15-second deadline, no automatic retries, no redirect following and bounded response bodies (64 KiB for M-Team, 2 MiB for HTML sites). Login pages, browser challenges, rate limits and invalid responses are distinguished. Agent does not solve CAPTCHA, refresh login sessions or bypass site restrictions. HTTP is allowed only for explicit development loopback fixtures when `HELPER_ALLOW_INSECURE_DEV=true`; normal site origins require HTTPS.
 
@@ -45,7 +45,7 @@ Requests have a 15-second deadline, no automatic retries, no redirect following 
 
 Desktop uses its existing OS credential store; Web/Docker uses the existing AES-GCM file store and separate master key. Credentials and private account identity remain inside that store. `resource-sites.json` holds only site/endpoint metadata, credential references, verification status, timestamps and deferred credential-cleanup references.
 
-Each encrypted site payload also binds its site ID and exact normalized destination. Editing the metadata file cannot redirect a saved credential to a different destination. UI/API snapshots return only address, status, enabled state, verification time and credential-presence flags. Cookie, Passkey, API key and external account ID never return to the browser. Requests never put credentials in URLs or diagnostic logs.
+Each encrypted site payload also binds its site ID and exact normalized destination. Editing the metadata file cannot redirect a saved credential to a different destination. UI/API snapshots return only address, status, enabled state, verification time and credential-presence flags. Cookie, API key and external account ID never return to the browser. Requests never put credentials in URLs or diagnostic logs.
 
 A new credential entry is written before an atomic metadata commit. Failed replacement verification or failed credential writing preserves the prior working configuration. Superseded credentials are removed after commit. Deferred cleanup is recorded persistently so a failed credential deletion can be retried; explicit deletion reports failure while that site's cleanup remains incomplete. A broken credential entry produces a per-site error and can be removed or explicitly replaced without blocking other sites.
 
@@ -53,7 +53,7 @@ Each site has its own operation lock. The shared commit lock is held only around
 
 ## Product behavior
 
-The page offers editable site address, the appropriate secret inputs, Verify and save, Verify again, Enable/Disable and explicit Delete confirmation. Secrets use presence masks rather than read-back values. Address changes clear eligibility to reuse saved credentials. Cookie inputs accept up to 8192 characters, API keys 4096 and Passkeys 2048; Core enforces byte and control-character limits as well.
+The page offers editable site address, the appropriate secret inputs, Verify and save, Verify again, Enable/Disable and explicit Delete confirmation. Secrets use presence masks rather than read-back values. Address changes clear eligibility to reuse saved credentials. Cookie inputs accept up to 8192 characters and API keys 4096; Core enforces byte and control-character limits as well.
 
 The feature composable owns drafts and per-site pending/error state for the full Agent UI session, so navigation and locale changes retain edits. Unmount/logout clears secret drafts; late responses do not repopulate state. Failed initial load has retry. Saved credential failures are shown per site. Unsupported older transport adapters retain the unavailable-state fallback rather than exposing a nonfunctional form.
 
@@ -79,3 +79,7 @@ The previous batch's Docker image/start/restart acceptance remains a separate ou
 ## Batch 5 routing
 
 Popular can now opt into the locally configured sites for resource operations and download preparation. See [Agent resource routing](agent-resource-routing.md) for the business protocol, ticket ownership and batch-5 validation boundaries. Earlier validation counts above describe batch 4 only.
+
+### HDArea torrent delivery
+
+HDArea detail pages provide same-origin `download.php?id=...` links. Popular and Agent fetch these with the saved Cookie, bound the response to 8 MiB and validate bencode before submission. qBittorrent receives a multipart torrent file; Transmission receives base64 `metainfo`. Cloud-to-Agent delivery carries the file inside the existing signed and encrypted envelope, with a 24 MiB transport bound covering encoding overhead. Local Agent preparation keeps file contents in a short-lived ticket; only its ticket ID and info hash leave Agent. Legacy stored Passkey fields remain readable for compatibility but are not used for retrieval or shown in settings.

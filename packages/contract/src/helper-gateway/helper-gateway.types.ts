@@ -56,4 +56,7 @@ export interface WireMessage {
   protocolVersion: 1; command: string; messageId: string; replyTo?: string; correlationId?: string; payload: unknown;
 }
 
-export type PreparedTorrent = { url: string; torrentHash: string; agentTicket?: never } | { agentTicket: string; torrentHash: string; url?: never };
+export type PreparedTorrent
+  = | { url: string; torrentHash: string; agentTicket?: never; metainfo?: never }
+    | { agentTicket: string; torrentHash: string; url?: never; metainfo?: never }
+    | { metainfo: string; torrentHash: string; url?: never; agentTicket?: never };

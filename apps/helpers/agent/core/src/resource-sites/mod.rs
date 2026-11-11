@@ -1,8 +1,8 @@
 //! Locally owned site configuration and fixed, session-bound resource operations.
 pub(crate) mod resources;
 pub(crate) mod tickets;
-mod torrent;
-mod types;
+pub(crate) mod torrent;
+pub(crate) mod types;
 mod verification;
 use crate::{
     credentials::CredentialStore,
@@ -79,8 +79,8 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
                 Some(Status::ConfiguredInvalid) => "configured_invalid",
             },
             has_credential: secrets.as_ref().is_some_and(|s| !s.credential.is_empty()),
-            has_passkey: secrets.as_ref().is_some_and(|s| !s.passkey.is_empty()),
-            requires_passkey: site == Site::Hdarea,
+            has_passkey: false,
+            requires_passkey: false,
             verified_at: row.map(|r| r.verified_at),
             last_error: row.and_then(|r| r.last_error.clone()),
         })
@@ -136,14 +136,11 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
             .as_ref()
             .is_some_and(|row| row.base_url == base.as_str());
         let replacing_credential = matches!(input.credential, SecretChange::Set(_));
-        let replacing_passkey = matches!(input.passkey, SecretChange::Set(_));
+
         let old_secrets = if same {
             match old.as_ref().map(|row| self.secrets(row)).transpose() {
                 Ok(secrets) => secrets,
-                Err(error)
-                    if replacing_credential
-                        && (input.site != Site::Hdarea || replacing_passkey) =>
-                {
+                Err(error) if replacing_credential => {
                     diagnostics::failure(
                         "resource-sites.credentials.replace-unreadable",
                         &trace.id,
@@ -161,18 +158,8 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
             input.credential,
             old_secrets.as_ref().map(|s| s.credential.as_str()),
         )?;
-        let passkey = match input.site {
-            Site::Hdarea => replacement(
-                input.passkey,
-                old_secrets.as_ref().map(|s| s.passkey.as_str()),
-            )?,
-            _ => {
-                if matches!(input.passkey, SecretChange::Set(_)) {
-                    return Err(AgentError::code("invalidSecret"));
-                }
-                String::new()
-            }
-        };
+        // Legacy passkeys are ignored; Cookie authentication also handles torrent retrieval.
+        let passkey = String::new();
         if credential.len() > 8192
             || (input.site == Site::Mteam && credential.len() > 4096)
             || credential.chars().any(char::is_control)
@@ -183,14 +170,6 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
         }
         // Failed replacement never overwrites the last working configuration or credentials.
         let external_user_id = verification::verify(input.site, &base, &credential, trace).await?;
-        if input.site == Site::Hdarea
-            && !replacing_passkey
-            && old_secrets
-                .as_ref()
-                .is_some_and(|old| old.external_user_id != external_user_id)
-        {
-            return Err(AgentError::code("sitePasskeyRequired"));
-        }
         let secrets = SiteSecrets {
             site: input.site,
             base_url: base.to_string(),
@@ -374,3 +353,7 @@ fn now() -> Result<u64, AgentError> {
 }
 #[cfg(test)]
 mod tests;
+
+fn keep_secret() -> SecretChange {
+    SecretChange::Keep
+}

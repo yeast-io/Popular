@@ -1,9 +1,10 @@
 //! Typed site operations; no arbitrary URL, method, header or credential RPC surface.
 use super::{
-    types::{Site, SiteSecrets},
+    types::{Site, SiteSecrets, TorrentSource},
     verification, ResourceSites,
 };
 use crate::{credentials::CredentialStore, diagnostics::Trace, errors::AgentError};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use dom_query::Document;
 use reqwest::{header, redirect::Policy, Method};
 use serde::{Deserialize, Serialize};
@@ -175,7 +176,15 @@ async fn request(
             .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(form.to_owned());
     }
-    let result = bytes(request.send().await?, 2 * 1024 * 1024).await?;
+    let limit = if url::Url::parse(path)
+        .ok()
+        .is_some_and(|u| u.path() == "/download.php")
+    {
+        8 * 1024 * 1024
+    } else {
+        2 * 1024 * 1024
+    };
+    let result = bytes(request.send().await?, limit).await?;
     trace.stage(&format!("resource-sites.{}.request.completed", site.id()));
     Ok(result)
 }
@@ -534,7 +543,7 @@ pub(super) async fn torrent(
     secrets: &SiteSecrets,
     resource_id: &str,
     trace: &Trace,
-) -> Result<(String, String), AgentError> {
+) -> Result<(TorrentSource, String), AgentError> {
     id(resource_id)?;
     let url = match site {
         Site::Mteam => {
@@ -556,11 +565,54 @@ pub(super) async fn torrent(
             Url::parse(payload["data"].as_str().ok_or_else(invalid)?).map_err(|_| invalid())?
         }
         Site::Hdarea => {
-            let mut url = base.join("download.php").map_err(|_| invalid())?;
-            url.query_pairs_mut()
-                .append_pair("id", resource_id)
-                .append_pair("passkey", &secrets.passkey);
-            url
+            let page = request(
+                site,
+                base,
+                secrets,
+                &format!("details.php?id={resource_id}"),
+                None,
+                None,
+                trace,
+            )
+            .await?;
+            let download_url = {
+                let document = html(&page, base, site, secrets)?;
+                let mut urls = std::collections::BTreeSet::new();
+                for link in document.select("a[href*='download.php']").iter() {
+                    let Some(href) = link.attr("href") else {
+                        continue;
+                    };
+                    let url = base.join(&href).map_err(|_| invalid())?;
+                    if url.origin() != base.origin()
+                        || url.path() != "/download.php"
+                        || !url.username().is_empty()
+                        || url.password().is_some()
+                        || url.fragment().is_some()
+                    {
+                        return Err(invalid());
+                    }
+                    let ids = url
+                        .query_pairs()
+                        .filter(|(k, _)| k == "id")
+                        .map(|(_, v)| v.into_owned())
+                        .collect::<Vec<_>>();
+                    if ids.len() == 1
+                        && ids[0] == resource_id
+                        && url.query_pairs().all(|(k, _)| k == "id")
+                    {
+                        urls.insert(url.to_string());
+                    }
+                }
+                if urls.len() != 1 {
+                    return Err(invalid());
+                }
+                urls.into_iter().next().unwrap()
+            };
+            trace.stage("resource-sites.torrent.read.started");
+            let data = request(site, base, secrets, &download_url, None, None, trace).await?;
+            let hash = super::torrent::info_hash(&data)?;
+            trace.stage("resource-sites.torrent.read.completed");
+            return Ok((TorrentSource::Metainfo(BASE64.encode(&data)), hash));
         }
         Site::Hdwing => {
             let document = html(
@@ -650,7 +702,7 @@ pub(super) async fn torrent(
     .await?;
     let hash = super::torrent::info_hash(&bytes)?;
     trace.stage("resource-sites.torrent.read.completed");
-    Ok((url.to_string(), hash))
+    Ok((TorrentSource::Url(url.to_string()), hash))
 }
 impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
     pub(crate) async fn operate(
@@ -801,5 +853,72 @@ mod parser_tests {
             1
         );
         assert_eq!(row.children().filter("td").length(), 6);
+    }
+    #[tokio::test]
+    async fn hdarea_extracts_cookie_links_and_keeps_torrent_contents_local() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpListener,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let server = tokio::spawn(async move {
+            let page = "<a href='usercp.php'>me</a><div id='info_block'><a href='userdetails.php?id=123'>me</a></div><a href='download.php?id=42'>one</a><a href='download.php?id=42'>two</a>";
+            let mut requests = Vec::new();
+            for body in [page, "d4:infod4:name4:test6:pieces0:ee"] {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut data = Vec::new();
+                loop {
+                    let mut buf = [0; 4096];
+                    let n = socket.read(&mut buf).await.unwrap();
+                    assert!(n > 0);
+                    data.extend_from_slice(&buf[..n]);
+                    if data.windows(4).any(|s| s == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                requests.push(String::from_utf8(data).unwrap());
+                socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.len(),
+                            body
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            requests
+        });
+        let secrets = SiteSecrets {
+            site: Site::Hdarea,
+            base_url: base.to_string(),
+            credential: "uid=123; session=local-cookie".into(),
+            passkey: String::new(),
+            external_user_id: "123".into(),
+        };
+        let (source, hash) = torrent(Site::Hdarea, &base, &secrets, "42", &Trace::new())
+            .await
+            .unwrap();
+        let TorrentSource::Metainfo(data) = source else {
+            panic!("Expected torrent contents");
+        };
+        assert_eq!(
+            BASE64.decode(data).unwrap(),
+            b"d4:infod4:name4:test6:pieces0:ee"
+        );
+        assert_eq!(
+            hash,
+            super::super::torrent::info_hash(b"d4:infod4:name4:test6:pieces0:ee").unwrap()
+        );
+        let requests = server.await.unwrap();
+        assert!(requests[0].starts_with("GET /details.php?id=42 "));
+        assert!(requests[1].starts_with("GET /download.php?id=42 "));
+        for request in requests {
+            assert!(request.contains("uid=123; session=local-cookie"));
+            assert!(!request.contains("passkey"));
+        }
     }
 }

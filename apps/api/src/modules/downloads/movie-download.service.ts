@@ -1,3 +1,4 @@
+import type { TorrentInput } from '@movie-hub/contract';
 import type { AgentResourceService } from '../agent-resources/agent-resource.service.js';
 import type { DownloadSourceService } from './download-source.service.js';
 import { downloadClientError } from './download-client.errors.js';
@@ -183,7 +184,7 @@ export class MovieDownloadService {
     if (record.executionMode === 'remote' || record.provider !== provider || (record.downloaderInstanceId && record.downloaderInstanceId !== selected.downloaderInstanceId))
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'This release already belongs to another downloader');
     if (!claim.claimed) return toResponse(record);
-    let torrentUrl: string;
+    let torrentUrl: TorrentInput;
     try {
       torrentUrl = await aiStep('download.torrent-url.resolve', () => source.torrentUrl());
     } catch (error) {

@@ -1,4 +1,3 @@
-import { maskIntegrationSecret } from '@movie-hub/contract';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ResourceSiteCredential, ResourceSiteCredentialStore } from './resource-site.types.js';
@@ -36,8 +35,9 @@ function fixture(site = 'hdarea') {
       intervalMs: 0,
       fetch: async (_input, init) => {
         seen.push(new Headers(init?.headers).get('cookie')!);
+        if (new URL(String(_input)).pathname === '/download.php' && !expired) return new Response('d4:infod4:name4:testee');
         const id = new Headers(init?.headers).get('cookie')?.includes('uid=B') ? '202' : '101';
-        return new Response(expired ? '<input type="password">' : `<a href="usercp.php">Account</a><div id="info_block"><a href="userdetails.php?id=${id}">Me</a></div><div id="site_header"><div class="userinfo"><a href="userdetails.php?id=${id}">Me</a></div></div><div id="site_content"><p>没有找到</p><a href="download.php?hash=${Buffer.from(`1\n42\n${id}`).toString('base64url')}.signature&amp;uid=${id}">Download</a></div>`);
+        return new Response(expired ? '<input type="password">' : `<a href="usercp.php">Account</a><div id="info_block"><a href="userdetails.php?id=${id}">Me</a></div><div id="site_header"><div class="userinfo"><a href="userdetails.php?id=${id}">Me</a></div></div><div id="site_content"><p>没有找到</p><a href="download.php?id=${new URL(String(_input)).searchParams.get('id')}">Cookie download</a><a href="download.php?hash=${Buffer.from(`1\n42\n${id}`).toString('base64url')}.signature&amp;uid=${id}">Download</a></div>`);
       },
     }),
     {
@@ -94,30 +94,18 @@ test('authentication failure stops later requests until the user replaces or rev
   assert.equal(f.logs.length > 0, true);
 });
 
-test('Passkey is encrypted, masked, retained on Cookie replacement, and used only by the backend URL builder', async () => {
+test('HDArea downloads validated torrent bytes with only the owner Cookie and ignores legacy passkeys', async () => {
   const f = fixture();
-  const saved = await f.service.configure('A', 'hdarea', 'uid=A', 'private-passkey-123');
-  assert.equal(saved.cookieMasked, maskIntegrationSecret('uid=A'));
-  assert.equal(saved.passkeyMasked, maskIntegrationSecret('private-passkey-123'));
-  assert.equal(JSON.stringify(saved).includes('private-passkey'), false);
-  const encrypted = f.rows.get('A:hdarea')!.encryptedPasskey!;
-  assert.ok(encrypted);
-  assert.equal(encrypted.includes('private-passkey'), false);
-  const url = new URL(await f.service.torrentUrl('A', 'hdarea', '430912'));
-  assert.equal(url.origin + url.pathname, 'https://hdarea.club/download.php');
-  assert.equal(url.searchParams.get('id'), '430912');
-  assert.equal(url.searchParams.get('passkey'), 'private-passkey-123');
-  await f.service.configure('A', 'hdarea', saved.cookieMasked, saved.passkeyMasked);
+  const saved = await f.service.configure('A', 'hdarea', 'uid=A', 'legacy-unused-passkey');
+  assert.equal(saved.requiresPasskey, false);
+  assert.equal(saved.passkeyMasked, undefined);
+  const source = await f.service.torrentUrl('A', 'hdarea', '430912');
+  assert.deepEqual(source, { metainfo: Buffer.from('d4:infod4:name4:testee').toString('base64') });
   assert.equal(f.seen.at(-1), 'uid=A');
-  assert.equal(f.rows.get('A:hdarea')!.encryptedPasskey, encrypted);
   await f.service.configure('A', 'hdarea', 'uid=A2');
-  assert.equal(f.rows.get('A:hdarea')!.encryptedPasskey, encrypted);
-  await f.service.configure('A', 'hdarea', undefined, 'new-passkey');
-  assert.equal(new URL(await f.service.torrentUrl('A', 'hdarea', '430912')).searchParams.get('passkey'), 'new-passkey');
-  await assert.rejects(
-    f.service.torrentUrl('B', 'hdarea', '430912'),
-    (e) => e instanceof ResourceSiteError && e.reason === 'notConfigured'
-  );
+  await f.service.torrentUrl('A', 'hdarea', '430912');
+  assert.equal(f.seen.at(-1), 'uid=A2');
+  await assert.rejects(f.service.torrentUrl('B', 'hdarea', '430912'), ResourceSiteError);
   await assert.rejects(f.service.torrentUrl('A', 'hdarea', '../bad'), ResourceSiteError);
 });
 test('unchanged masks cannot create credentials and edited masks are rejected before external requests', async () => {
@@ -127,19 +115,18 @@ test('unchanged masks cannot create credentials and edited masks are rejected be
   assert.equal(f.seen.length, 0);
 });
 
-test('torrent URLs require valid owner credentials without fetching torrent content', async () => {
+test('torrent files require valid owner credentials and stop after Cookie expiry', async () => {
   const f = fixture();
   await f.service.configure('A', 'hdarea', 'uid=owner', 'owner-passkey');
   const before = f.seen.length;
-  const url = new URL(await f.service.torrentUrl('A', 'hdarea', '123'));
-  assert.equal(url.searchParams.get('passkey'), 'owner-passkey');
-  assert.equal(f.seen.length, before);
+  assert.equal(typeof await f.service.torrentUrl('A', 'hdarea', '123'), 'object');
+  assert.equal(f.seen.length, before + 2);
   f.rows.get('A:hdarea')!.status = 'configured_invalid';
   await assert.rejects(
     f.service.torrentUrl('A', 'hdarea', '123'),
     (error) => error instanceof ResourceSiteError && error.reason === 'authentication'
   );
-  assert.equal(f.seen.length, before);
+  assert.equal(f.seen.length, before + 2);
   await assert.rejects(
     f.service.torrentUrl('missing', 'hdarea', '123'),
     (error) => error instanceof ResourceSiteError && error.reason === 'notConfigured'

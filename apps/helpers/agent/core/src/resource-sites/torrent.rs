@@ -4,7 +4,7 @@ fn invalid() -> AgentError {
     AgentError::code("siteInvalidResponse")
 }
 /// Scan bencode without re-encoding: the exact info dictionary bytes define the hash.
-pub(super) fn info_hash(bytes: &[u8]) -> Result<String, AgentError> {
+pub(crate) fn info_hash(bytes: &[u8]) -> Result<String, AgentError> {
     fn string(bytes: &[u8], at: &mut usize) -> Result<(usize, usize), AgentError> {
         let start = *at;
         while *at < bytes.len() && bytes[*at].is_ascii_digit() {

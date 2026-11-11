@@ -13,7 +13,7 @@ export function redactDiagnosticText(text: string, sensitiveValues: readonly str
     .replace(/((?:mongodb(?:\+srv)?|rediss?|https?):\/\/)[^\s/@:]+(?::[^\s/@]*)?@/gi, '$1[REDACTED]@')
     .replace(/([?&](?:X-Amz-Signature|X-Amz-Credential|token|access_token|api_key|passkey|hash|csrf)=)[^&\s]+/gi, '$1[REDACTED]')
     .replace(
-      /((?:apiKey|api_key|passkey|password|authorization|cookie|secretKey|accessToken)["']?\s*[:=]\s*)[^\r\n,}]+/gi,
+      /((?:apiKey|api_key|passkey|password|authorization|cookie|secretKey|accessToken|metainfo|torrentMetainfo)["']?\s*[:=]\s*)[^\r\n,}]+/gi,
       '$1[REDACTED]'
     )
     .replace(/(dup key:\s*)\{[^\r\n]*\}/gi, '$1[REDACTED]')

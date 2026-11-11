@@ -852,4 +852,66 @@ mod tests {
             server.await.unwrap();
         }
     }
+    #[tokio::test]
+    async fn torrent_files_are_uploaded_without_forwarding_site_cookies() {
+        use crate::{downloads::Downloader, settings::Settings};
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        let metainfo = STANDARD.encode(b"d4:infod4:name4:test6:pieces0:ee");
+        for provider in [Provider::Qbittorrent, Provider::Transmission] {
+            let qb = provider == Provider::Qbittorrent;
+            let responses = if qb {
+                vec![
+                    response("200 OK", "", "v5.2.0"),
+                    response("200 OK", "", "Ok."),
+                ]
+            } else {
+                vec![
+                    response(
+                        "200 OK",
+                        "",
+                        r#"{"result":"success","tag":1,"arguments":{"version":"4.0.6"}}"#,
+                    ),
+                    response(
+                        "200 OK",
+                        "",
+                        r#"{"result":"success","tag":1,"arguments":{"torrent-added":{"hashString":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}"#,
+                    ),
+                ]
+            };
+            let (url, server) = mock(responses).await;
+            let mut downloader = Downloader::connect(
+                Settings {
+                    downloader_configured: true,
+                    downloader_url: url,
+                    provider,
+                    auth_mode: if qb {
+                        DownloaderAuthMode::ApiKey
+                    } else {
+                        DownloaderAuthMode::Password
+                    },
+                    ..Settings::default()
+                },
+                "downloader-secret".into(),
+                &Trace::new(),
+            )
+            .await
+            .unwrap();
+            assert!(downloader
+                .add_source("", &metainfo, "file-marker")
+                .await
+                .unwrap());
+            let requests = server.await.unwrap();
+            let sent = &requests[1];
+            assert!(!sent.to_lowercase().contains("cookie:"));
+            if qb {
+                assert!(sent.contains("multipart/form-data"));
+                assert!(sent.contains("name=\"torrents\""));
+                assert!(sent.contains("d4:infod4:name4:test6:pieces0:ee"));
+                assert!(!sent.contains("name=\"urls\""));
+            } else {
+                assert!(sent.contains(&format!("\"metainfo\":\"{metainfo}\"")));
+                assert!(!sent.contains("filename"));
+            }
+        }
+    }
 }

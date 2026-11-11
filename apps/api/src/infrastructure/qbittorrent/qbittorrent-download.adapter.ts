@@ -1,3 +1,4 @@
+import type { TorrentInput } from '@movie-hub/contract';
 import type { Locale, MovieDownloadStatus } from '@movie-hub/contract';
 import type { DownloadClient, TorrentSnapshot } from '../../modules/downloads/movie-download-client.types.js';
 import type { QBittorrentCredential, QBittorrentClientPort, QBittorrentTorrent } from '../../modules/integrations/qbittorrent.types.js';
@@ -12,8 +13,8 @@ export class QBittorrentDownloadAdapter implements DownloadClient {
     private readonly locale: Locale = 'en-US'
   ) {}
 
-  async add(torrentUrl: string, tag: string): Promise<undefined> {
-    currentAiTrace()?.sensitive(torrentUrl);
+  async add(torrentUrl: TorrentInput, tag: string): Promise<undefined> {
+    currentAiTrace()?.sensitive(typeof torrentUrl === 'string' ? torrentUrl : torrentUrl.metainfo);
     return downloadClientOperation('qbittorrent', 'submit', this.locale, async () => {
       await this.client.addTorrent(this.baseUrl, this.credential, torrentUrl, tag);
       return undefined;

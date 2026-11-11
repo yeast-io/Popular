@@ -48,3 +48,6 @@ export * from './tv-preferences/tv-preference.schema.js';
 export * from './integrations/ai.schema.js';
 
 export * from './helper-gateway/agent-resource.schema.js';
+
+export type { TorrentInput } from './downloads/torrent.types.js';
+export { TORRENT_FILE_MAX_BYTES, TORRENT_DELIVERY_MAX_BYTES } from './downloads/torrent.policy.js';

@@ -1,4 +1,4 @@
-use super::types::{Site, Status, StoredSite, StoredSites};
+use super::types::{Site, Status, StoredSite, StoredSites, TorrentSource};
 use crate::{errors::AgentError, journal, protocol::Context};
 use serde_json::{json, Value};
 use std::{
@@ -14,7 +14,7 @@ struct Ticket {
     credential_id: String,
     base_url: String,
     resource_id: String,
-    url: String,
+    source: TorrentSource,
     hash: String,
     expires: Instant,
 }
@@ -52,7 +52,7 @@ impl ResourceTickets {
         command: &str,
         row: &StoredSite,
         resource: &str,
-        url: String,
+        source: TorrentSource,
         hash: String,
     ) -> Result<Value, AgentError> {
         let mut rows = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -71,7 +71,7 @@ impl ResourceTickets {
                 credential_id: row.credential_id.clone(),
                 base_url: row.base_url.clone(),
                 resource_id: resource.into(),
-                url,
+                source,
                 hash,
                 expires: Instant::now() + Duration::from_secs(120),
             },
@@ -88,7 +88,7 @@ impl ResourceTickets {
         source: &str,
         resource: &str,
         hash: &str,
-    ) -> Result<String, AgentError> {
+    ) -> Result<TorrentSource, AgentError> {
         let mut rows = self.0.lock().unwrap_or_else(|e| e.into_inner());
         Self::prune(&mut rows);
         let t = rows
@@ -114,7 +114,7 @@ impl ResourceTickets {
         }) {
             return Err(AgentError::code("targetChanged"));
         }
-        Ok(t.url.clone())
+        Ok(t.source.clone())
     }
 }
 #[cfg(test)]
@@ -160,7 +160,7 @@ mod tests {
                 "command-1",
                 &row,
                 "123",
-                "https://tracker.invalid/?private=secret".into(),
+                TorrentSource::Url("https://tracker.invalid/?private=secret".into()),
                 hash.clone(),
             )
             .unwrap();
@@ -204,7 +204,8 @@ mod tests {
             Instant::now() - Duration::from_secs(1);
         assert_eq!(
             resolve(&context, "command-1", "123", &hash)
-                .unwrap_err()
+                .err()
+                .unwrap()
                 .code,
             "siteTicketExpired"
         );

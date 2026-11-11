@@ -9,3 +9,12 @@ test('redacts signed torrent and CSRF parameters from messages, stacks and cause
   assert.equal(serialized.includes('private-signature'), false);
   assert.equal(serialized.includes('private-csrf'), false);
 });
+
+test('redacts torrent file contents from errors without removing their cause or stack', () => {
+  const error = new Error('torrentMetainfo=private-base64-payload', { cause: new Error('metainfo=second-private-payload') });
+  const serialized = JSON.stringify(serializeDiagnosticError(error));
+  assert.equal(serialized.includes('private-base64-payload'), false);
+  assert.equal(serialized.includes('second-private-payload'), false);
+  assert.equal(serialized.includes('stack'), true);
+  assert.equal(serialized.includes('cause'), true);
+});

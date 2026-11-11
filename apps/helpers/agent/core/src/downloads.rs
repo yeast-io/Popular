@@ -1,10 +1,11 @@
-//! Only HTTP URL submission; never reads torrent files or supplies a download directory.
+//! Submit a URL or validated torrent contents without supplying a download directory.
 use crate::{
     diagnostics::Trace,
     downloader::{body, checked, qbittorrent_login, qbittorrent_request, qbittorrent_success},
     errors::AgentError,
     settings::{Provider, Settings},
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -210,21 +211,57 @@ impl Downloader {
         Ok(matching)
     }
     pub async fn add(&mut self, url: &str, marker: &str) -> Result<bool, AgentError> {
+        self.add_source(url, "", marker).await
+    }
+    pub async fn add_source(
+        &mut self,
+        url: &str,
+        metainfo: &str,
+        marker: &str,
+    ) -> Result<bool, AgentError> {
+        let file = if metainfo.is_empty() {
+            None
+        } else {
+            let data = BASE64
+                .decode(metainfo)
+                .map_err(|_| AgentError::code("invalidCommand"))?;
+            if data.len() > 8 * 1024 * 1024 {
+                return Err(AgentError::code("invalidCommand"));
+            }
+            super::resource_sites::torrent::info_hash(&data)?;
+            Some(data)
+        };
         if self.settings.provider == Provider::Qbittorrent {
-            let bytes = body(checked(
-                self.qb("torrents/add", true)
-                    .form(&[("urls", url), ("tags", marker)])
-                    .send()
-                    .await?,
-            )?)
-            .await?;
+            let query = self.qb("torrents/add", true);
+            let query = if let Some(data) = file {
+                query.multipart(
+                    reqwest::multipart::Form::new()
+                        .part(
+                            "torrents",
+                            reqwest::multipart::Part::bytes(data)
+                                .file_name("resource.torrent")
+                                .mime_str("application/x-bittorrent")?,
+                        )
+                        .text("tags", marker.to_owned()),
+                )
+            } else {
+                query.form(&[("urls", url), ("tags", marker)])
+            };
+            let bytes = body(checked(query.send().await?)?).await?;
             if !qbittorrent_success(&bytes) {
                 return Err(AgentError::code("invalidResponse"));
             }
             Ok(true)
         } else {
             let value = self
-                .rpc("torrent-add", json!({"filename":url,"labels":[marker]}))
+                .rpc(
+                    "torrent-add",
+                    if metainfo.is_empty() {
+                        json!({"filename":url,"labels":[marker]})
+                    } else {
+                        json!({"metainfo":metainfo,"labels":[marker]})
+                    },
+                )
                 .await?;
             // Duplicate responses are never adopted, even if the hash matches.
             if value

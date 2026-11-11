@@ -1,4 +1,4 @@
-import type { Locale } from '@movie-hub/contract';
+import type { Locale, TorrentInput } from '@movie-hub/contract';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
 import { AppError } from '../../infrastructure/http/app-error.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
@@ -29,7 +29,7 @@ export class DownloadSourceService {
     return { release, torrentUrl: () => this.torrentUrl(input, config, false) };
   }
 
-  async resolveRemote(input: DownloadSourceRequest): Promise<string> {
+  async resolveRemote(input: DownloadSourceRequest): Promise<TorrentInput> {
     // Movie downloads are revalidated when delivered; TV resources were validated before enqueueing.
     if (input.tmdbId !== undefined) {
       await aiStep('download.resources.validate', () => this.validateRelease(input, true),
@@ -79,7 +79,7 @@ export class DownloadSourceService {
             input.releaseId,
             remote ? undefined : userExternalRequestContext(input.ownerId, 'api_request')
           );
-      currentAiTrace()?.sensitive(url);
+      currentAiTrace()?.sensitive(typeof url === 'string' ? url : url.metainfo);
       return url;
     }, { sourceProvider: input.source, releaseId: input.releaseId });
   }

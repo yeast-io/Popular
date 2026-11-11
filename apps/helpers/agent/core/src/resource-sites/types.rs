@@ -38,6 +38,7 @@ pub struct ConfigureRequest {
     pub site: Site,
     pub base_url: String,
     pub credential: SecretChange,
+    #[serde(default = "super::keep_secret")]
     pub passkey: SecretChange,
 }
 #[derive(Deserialize)]
@@ -87,6 +88,7 @@ pub(super) struct SiteSecrets {
     pub site: Site,
     pub base_url: String,
     pub credential: String,
+    #[serde(default)]
     pub passkey: String,
     pub external_user_id: String,
 }
@@ -102,4 +104,15 @@ pub struct SiteSnapshot {
     pub requires_passkey: bool,
     pub verified_at: Option<u64>,
     pub last_error: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) enum TorrentSource {
+    Url(String),
+    Metainfo(String),
+}
+impl From<String> for TorrentSource {
+    fn from(value: String) -> Self {
+        Self::Url(value)
+    }
 }

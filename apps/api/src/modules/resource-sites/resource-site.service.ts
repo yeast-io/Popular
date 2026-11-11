@@ -1,3 +1,5 @@
+import type { TorrentInput } from '@movie-hub/contract';
+import { validateTorrentFile } from './torrent-file.schema.js';
 import type { AgentResourceService } from '../agent-resources/agent-resource.service.js';
 import { siteAccountIdentityPending } from './site-account.errors.js';
 import type { IntegrationPreferencesService } from '../integrations/integration-preferences.service.js';
@@ -51,13 +53,6 @@ export class ResourceSiteService {
           requiresPasskey: this.adapter(site).requiresPasskey ?? false,
           status: row.externalUserId ? row.status : 'configured_invalid',
           cookieMasked: maskIntegrationSecret(this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site))),
-          ...(row.encryptedPasskey
-            ? {
-                passkeyMasked: maskIntegrationSecret(
-                  this.secrets.decrypt(row.encryptedPasskey, `${this.context(ownerId, site)}:passkey`)
-                ),
-              }
-            : {}),
           verifiedAt: row.verifiedAt.toISOString(),
         }
       : { site, baseUrl, requiresPasskey: this.adapter(site).requiresPasskey ?? false, status: 'unconfigured' };
@@ -67,7 +62,7 @@ export class ResourceSiteService {
     ownerId: string,
     site: string,
     cookie?: string,
-    passkey?: string
+    _legacyPasskey?: string
   ): Promise<ResourceSiteConfiguration> {
     if (await this.agentResources?.enabled(ownerId)) throw new ResourceSiteError('agentModeConflict');
     return this.trace(ownerId, site, 'configure', async () => {
@@ -77,13 +72,6 @@ export class ResourceSiteService {
         cookie,
         existing ? this.secrets.decrypt(existing.encryptedCookie, this.context(ownerId, site)) : undefined
       );
-      passkey = replacementSecret(
-        passkey,
-        existing?.encryptedPasskey
-          ? this.secrets.decrypt(existing.encryptedPasskey, `${this.context(ownerId, site)}:passkey`)
-          : undefined
-      );
-      if (passkey && /\s/.test(passkey)) throw new ResourceSiteError('invalidCredential');
       const revalidating = !cookie;
       if (!cookie) {
         const row = existing;
@@ -91,7 +79,6 @@ export class ResourceSiteService {
         cookie = this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site));
       }
       this.protect(cookie);
-      if (passkey) currentAiTrace()?.sensitive(passkey);
       const session = await this.http.session(adapter.baseUrl, cookie);
       let externalUserId: string;
       try {
@@ -112,11 +99,6 @@ export class ResourceSiteService {
           ownerId,
           site,
           externalUserId,
-          ...(passkey
-            ? { encryptedPasskey: this.secrets.encrypt(passkey, `${this.context(ownerId, site)}:passkey`) }
-            : existing?.encryptedPasskey
-              ? { encryptedPasskey: existing.encryptedPasskey }
-              : {}),
           encryptedCookie: this.secrets.encrypt(cookie!, this.context(ownerId, site)),
           version: randomUUID(),
           status: 'configured_valid',
@@ -129,10 +111,19 @@ export class ResourceSiteService {
     });
   }
 
-  async torrentUrl(ownerId: string, site: string, id: string): Promise<string> {
+  async torrentUrl(ownerId: string, site: string, id: string): Promise<TorrentInput> {
     if (await this.agentResources?.enabled(ownerId)) throw new ResourceSiteError('agentModeConflict');
     return this.trace(ownerId, site, 'torrent-url', async () => {
       const adapter = this.adapter(site);
+      if (adapter.torrentFile) {
+        return this.run(ownerId, site, 'torrent-file', async (siteAdapter, session) => {
+          const bytes = await aiStep('resource-sites.torrent.read', () => siteAdapter.torrentFile!(session, id));
+          validateTorrentFile(bytes);
+          const metainfo = Buffer.from(bytes).toString('base64');
+          currentAiTrace()?.sensitive(metainfo);
+          return { metainfo };
+        });
+      }
       const row = await aiStep('resource-sites.credentials.load', () => this.credentials.find(ownerId, site));
       if (!row) throw new ResourceSiteError('notConfigured');
       if (!row.externalUserId) throw siteAccountIdentityPending();
@@ -144,14 +135,7 @@ export class ResourceSiteService {
           return url;
         });
       }
-      if (!row.encryptedPasskey) throw new ResourceSiteError('passkeyRequired');
-      if (!adapter.torrentUrl) throw new ResourceSiteError('invalidResponse');
-      const passkey = this.secrets.decrypt(row.encryptedPasskey, `${this.context(ownerId, site)}:passkey`);
-      currentAiTrace()?.sensitive(passkey);
-      currentAiTrace()?.sensitive(encodeURIComponent(passkey));
-      const url = adapter.torrentUrl(id, passkey);
-      currentAiTrace()?.sensitive(url);
-      return url;
+      throw new ResourceSiteError('invalidResponse');
     });
   }
 

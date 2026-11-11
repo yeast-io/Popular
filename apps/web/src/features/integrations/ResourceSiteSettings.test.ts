@@ -7,7 +7,7 @@ import { setLocale } from '../../i18n';
 
 afterEach(() => vi.unstubAllGlobals());
 for (const locale of ['zh-CN', 'en-US'] as const) {
-  it(`verifies Cookie and Passkey while leaving search outside the settings card in ${locale}`, async () => {
+  it(`verifies Cookie without a Passkey while leaving search outside the settings card in ${locale}`, async () => {
     setLocale(locale);
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -32,14 +32,14 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       ? '通过服务端 HDAREA_BASE_URL 配置，修改后重启 API。'
       : 'Configured through server HDAREA_BASE_URL; restart the API after changes.');
     await wrapper.get('#hdarea-cookie').setValue('uid=secret');
-    await wrapper.get('#hdarea-passkey').setValue('private-passkey');
+    expect(wrapper.find('#hdarea-passkey').exists()).toBe(false);
     await wrapper.findAll('form')[0]!.trigger('submit');
     await flushPromises();
     expect((wrapper.get('#hdarea-cookie').element as HTMLInputElement).value).toBe('••••••••');
     expect(JSON.parse(String(calls.find((c) => c.init?.method === 'PUT')!.init!.body))).toEqual(
-      { cookie: 'uid=secret', passkey: 'private-passkey' }
+      { cookie: 'uid=secret' }
     );
-    expect((wrapper.get('#hdarea-passkey').element as HTMLInputElement).value).toBe('••••••••');
+    expect(wrapper.find('#hdarea-passkey').exists()).toBe(false);
     await wrapper.findAll('form')[0]!.trigger('submit');
     await flushPromises();
     expect(JSON.parse(String(calls.filter((c) => c.init?.method === 'PUT').at(-1)!.init!.body))).toEqual({});
@@ -91,7 +91,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
 }
 
 for (const locale of ['zh-CN', 'en-US'] as const) {
-  it(`keeps HDWing and HDArea credentials independent and hides HDWing Passkey in ${locale}`, async () => {
+  it(`keeps HDWing and HDArea credentials independent and hides Passkey fields in ${locale}`, async () => {
     setLocale(locale);
     const calls: Array<{ url: string; body: string | undefined }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -105,7 +105,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     const area = mount(ResourceSiteSettings);
     const wing = mount(ResourceSiteSettings, { props: { site: 'hdwing', name: 'HDWing' } });
     await flushPromises();
-    expect(area.find('#hdarea-passkey').exists()).toBe(true);
+    expect(area.find('#hdarea-passkey').exists()).toBe(false);
     expect(wing.find('#hdwing-passkey').exists()).toBe(false);
     expect(wing.text()).toContain('HDWing');
     expect(wing.text()).toContain('HDWING_BASE_URL');

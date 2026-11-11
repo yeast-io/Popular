@@ -16,7 +16,6 @@ export interface ResourceSiteRequest {
   site: ResourceSite;
   baseUrl: string;
   credential: SecretChange;
-  passkey: SecretChange;
 }
 export interface ResourceSiteClient {
   list(): Promise<ResourceSiteSnapshot[]>;
@@ -29,7 +28,6 @@ export interface ResourceSiteEntry {
   snapshot: ResourceSiteSnapshot;
   baseUrl: string;
   credential: string;
-  passkey: string;
   editing: boolean;
   confirmingDelete: boolean;
   busy: boolean;

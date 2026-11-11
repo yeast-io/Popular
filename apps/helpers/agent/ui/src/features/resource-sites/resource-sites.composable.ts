@@ -8,7 +8,7 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
   const loaded = ref(false);
   const error = ref('');
   const dirty = computed(() =>
-    entries.some((entry) => !!entry.credential || !!entry.passkey || entry.baseUrl !== entry.snapshot.baseUrl)
+    entries.some((entry) => !!entry.credential || entry.baseUrl !== entry.snapshot.baseUrl)
   );
   const anyBusy = computed(() => entries.some((entry) => entry.busy));
   let active = true;
@@ -17,7 +17,6 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
     entry.snapshot = snapshot;
     entry.baseUrl = snapshot.baseUrl;
     entry.credential = '';
-    entry.passkey = '';
     entry.editing = snapshot.status === 'unconfigured';
     entry.confirmingDelete = false;
   }
@@ -31,7 +30,6 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
       if (!active || current !== generation) return;
       entries.forEach((entry) => {
         entry.credential = '';
-        entry.passkey = '';
       });
       entries.splice(
         0,
@@ -40,7 +38,6 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
           snapshot,
           baseUrl: snapshot.baseUrl,
           credential: '',
-          passkey: '',
           editing: snapshot.status === 'unconfigured',
           confirmingDelete: false,
           busy: false,
@@ -68,7 +65,6 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
           enabled: false,
           status: 'unconfigured',
           hasCredential: false,
-          hasPasskey: false,
           verifiedAt: null,
           lastError: null,
         }
@@ -92,12 +88,9 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
       site: entry.snapshot.site,
       baseUrl: entry.baseUrl.trim(),
       credential: entry.credential ? { action: 'set' as const, value: entry.credential } : { action: 'keep' as const },
-      passkey:
-        entry.snapshot.requiresPasskey && entry.passkey
-          ? { action: 'set' as const, value: entry.passkey }
-          : { action: 'keep' as const },
+
     };
-    if (!keep && (!entry.credential || (entry.snapshot.requiresPasskey && !entry.passkey))) return;
+    if (!keep && !entry.credential) return;
     return action(entry, () => client.configure(request));
   }
   function cancel(entry: ResourceSiteEntry) {
@@ -122,7 +115,6 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
     generation++;
     entries.forEach((entry) => {
       entry.credential = '';
-      entry.passkey = '';
     });
   });
   return {

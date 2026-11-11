@@ -4,6 +4,7 @@ import { RpcError } from '@movie-hub/contract/socket-rpc';
 import type { CommandRecord } from '@movie-hub/contract';
 import type { DownloadSourceService } from '../downloads/download-source.service.js';
 import type { RemoteDownloadSource, RemoteTorrentResult } from './remote-download.types.js';
+import { torrentMetadataHash } from './torrent-metadata.schema.js';
 import { readTorrentMetadata } from './torrent-metadata.service.js';
 
 export class RemoteTorrentService {
@@ -45,6 +46,7 @@ export class RemoteTorrentService {
       source: command.source,
       releaseId: command.resourceId,
     });
+    if (typeof url !== 'string') return { metainfo: url.metainfo, torrentHash: torrentMetadataHash(Buffer.from(url.metainfo, 'base64')) };
     return { url, torrentHash: await this.metadata(url, { source: command.source }) };
   }
 }

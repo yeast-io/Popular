@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant, SystemTime};
 
+pub const MAX_DELIVERY_BYTES: usize = 24 * 1024 * 1024;
 pub const MAX_INTEGER: u64 = 9_007_199_254_740_991;
 pub fn invalid() -> AgentError {
     AgentError::code("invalidCommand")
@@ -84,7 +85,7 @@ impl DeviceKeys {
     }
     pub fn decrypt(&self, compact: &str) -> Result<Value, AgentError> {
         let parts: Vec<_> = compact.split('.').collect();
-        if parts.len() != 5 || compact.len() > 60000 {
+        if parts.len() != 5 || compact.len() > MAX_DELIVERY_BYTES {
             return Err(invalid());
         }
         let header: Value = serde_json::from_slice(&decode(parts[0])?).map_err(|_| invalid())?;
@@ -162,7 +163,7 @@ struct SignedHeader {
 }
 pub fn verify(compact: &str, jwks: &Value) -> Result<Value, AgentError> {
     let parts: Vec<_> = compact.split('.').collect();
-    if parts.len() != 3 || compact.len() > 60000 {
+    if parts.len() != 3 || compact.len() > MAX_DELIVERY_BYTES {
         return Err(invalid());
     }
     let header: SignedHeader = serde_json::from_slice(&decode(parts[0])?).map_err(|_| invalid())?;
@@ -220,7 +221,7 @@ pub fn message(command: &str, payload: Value, correlation: Option<String>) -> Wi
     }
 }
 pub fn wire(text: &str) -> Result<Wire, AgentError> {
-    if text.len() > 65536 {
+    if text.len() > MAX_DELIVERY_BYTES {
         return Err(invalid());
     }
     let wire: Wire =
@@ -320,6 +321,8 @@ pub struct Command {
     #[serde(default)]
     pub torrent_url: String,
     #[serde(default)]
+    pub torrent_metainfo: String,
+    #[serde(default)]
     pub agent_ticket: Option<String>,
     #[serde(default, deserialize_with = "optional_integer")]
     pub queue_expires_at: Option<u64>,
@@ -342,6 +345,27 @@ impl Command {
                 .queue_expires_at
                 .is_none_or(|n| positive(n) && self.expires_at <= n)
     }
+}
+fn validate_metainfo(command: &Command) -> Result<bool, AgentError> {
+    let file = !command.torrent_metainfo.is_empty();
+    if file {
+        use base64::engine::general_purpose::STANDARD;
+        if !command.torrent_url.is_empty()
+            || command.agent_ticket.is_some()
+            || command.torrent_metainfo.len() > (8 * 1024 * 1024usize).div_ceil(3) * 4
+        {
+            return Err(invalid());
+        }
+        let data = STANDARD
+            .decode(&command.torrent_metainfo)
+            .map_err(|_| invalid())?;
+        if data.len() > 8 * 1024 * 1024
+            || crate::resource_sites::torrent::info_hash(&data)? != command.torrent_hash
+        {
+            return Err(invalid());
+        }
+    }
+    Ok(file)
 }
 pub fn command(
     wire: &Wire,
@@ -371,12 +395,15 @@ pub fn command(
     context.check(&plain)?;
     let command: Command = parse(&plain)?;
     let local = command.agent_ticket.as_ref().is_some_and(|ticket| {
-        uuid::Uuid::parse_str(ticket).is_ok() && command.torrent_url.is_empty()
+        uuid::Uuid::parse_str(ticket).is_ok()
+            && command.torrent_url.is_empty()
+            && command.torrent_metainfo.is_empty()
     });
     if command.agent_ticket.is_some() && !local {
         return Err(invalid());
     }
-    let url = url::Url::parse(if local {
+    let file = validate_metainfo(&command)?;
+    let url = url::Url::parse(if local || file {
         "https://local-resource.invalid"
     } else {
         &command.torrent_url
@@ -469,5 +496,24 @@ mod tests {
         assert!(super::wire(&wire.to_string()).is_ok());
         wire["extra"] = json!(1);
         assert!(super::wire(&wire.to_string()).is_err());
+    }
+    #[test]
+    fn file_delivery_accepts_large_torrents_and_rejects_hash_or_source_conflicts() {
+        use base64::engine::general_purpose::STANDARD;
+        let data = format!(
+            "d7:comment100000:{}4:infod4:name4:test6:pieces0:ee",
+            "x".repeat(100000)
+        )
+        .into_bytes();
+        let hash = crate::resource_sites::torrent::info_hash(&data).unwrap();
+        let mut command: Command = parse(&json!({"protocolVersion":1,"command":"__add_download__","messageId":"delivery","commandId":"command","downloadId":"download","ownerId":"owner","deviceId":"device","authVersion":1,"deviceVersion":1,"sessionId":"session","source":"hdarea","resourceId":"42","correlationId":"trace","expiresAt":5000,"torrentHash":hash,"torrentMetainfo":STANDARD.encode(&data)})).unwrap();
+        assert!(validate_metainfo(&command).unwrap());
+        command.torrent_url = "https://site.example/file".into();
+        assert!(validate_metainfo(&command).is_err());
+        command.torrent_url.clear();
+        command.torrent_hash = "a".repeat(40);
+        assert!(validate_metainfo(&command).is_err());
+        command.torrent_metainfo = "!not-base64!".into();
+        assert!(validate_metainfo(&command).is_err());
     }
 }

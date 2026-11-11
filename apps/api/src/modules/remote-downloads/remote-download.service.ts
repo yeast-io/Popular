@@ -1,3 +1,5 @@
+import { torrentMetainfoBytes } from '../resource-sites/torrent-file.schema.js';
+import { torrentMetadataHash } from './torrent-metadata.schema.js';
 import {
   RESOURCE_DOWNLOAD_LIMIT_COOLDOWN_MS,
   RESOURCE_TORRENT_DAILY_LIMIT,
@@ -360,7 +362,10 @@ export class RemoteDownloadService {
     });
     ensure(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(torrent.torrentHash), 'TORRENT_HASH_REQUIRED');
     if (torrent.agentTicket) ensure(/^[a-f0-9-]{36}$/.test(torrent.agentTicket) && !torrent.url, 'INVALID_TORRENT_URL');
-    else {
+    else if (torrent.metainfo) {
+      ensure(!torrent.url && !torrent.agentTicket
+        && torrentMetadataHash(torrentMetainfoBytes(torrent.metainfo)) === torrent.torrentHash, 'TORRENT_HASH_CONFLICT');
+    } else {
       const url = new URL(torrent.url!);
       ensure(url.protocol === 'https:' && !url.username && !url.password && !url.hash, 'INVALID_TORRENT_URL');
     }

@@ -1,3 +1,4 @@
+import type { TorrentInput } from '@movie-hub/contract';
 import type { FetchLike } from './qbittorrent-client.types.js';
 import { publicDownloaderFetch } from '../http/public-downloader-http.client.js';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
@@ -17,9 +18,10 @@ export class QBittorrentClient implements QBittorrentClientPort {
     return { version };
   }
 
-  async addTorrent(baseUrl: string, credential: QBittorrentCredential, torrentUrl: string, tag: string): Promise<void> {
+  async addTorrent(baseUrl: string, credential: QBittorrentCredential, torrentUrl: TorrentInput, tag: string): Promise<void> {
     const body = new FormData();
-    body.append('urls', torrentUrl);
+    if (typeof torrentUrl === 'string') body.append('urls', torrentUrl);
+    else body.append('torrents', new Blob([Buffer.from(torrentUrl.metainfo, 'base64')], { type: 'application/x-bittorrent' }), 'resource.torrent');
     body.append('category', 'movie-hub');
     body.append('tags', tag);
     const response = await this.request(baseUrl, credential, 'torrents/add', { method: 'POST', body });

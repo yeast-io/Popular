@@ -351,3 +351,24 @@ test('queue metadata is readable without a downloader, stays bound to the authen
   assert.equal(f.store.commands.size, 0);
   await assert.rejects(f.gateway.message(live.peer, message('__queue_request__', { ownerId: 'other-owner' })), { code: 'INVALID_REQUEST' });
 });
+
+test('SIMULATED Mongo: torrent files larger than 64 KiB remain inside the signed encrypted delivery', async () => {
+  const { torrentMetadataHash } = await import('../../apps/api/src/modules/remote-downloads/torrent-metadata.schema.ts');
+  const f = await createFixture();
+  const device = await newDevice();
+  const live = await f.connect(device);
+  const data = Buffer.from(`d7:comment${100000}:${'x'.repeat(100000)}4:infod4:name4:test6:pieces0:ee`);
+  const metainfo = data.toString('base64');
+  f.backend.options.torrent = async () => ({ metainfo, torrentHash: torrentMetadataHash(data) });
+  await f.prepare(live.peer);
+  const sent = live.sent.find((m) => m.command === '__add_download__');
+  assert.ok(sent.payload.envelope.length > 65536);
+  const verified = await compactVerify(sent.payload.envelope, await importJWK(f.options.signing.publicKey, 'EdDSA'));
+  const wrapper = JSON.parse(new TextDecoder().decode(verified.payload));
+  const decrypted = await compactDecrypt(wrapper.jwe, device.encryption.privateKey);
+  const command = JSON.parse(new TextDecoder().decode(decrypted.plaintext));
+  assert.equal(command.torrentMetainfo, metainfo);
+  assert.equal(command.torrentHash, torrentMetadataHash(data));
+  assert.equal(command.torrentUrl, undefined);
+  assert.equal(JSON.stringify(sent).includes(metainfo), false);
+});

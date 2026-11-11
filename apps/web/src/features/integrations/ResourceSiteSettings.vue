@@ -13,7 +13,6 @@ const emit = defineEmits<{ 'configuration-changed': [] }>();
 const { apiBaseUrl } = loadWebConfig();
 const configuration = ref<ResourceSiteConfiguration>({ site: props.site, status: 'unconfigured' });
 const cookie = ref('');
-const passkey = ref('');
 const busy = ref(false);
 const deleting = ref(false);
 const loading = ref(true);
@@ -21,7 +20,6 @@ const confirmDelete = ref(false);
 const notice = ref('');
 const feedback = ref('');
 let controller: AbortController | undefined;
-const requiresPasskey = computed(() => configuration.value.requiresPasskey ?? props.site === 'hdarea');
 const configured = computed(() => configuration.value.status !== 'unconfigured');
 const endpoint = `${apiBaseUrl}/me/integrations/resource-sites/${props.site}`;
 onMounted(async () => {
@@ -56,7 +54,6 @@ async function action(work: () => Promise<void>) {
 function applyConfiguration(next: ResourceSiteConfiguration) {
   configuration.value = next;
   cookie.value = next.cookieMasked ?? '';
-  passkey.value = next.passkeyMasked ?? '';
 }
 async function save() {
   confirmDelete.value = false;
@@ -72,13 +69,7 @@ async function save() {
                 cookie.value, configuration.value.cookieMasked
               ) }
             : {}),
-          ...(requiresPasskey.value && replacementSecret(
-            passkey.value, configuration.value.passkeyMasked
-          )
-            ? { passkey: replacementSecret(
-                passkey.value, configuration.value.passkeyMasked
-              ) }
-            : {}),
+
         }
       ) }
     )
@@ -127,11 +118,7 @@ async function retest() {
             <small v-if="configuration.cookieMasked">{{ t('settings.credentialLength', { length: Array.from(configuration.cookieMasked).length }) }}</small>
             <small>{{ t('resourceSite.cookieHint', { site: props.name }) }}</small>
           </label>
-          <label v-if="requiresPasskey" :for="`${props.site}-passkey`">{{ t('resourceSite.passkey') }}
-            <input :id="`${props.site}-passkey`" v-model="passkey" :type="configuration.passkeyMasked && passkey === configuration.passkeyMasked ? 'text' : 'password'" autocomplete="new-password" maxlength="512" :disabled="busy" />
-            <small v-if="configuration.passkeyMasked">{{ t('settings.credentialLength', { length: Array.from(configuration.passkeyMasked).length }) }}</small>
-            <small>{{ t('resourceSite.passkeyHint') }}</small>
-          </label>
+
         </div>
         <div class="settings-card-footer integration-form-footer">
           <div class="settings-feedback integration-feedback">

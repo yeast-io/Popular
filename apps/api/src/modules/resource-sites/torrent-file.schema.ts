@@ -1,7 +1,9 @@
+import { TORRENT_FILE_MAX_BYTES } from '@movie-hub/contract';
 import { ResourceSiteError } from './resource-site.errors.js';
 
 /** Validate bounded bencode before sending a site response to a downloader. No payload is logged. */
 export function validateTorrentFile(bytes: Uint8Array): void {
+  if (bytes.byteLength > TORRENT_FILE_MAX_BYTES) throw new ResourceSiteError('invalidResponse');
   const data = Buffer.from(bytes);
   let offset = 0;
   let hasInfo = false;
@@ -49,4 +51,13 @@ export function validateTorrentFile(bytes: Uint8Array): void {
   if (data[0] !== 100) return invalid();
   value(0);
   if (!hasInfo || offset !== data.length) return invalid();
+}
+
+export function torrentMetainfoBytes(metainfo: string): Buffer {
+  if (!metainfo || metainfo.length > Math.ceil(TORRENT_FILE_MAX_BYTES / 3) * 4)
+    throw new ResourceSiteError('invalidResponse');
+  const bytes = Buffer.from(metainfo, 'base64');
+  if (bytes.toString('base64') !== metainfo) throw new ResourceSiteError('invalidResponse');
+  validateTorrentFile(bytes);
+  return bytes;
 }

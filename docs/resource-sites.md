@@ -1,8 +1,8 @@
 # 资源站点适配
 
-The `resource-sites` backend module accesses supported resource sites directly. HDArea is the first implementation. Jackett is not required. The optional Passkey is encrypted separately and can be used by the backend to build a torrent URL. Downloads submit the site's torrent URL directly to the configured downloader; Popular does not fetch torrent files.
+The `resource-sites` backend module accesses supported resource sites directly without Jackett. HDArea requires only a Cookie. Popular extracts the details page's download link, fetches and validates the torrent using that Cookie, then submits the torrent file to the configured downloader.
 
-`resource-sites` 后端模块直接访问资源站点，首版支持 HDArea，无需部署 Jackett。可选 Passkey 单独加密保存，供后端拼接种子地址；本版仍不获取种子、不提交下载任务。
+`resource-sites` 后端模块直接访问资源站点，无需 Jackett。HDArea 仅需配置 Cookie；Popular 从详情页提取下载链接，携带 Cookie 获取并校验种子文件，再提交到下载器。
 
 ## Try it / 使用方式
 
@@ -12,9 +12,9 @@ The `resource-sites` backend module accesses supported resource sites directly. 
 
 The Search across sources frontend block has been removed for now. Search, source listing and detail APIs remain available to authenticated callers. 页面暂时移除了跨站搜索功能块；搜索、来源列表和详情的后端接口继续保留，并要求登录。
 
-Configuration responses include `cookieMasked` / `passkeyMasked` display values with the first six and last six characters visible and the original character count preserved instead of plaintext secrets. M-Team and download clients similarly return `apiKeyMasked` or `passwordMasked`. The input fields display these masked values as text and show the stored character count. Credentials of 12 characters or fewer are fully masked to prevent overlapping ends from revealing the complete credential. Replacement values remain password inputs; unchanged masks are omitted from updates. The backend also recognizes the exact marker as retain-existing and rejects partially edited markers.
+Configuration responses include `cookieMasked` display values with the first six and last six characters visible and the original character count preserved instead of plaintext secrets. M-Team and download clients similarly return `apiKeyMasked` or `passwordMasked`. The input fields display these masked values as text and show the stored character count. Credentials of 12 characters or fewer are fully masked to prevent overlapping ends from revealing the complete credential. Replacement values remain password inputs; unchanged masks are omitted from updates. The backend also recognizes the exact marker as retain-existing and rejects partially edited markers.
 
-配置响应返回 `cookieMasked` / `passkeyMasked`：超过 12 个字符时保留前 6 位和后 6 位，中间按原长度遮盖；不超过 12 个字符时全部遮盖，防止首尾重叠导致完整泄露。输入框显示原字符数。M-Team 和下载器同样返回 `apiKeyMasked` 或 `passwordMasked`。输入框显示这些掩码；未修改时不会提交。后端也将完整掩码视为保留原凭据，拒绝部分修改后的掩码。
+配置响应返回 `cookieMasked`：超过 12 个字符时保留前 6 位和后 6 位，中间按原长度遮盖；不超过 12 个字符时全部遮盖，防止首尾重叠导致完整泄露。输入框显示原字符数。M-Team 和下载器同样返回 `apiKeyMasked` 或 `passwordMasked`。输入框显示这些掩码；未修改时不会提交。后端也将完整掩码视为保留原凭据，拒绝部分修改后的掩码。
 
 Saving verifies the login before replacing the encrypted credential. Leave the Cookie field blank to revalidate the saved credential. Invalid/blocked credentials stop subsequent search requests until revalidation or replacement. A failed replacement does not overwrite the previous credential.
 
@@ -71,9 +71,9 @@ M-Team uses its native page number with 100 results per source request. When the
 
 M-Team 使用原生分页，每页最多 100 条。上游返回总数时据此判断下一页；没有总数时，满 100 条允许继续查询，末页可能返回空结果。查询页码限制为 1–100。M-Team 每个用户最多一个执行中的搜索，结束后有单进程内 2.5 秒冷却；HDArea 沿用站点级调度。用户间不共享凭据。
 
-Page numbers are one-based. No API returns plaintext site Cookies, Passkeys or credential-bearing download links. `ResourceSiteService.torrentUrl(ownerId, site, releaseId)` constructs the HDArea URL from the authenticated owner's saved Passkey for backend callers only; it does not fetch or submit a torrent. Only registered, fixed HTTPS site origins may be requested; cross-origin redirects are rejected.
+Page numbers are one-based. No API returns plaintext site Cookies, Passkeys or credential-bearing download links. `ResourceSiteService.torrentUrl(ownerId, site, releaseId)` returns either a transferable site URL or validated base64 torrent contents to backend callers. HDArea uses the saved Cookie to fetch the details page and torrent. Only registered, fixed HTTPS site origins may be requested; cross-origin redirects are rejected.
 
-页码从 1 开始。接口不返回明文 Cookie、Passkey 或含凭据的下载链接。`ResourceSiteService.torrentUrl(ownerId, site, releaseId)` 仅供后端根据对应用户的 Passkey 拼接 HDArea 种子地址，不获取种子或提交下载。请求仅访问注册站点的固定 HTTPS 源，拒绝跨源跳转。
+页码从 1 开始。接口不返回明文 Cookie、Passkey 或含凭据的下载链接。`ResourceSiteService.torrentUrl(ownerId, site, releaseId)` 仅向后端调用方提供可转交的下载链接或经过校验的 base64 种子内容。HDArea 使用已保存的 Cookie 获取详情页和种子文件。请求仅访问注册站点的固定 HTTPS 源，拒绝跨源跳转。
 
 ## Operational limits / 运行限制
 
@@ -96,6 +96,6 @@ Automated parser tests use synthetic fixtures based on the public definition. Th
 
 ## Torrent URL submission / 种子链接提交
 
-Page and assistant downloads share the backend download service. M-Team obtains a fresh URL through `torrent/genDlToken`; HDArea builds an owner-specific URL from the saved Passkey. qBittorrent receives `urls` at `torrents/add`; Transmission receives `filename` at `torrent-add` (or `torrent_add`). Popular neither fetches torrent bytes nor uploads torrent files. The downloader must reach the source URL and fetch the torrent itself. URLs remain transient backend values: never return them to the page, persist them with download records, or log them. A successful URL submission may precede torrent retrieval; tasks remain `submitting` until a downloader task is observed.
+The page and assistant share the backend download service. M-Team obtains a fresh URL through `torrent/genDlToken`; HDWing extracts the site's signed URL. HDArea instead fetches `download.php?id=...` with its saved Cookie, validates the bounded torrent contents, and uploads the file using qBittorrent multipart `torrents` or Transmission base64 `metainfo`. Site Cookies are never sent to downloaders. Remote file delivery uses the signed and encrypted Agent channel; local Agent mode keeps the torrent in a short-lived local ticket. URLs and file contents stay out of page responses, download records and diagnostic logs. Tasks stay `submitting` until a downloader task is observed.
 
-页面与助手共用后端下载服务。M-Team 通过 `torrent/genDlToken` 获取新链接，HDArea 使用对应用户保存的 Passkey 生成链接。qBittorrent 使用 `urls` 参数，Transmission 使用 `filename` 参数。Popular 不获取或上传种子文件，由下载器自行访问链接获取种子。链接仅在后端临时传递，不返回页面、不存入下载记录、不写入日志。链接提交成功时种子可能尚未获取完成，未观察到下载器任务前保持 `submitting` 状态。
+页面与助手共用后端下载服务。M-Team 通过 `torrent/genDlToken` 获取新链接，HDWing 提取站点签名链接。HDArea 则携带已保存的 Cookie 请求 `download.php?id=...`，限制响应大小并校验种子后，使用 qBittorrent 的 multipart `torrents` 或 Transmission 的 base64 `metainfo` 提交文件，不向下载器传递站点 Cookie。远程文件通过已签名并加密的 Agent 通道传递；本地 Agent 模式将种子保留在短期本地票据中。下载链接和种子内容不返回页面、不写入下载记录或日志。观察到下载器任务前，任务保持 `submitting`。

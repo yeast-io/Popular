@@ -1,3 +1,4 @@
+import { TORRENT_DELIVERY_MAX_BYTES } from '../downloads/torrent.policy.js';
 import { AgentResourceRequestSchema } from './agent-resource.schema.js';
 import { Type, type Static } from '@sinclair/typebox';
 import { RpcIdSchema as id } from './socket-rpc.schema.js';
@@ -62,7 +63,7 @@ export const PopularRpcSchemas = {
   __validate_session__: Type.Object({ context: GatewaySessionSchema }, object),
   __prepare_delivery__: Type.Object({ context: GatewaySessionSchema, commandId: id }, object),
   __save_delivery__: Type.Object({ context: GatewaySessionSchema, commandId: id, deliveryMessageId: id,
-    envelope: Type.String({ minLength: 1, maxLength: 60000 }) }, object),
+    envelope: Type.String({ minLength: 1, maxLength: TORRENT_DELIVERY_MAX_BYTES }) }, object),
   __confirm_command_received__: Type.Object({ ...event, commandId: id }, object),
   __authorize_execution__: Type.Object({ context: GatewaySessionSchema, commandId: id, executionId: id, downloader: GatewayAgentStatusSchema }, object),
   __record_command_result__: Type.Object({ ...event, result: GatewayResultSchema }, object),

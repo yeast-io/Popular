@@ -13,6 +13,5 @@ export function canConfigureSite(entry: ResourceSiteEntry): boolean {
     !entry.busy
     && !!entry.baseUrl.trim()
     && (!!entry.credential.trim() || (keep && entry.snapshot.hasCredential))
-    && (!entry.snapshot.requiresPasskey || !!entry.passkey.trim() || (keep && entry.snapshot.hasPasskey))
   );
 }

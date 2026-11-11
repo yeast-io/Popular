@@ -373,7 +373,7 @@ export class MovieSiteResourcesService {
               name: 'M-Team',
               baseUrl: MTEAM_DEFAULT_WEB_BASE_URL,
               detailsUrl: (id: string) => new URL(`/detail/${encodeURIComponent(id)}`, MTEAM_DEFAULT_WEB_BASE_URL).href,
-              torrentUrl: undefined,
+              torrentFile: undefined,
               resolveTorrentUrl: undefined,
             }
           : undefined);
@@ -459,7 +459,7 @@ export class MovieSiteResourcesService {
         const value: MovieSiteReleaseList = {
           site,
           name: adapter.name,
-          supportsDownload: Boolean(agentMode || adapter.torrentUrl || adapter.resolveTorrentUrl),
+          supportsDownload: Boolean(agentMode || adapter.torrentFile || adapter.resolveTorrentUrl),
           queriedAt: queriedAt.toISOString(),
           cached: false,
           availability,

@@ -43,7 +43,7 @@ export class GatewayPool {
     const socket = new WebSocket(url, {
       headers: { authorization: `Bearer ${this.options.token}` },
       handshakeTimeout: 10_000,
-      maxPayload: 65_536,
+      maxPayload: 24 * 1024 * 1024,
       perMessageDeflate: false,
       followRedirects: false,
     });

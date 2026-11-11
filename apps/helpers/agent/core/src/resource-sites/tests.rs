@@ -375,7 +375,7 @@ async fn deletion_failure_retains_a_cleanup_record_and_retry_removes_the_secret(
     assert!(service.load().unwrap().pending_cleanup.is_empty());
 }
 #[tokio::test]
-async fn a_cookie_for_a_different_hdarea_account_cannot_keep_the_previous_passkey() {
+async fn a_cookie_for_a_different_hdarea_account_does_not_require_a_passkey() {
     let f = Fixture::new().await;
     let directory = tempfile::tempdir().unwrap();
     let service = ResourceSites::new(directory.path().into(), Arc::new(Memory::default()));
@@ -387,10 +387,9 @@ async fn a_cookie_for_a_different_hdarea_account_cannot_keep_the_previous_passke
     f.mode("changed");
     let mut input = request(Site::Hdarea, &f.base);
     input.passkey = SecretChange::Keep;
-    assert_eq!(
-        service.configure(input, &trace).await.unwrap_err().code,
-        "sitePasskeyRequired"
-    );
+    let snapshot = service.configure(input, &trace).await.unwrap();
+    assert!(!snapshot.requires_passkey);
+    assert!(!snapshot.has_passkey);
     assert_eq!(
         service.list(&Trace::new()).await.unwrap()[1].status,
         "configured_valid"

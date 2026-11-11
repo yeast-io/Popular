@@ -81,15 +81,7 @@ onMounted(() => {
               :maxlength="entry.snapshot.site === 'mteam' ? 4096 : 8192"
               :disabled="entry.busy"
           /></label>
-          <label v-if="entry.snapshot.requiresPasskey"
-            >{{ t.sitePasskey
-            }}<SecretInput
-              v-model="entry.passkey"
-              :saved="sameSiteEndpoint(entry) && entry.snapshot.hasPasskey"
-              :maxlength="2048"
-              :disabled="entry.busy"
-          /></label>
-          <p v-if="entry.snapshot.requiresPasskey" class="field-note">{{ t.sitePasskeyHint }}</p>
+
           <div class="summary-actions">
             <button class="primary" type="submit" :disabled="!canConfigureSite(entry)">
               {{ entry.busy ? t.busy : t.siteVerifySave }}</button

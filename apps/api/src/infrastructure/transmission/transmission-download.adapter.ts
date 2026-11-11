@@ -1,3 +1,4 @@
+import type { TorrentInput } from '@movie-hub/contract';
 import type { Locale, MovieDownloadStatus } from '@movie-hub/contract';
 import type { DownloadClient, TorrentSnapshot } from '../../modules/downloads/movie-download-client.types.js';
 import type { TransmissionCredential, TransmissionClientPort, TransmissionTorrent } from '../../modules/integrations/transmission.types.js';
@@ -12,8 +13,8 @@ export class TransmissionDownloadAdapter implements DownloadClient {
     private readonly locale: Locale = 'en-US'
   ) {}
 
-  async add(torrentUrl: string, tag: string): Promise<string | undefined> {
-    currentAiTrace()?.sensitive(torrentUrl);
+  async add(torrentUrl: TorrentInput, tag: string): Promise<string | undefined> {
+    currentAiTrace()?.sensitive(typeof torrentUrl === 'string' ? torrentUrl : torrentUrl.metainfo);
     return downloadClientOperation('transmission', 'submit', this.locale, () =>
       this.client.addTorrent(this.baseUrl, this.credential, torrentUrl, tag));
   }

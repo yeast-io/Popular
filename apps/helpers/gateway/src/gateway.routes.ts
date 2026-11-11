@@ -86,7 +86,7 @@ export async function createGatewayApp(
         'gateway'
       );
   });
-  await app.register(websocket, { options: { maxPayload: 65_536, perMessageDeflate: false } });
+  await app.register(websocket, { options: { maxPayload: 24 * 1024 * 1024, perMessageDeflate: false } });
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async () => {
     await Promise.all([options.bridge?.ready(), service.options.gatewayCoordinator.ready()]);

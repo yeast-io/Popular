@@ -41,3 +41,14 @@ test('metadata failures retain their original cause and never return a partial t
   await assert.rejects(service.resolve({ ownerId: 'alice', source: 'mteam', resourceId: '42' }, {}),
     (actual) => actual instanceof RpcError && actual === error && actual.cause === cause);
 });
+
+test('prepares Cookie-fetched torrent bytes without fetching an anonymous URL or forwarding Cookie', async () => {
+  const metainfo = Buffer.from('d4:infod4:name4:test6:pieces0:ee').toString('base64');
+  const service = new RemoteTorrentService({ resolveRemote: async () => ({ metainfo }) }, async () => {
+    throw new Error('File delivery must not fetch a URL');
+  });
+  const prepared = await service.resolve({ ownerId: 'alice', source: 'hdarea', resourceId: '42' }, { tmdbId: 603 });
+  assert.deepEqual(Object.keys(prepared).sort(), ['metainfo', 'torrentHash']);
+  assert.equal(prepared.metainfo, metainfo);
+  assert.match(prepared.torrentHash, /^[a-f0-9]{40}$/);
+});

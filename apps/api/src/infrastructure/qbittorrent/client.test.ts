@@ -146,3 +146,18 @@ test('accepts a queued torrent URL reported as pending by qBittorrent', async ()
     'movie-hub-pending'
   );
 });
+
+test('uploads Cookie-fetched torrent contents as multipart without passing site credentials or URLs', async () => {
+  const torrent = Buffer.from('d4:infod4:name4:testee');
+  const client = new QBittorrentClient(1000, async (_url, init) => {
+    const form = init?.body as FormData;
+    assert.equal(form.get('urls'), null);
+    assert.equal(form.get('tags'), 'file-task');
+    const file = form.get('torrents') as File;
+    assert.deepEqual(Buffer.from(await file.arrayBuffer()), torrent);
+    assert.equal(new Headers(init?.headers).has('cookie'), false);
+    return new Response('Ok.');
+  });
+  await client.addTorrent('https://downloader.example', { authMethod: 'api_key', apiKey: 'downloader-only' },
+    { metainfo: torrent.toString('base64') }, 'file-task');
+});

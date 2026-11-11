@@ -102,7 +102,7 @@ Keep both data and secrets volumes. Changing the environment password does not c
 1. Generate or copy an Agent Key in **Popular → Settings → Agent Key**.
 2. Enter the Gateway HTTPS base address and Agent Key in **Agent → Settings → Gateway**, then select Connect.
 3. Choose qBittorrent or Transmission in **Agent → Downloaders**, enter its address and credentials, then select Connect.
-4. Configure, verify, and enable sites in **Agent → Resource sites**. M-Team: API Key; HDArea: Cookie + Passkey; HDWing: Cookie.
+4. Configure, verify, and enable sites in **Agent → Resource sites**. M-Team: API Key; HDArea: Cookie; HDWing: Cookie.
 5. Enable Agent resource requests in **Popular → Settings → Resources**, then select the device and default site.
 
 The Popular operator supplies the Gateway address. The management password authenticates Web sign-in; the Agent Key binds the account. Downloader addresses must be reachable from the container, such as `http://192.168.1.10:8080`; `127.0.0.1` refers to the Agent container itself.

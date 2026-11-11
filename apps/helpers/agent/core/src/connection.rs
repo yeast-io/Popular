@@ -101,7 +101,7 @@ where
 }
 async fn send(socket: &mut Socket, wire: &Wire, trace: &Trace) -> Result<(), AgentError> {
     let text = serde_json::to_string(wire)?;
-    if text.len() > 65536 {
+    if text.len() > protocol::MAX_DELIVERY_BYTES {
         return Err(protocol::invalid());
     }
     send_frame(socket, Message::Text(text.into()), trace).await
@@ -330,8 +330,8 @@ pub(crate) async fn session_transport(
                 .map_err(|_| AgentError::code("invalidSecret"))?,
         );
         let config = WebSocketConfig::default()
-            .max_message_size(Some(65536))
-            .max_frame_size(Some(65536));
+            .max_message_size(Some(protocol::MAX_DELIVERY_BYTES))
+            .max_frame_size(Some(protocol::MAX_DELIVERY_BYTES));
         let connection_log = crate::web_diagnostics::gateway_connect(&trace, &url);
         let connected = tokio::time::timeout(
             Duration::from_secs(10),
@@ -444,7 +444,7 @@ pub(crate) async fn session_transport(
                     message=outbound.recv()=>{
                         let Some(wire)=message else {return Ok(());};
                         let text=serde_json::to_string(&wire)?;
-                        if text.len()>65536 {return Err(protocol::invalid());}
+                        if text.len()>protocol::MAX_DELIVERY_BYTES {return Err(protocol::invalid());}
                         Message::Text(text.into())
                     },
                     message=stream.next()=>{

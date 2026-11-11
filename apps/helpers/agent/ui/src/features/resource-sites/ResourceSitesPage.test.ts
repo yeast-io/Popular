@@ -93,17 +93,15 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await f.open();
       const card = f.wrapper.get('[data-site="hdarea"]');
       expect(f.wrapper.text()).toContain(messages[locale].localSitesScope);
-      expect(card.findAll<HTMLInputElement>('input[type=password]')).toHaveLength(2);
+      expect(card.findAll<HTMLInputElement>('input[type=password]')).toHaveLength(1);
       expect(f.wrapper.get('[data-site=mteam]').text()).toContain(messages[locale].siteApiKey);
       await card.findAll<HTMLInputElement>('input[type=password]')[0]!.setValue('cookie-local-only');
-      await card.findAll<HTMLInputElement>('input[type=password]')[1]!.setValue('passkey-local-only');
       await card.get('form').trigger('submit');
       await flushPromises();
       expect(f.resources.configure).toHaveBeenCalledWith({
         site: 'hdarea',
         baseUrl: 'https://hdarea.example/',
         credential: { action: 'set', value: 'cookie-local-only' },
-        passkey: { action: 'set', value: 'passkey-local-only' },
       });
       expect(card.find('form').exists()).toBe(false);
       expect(f.wrapper.html()).not.toContain('cookie-local-only');
@@ -157,8 +155,6 @@ it('does not reuse masked credentials after changing the endpoint', async () => 
   await card.get('form').trigger('submit');
   expect(f.resources.configure).not.toHaveBeenCalled();
   await card.findAll<HTMLInputElement>('input[type=password]')[0]!.setValue('new-cookie');
-  expect(card.get('button[type=submit]').attributes('disabled')).toBeDefined();
-  await card.findAll<HTMLInputElement>('input[type=password]')[1]!.setValue('new-passkey');
   expect(card.get('button[type=submit]').attributes('disabled')).toBeUndefined();
 });
 it('offers retry on an initial load failure and marks rejected existing logins invalid', async () => {

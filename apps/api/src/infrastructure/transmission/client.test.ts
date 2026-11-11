@@ -228,3 +228,14 @@ test('finds recovery labels and rejects incomplete add and torrent-list response
   );
   await assert.rejects(invalid.listTorrents('http://nas', credential), IntegrationValidationError);
 });
+
+test('submits Cookie-fetched torrent contents through metainfo instead of a filename URL', async () => {
+  const metainfo = Buffer.from('d4:infod4:name4:testee').toString('base64');
+  const client = new TransmissionClient(1000, async (_url, init) => {
+    const payload = JSON.parse(String(init?.body));
+    assert.deepEqual(payload.arguments, { metainfo, labels: ['file-task'], paused: false });
+    assert.equal(new Headers(init?.headers).has('cookie'), false);
+    return new Response(JSON.stringify({ result: 'success', tag: 1, arguments: { 'torrent-added': { hashString: 'a'.repeat(40) } } }));
+  });
+  assert.equal(await client.addTorrent('https://downloader.example', credential, { metainfo }, 'file-task'), 'a'.repeat(40));
+});

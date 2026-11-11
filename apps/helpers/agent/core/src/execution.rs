@@ -144,7 +144,7 @@ fn redacted_digest(command: &Command) -> String {
     protocol::fingerprint(
         &json!({"protocolVersion":command.protocol_version,"command":command.command,"messageId":command.message_id,"commandId":command.command_id,"downloadId":command.download_id,
         "ownerId":command.owner_id,"deviceId":command.device_id,"authVersion":command.auth_version,"deviceVersion":command.device_version,"sessionId":command.session_id,"source":command.source,"resourceId":command.resource_id,
-        "correlationId":command.correlation_id,"expiresAt":command.expires_at,"torrentHash":command.torrent_hash,"torrentUrlDigest":protocol::fingerprint(&json!(command.torrent_url)),"queueExpiresAt":command.queue_expires_at,"retryAttempt":command.retry_attempt}),
+        "correlationId":command.correlation_id,"expiresAt":command.expires_at,"torrentHash":command.torrent_hash,"torrentUrlDigest":protocol::fingerprint(&json!(if command.torrent_metainfo.is_empty() { &command.torrent_url } else { &command.torrent_metainfo })),"queueExpiresAt":command.queue_expires_at,"retryAttempt":command.retry_attempt}),
     )
 }
 // Stable across delivery sessions, refreshed URLs and attempts; never persists a URL.
@@ -290,8 +290,9 @@ async fn execute(
     }
     trace.stage("downloader.add.started");
     match downloader
-        .add(
+        .add_source(
             &pending.command.torrent_url,
+            &pending.command.torrent_metainfo,
             &journal.records[index].marker(),
         )
         .await
@@ -479,7 +480,10 @@ impl Session<'_> {
                             let trace=Trace::with_id(p.command.correlation_id.clone());trace.stage("command.execution-granted");diagnostics::command("command.execution-granted",&journal.records[p.index]);
                             if let Some(ticket)=&p.command.agent_ticket {
                                 match tickets.resolve(directory,context,ticket,&p.command.command_id,&p.command.source,&p.command.resource_id,&p.command.torrent_hash) {
-                                    Ok(url)=>p.command.torrent_url=url,
+                                    Ok(source)=>match source {
+                                        crate::resource_sites::types::TorrentSource::Url(url)=>p.command.torrent_url=url,
+                                        crate::resource_sites::types::TorrentSource::Metainfo(data)=>p.command.torrent_metainfo=data,
+                                    },
                                     Err(error)=>{journal.result(p.index,"failed")?;journal::atomic(directory,JOURNAL,&journal)?;diagnostics::failure("command.local-source",&trace.id,&error,0);continue;}
                                 }
                             }

@@ -1,3 +1,4 @@
+import type { TorrentInput } from '@movie-hub/contract';
 import type { Locale, ResourceSiteRelease } from '@movie-hub/contract';
 import type { MovieResourceCheckService } from '../integrations/movie-resource-check.service.js';
 import type { MovieSiteResourcesService } from '../integrations/movie-site-resources.service.js';
@@ -15,7 +16,7 @@ export interface DownloadSourceRequest {
 
 export interface PreparedDownloadSource {
   release: ResourceSiteRelease;
-  torrentUrl(): Promise<string>;
+  torrentUrl(): Promise<TorrentInput>;
 }
 
 export interface DownloadSourceDependencies {

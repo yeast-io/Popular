@@ -1,3 +1,4 @@
+import type { TorrentInput } from '@movie-hub/contract';
 import { IntegrationValidationError } from '../../modules/integrations/integration.service.js';
 import { publicDownloaderFetch } from '../http/public-downloader-http.client.js';
 import type {
@@ -19,11 +20,11 @@ export class TransmissionClient implements TransmissionClientPort {
   async addTorrent(
     baseUrl: string,
     credential: TransmissionCredential,
-    torrentUrl: string,
+    torrentUrl: TorrentInput,
     tag: string
   ): Promise<string> {
     const args = await this.rpc(baseUrl, credential, 'torrent-add', {
-      filename: torrentUrl,
+      ...(typeof torrentUrl === 'string' ? { filename: torrentUrl } : { metainfo: torrentUrl.metainfo }),
       labels: [tag],
       paused: false,
     });

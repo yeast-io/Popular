@@ -1,3 +1,4 @@
+import type { TorrentInput } from '@movie-hub/contract';
 import type { IntegrationFailureType, QBittorrentAuthMethod } from '@movie-hub/contract';
 
 export type QBittorrentCredential
@@ -41,7 +42,7 @@ export interface QBittorrentTorrent {
 
 export interface QBittorrentClientPort {
   verify(baseUrl: string, credential: QBittorrentCredential): Promise<{ version: string }>;
-  addTorrent(baseUrl: string, credential: QBittorrentCredential, torrentUrl: string, tag: string): Promise<void>;
+  addTorrent(baseUrl: string, credential: QBittorrentCredential, torrentUrl: TorrentInput, tag: string): Promise<void>;
   listTorrents(baseUrl: string, credential: QBittorrentCredential, hashes?: string[]): Promise<QBittorrentTorrent[]>;
   findByTag(baseUrl: string, credential: QBittorrentCredential, tag: string): Promise<QBittorrentTorrent | null>;
 }

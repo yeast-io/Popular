@@ -160,7 +160,8 @@ function fixture(
       return { version: '5.2' };
     },
     async addTorrent(_url, _credential, torrentUrl, tag) {
-      assert.match(torrentUrl, /^https:\/\/(tracker|hdarea)\.example\/download\.php\?id=991&passkey=private-key$/);
+      assert.equal(typeof torrentUrl, 'string');
+      assert.match(torrentUrl as string, /^https:\/\/(tracker|hdarea)\.example\/download\.php\?id=991&passkey=private-key$/);
       adds.push('qbittorrent');
       qbTorrent = {
         hash: 'qb-hash',
@@ -190,7 +191,8 @@ function fixture(
       return { version: '4.1' };
     },
     async addTorrent(_url, credential, torrentUrl, tag) {
-      assert.match(torrentUrl, /^https:\/\/(tracker|hdarea)\.example\/download\.php\?id=991&passkey=private-key$/);
+      assert.equal(typeof torrentUrl, 'string');
+      assert.match(torrentUrl as string, /^https:\/\/(tracker|hdarea)\.example\/download\.php\?id=991&passkey=private-key$/);
       assert.equal(credential.password, 'private-password');
       adds.push('transmission');
       if (trFailure) throw new IntegrationValidationError('network', 'Offline');

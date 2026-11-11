@@ -1,3 +1,4 @@
+import { TORRENT_DELIVERY_MAX_BYTES } from '../downloads/torrent.policy.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
 import { RpcFrameSchema, RpcResultSchema } from './socket-rpc.schema.js';
@@ -55,7 +56,7 @@ export class SocketRpc {
   private send(frame: RpcFrame) {
     if (!this.available) throw new RpcError('RPC_CONNECTION_CLOSED');
     const text = JSON.stringify(frame);
-    if (Buffer.byteLength(text) > 65_536) throw new RpcError('MESSAGE_TOO_LARGE', 'not_applied');
+    if (Buffer.byteLength(text) > TORRENT_DELIVERY_MAX_BYTES) throw new RpcError('MESSAGE_TOO_LARGE', 'not_applied');
     if (this.options.transport.bufferedBytes() > (this.options.maxBufferedBytes ?? 1_048_576)) throw new RpcError('SERVICE_BUSY', 'not_applied');
     this.options.transport.send(text);
   }
@@ -63,7 +64,7 @@ export class SocketRpc {
   private async receive(text: string) {
     let frame: RpcFrame;
     try {
-      if (Buffer.byteLength(text) > 65_536) throw new RpcError('MESSAGE_TOO_LARGE', 'not_applied');
+      if (Buffer.byteLength(text) > TORRENT_DELIVERY_MAX_BYTES) throw new RpcError('MESSAGE_TOO_LARGE', 'not_applied');
       const value: unknown = JSON.parse(text);
       if (!Value.Check(RpcFrameSchema, value)) throw new RpcError('INVALID_MESSAGE', 'not_applied');
       frame = value;

@@ -88,7 +88,7 @@ test('authenticated Cookie save → search → detail → delete runs through th
       assert.equal(saved.body.includes(`uid=${owner}-secret`), false);
       assert.equal(saved.body.includes(`passkey-${owner}-secret`), false);
       assert.equal(saved.json().cookieMasked, maskIntegrationSecret(`uid=${owner}-secret`));
-      assert.equal(saved.json().passkeyMasked, maskIntegrationSecret(`passkey-${owner}-secret`));
+      assert.equal(saved.json().passkeyMasked, undefined);
     }
     const a = { cookie: `${config.SESSION_COOKIE_NAME}=A` };
     const b = { cookie: `${config.SESSION_COOKIE_NAME}=B` };

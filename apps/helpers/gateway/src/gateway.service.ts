@@ -418,7 +418,9 @@ export class GatewayService {
         correlationId: c.correlationId,
         expiresAt: c.expiresAt,
         ...(c.queueExpiresAt ? { queueExpiresAt: c.queueExpiresAt, retryAttempt: c.retryAttempt ?? 0 } : {}),
-        ...(prepared.torrent.agentTicket ? { agentTicket: prepared.torrent.agentTicket } : { torrentUrl: prepared.torrent.url }),
+        ...(prepared.torrent.agentTicket
+          ? { agentTicket: prepared.torrent.agentTicket }
+          : prepared.torrent.metainfo ? { torrentMetainfo: prepared.torrent.metainfo } : { torrentUrl: prepared.torrent.url }),
         torrentHash: prepared.torrent.torrentHash,
       });
       await this.active(session);
