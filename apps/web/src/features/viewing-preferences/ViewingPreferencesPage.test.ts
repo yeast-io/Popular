@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import { defineComponent, KeepAlive } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -32,7 +33,7 @@ it.each(['en-US', 'zh-CN'] as const)('renders three saved categories as read-onl
   expect(wrapper.findAll('.watchlist-count').map((badge) => badge.text())).toEqual(['21', '1', '1']);
   expect(wrapper.get('.watchlist-entry').text()).toContain('Overview');
   expect(wrapper.find('.watchlist-entry button').exists()).toBe(false);
-  await wrapper.get('.tv-load-more button').trigger('click');
+  wrapper.getComponent(InfiniteScroll).vm.$emit('load');
   await flushPromises();
   expect(wrapper.findAll('.watchlist-entry')).toHaveLength(2);
   await wrapper.setData({ visible: false });

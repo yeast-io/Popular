@@ -1817,14 +1817,6 @@ label small {
   cursor: wait;
   opacity: 0.55;
 }
-.load-more-wrap {
-  display: grid;
-  place-items: center;
-  min-height: 128px;
-}
-.load-more {
-  min-width: 180px;
-}
 .browse-error {
   border-left: 2px solid #e84b2c;
   padding: 10px 14px;
@@ -4367,7 +4359,6 @@ body:has(.settings-page)::after {
 .tv-show-card .poster-placeholder { display: flex; height: 100%; align-items: center; justify-content: center; }
 .tv-card-name { display: block; margin-top: 14px; font-size: 1rem; font-weight: 600; line-height: 1.5; }
 .tv-show-card:focus-visible, .tv-episode-card:focus-visible { outline: 2px solid #ef795c; outline-offset: 5px; }
-.tv-load-more { margin-top: 28px; text-align: center; }
 .tv-facts dd { overflow-wrap: anywhere; }
 .tv-season-section { margin-top: 44px; }
 .tv-season-selector { position: relative; z-index: 10; display: inline-block; width: min(224px, 100%); max-width: 100%; margin-bottom: 24px; }

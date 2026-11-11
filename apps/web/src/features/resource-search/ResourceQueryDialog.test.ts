@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import { mount, flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ResourceQueryDialog from './ResourceQueryDialog.vue';
@@ -18,10 +19,6 @@ const render = () => {
   return wrapper;
 };
 const text = () => document.querySelector('dialog')?.textContent ?? '';
-const click = async (selector: string) => {
-  document.querySelector<HTMLButtonElement>(selector)!.click();
-  await flushPromises();
-};
 beforeEach(() => {
   setLocale('en-US');
   vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) {
@@ -52,15 +49,16 @@ describe('resource query dialog', () => {
         : { releases: [{ id: '1', title: 'MobLand S01E01', description: 'First episode', detailsUrl: 'https://kp.m-team.cc/detail/1' }], nextPage: 2 });
     });
     vi.stubGlobal('fetch', fetcher);
-    render();
+    const wrapper = render();
     await flushPromises();
     expect(text()).toContain('MobLand S01E01');
     expect(text()).not.toContain('First episode');
     expect(document.querySelector('dialog [role=alert]')?.textContent).toContain('timed out');
     expect(document.querySelector<HTMLAnchorElement>('.release-detail-link')?.href).toBe('https://kp.m-team.cc/detail/1');
-    await click('.resource-query-more');
+    wrapper.getComponent(InfiniteScroll).vm.$emit('load');
+    await flushPromises();
     expect(document.querySelectorAll('.release-card')).toHaveLength(2);
-    expect(document.querySelector('.resource-query-more')).toBeNull();
+    expect(document.querySelector('.infinite-scroll')).toBeNull();
     const refresh = document.querySelector<HTMLButtonElement>('.release-site-refresh')!;
     refresh.click();
     await flushPromises();
@@ -80,7 +78,7 @@ describe('resource query dialog', () => {
           ], nextPage: 2 });
     });
     vi.stubGlobal('fetch', fetcher);
-    render();
+    const wrapper = render();
     await flushPromises();
     const sites = [...document.querySelectorAll('.release-site-group')];
     const first = sites[0]!;
@@ -98,7 +96,7 @@ describe('resource query dialog', () => {
     expect(first.querySelectorAll('.release-card')).toHaveLength(1);
     expect(second.querySelectorAll('.release-card')).toHaveLength(3);
     expect(fetcher.mock.calls.filter(([url]) => String(url).includes('resource-search'))).toHaveLength(2);
-    first.querySelector<HTMLButtonElement>('.resource-query-more')!.click();
+    wrapper.findAllComponents(InfiniteScroll)[0]!.vm.$emit('load');
     await flushPromises();
     expect(first.querySelectorAll('.release-card')).toHaveLength(2);
     expect(first.querySelectorAll('[aria-pressed="true"]')).toHaveLength(2);
@@ -146,8 +144,7 @@ describe('resource query dialog', () => {
     expect(refreshes).toBe(1);
     expect(button.disabled).toBe(true);
     expect(document.querySelectorAll<HTMLButtonElement>('.release-site-refresh')[1]?.disabled).toBe(false);
-    const more = document.querySelector<HTMLButtonElement>('.release-site-content > button.text-button');
-    expect(more?.disabled).toBe(true);
+    expect(document.querySelector('.release-site-content .infinite-scroll')?.getAttribute('aria-busy')).toBe('true');
     finish(outcome === 'failure'
       ? Response.json({ error: { code: 'RESOURCE_SITE_FAILED' } }, { status: 502 })
       : Response.json({ releases: outcome === 'empty' ? [] : [{ id: '2', title: 'Fresh release' }] }));

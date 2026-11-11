@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import { mount, flushPromises } from '@vue/test-utils';
 import { it, expect, vi, afterEach } from 'vitest';
 import App from '../../App.vue';
@@ -76,7 +77,7 @@ it('Movies and TV Shows have separate routes, requests, cached lists and scroll 
   expect(window.location.pathname).toBe('/tv-shows');
   expect(wrapper.get('button[aria-current="page"]').text()).toBe('TV Shows');
   expect(wrapper.find('section[aria-label="Movies"]').exists()).toBe(false);
-  await wrapper.get('.tv-load-more button').trigger('click');
+  wrapper.getComponent(InfiniteScroll).vm.$emit('load');
   await flushPromises();
   expect(wrapper.findAll('.tv-show-card')).toHaveLength(2);
   scrollY = 980;

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import { mount, flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ResourceQueryDialog from './ResourceQueryDialog.vue';
@@ -110,9 +111,10 @@ describe('TV resource downloads using the movie controls', () => {
     expect(document.querySelectorAll('.release-site-group')[0]?.querySelector('.release-download-progress')).toBeNull();
   });
 
-  it('submits the source page for a resource appended by load more', async () => {
-    const { posts } = await setup();
-    await click('.resource-query-more');
+  it('submits the source page for a resource appended by scrolling', async () => {
+    const { posts, wrapper } = await setup();
+    wrapper.getComponent(InfiniteScroll).vm.$emit('load');
+    await flushPromises();
     document.querySelectorAll<HTMLButtonElement>('.release-download-button')[1]!.click();
     await flushPromises();
     await click('.download-confirmation .primary');

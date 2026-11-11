@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import type { WatchlistItem, WatchlistMediaType, WatchlistResponse } from '@movie-hub/contract';
 import { onActivated, onBeforeUnmount, onDeactivated, nextTick, ref, watch } from 'vue';
 import { useI18n } from '../../i18n';
@@ -23,6 +24,7 @@ let generation = 0;
 let active = true;
 
 async function load(append = false) {
+  if (append && (loading.value || !hasMore.value)) return;
   controller?.abort();
   const request = new AbortController();
   controller = request;
@@ -137,7 +139,7 @@ onBeforeUnmount(stop);
         </div>
       </template>
     </MediaList>
-    <div v-if="hasMore" class="tv-load-more"><button type="button" class="outline-button" :disabled="loading" @click="load(true)">{{ t(loading ? 'watchlist.loading' : 'watchlist.loadMore') }}</button></div>
+    <InfiniteScroll v-if="hasMore" :loading="loading" :failed="!!error" :disabled="!!savingKey" @load="load(true)" />
   </section>
 </template>
 

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import { defineComponent, KeepAlive } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -33,7 +34,7 @@ describe('Watch list', () => {
     expect(page.find('.status-control').exists()).toBe(false);
     await page.get('.watchlist-entry').trigger('click');
     expect(page.emitted('openMovie')).toEqual([[1]]);
-    await page.get('.tv-load-more button').trigger('click');
+    page.getComponent(InfiniteScroll).vm.$emit('load');
     await flushPromises();
     expect(page.findAll('.watchlist-entry')).toHaveLength(2);
     await page.get('.watchlist-filters button:nth-child(2)').trigger('click');
@@ -85,7 +86,7 @@ it('retains every loaded page when reactivated after opening details', async () 
   }));
   const wrapper = mount(defineComponent({ components: { WatchlistPage, KeepAlive }, data: () => ({ visible: true }), template: '<KeepAlive><WatchlistPage v-if="visible" /></KeepAlive>' }));
   await flushPromises();
-  await wrapper.get('.tv-load-more button').trigger('click');
+  wrapper.getComponent(InfiniteScroll).vm.$emit('load');
   await flushPromises();
   expect(wrapper.findAll('.watchlist-entry')).toHaveLength(2);
   await wrapper.setData({ visible: false });

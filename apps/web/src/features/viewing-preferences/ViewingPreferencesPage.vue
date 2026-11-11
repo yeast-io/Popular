@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import type { WatchlistItem, WatchlistMediaType, WatchlistResponse, TrackedMoviePreference } from '@movie-hub/contract';
 import { computed, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue';
 import { useI18n } from '../../i18n';
@@ -57,6 +58,7 @@ let generation = 0;
 let active = true;
 
 async function load(append = false) {
+  if (append && (loading.value || !hasMore.value)) return;
   controller?.abort();
   const request = new AbortController();
   controller = request;
@@ -155,7 +157,7 @@ onBeforeUnmount(stop);
           <p v-if="loading && !items.length" class="movie-state" role="status">{{ t('viewingPreferences.loading') }}</p>
           <p v-else-if="!loading && !error && !items.length" class="movie-state">{{ t(mediaType === 'movie' ? 'viewingPreferences.empty' : 'viewingPreferences.emptyTv') }}</p>
           <MediaList :items="items" @open="open" />
-          <div v-if="hasMore" class="tv-load-more"><button type="button" class="outline-button" :disabled="loading" @click="load(true)">{{ t(loading ? 'viewingPreferences.loading' : 'watchlist.loadMore') }}</button></div>
+          <InfiniteScroll v-if="hasMore" :loading="loading" :failed="!!error" @load="load(true)" />
         </div>
       </Transition>
       <p v-if="loading && items.length && !failedAppend" class="viewing-preferences-loading" role="status">{{ t('viewingPreferences.loading') }}</p>

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '../../i18n';
@@ -34,7 +35,7 @@ describe('localized movie page flows', () => {
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
     try {
       await flushPromises();
-      await wrapper.get('.load-more').trigger('click');
+      wrapper.getComponent(InfiniteScroll).vm.$emit('load');
       await flushPromises();
       expect(wrapper.findAll('.movie-card')).toHaveLength(0);
       expect(wrapper.text()).toContain(locale === 'zh-CN' ? '此热门列表已过期' : 'This trending list has expired');
@@ -148,14 +149,14 @@ describe('localized movie page flows', () => {
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
     await flushPromises();
-    const oldLoadMoreButton = wrapper.get('button.load-more');
+    const oldSentinel = wrapper.getComponent(InfiniteScroll);
 
     setLocale('en-US');
-    await oldLoadMoreButton.trigger('click');
+    oldSentinel.vm.$emit('load');
     await flushPromises();
 
     expect(urls.some((url) => url.includes('/movies/trending/load-more'))).toBe(false);
-    expect(wrapper.find('button.load-more').exists()).toBe(false);
+    expect(wrapper.findComponent(InfiniteScroll).exists()).toBe(false);
     expect(wrapper.text()).not.toContain('中文热门');
 
     await vi.advanceTimersByTimeAsync(300);
@@ -254,7 +255,7 @@ describe('localized movie page flows', () => {
 
     const wrapper = mount(MovieBrowser, { props: { authenticated: false } });
     await flushPromises();
-    await wrapper.get('button.load-more').trigger('click');
+    wrapper.getComponent(InfiniteScroll).vm.$emit('load');
     await flushPromises();
 
     expect(wrapper.findAll('.movie-card')).toHaveLength(2);
@@ -322,7 +323,7 @@ describe('localized movie page flows', () => {
     await wrapper.get('input[type="search"]').setValue('galaxy');
     await vi.advanceTimersByTimeAsync(300);
     await flushPromises();
-    await wrapper.get('button.load-more').trigger('click');
+    wrapper.getComponent(InfiniteScroll).vm.$emit('load');
     await flushPromises();
 
     expect(wrapper.findAll('.movie-card')).toHaveLength(2);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import type { TvShowSummary, TvTrendingResponse, TvSearchResponse, TrackedMoviePreference, MoviePreference } from '@movie-hub/contract';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from '../../i18n';
@@ -35,6 +36,7 @@ let controller: AbortController | undefined;
 let requestId = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 async function load(reset = false) {
+  if (!reset && (loading.value || !hasMore.value)) return;
   const id = ++requestId;
   controller?.abort();
   const current = new AbortController();
@@ -155,8 +157,8 @@ onBeforeUnmount(() => {
     <div v-if="shows.length" class="movie-grid">
       <TvShowCard v-for="show in shows" :key="show.tmdbId" :show="show" :authenticated="authenticated" :updating="updating.has(show.tmdbId)" @preference="setPreference(show, $event)" @open="emit('openTvShow', $event)" />
     </div>
-    <p v-if="loading" class="movie-state" role="status">{{ t(searching ? 'tv.searching' : 'tv.loading') }}</p>
+    <p v-if="loading && !shows.length" class="movie-state" role="status">{{ t(searching ? 'tv.searching' : 'tv.loading') }}</p>
     <p v-else-if="!error && !shows.length" class="movie-state">{{ t(searching ? 'tv.searchEmpty' : 'tv.empty') }}</p>
-    <div v-if="hasMore" class="tv-load-more"><button class="outline-button" type="button" :disabled="loading" @click="load()">{{ t('tv.loadMore') }}</button></div>
+    <InfiniteScroll v-if="hasMore" :loading="loading" :failed="!!error" @load="load()" />
   </section>
 </template>

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import { mount, flushPromises } from '@vue/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
 import TvShowBrowser from './TvShowBrowser.vue';
@@ -24,7 +25,7 @@ it('TV browser retains generation, deduplicates cards, changes language and open
   const wrapper = mount(TvShowBrowser);
   wrappers.push(wrapper);
   await flushPromises();
-  await wrapper.get('.tv-load-more button').trigger('click');
+  wrapper.getComponent(InfiniteScroll).vm.$emit('load');
   await flushPromises();
   expect(urls[1]).toContain('generation=00000000-0000-4000-8000-000000000001');
   expect(wrapper.findAll('.tv-show-card')).toHaveLength(2);
@@ -83,7 +84,7 @@ it('debounces TV searches, paginates without a trending generation, retains loca
   expect(urls.at(-1)?.searchParams.get('query')).toBe('The Bear');
   expect(urls.at(-1)?.searchParams.has('generation')).toBe(false);
   expect(wrapper.text()).toContain('Search 1');
-  await wrapper.get('.tv-load-more button').trigger('click');
+  wrapper.getComponent(InfiniteScroll).vm.$emit('load');
   await flushPromises();
   expect(urls.at(-1)?.searchParams.get('page')).toBe('2');
   expect(wrapper.findAll('.tv-show-card')).toHaveLength(2);
@@ -230,7 +231,7 @@ it.each(['en-US', 'zh-CN'] as const)('restarts expired TV pagination from page o
   const wrapper = mount(TvShowBrowser);
   wrappers.push(wrapper);
   await flushPromises();
-  await wrapper.get('.tv-load-more button').trigger('click');
+  wrapper.getComponent(InfiniteScroll).vm.$emit('load');
   await flushPromises();
   expect(wrapper.findAll('.tv-show-card')).toHaveLength(0);
   expect(wrapper.text()).toContain(locale === 'zh-CN' ? '此热门列表已过期' : 'This trending list has expired');

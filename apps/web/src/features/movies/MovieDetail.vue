@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import ResourceNotificationButton from '../resource-notifications/ResourceNotificationButton.vue';
 import ResourceNotificationFeedback from '../resource-notifications/ResourceNotificationFeedback.vue';
 import type { ResourceNotificationFeedback as ResourceNotificationFeedbackState } from '../resource-notifications/resource-notification.types';
@@ -846,7 +847,7 @@ function syncedAtLabel(syncedAt: string): string {
               </li>
             </ol>
             </ResourceReleaseFilter>
-                <button v-if="group.result?.nextPage" type="button" class="text-button" :disabled="group.loading" @click="loadReleaseGroup(group, true)">{{ t('resourceSelection.loadMore') }}</button>
+                <InfiniteScroll v-if="group.result?.nextPage" :loading="group.loading" :failed="!!group.error" @load="loadReleaseGroup(group, true)" />
               </div>
             </details>
           </div>

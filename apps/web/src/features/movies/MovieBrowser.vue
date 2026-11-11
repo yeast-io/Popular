@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import type { ApiError, MoviePreference, MovieSummary, SearchMoviesResponse, TrackedMoviePreference, TrendingMoviesResponse } from '@movie-hub/contract';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MediaSearchBox from '../media/MediaSearchBox.vue';
@@ -16,6 +17,7 @@ const page = ref(1);
 const hasMore = ref(false);
 const loading = ref(true);
 const loadingMore = ref(false);
+const appendFailed = ref(false);
 const errorMessage = ref('');
 const trendingGeneration = ref('');
 const skeletons = Array.from({ length: 10 }, (_, index) => index);
@@ -55,6 +57,7 @@ watch(
     hasMore.value = false;
     loading.value = true;
     loadingMore.value = false;
+    appendFailed.value = false;
     errorMessage.value = '';
     trendingGeneration.value = '';
     loadedLocale.value = null;
@@ -70,6 +73,7 @@ async function loadFirstPage(generation = ++requestGeneration) {
   const controller = new AbortController();
   requestController = controller;
   loading.value = true;
+  appendFailed.value = false;
   errorMessage.value = '';
   const requestedLocale = locale.value;
   const term = query.value.trim();
@@ -107,6 +111,7 @@ async function loadMore() {
   const term = query.value.trim();
   const currentPage = page.value;
   loadingMore.value = true;
+  appendFailed.value = false;
   errorMessage.value = '';
   try {
     if (term) {
@@ -126,6 +131,7 @@ async function loadMore() {
     }
   } catch (error) {
     if (generation === requestGeneration) {
+      appendFailed.value = true;
       if (error instanceof LocalizedApiError && error.translationKey === 'errors.mediaTrendingExpired') {
         movies.value = [];
         trendingGeneration.value = '';
@@ -320,19 +326,8 @@ function messageFor(error: unknown): string {
           </div>
         </article>
       </div>
-      <div class="load-more-wrap">
-        <button
-          v-if="hasMore"
-          class="outline-button load-more"
-          type="button"
-          :disabled="!canLoadMore"
-          :aria-busy="loadingMore"
-          @click="loadMore"
-        >
-          {{ t(loadingMore ? 'actions.loadingMore' : 'actions.loadMore') }}
-        </button>
-        <p v-else class="end-note">{{ t('status.allResultsLoaded') }}</p>
-      </div>
+      <InfiniteScroll v-if="hasMore" :loading="loadingMore" :disabled="!canLoadMore" :failed="appendFailed" @load="loadMore" />
+      <p v-else class="end-note">{{ t('status.allResultsLoaded') }}</p>
     </template>
   </section>
 </template>

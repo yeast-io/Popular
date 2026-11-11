@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InfiniteScroll from '../../scroll/InfiniteScroll.vue';
 import type { ResourceSiteRelease } from '@movie-hub/contract';
 import type { ResourceQueryGroup, ResourceQuerySession } from './resource-query.types';
 import { useResourceDownloads } from './resource-download.client';
@@ -135,7 +136,7 @@ onBeforeUnmount(() => {
               </li>
             </ol>
             </ResourceReleaseFilter>
-            <button v-if="group.result?.nextPage" class="text-button resource-query-more" type="button" :disabled="group.loading" @click="loadGroup(group, group.result.nextPage)">{{ t('resourceSelection.loadMore') }}</button>
+            <InfiniteScroll v-if="group.result?.nextPage" :loading="group.loading" :failed="!!group.error" @load="loadGroup(group, group.result!.nextPage!)" />
           </div>
         </details>
       </div>
@@ -152,7 +153,6 @@ onBeforeUnmount(() => {
   color: #e2e0d9;
 }
 .resource-query-dialog::backdrop { background: rgba(3, 4, 5, .78); backdrop-filter: blur(5px); }
-.resource-query-more { margin-top: 16px; }
 @media (max-width: 700px) {
   .resource-query-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
 }
