@@ -105,7 +105,6 @@ const descriptions = computed(() => ({
       </header>
       <main class="workspace-main" :aria-busy="!loaded && busy">
         <div class="page-heading">
-          <p class="eyebrow">{{ t.productName }}</p>
           <h1 tabindex="-1">{{ labels[page] }}</h1>
           <p>{{ descriptions[page] }}</p>
         </div>

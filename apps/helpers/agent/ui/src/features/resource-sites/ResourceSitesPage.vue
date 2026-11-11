@@ -30,7 +30,7 @@ onMounted(() => {
     </div>
   </template>
   <template v-else>
-    <p class="notice" role="note">{{ t.localSitesScope }}</p>
+    <p class="notice local-sites-scope" role="note">{{ t.localSitesScope }}</p>
     <p v-if="loading" role="status">{{ t.loadingSettings }}</p>
     <section v-if="error" class="load-failure" role="alert">
       <p>{{ text(error) }}</p>
@@ -49,15 +49,24 @@ onMounted(() => {
             <h2>{{ siteNames[entry.snapshot.site] }}</h2>
             <p>{{ t.localCredentials }}</p>
           </div>
-          <span class="pill" :class="entry.snapshot.status === 'configured_invalid' ? 'warning' : 'neutral'">{{
-            entry.snapshot.status === 'unconfigured'
-              ? t.unconfigured
-              : entry.snapshot.status === 'configured_invalid'
-                ? t.siteInvalid
-                : entry.snapshot.enabled
-                  ? t.siteEnabled
-                  : t.siteDisabled
-          }}</span>
+          <span class="pill" :class="entry.snapshot.status === 'configured_invalid' ? 'warning' : 'neutral'">
+            <span
+              class="status-dot"
+              :class="{
+                online: entry.snapshot.status === 'configured_valid' && entry.snapshot.enabled,
+                failed: entry.snapshot.status === 'configured_invalid',
+                unconfigured: entry.snapshot.status === 'unconfigured',
+              }"
+            />{{
+              entry.snapshot.status === 'unconfigured'
+                ? t.unconfigured
+                : entry.snapshot.status === 'configured_invalid'
+                  ? t.siteInvalid
+                  : entry.snapshot.enabled
+                    ? t.siteEnabled
+                    : t.siteDisabled
+            }}</span
+          >
         </header>
         <p v-if="entry.error" class="error" role="alert">{{ text(entry.error) }}</p>
         <p v-else-if="entry.snapshot.lastError" class="error" role="status">{{ text(entry.snapshot.lastError) }}</p>
@@ -95,7 +104,7 @@ onMounted(() => {
             </button>
           </div>
         </form>
-        <template v-else>
+        <div v-else class="local-site-summary">
           <p class="endpoint">{{ entry.snapshot.baseUrl }}</p>
           <p class="field-note">
             {{ t.siteVerifiedAt }}:
@@ -124,7 +133,7 @@ onMounted(() => {
               {{ entry.snapshot.enabled ? t.siteDisable : t.siteEnable }}
             </button>
           </div>
-        </template>
+        </div>
         <div v-if="entry.snapshot.status !== 'unconfigured'" class="local-site-delete">
           <template v-if="entry.confirmingDelete"
             ><p>{{ t.siteDeleteConfirm }}</p>

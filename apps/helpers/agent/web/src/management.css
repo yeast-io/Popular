@@ -2,53 +2,58 @@
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 32px 20px;
+  padding: 32px 16px;
   background: var(--canvas);
 }
 .management-card {
   width: min(100%, 420px);
-  padding: 36px;
+  padding: 32px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
 }
 .management-card h1 {
-  font-size: 25px;
-  margin-bottom: 12px;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.3;
+  margin-bottom: 8px;
 }
 .management-intro {
-  color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 26px;
+  color: var(--secondary);
+  font-size: 14px;
+  margin-bottom: 24px;
 }
 .management-card form {
   display: grid;
-  gap: 18px;
-}
-.management-card label {
-  font-size: 12px;
+  gap: 20px;
 }
 .management-card input {
+  width: 100%;
   font-size: 16px;
 }
+.management-card form .primary {
+  width: 100%;
+  min-height: 44px;
+}
 .management-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
-  margin: 22px 0;
+  margin: 24px 0;
 }
 .management-language {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid var(--border);
-  padding-top: 18px;
+  gap: 16px;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 20px;
 }
 .management-language select {
-  font-size: 12px;
+  width: auto;
 }
 @media (max-width: 480px) {
   .management-card {
-    padding: 27px;
+    padding: 24px;
   }
 }

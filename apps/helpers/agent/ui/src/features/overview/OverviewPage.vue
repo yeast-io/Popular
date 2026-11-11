@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { useAgentContext } from '../../agent-context.composable';
 import AgentIcon from '../../components/AgentIcon.vue';
 import StatusPill from '../../components/StatusPill.vue';
+import qbittorrentIcon from '../../assets/qbittorrent.svg';
+import transmissionIcon from '../../assets/transmission.svg';
 
 const {
   t,
@@ -60,9 +62,12 @@ function observed(status: string) {
   <div class="connection-grid">
     <article class="connection-card">
       <div class="card-top">
-        <span class="feature-icon"><AgentIcon name="link" /></span><StatusPill :status="observed(runtime.service)" />
+        <div class="connection-title">
+          <AgentIcon name="link" />
+          <h3>{{ t.popularConnection }}</h3>
+        </div>
+        <StatusPill :status="observed(runtime.service)" />
       </div>
-      <h3>{{ t.popularConnection }}</h3>
       <p class="endpoint">{{ savedGateway || t.unconfigured }}</p>
       <button class="text-action" type="button" @click="navigate('settings')">
         {{ t.manageConnection }}<AgentIcon name="arrow" />
@@ -70,16 +75,24 @@ function observed(status: string) {
     </article>
     <article class="connection-card">
       <div class="card-top">
-        <span class="feature-icon"><AgentIcon name="downloaders" /></span
-        ><StatusPill :status="observed(form.downloaderConfigured ? runtime.downloader : 'unconfigured')" />
+        <div class="connection-title">
+          <img
+            v-if="form.downloaderConfigured"
+            class="tool-icon"
+            :src="savedProvider === 'qbittorrent' ? qbittorrentIcon : transmissionIcon"
+            alt=""
+          />
+          <AgentIcon v-else name="downloaders" />
+          <h3>
+            {{
+              form.downloaderConfigured
+                ? t[savedProvider === 'qbittorrent' ? 'qbittorrentName' : 'transmissionName']
+                : t.localDownloadTool
+            }}
+          </h3>
+        </div>
+        <StatusPill :status="observed(form.downloaderConfigured ? runtime.downloader : 'unconfigured')" />
       </div>
-      <h3>
-        {{
-          form.downloaderConfigured
-            ? t[savedProvider === 'qbittorrent' ? 'qbittorrentName' : 'transmissionName']
-            : t.localDownloadTool
-        }}
-      </h3>
       <p class="endpoint">{{ form.downloaderConfigured ? savedDownloaderUrl : t.unconfigured }}</p>
       <button class="text-action" type="button" @click="navigate('downloaders')">
         {{ t.manageDownloader }}<AgentIcon name="arrow" />
