@@ -6,7 +6,7 @@ use crate::{
     runtime::{BindingState, Runtime},
     settings::{self, Secrets, Settings},
 };
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{Sink, SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -40,58 +40,80 @@ fn base(settings: &Settings) -> Result<url::Url, AgentError> {
 }
 async fn signing_keys(base: &url::Url, key: &str, trace: &Trace) -> Result<Value, AgentError> {
     trace.stage("gateway.signing-keys.started");
-    let response = client()?
-        .get(
-            base.join("client/v1/signing-keys")
-                .map_err(|_| AgentError::code("invalidUrl"))?,
-        )
-        .bearer_auth(key)
-        .send()
-        .await?;
-    let status = response.status().as_u16();
-    if !response.status().is_success() {
-        return Err(AgentError::code(match status {
-            401 | 403 | 410 => "rebindRequired",
-            404 => "gatewayProtocol",
-            _ => "gatewayUnavailable",
-        })
-        .http(status));
+    let exchange = crate::web_diagnostics::gateway_http(trace, base);
+    let mut http_status = None;
+    let result = async {
+        let response = client()?
+            .get(
+                base.join("client/v1/signing-keys")
+                    .map_err(|_| AgentError::code("invalidUrl"))?,
+            )
+            .bearer_auth(key)
+            .send()
+            .await?;
+        let status = response.status().as_u16();
+        http_status = Some(status);
+        if !response.status().is_success() {
+            return Err(AgentError::code(match status {
+                401 | 403 | 410 => "rebindRequired",
+                404 => "gatewayProtocol",
+                _ => "gatewayUnavailable",
+            })
+            .http(status));
+        }
+        let bytes = crate::downloader::body(response).await?;
+        let keys: Value =
+            serde_json::from_slice(&bytes).map_err(|e| AgentError::caused("invalidResponse", e))?;
+        if keys["keys"]
+            .as_array()
+            .is_none_or(|keys| keys.is_empty() || keys.len() > 32)
+        {
+            return Err(AgentError::code("invalidResponse"));
+        }
+        trace.stage("gateway.signing-keys.completed");
+        Ok(keys)
     }
-    let bytes = crate::downloader::body(response).await?;
-    let keys: Value =
-        serde_json::from_slice(&bytes).map_err(|e| AgentError::caused("invalidResponse", e))?;
-    if keys["keys"]
-        .as_array()
-        .is_none_or(|keys| keys.is_empty() || keys.len() > 32)
-    {
-        return Err(AgentError::code("invalidResponse"));
+    .await;
+    if let Some(exchange) = exchange {
+        exchange.finish(result.as_ref().err(), http_status);
     }
-    trace.stage("gateway.signing-keys.completed");
-    Ok(keys)
+    result
 }
 fn network(error: tokio_tungstenite::tungstenite::Error) -> AgentError {
     AgentError::caused("networkError", error)
 }
-async fn send(socket: &mut Socket, wire: &Wire) -> Result<(), AgentError> {
+async fn send_frame<S>(socket: &mut S, frame: Message, trace: &Trace) -> Result<(), AgentError>
+where
+    S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
+{
+    let transmission = crate::web_diagnostics::sending(trace, &frame);
+    let result = async {
+        tokio::time::timeout(Duration::from_secs(5), socket.send(frame))
+            .await
+            .map_err(|_| AgentError::code("timeout"))?
+            .map_err(network)
+    }
+    .await;
+    if let Some(transmission) = transmission {
+        transmission.finish(result.as_ref().err(), None);
+    }
+    result
+}
+async fn send(socket: &mut Socket, wire: &Wire, trace: &Trace) -> Result<(), AgentError> {
     let text = serde_json::to_string(wire)?;
     if text.len() > 65536 {
         return Err(protocol::invalid());
     }
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        socket.send(Message::Text(text.into())),
-    )
-    .await
-    .map_err(|_| AgentError::code("timeout"))?
-    .map_err(network)
+    send_frame(socket, Message::Text(text.into()), trace).await
 }
-async fn receive(socket: &mut Socket) -> Result<Wire, AgentError> {
+async fn receive(socket: &mut Socket, trace: &Trace) -> Result<Wire, AgentError> {
     loop {
         let frame = socket
             .next()
             .await
             .ok_or(AgentError::code("networkError"))?
             .map_err(network)?;
+        crate::web_diagnostics::received(trace, &frame);
         match frame {
             Message::Text(text) => {
                 let wire = protocol::wire(&text)?;
@@ -108,7 +130,13 @@ async fn receive(socket: &mut Socket) -> Result<Wire, AgentError> {
                 return Ok(wire);
             }
             Message::Ping(bytes) => {
-                socket.send(Message::Pong(bytes)).await.map_err(network)?;
+                let frame = Message::Pong(bytes);
+                let transmission = crate::web_diagnostics::sending(trace, &frame);
+                let result = socket.send(frame).await.map_err(network);
+                if let Some(transmission) = transmission {
+                    transmission.finish(result.as_ref().err(), None);
+                }
+                result?;
             }
             Message::Pong(_) => {}
             Message::Close(_) => return Err(AgentError::code("networkError")),
@@ -184,8 +212,8 @@ async fn authenticate(
         payload["operationId"] = json!(identity.installation_id);
     }
     let auth = protocol::message("__authenticate__", payload, None);
-    send(socket, &auth).await?;
-    let wire = receive(socket).await?;
+    send(socket, &auth, trace).await?;
+    let wire = receive(socket, trace).await?;
     if wire.command != "__auth_challenge__" || wire.reply_to.as_deref() != Some(&auth.message_id) {
         return Err(protocol::invalid());
     }
@@ -221,8 +249,8 @@ async fn authenticate(
     );
     proof.reply_to = Some(wire.message_id);
     let sent = Instant::now();
-    send(socket, &proof).await?;
-    let result = receive(socket).await?;
+    send(socket, &proof, trace).await?;
+    let result = receive(socket, trace).await?;
     if result.command != "__auth_result__" || result.reply_to.as_deref() != Some(&proof.message_id)
     {
         return Err(protocol::invalid());
@@ -276,6 +304,7 @@ pub(crate) async fn session_transport(
     resources: Option<&dyn crate::resource_requests::ResourceOperations>,
 ) -> Result<(), AgentError> {
     let trace = Trace::new();
+    let session_log = crate::web_diagnostics::gateway_session(&trace);
     let action = async {
         if runtime.suspended.load(std::sync::atomic::Ordering::SeqCst) {
             return Ok(());
@@ -303,24 +332,35 @@ pub(crate) async fn session_transport(
         let config = WebSocketConfig::default()
             .max_message_size(Some(65536))
             .max_frame_size(Some(65536));
+        let connection_log = crate::web_diagnostics::gateway_connect(&trace, &url);
         let connected = tokio::time::timeout(
             Duration::from_secs(10),
             connect_async_with_config(request, Some(config), true),
         )
-        .await
-        .map_err(|_| AgentError::code("timeout"))?;
-        let (mut socket, _) = match connected {
-            Ok(v) => v,
-            Err(tokio_tungstenite::tungstenite::Error::Http(response)) => {
-                return Err(AgentError::code(match response.status().as_u16() {
+        .await;
+        let socket_result = match connected {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(tokio_tungstenite::tungstenite::Error::Http(response))) => {
+                Err(AgentError::code(match response.status().as_u16() {
                     401 | 403 | 410 => "rebindRequired",
                     404 => "gatewayProtocol",
                     _ => "gatewayUnavailable",
                 })
                 .http(response.status().as_u16()))
             }
-            Err(error) => return Err(network(error)),
+            Ok(Err(error)) => Err(network(error)),
+            Err(_) => Err(AgentError::code("timeout")),
         };
+        if let Some(connection_log) = connection_log {
+            connection_log.finish(
+                socket_result.as_ref().err(),
+                socket_result
+                    .as_ref()
+                    .ok()
+                    .map(|(_, response)| response.status().as_u16()),
+            );
+        }
+        let (mut socket, _) = socket_result?;
         if identity.device_id.is_none() {
             runtime.set_binding(BindingState::Binding, None);
         }
@@ -384,7 +424,7 @@ pub(crate) async fn session_transport(
                         // Revoke availability on the authenticated connection before switching sessions.
                         let configured=current.downloader_configured && crate::settings::same_downloader(&current,&settings);
                         let report=protocol::message("__agent_status__",json!({"downloaderType":target.downloader_type,"instanceId":target.instance_id,"configured":configured,"reachable":false}),Some(trace.id.clone()));
-                        tokio::time::timeout(Duration::from_secs(5),sink.send(Message::Text(serde_json::to_string(&report)?.into()))).await.map_err(|_|AgentError::code("timeout"))?.map_err(network)?;
+                        send_frame(&mut sink,Message::Text(serde_json::to_string(&report)?.into()),&trace).await?;
                         return Ok(());
                     },
                     _=runtime.queue_refresh.notified()=>{
@@ -399,7 +439,7 @@ pub(crate) async fn session_transport(
                         let payload=cursor.map_or_else(||json!({}),|v|json!({"cursor":v}));
                         let request=protocol::message("__queue_request__",payload,Some(trace.id.clone()));
                         queue_request=Some(request.message_id.clone());
-                        tokio::time::timeout(Duration::from_secs(5),sink.send(Message::Text(serde_json::to_string(&request)?.into()))).await.map_err(|_|AgentError::code("timeout"))?.map_err(network)?;
+                        send_frame(&mut sink,Message::Text(serde_json::to_string(&request)?.into()),&trace).await?;
                         if last_pong.elapsed()>Duration::from_secs(45) {return Err(AgentError::code("timeout"));} Message::Ping(Vec::new().into())},
                     message=outbound.recv()=>{
                         let Some(wire)=message else {return Ok(());};
@@ -409,6 +449,7 @@ pub(crate) async fn session_transport(
                     },
                     message=stream.next()=>{
                         let frame=message.ok_or(AgentError::code("networkError"))?.map_err(network)?;
+                        crate::web_diagnostics::received(&trace,&frame);
                         match frame {
                             Message::Ping(bytes)=>Message::Pong(bytes),
                             Message::Pong(_)=>{last_pong=Instant::now();continue;},
@@ -441,10 +482,7 @@ pub(crate) async fn session_transport(
                         }
                     },
                 };
-                tokio::time::timeout(Duration::from_secs(5), sink.send(frame))
-                    .await
-                    .map_err(|_| AgentError::code("timeout"))?
-                    .map_err(network)?;
+                send_frame(&mut sink, frame, &trace).await?;
             }
         };
         let health =
@@ -466,6 +504,9 @@ pub(crate) async fn session_transport(
         tokio::select! {result=io=>result,result=work=>result,result=health=>result,result=resource_work=>result}
     };
     let result = action.await;
+    if let Some(session_log) = session_log {
+        session_log.finish(result.as_ref().err(), None);
+    }
     if let Err(error) = &result {
         trace.failed(error);
         if matches!(error.code, "rebindRequired" | "deviceLimitReached") {

@@ -26,8 +26,13 @@ use popular_agent_core::{
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use std::{
-    convert::Infallible, fs::File, future::Future, net::SocketAddr, path::Path, sync::Arc,
-    time::Duration,
+    convert::Infallible,
+    fs::File,
+    future::Future,
+    net::SocketAddr,
+    path::Path,
+    sync::Arc,
+    time::{Duration, Instant},
 };
 use tokio::{
     net::TcpListener,
@@ -282,6 +287,10 @@ async fn request_entry(
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
     );
     trace.stage("http.request.started");
+    let started = Instant::now();
+    let method = request.method().to_string();
+    let path = request.uri().path().to_owned();
+    popular_agent_core::web_diagnostics::http_started(&trace, &method, &path, address);
     let mut response = match dispatch(state, address, request, &trace).await {
         Ok(response) => {
             trace.stage("http.request.completed");
@@ -295,6 +304,14 @@ async fn request_entry(
             )
         }
     };
+    popular_agent_core::web_diagnostics::http_responded(
+        &trace,
+        &method,
+        &path,
+        address,
+        response.status().as_u16(),
+        started.elapsed().as_millis(),
+    );
     let headers = response.headers_mut();
     headers.insert(
         header::CACHE_CONTROL,
@@ -482,7 +499,7 @@ async fn dispatch(
             queue::page(&state.agent.runtime, input.cursor)?;
             json!({"ok":true})
         }
-        (Method::GET, "/api/events") => return events(state, token),
+        (Method::GET, "/api/events") => return events(state, token, trace),
         _ => return Err(failure(StatusCode::NOT_FOUND, "invalidCommand")),
     };
     Ok(json_response(StatusCode::OK, value))
@@ -503,7 +520,7 @@ fn runtime_value(state: &State) -> Value {
     value["preferenceError"] = Value::Null;
     value
 }
-fn events(state: Arc<State>, token: String) -> Result<Response<Body>, Failure> {
+fn events(state: Arc<State>, token: String, trace: &Trace) -> Result<Response<Body>, Failure> {
     let permit = state
         .events
         .clone()
@@ -512,8 +529,17 @@ fn events(state: Arc<State>, token: String) -> Result<Response<Body>, Failure> {
     let receiver = state.agent.runtime.subscribe();
     let stop = state.stop.subscribe();
     let stream = stream::unfold(
-        (state, token, receiver, stop, permit, true, false),
-        |(state, token, mut receiver, mut stop, permit, first, ended)| async move {
+        (
+            state,
+            token,
+            receiver,
+            stop,
+            permit,
+            true,
+            false,
+            popular_agent_core::web_diagnostics::stream(trace),
+        ),
+        |(state, token, mut receiver, mut stop, permit, first, ended, lifecycle)| async move {
             if ended || *stop.borrow() {
                 return None;
             }
@@ -528,7 +554,9 @@ fn events(state: Arc<State>, token: String) -> Result<Response<Body>, Failure> {
             };
             Some((
                 Ok::<_, Infallible>(Frame::data(Bytes::from(event))),
-                (state, token, receiver, stop, permit, false, expired),
+                (
+                    state, token, receiver, stop, permit, false, expired, lifecycle,
+                ),
             ))
         },
     );

@@ -11,6 +11,7 @@ async fn main() {
         eprintln!("{error}");
         std::process::exit(1);
     }
+    popular_agent_core::web_diagnostics::enable();
     let trace = Trace::new();
     trace.stage("web.startup.started");
     if let Err(error) = run(&trace).await {
@@ -57,17 +58,35 @@ async fn run(trace: &Trace) -> Result<(), AgentError> {
     trace.stage("web.startup.config.started");
     let config = Config::from_env()?;
     let bind = config.bind;
+    let origin = config.origin.clone();
+    popular_agent_core::web_diagnostics::configuration(
+        trace,
+        bind,
+        &origin,
+        &config.data,
+        &config.master_key,
+        config.login.is_some(),
+    );
     let server = WebServer::new_with_trace(config, trace)?;
     trace.stage("web.startup.listener.started");
     let listener = tokio::net::TcpListener::bind(bind).await?;
     trace.stage("web.startup.completed");
-    server
+    popular_agent_core::web_diagnostics::listening(
+        trace,
+        listener.local_addr()?,
+        &origin,
+        env!("CARGO_PKG_VERSION"),
+    );
+    let result = server
         .serve(listener, async {
             #[cfg(unix)]
             {
                 match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
                     Ok(mut term) => {
-                        tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=term.recv()=>{} }
+                        tokio::select! {
+                            _=tokio::signal::ctrl_c()=>popular_agent_core::web_diagnostics::shutdown(trace,"SIGINT"),
+                            _=term.recv()=>popular_agent_core::web_diagnostics::shutdown(trace,"SIGTERM"),
+                        }
                     }
                     Err(error) => {
                         diagnostics::failure(
@@ -82,7 +101,10 @@ async fn run(trace: &Trace) -> Result<(), AgentError> {
             #[cfg(not(unix))]
             {
                 let _ = tokio::signal::ctrl_c().await;
+                popular_agent_core::web_diagnostics::shutdown(trace,"SIGINT");
             }
         })
-        .await
+        .await;
+    popular_agent_core::web_diagnostics::stopped(trace, result.as_ref().err());
+    result
 }

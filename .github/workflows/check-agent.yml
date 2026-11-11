@@ -87,6 +87,7 @@ jobs:
       - run: cargo clippy --locked --manifest-path apps/helpers/agent/Cargo.toml -p popular-agent-web --all-targets -- -D warnings
       - run: cargo build --locked --manifest-path apps/helpers/agent/Cargo.toml -p popular-agent-web
       - run: node --import ./apps/api/node_modules/tsx/dist/loader.mjs apps/helpers/agent/tools/test-web-agent.mjs
+      - run: node --import ./apps/api/node_modules/tsx/dist/loader.mjs apps/helpers/agent/tools/test-web-diagnostics.mjs
       - run: node apps/helpers/agent/tools/test-site-agent.mjs
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6

@@ -16,7 +16,7 @@ pub fn directory(path: std::path::PathBuf) -> Result<(), AgentError> {
         .set(path)
         .map_err(|_| AgentError::code("runtimeError"))
 }
-fn emit(value: serde_json::Value) {
+pub(crate) fn emit(value: serde_json::Value) {
     let line = value.to_string();
     eprintln!("{line}");
     let Some(directory) = LOG_DIRECTORY.get() else {
@@ -51,6 +51,11 @@ fn emit(value: serde_json::Value) {
     }
 }
 static SETTINGS: OnceLock<Settings> = OnceLock::new();
+pub(crate) fn verbose_enabled() -> bool {
+    SETTINGS
+        .get()
+        .is_some_and(|s| s.verbose && matches!(s.level.as_str(), "trace" | "debug" | "info"))
+}
 pub fn initialize() -> Result<(), &'static str> {
     let _ = dotenvy::dotenv();
     let verbose = match std::env::var("VERBOSE").as_deref() {

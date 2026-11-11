@@ -17,6 +17,8 @@ pub mod queue;
 pub mod runtime;
 pub mod settings;
 pub mod storage;
+#[path = "web-diagnostics.rs"]
+pub mod web_diagnostics;
 
 #[path = "resource-sites/mod.rs"]
 pub mod resource_sites;
