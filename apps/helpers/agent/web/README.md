@@ -52,16 +52,22 @@ Open <http://127.0.0.1:1423> and sign in with that password. Initialize secrets 
 
 ### Docker Compose
 
-Alternatively, use [compose.yaml](compose.yaml). Set `AGENT_IMAGE=ghcr.io/yeast-io/popular-agent:0.1.1-beta.1-647526a803ef` in an adjacent `.env` file, then run:
+Save [compose.yaml](compose.yaml) in an empty directory, then run:
 
 ```sh
-docker compose pull agent
-docker compose --profile setup run --rm --no-deps init-secrets
-docker compose up -d --no-build agent
+docker compose --profile setup run --rm init-secrets
+docker compose up -d agent
 docker compose exec agent cat /run/agent-secrets/admin-password
 ```
 
-CLI and Compose use different default volume names. Keep the original deployment method and project name for an existing installation.
+The defaults use a published image and Docker-managed storage; no `.env` is required. For LAN/NAS access, create `.env` alongside `compose.yaml`:
+
+```dotenv
+AGENT_PUBLISH_ADDRESS=0.0.0.0
+AGENT_WEB_ORIGIN=http://192.168.1.10:1423
+```
+
+Replace the IP with the Docker host address. CLI and Compose use different default volume names. Keep the original deployment method and project name for an existing installation.
 
 ## Configuration
 
@@ -97,7 +103,7 @@ Set with `docker run --env`:
 | `VERBOSE`                   | `false`                 | Diagnostic logging                              |
 | `LOG_LEVEL`                 | `info`                  | Log level                                       |
 
-Compose also supports `AGENT_IMAGE`, `AGENT_PUBLISH_ADDRESS`, and `AGENT_WEB_PORT`. For LAN access, set `AGENT_PUBLISH_ADDRESS=0.0.0.0` and update `AGENT_WEB_ORIGIN` to match.
+Compose overrides are listed in [.env.example](.env.example). `AGENT_WEB_PORT` also updates the default local origin. Set `AGENT_WEB_ORIGIN` explicitly for LAN access or a reverse proxy.
 
 ## Persistence
 
@@ -107,6 +113,8 @@ Compose also supports `AGENT_IMAGE`, `AGENT_PUBLISH_ADDRESS`, and `AGENT_WEB_POR
 | `/run/agent-secrets`     | Encryption master key and management password; mounted read-only at runtime |
 
 The start command mounts the named volumes `popular-agent-data` and `popular-agent-secrets`. Stop the container before backing up both volumes together, and restore the matching data/key pair.
+
+For Compose host-directory mounts, set `AGENT_DATA_MOUNT` and `AGENT_SECRETS_MOUNT` to absolute paths in `.env`. Create both directories with ownership `10001:10001` and mode `700` before starting. Existing volume data and keys must be migrated together.
 
 ## Maintenance
 

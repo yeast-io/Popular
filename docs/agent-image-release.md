@@ -30,7 +30,7 @@ docker compose -f apps/helpers/agent/web/compose.yaml --profile setup run --rm i
 docker compose -f apps/helpers/agent/web/compose.yaml up -d --no-build agent
 ```
 
-Set `AGENT_WEB_ORIGIN`, bind address and port for the intended local/LAN deployment as described in [Agent Web](agent-web.md). Prefer the commit-qualified version tag when pinning an installation. Both the initializer and service use `AGENT_IMAGE`; leaving it unset retains the existing local-build behavior.
+Set `AGENT_WEB_ORIGIN`, bind address and port for the intended local/LAN deployment as described in [Agent Web](agent-web.md). Prefer the commit-qualified version tag when pinning an installation. Both the initializer and service use `AGENT_IMAGE`; leaving it unset selects the pinned published image in Compose; no source checkout or local build is required.
 
 New GHCR packages may initially be private even for a public source repository. Check package visibility and anonymous pull access after the first successful publication. If private access is intentional, users need their own authorized registry login. Never bake a registry token, site credential, downloader password, master key or initialized data volume into the image. The Dockerfile-specific context allowlist excludes local secrets and generated data.
 

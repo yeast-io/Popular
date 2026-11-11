@@ -1,19 +1,19 @@
+# Defaults: published image, local access, Docker-managed storage.
+# First start: docker compose --profile setup run --rm init-secrets
+# Then: docker compose up -d agent
 services:
   agent:
-    image: ${AGENT_IMAGE:-popular-agent-web:local}
-    build:
-      context: ../../../..
-      dockerfile: apps/helpers/agent/web/Dockerfile
+    image: ${AGENT_IMAGE:-ghcr.io/yeast-io/popular-agent:0.1.1-beta.1-647526a803ef}
     ports:
       - '${AGENT_PUBLISH_ADDRESS:-127.0.0.1}:${AGENT_WEB_PORT:-1423}:1423'
     environment:
-      AGENT_WEB_ORIGIN: ${AGENT_WEB_ORIGIN:-http://127.0.0.1:1423}
+      AGENT_WEB_ORIGIN: ${AGENT_WEB_ORIGIN:-http://127.0.0.1:${AGENT_WEB_PORT:-1423}}
       AGENT_SESSION_TTL_SECONDS: ${AGENT_SESSION_TTL_SECONDS:-28800}
       VERBOSE: ${VERBOSE:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      - agent-data:/var/lib/popular-agent
-      - agent-secrets:/run/agent-secrets:ro
+      - '${AGENT_DATA_MOUNT:-agent-data}:/var/lib/popular-agent'
+      - '${AGENT_SECRETS_MOUNT:-agent-secrets}:/run/agent-secrets:ro'
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
@@ -24,10 +24,10 @@ services:
     restart: unless-stopped
   init-secrets:
     profiles: [setup]
-    image: ${AGENT_IMAGE:-popular-agent-web:local}
+    image: ${AGENT_IMAGE:-ghcr.io/yeast-io/popular-agent:0.1.1-beta.1-647526a803ef}
     command: ['--init-secrets', '/run/agent-secrets']
     volumes:
-      - agent-secrets:/run/agent-secrets
+      - '${AGENT_SECRETS_MOUNT:-agent-secrets}:/run/agent-secrets'
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

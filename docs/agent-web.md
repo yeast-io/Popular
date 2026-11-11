@@ -50,10 +50,10 @@ For frontend hot reload, start the Rust server with `AGENT_WEB_ORIGIN=http://127
 
 ## Docker startup
 
-Run from the repository root:
+The Compose file pulls a published image by default and can also be used outside the source checkout. From the repository root:
 
 ```sh
-docker compose -f apps/helpers/agent/web/compose.yaml build agent
+docker compose -f apps/helpers/agent/web/compose.yaml pull agent
 docker compose -f apps/helpers/agent/web/compose.yaml --profile setup run --rm init-secrets
 docker compose -f apps/helpers/agent/web/compose.yaml up -d agent
 docker compose -f apps/helpers/agent/web/compose.yaml exec agent cat /run/agent-secrets/admin-password
@@ -74,6 +74,8 @@ docker compose -f apps/helpers/agent/web/compose.yaml up -d agent
 Replace the example IP with the Docker host address. On a phone, open that exact origin while connected to the same LAN/VPN. A Docker host is not the phone: downloader addresses must be reachable **from the container**. `127.0.0.1` inside Docker points to the container. Use downloader LAN addresses or a shared Docker network. Docker Desktop also supports `host.docker.internal`; Linux requires an explicitly configured reachable host address/network.
 
 HTTP over the LAN does not encrypt passwords or configuration requests. Use HTTPS at a reverse proxy or a trusted VPN when the network is not trusted. The service itself is HTTP behind the proxy; preserve the original `Host` and `Origin`, set `AGENT_WEB_ORIGIN` to the public HTTPS origin and disable SSE buffering. HTTPS origins enable Secure cookies. Do not expose the default HTTP service directly to the public Internet. No reverse-proxy deployment or Internet reachability is assumed by this batch.
+
+For a local source image, build it explicitly with `docker build -f apps/helpers/agent/web/Dockerfile -t popular-agent-web:local .` from the repository root, then set `AGENT_IMAGE=popular-agent-web:local`.
 
 ## Authentication and secret boundaries
 

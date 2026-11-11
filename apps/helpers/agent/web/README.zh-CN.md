@@ -52,16 +52,22 @@ docker exec popular-agent cat /run/agent-secrets/admin-password
 
 ### Docker Compose
 
-也可使用 [compose.yaml](compose.yaml)。在其同级 `.env` 中设置 `AGENT_IMAGE=ghcr.io/yeast-io/popular-agent:0.1.1-beta.1-647526a803ef` 后执行：
+将 [compose.yaml](compose.yaml) 保存到空目录，执行：
 
 ```sh
-docker compose pull agent
-docker compose --profile setup run --rm --no-deps init-secrets
-docker compose up -d --no-build agent
+docker compose --profile setup run --rm init-secrets
+docker compose up -d agent
 docker compose exec agent cat /run/agent-secrets/admin-password
 ```
 
-CLI 与 Compose 默认使用不同的数据卷名；同一安装应保持原部署方式和项目名。
+默认使用发布镜像和 Docker 管理的数据卷，无需创建 `.env`。局域网/NAS 访问时，在同级 `.env` 中设置：
+
+```dotenv
+AGENT_PUBLISH_ADDRESS=0.0.0.0
+AGENT_WEB_ORIGIN=http://192.168.1.10:1423
+```
+
+将 IP 替换为 Docker 宿主机地址。CLI 与 Compose 默认使用不同的数据卷名；同一安装应保持原部署方式和项目名。
 
 ## 配置
 
@@ -97,7 +103,7 @@ Gateway 地址由 Popular 部署者提供。管理密码用于 Web 登录，Agen
 | `VERBOSE`                   | `false`                 | 诊断日志开关                          |
 | `LOG_LEVEL`                 | `info`                  | 日志级别                              |
 
-Compose 另支持 `AGENT_IMAGE`、`AGENT_PUBLISH_ADDRESS` 和 `AGENT_WEB_PORT`。局域网部署设置 `AGENT_PUBLISH_ADDRESS=0.0.0.0` 并同步修改 `AGENT_WEB_ORIGIN`。
+Compose 可覆盖参数见 [.env.example](.env.example)。`AGENT_WEB_PORT` 会同步更新默认本机访问地址；局域网或反向代理需显式设置 `AGENT_WEB_ORIGIN`。
 
 ## 数据持久化
 
@@ -107,6 +113,8 @@ Compose 另支持 `AGENT_IMAGE`、`AGENT_PUBLISH_ADDRESS` 和 `AGENT_WEB_PORT`�
 | `/run/agent-secrets`     | 加密主密钥、管理密码；运行时只读挂载 |
 
 启动命令已挂载 `popular-agent-data` 和 `popular-agent-secrets` 两个命名卷。备份时停止容器并同时备份两个卷，恢复时使用同一组数据与密钥。
+
+Compose 绑定宿主机目录时，在 `.env` 中用 `AGENT_DATA_MOUNT`、`AGENT_SECRETS_MOUNT` 指定绝对路径。启动前创建目录，所有者设为 `10001:10001`，权限设为 `700`。已有安装需同时迁移数据与密钥。
 
 ## 维护
 
