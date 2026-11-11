@@ -1,3 +1,5 @@
+import { AgentResourceRelay } from './agent-resource-relay.service.js';
+import type { AgentResourceRequest } from '@movie-hub/contract';
 import { DOWNLOADER_STATUS_TTL_MS } from './gateway.policy.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
@@ -28,6 +30,7 @@ import {
 import type { DeviceKeys, DownloadRequest, GatewayOptions, Peer, Session, WireMessage } from './gateway.types.js';
 
 export class GatewayService {
+  private readonly resourceRelay = new AgentResourceRelay();
   readonly peers = new Map<string, Peer>();
   readonly now: () => number;
 
@@ -77,6 +80,10 @@ export class GatewayService {
       if (wire.command === '__auth_proof__') return await this.proof(peer, wire);
       requireCondition(peer.session, 'AUTHENTICATION_REQUIRED', 401);
       await this.current(peer.session, correlationId);
+      if (wire.command === '__resource_response__') {
+        this.resourceRelay.accept(peer, wire);
+        return;
+      }
       if (wire.command === '__error__') {
         protocolErrorSchema.parse(wire.payload);
         return;
@@ -341,6 +348,20 @@ export class GatewayService {
             statusObservedAt: route.statusObservedAt }
           : {}) };
     }
+    if (command === '__agent_resource__') {
+      const p = payload as { ownerId: string; deviceId: string; authVersion: number; deviceVersion: number; request: AgentResourceRequest };
+      const route = await this.options.gatewayCoordinator.get(p.deviceId);
+      requireCondition(route, 'DEVICE_OFFLINE');
+      requireCondition(route.ownerId === p.ownerId && route.authVersion === p.authVersion && route.deviceVersion === p.deviceVersion, 'AUTHORIZATION_MISMATCH');
+      if (route.instanceId !== this.options.instanceId) {
+        requireCondition(this.options.bus, 'DEVICE_OFFLINE');
+        return this.options.bus.call(route.instanceId, 'gateway', frame);
+      }
+      const peer = [...this.peers.values()].find((peer) => peer.session && sameSession(peer.session, route));
+      requireCondition(peer?.session, 'DEVICE_OFFLINE');
+      await this.current(peer.session, frame.correlationId);
+      return this.resourceRelay.request(peer, this.options.signing, p.request, frame.correlationId, Date.now() + 25_000);
+    }
     if (command === '__dispatch_download__') {
       const p = payload as DownloadRequest;
       const route = await this.options.gatewayCoordinator.get(p.deviceId);
@@ -397,7 +418,7 @@ export class GatewayService {
         correlationId: c.correlationId,
         expiresAt: c.expiresAt,
         ...(c.queueExpiresAt ? { queueExpiresAt: c.queueExpiresAt, retryAttempt: c.retryAttempt ?? 0 } : {}),
-        torrentUrl: prepared.torrent.url,
+        ...(prepared.torrent.agentTicket ? { agentTicket: prepared.torrent.agentTicket } : { torrentUrl: prepared.torrent.url }),
         torrentHash: prepared.torrent.torrentHash,
       });
       await this.active(session);
@@ -477,6 +498,7 @@ export class GatewayService {
   }
 
   async disconnect(peer: Peer) {
+    this.resourceRelay.dropped(peer);
     this.peers.delete(peer.id);
     try {
       peer.send(message('__session_revoked__', { code: 'SESSION_REVOKED' }));
@@ -487,6 +509,7 @@ export class GatewayService {
   }
 
   async dropped(peer: Peer) {
+    this.resourceRelay.dropped(peer);
     this.peers.delete(peer.id);
     if (peer.session) await this.options.gatewayCoordinator.release(peer.session);
   }

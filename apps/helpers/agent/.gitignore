@@ -1,6 +1,10 @@
 node_modules/
 dist/
-src-tauri/target/
-src-tauri/gen/
+target/
+app/dist/
+app/src-tauri/target/
+app/src-tauri/gen/
 .env
 .env.example
+
+!web/.env.example

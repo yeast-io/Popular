@@ -12,6 +12,8 @@ export interface MovieDownloadRecord {
   downloaderName?: string;
   lookupTag: string;
   executionMode?: 'local' | 'remote';
+  resourceExecution?: 'cloud' | 'agent';
+  resourceCredentialVersion?: string;
   remoteDeviceId?: string;
   remoteCommandId?: string;
   remoteCorrelationId?: string;
@@ -77,6 +79,8 @@ export interface DownloadClaim {
 }
 
 export interface RemoteDownloadTarget {
+  resourceExecution?: 'cloud' | 'agent';
+  resourceCredentialVersion?: string;
   displayTitle?: string;
   deviceId: string; authVersion: number; deviceVersion: number; correlationId: string;
   targetDownloader?: { downloaderType: DownloadProvider; instanceId: string };

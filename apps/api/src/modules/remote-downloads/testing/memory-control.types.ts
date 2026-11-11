@@ -1,6 +1,8 @@
 import type { CommandRecord, DownloadRequest, ResultPayload, StatusPayload, Authorization } from '@movie-hub/contract';
 
 export interface FixtureDownload extends DownloadRequest {
+  resourceExecution?: 'agent' | 'cloud';
+  resourceCredentialVersion?: string;
   tmdbId: number;
   executionMode: 'remote';
   downloaderType?: 'qbittorrent' | 'transmission';

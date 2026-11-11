@@ -93,6 +93,7 @@ export interface AssistantWorkflowOptions extends AssistantAgentOptions {
   diagnostics?: { logger?: AiLogger; verbose: boolean };
   sessions?: AssistantSessionStore;
   downloads?: {
+    agentDeviceFor?(ownerId: string): Promise<string | undefined>;
     providersFor(ownerId: string): Promise<DownloadProvider[]>;
     defaultProviderFor?(ownerId: string): Promise<DownloadProvider | undefined>;
     instancesFor?(ownerId: string): Promise<DownloaderChoice[]>;
@@ -101,9 +102,10 @@ export interface AssistantWorkflowOptions extends AssistantAgentOptions {
       ownerId: string,
       tmdbId: number,
       releaseId: string,
-      provider: DownloadProvider,
+      provider: DownloadProvider | undefined,
       sourceProvider?: 'mteam',
       downloaderInstanceId?: string,
+      remoteDeviceId?: string,
     ): Promise<MovieDownload>;
   };
   report?: (event: string) => void;

@@ -16,7 +16,7 @@ for (let i = 0; i < args.length; i++) {
 if (process.platform !== 'darwin') throw new Error('macOS .app packaging requires macOS.');
 if (!Object.hasOwn(targets, arch)) throw new Error('Use --arch arm64, x64, or universal.');
 
-const config = JSON.parse(await readFile(join(directory, 'src-tauri/tauri.conf.json'), 'utf8'));
+const config = JSON.parse(await readFile(join(directory, 'app/src-tauri/tauri.conf.json'), 'utf8'));
 const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
 if (config.version !== manifest.version || !/^\d+\.\d+\.\d+(?:-[\da-zA-Z.-]+)?(?:\+[\da-zA-Z.-]+)?$/.test(config.version)) {
   throw new Error('Package and Tauri versions must match and use a valid filename-safe version.');
@@ -32,11 +32,11 @@ function run(command, options, capture = false) {
 }
 // Use the native build cache when possible; cross/universal builds select an explicit Rust target.
 const explicitTarget = arch !== process.arch || Boolean(process.env.CARGO_BUILD_TARGET);
-const buildArgs = ['exec', 'tauri', 'build', '--bundles', 'app'];
+const buildArgs = ['tauri', 'build', '--bundles', 'app'];
 if (debug) buildArgs.push('--debug');
 if (explicitTarget) buildArgs.push('--target', targets[arch]);
 run('pnpm', buildArgs);
-const metadata = JSON.parse(run('cargo', ['metadata', '--no-deps', '--format-version', '1', '--manifest-path', 'src-tauri/Cargo.toml'], true));
+const metadata = JSON.parse(run('cargo', ['metadata', '--no-deps', '--format-version', '1', '--manifest-path', 'app/src-tauri/Cargo.toml'], true));
 const output = join(metadata.target_directory, ...(explicitTarget ? [targets[arch]] : []), debug ? 'debug' : 'release', 'bundle', 'macos');
 const source = join(output, `${config.productName}.app`);
 const executable = run('/usr/bin/plutil', ['-extract', 'CFBundleExecutable', 'raw', '-o', '-', join(source, 'Contents/Info.plist')], true);

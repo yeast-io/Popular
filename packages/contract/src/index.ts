@@ -35,7 +35,7 @@ export { redactDiagnosticText, serializeDiagnosticError } from './diagnostics/di
 export * from './remote-client.schema.js';
 export * from './helper-gateway/helper-gateway.schema.js';
 export type { DeviceKeys, Authorization, Session, AgentStatus, DeviceStatus, DownloadRequest, CommandState, CommandRecord,
-  TaskEvidence, ResultPayload, StatusPayload, PreparedDelivery, PublicCommand, WireMessage } from './helper-gateway/helper-gateway.types.js';
+  TaskEvidence, ResultPayload, StatusPayload, PreparedTorrent, PreparedDelivery, PublicCommand, WireMessage } from './helper-gateway/helper-gateway.types.js';
 
 export * from './tv-shows/tv-show.schema.js';
 export * from './tv-shows/tv-season.schema.js';
@@ -46,3 +46,5 @@ export * from './resource-notifications/resource-notification.schema.js';
 export * from './tv-preferences/tv-preference.schema.js';
 
 export * from './integrations/ai.schema.js';
+
+export * from './helper-gateway/agent-resource.schema.js';

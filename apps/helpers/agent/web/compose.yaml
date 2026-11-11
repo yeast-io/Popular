@@ -1,0 +1,36 @@
+services:
+  agent:
+    image: ${AGENT_IMAGE:-popular-agent-web:local}
+    build:
+      context: ../../../..
+      dockerfile: apps/helpers/agent/web/Dockerfile
+    ports:
+      - '${AGENT_PUBLISH_ADDRESS:-127.0.0.1}:${AGENT_WEB_PORT:-1423}:1423'
+    environment:
+      AGENT_WEB_ORIGIN: ${AGENT_WEB_ORIGIN:-http://127.0.0.1:1423}
+      AGENT_SESSION_TTL_SECONDS: ${AGENT_SESSION_TTL_SECONDS:-28800}
+      VERBOSE: ${VERBOSE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - agent-data:/var/lib/popular-agent
+      - agent-secrets:/run/agent-secrets:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    stop_grace_period: 15s
+    restart: unless-stopped
+  init-secrets:
+    profiles: [setup]
+    image: ${AGENT_IMAGE:-popular-agent-web:local}
+    command: ['--init-secrets', '/run/agent-secrets']
+    volumes:
+      - agent-secrets:/run/agent-secrets
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+volumes:
+  agent-data:
+  agent-secrets:

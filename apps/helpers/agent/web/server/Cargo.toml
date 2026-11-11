@@ -1,0 +1,22 @@
+[package]
+name = "popular-agent-web"
+version = "0.1.1-beta.1"
+edition = "2021"
+rust-version = "1.96"
+
+[dependencies]
+popular-agent-core = { path = "../../core" }
+base64 = "0.23"
+bytes = "1"
+futures-util = "0.3"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+ring = { version = "0.17", features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["signal", "time", "sync", "macros", "rt-multi-thread", "net", "fs"] }
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }

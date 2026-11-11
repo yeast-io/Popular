@@ -91,3 +91,13 @@ test('the default stays enabled for legacy rows, explicit exclusions and newly s
   assert.ok(changed.effectiveSites.includes('mteam'));
   assert.deepEqual((await service.selectSites('alice', [])).effectiveSites, ['hdarea']);
 });
+
+test('Agent selection stays separate and reading it never initializes a cloud resource default', async () => {
+  const f = harness();
+  f.rows.set('alice', { defaults: {}, selectedSites: ['hdarea'], resourceAgentDeviceId: 'device-1', agentSelectedSites: ['hdarea'], agentDefaultSite: 'hdarea' });
+  const local = await f.service.get('alice');
+  assert.equal(local.resourceAgentDeviceId, 'device-1');
+  assert.equal(local.defaults.resource, 'hdarea');
+  assert.equal(f.rows.get('alice')!.defaults.resource, undefined);
+  assert.deepEqual(f.rows.get('alice')!.selectedSites, ['hdarea']);
+});

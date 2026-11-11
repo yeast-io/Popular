@@ -11,6 +11,7 @@ export const IntegrationDefaultsSchema = Type.Object({
   ai: Type.Optional(IntegrationIdSchema),
 }, { additionalProperties: false });
 export const IntegrationPreferencesSchema = Type.Object({
+  resourceAgentDeviceId: Type.Optional(Type.String({ pattern: '^[A-Za-z0-9_-]{1,160}$' })),
   defaults: IntegrationDefaultsSchema,
   selectedSites: Type.Array(IntegrationIdSchema, { uniqueItems: true, maxItems: 32 }),
   effectiveSites: Type.Array(IntegrationIdSchema),

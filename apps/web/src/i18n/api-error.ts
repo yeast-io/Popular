@@ -3,6 +3,8 @@ import { t } from './index';
 import type { TranslationKey } from './translation.types';
 
 const resourceSiteErrorKeys = {
+  agentUnavailable: 'resourceSite.error.agentUnavailable', agentUnsupported: 'resourceSite.error.agentUnsupported',
+  agentModeConflict: 'resourceSite.error.agentModeConflict', downloadLimited: 'resourceSite.error.downloadLimited',
   passkeyRequired: 'resourceSite.error.passkeyRequired',
   authentication: 'resourceSite.error.authentication', blocked: 'resourceSite.error.blocked',
   rateLimited: 'resourceSite.error.rateLimited', invalidResponse: 'resourceSite.error.invalidResponse',

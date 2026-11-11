@@ -20,6 +20,7 @@ import WhatsAppSettings from './features/integrations/WhatsAppSettings.vue';
 import NotificationTestPage from './features/notifications/NotificationTestPage.vue';
 import AiProviderSettings from './features/integrations/AiProviderSettings.vue';
 import ResourceSiteSettings from './features/integrations/ResourceSiteSettings.vue';
+import AgentResourceSettings from './features/integrations/AgentResourceSettings.vue';
 import MTeamSettings from './features/integrations/MTeamSettings.vue';
 import RemoteClientSettings from './features/remote-clients/RemoteClientSettings.vue';
 import DownloaderSettings from './features/integrations/DownloaderSettings.vue';
@@ -175,9 +176,11 @@ async function loadPublicConfig() {
               <AiProviderSettings v-for="provider in (['openai', 'deepseek', 'claude'] as const)" :key="`${user.id}:${provider}`" :provider="provider" />
             </div>
             <div v-if="settingsVisited.has('resources')" v-show="settingsSection === 'resources'" class="settings-form">
+              <AgentResourceSettings :key="`agent-resources-${user.id}`" v-slot="{ agentEnabled }"><template v-if="!agentEnabled">
               <MTeamSettings :key="user.id" />
               <ResourceSiteSettings :key="`resource-sites-hdarea-${user.id}`" />
               <ResourceSiteSettings :key="`resource-sites-hdwing-${user.id}`" site="hdwing" name="HDWing" />
+              </template></AgentResourceSettings>
             </div>
             <div v-if="settingsVisited.has('downloads')" v-show="settingsSection === 'downloads'" class="settings-form">
               <DownloaderSettings :key="user.id" ref="downloaderSettings" />

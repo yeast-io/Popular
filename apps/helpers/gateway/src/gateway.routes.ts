@@ -239,11 +239,10 @@ export async function createGatewayApp(
         if (peer)
           void options
             .bridge!.remove(peer)
-            .catch(
-              (err) => service.options.logger.error({ err, stage: 'service-socket.close' }, 'gateway')
-            );
+            .catch((err) => service.options.logger.error({ err, stage: 'service-socket.close' }, 'gateway'));
       });
-    });
+    }
+  );
   app.get(
     '/client/v1/socket',
     {
@@ -310,8 +309,7 @@ export async function createGatewayApp(
         }
         alive = false;
         socket.ping();
-      }, 15_000
-      );
+      }, 15_000);
       socket.on('pong', () => {
         alive = true;
       });
@@ -399,7 +397,8 @@ export async function createGatewayApp(
         socket.terminate();
         clean();
       });
-    });
+    }
+  );
   let sweeping = false;
   const sweep = async () => {
     if (sweeping) return;

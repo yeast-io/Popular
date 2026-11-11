@@ -76,6 +76,7 @@ function fixture(
   defaultProvider?: DownloadProvider,
   instances?: DownloaderChoice[]
 ) {
+  let agentDevice: string | undefined;
   let handling: AssistantRequestClassification['handling'];
   const requests: LlmGenerateInput[] = [];
   let detectedLocale: Locale | null = null;
@@ -90,7 +91,14 @@ function fixture(
   let movieCandidates = false;
   let calls = 0;
   let resourceCalls = 0;
-  const submissions: Array<{ owner: string; movie: number; release: string; provider: DownloadProvider; downloaderInstanceId?: string }> = [];
+  const submissions: Array<{
+    owner: string;
+    movie: number;
+    release: string;
+    provider: DownloadProvider | undefined;
+    remoteDeviceId?: string;
+    downloaderInstanceId?: string;
+  }> = [];
   const logs: unknown[] = [];
   const create = () => {
     return new AssistantWorkflow(
@@ -162,21 +170,29 @@ function fixture(
           },
         },
         downloads: {
+          agentDeviceFor: async () => agentDevice,
           providersFor: async () => [...providers],
           ...(instances ? { instancesFor: async () => [...instances] } : {}),
           defaultProviderFor: async () => defaultProvider,
-          createForOwner: async (owner, movie, release, provider, _source, downloaderInstanceId) => {
+          createForOwner: async (owner, movie, release, provider, _source, downloaderInstanceId, remoteDeviceId) => {
             const persisted = await sessions.read(owner, 'telegram:chat');
             assert.equal(persisted?.stage, 'submitting', 'checkpoint must precede external submission');
             assert.equal(persisted?.selection?.releaseId, release);
-            submissions.push({ owner, movie, release, provider, ...(downloaderInstanceId ? { downloaderInstanceId } : {}) });
+            submissions.push({
+              owner,
+              movie,
+              release,
+              provider,
+              ...(remoteDeviceId ? { remoteDeviceId } : {}),
+              ...(downloaderInstanceId ? { downloaderInstanceId } : {}),
+            });
             if (failSubmit) throw new Error('upstream secret-release-title.2160p failed');
             return {
               id: 'task-1',
               tmdbId: movie,
               sourceProvider: 'mteam',
               sourceReleaseId: release,
-              provider,
+              provider: provider ?? 'qbittorrent',
               status: 'downloading',
               progress: 12,
             } satisfies MovieDownload;
@@ -190,6 +206,9 @@ function fixture(
     return create().run({ ...input, messageId: String(++message), text, ...overrides }, history);
   };
   return {
+    agent(value?: string) {
+      agentDevice = value;
+    },
     sessions,
     create,
     send,
@@ -406,8 +425,7 @@ test('cancellation before a turn never reaches model or download operations', as
   const calls = f.counts().calls;
   await assert.rejects(f.create().run({ ...input, messageId: 'aborted', text: '2' }, [], AbortSignal.abort()), {
     name: 'AbortError',
-  }
-  );
+  });
   assert.equal(f.counts().calls, calls);
   assert.equal(f.submissions.length, 0);
 });
@@ -494,8 +512,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       providers: [],
       hasSelection: false,
       resources: { hasSnapshot: true, releaseCount: 64, page: 2, pageCount: 7 },
-    }
-    );
+    });
     assert.match(reply.replyText, locale === 'zh-CN' ? /请选择下载器/ : /Choose a downloader/);
     assert.equal((await f.state())?.selection?.releaseId, 'global-3');
     assert.equal(f.submissions.length, 0);
@@ -635,8 +652,25 @@ test('assistant distinguishes two instances of the same downloader type', async 
   assert.equal(f.submissions.length, 0);
   f.action('select_provider', null, '2');
   await f.send('Use the second downloader');
-  assert.deepEqual(f.submissions, [{
-    owner: 'alice', movie: 157336, release: 'release-2', provider: 'qbittorrent',
-    downloaderInstanceId: instances[1]!.downloaderInstanceId,
-  }]);
+  assert.deepEqual(f.submissions, [
+    {
+      owner: 'alice',
+      movie: 157336,
+      release: 'release-2',
+      provider: 'qbittorrent',
+      downloaderInstanceId: instances[1]!.downloaderInstanceId,
+    },
+  ]);
+});
+
+test('Agent mode submits the pinned resource to the selected device without offering cloud downloaders', async () => {
+  const f = fixture();
+  f.agent('device-1');
+  await f.send('下载星际穿越');
+  f.action('select_resource', 1);
+  assert.match((await f.send('第一个')).replyText, /task-1/);
+  assert.deepEqual(f.submissions, [
+    { owner: 'alice', movie: 157336, release: 'release-1', provider: undefined, remoteDeviceId: 'device-1' },
+  ]);
+  assert.equal((await f.state())?.stage, 'idle');
 });

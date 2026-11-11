@@ -1,3 +1,5 @@
+import { AgentResourceService } from './modules/agent-resources/agent-resource.service.js';
+import { AgentResourceSource } from './modules/agent-resources/agent-resource-source.adapter.js';
 import { RedisTaskStatisticsStore } from './infrastructure/redis/task-statistics.store.js';
 import { ConfiguredDownloadClientFactory } from './infrastructure/downloads/download-client-factory.adapter.js';
 import { DownloadSourceService } from './modules/downloads/download-source.service.js';
@@ -5,7 +7,13 @@ import { RemoteTorrentService } from './modules/remote-downloads/remote-torrent.
 import { AiSettingsService } from './modules/integrations/ai-settings.service.js';
 import type { AiSettingsRegistry } from './modules/integrations/ai-settings.types.js';
 import { MongoAiConfigStore } from './infrastructure/mongodb/integrations/ai-config.store.js';
-import { AI_PROVIDERS, AI_PROVIDER_NAMES, AI_PROVIDER_URLS, AI_MODEL_LIMITS, modelLimits } from './modules/integrations/ai-provider.policy.js';
+import {
+  AI_PROVIDERS,
+  AI_PROVIDER_NAMES,
+  AI_PROVIDER_URLS,
+  AI_MODEL_LIMITS,
+  modelLimits,
+} from './modules/integrations/ai-provider.policy.js';
 import { UserLlmService } from './modules/llm/user-llm.service.js';
 import { DeepSeekLlmAdapter } from './infrastructure/deepseek/deepseek-llm.adapter.js';
 import { ClaudeLlmAdapter } from './infrastructure/claude/claude-llm.adapter.js';
@@ -215,10 +223,14 @@ try {
     new SecretCrypto(config.INTEGRATION_SECRET_KEY)
   );
   shutdown.register('gateway_pool', 70, () => gatewayPool.stop());
-  const remoteClientWorker = new RemoteClientWorker(remoteClientService, {
-    logger: loggers.error,
-    verbose: config.VERBOSE,
-  }, taskStatistics);
+  const remoteClientWorker = new RemoteClientWorker(
+    remoteClientService,
+    {
+      logger: loggers.error,
+      verbose: config.VERBOSE,
+    },
+    taskStatistics
+  );
   shutdown.register('remote_client_notifications', 31, () => remoteClientWorker.stop());
   remoteClientWorker.start();
   const userStore = new MongoAuthUserStore(models.users, models.authIdentities);
@@ -259,16 +271,30 @@ try {
     externalUsageStore
   );
   const mediaTrendingStore = new RedisMediaTrendingStore(infrastructure.redis.getClient());
-  const mediaTrendingLock = new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED && config.VERBOSE, loggers.app);
-  const mediaTrendingOptions = { ttlSeconds: config.MEDIA_TRENDING_CACHE_TTL_SECONDS, logger: loggers.app, verbose: config.VERBOSE };
-  const movieTrending = new MediaTrendingService('movie', mediaTrendingStore, {
-    fetch: async (page, locale, context) => {
-      const result = await tmdb.fetchPage(page, locale, context);
-      return { ...result, items: result.movies };
+  const mediaTrendingLock = new RedisSyncLock(
+    infrastructure.redis.getClient(),
+    config.REDIS_LOCK_TRACE_ENABLED && config.VERBOSE,
+    loggers.app
+  );
+  const mediaTrendingOptions = {
+    ttlSeconds: config.MEDIA_TRENDING_CACHE_TTL_SECONDS,
+    logger: loggers.app,
+    verbose: config.VERBOSE,
+  };
+  const movieTrending = new MediaTrendingService(
+    'movie',
+    mediaTrendingStore,
+    {
+      fetch: async (page, locale, context) => {
+        const result = await tmdb.fetchPage(page, locale, context);
+        return { ...result, items: result.movies };
+      },
+      save: (items, locale, now) => movieCatalog.upsertMovies(items, now, locale),
+      read: (ids, locale) => movieCatalog.readMovies(ids, locale),
     },
-    save: (items, locale, now) => movieCatalog.upsertMovies(items, now, locale),
-    read: (ids, locale) => movieCatalog.readMovies(ids, locale),
-  }, mediaTrendingLock, mediaTrendingOptions);
+    mediaTrendingLock,
+    mediaTrendingOptions
+  );
   const movieStatusStore = new MongoMovieStatusStore(models.userMovieStates);
   const mteamEndpoints = { baseUrl: config.MTEAM_BASE_URL, webBaseUrl: config.MTEAM_WEB_BASE_URL };
   const integrationConfigStore = withMTeamEndpoints(
@@ -310,45 +336,83 @@ try {
     },
     movieReleaseCache
   );
-  await Promise.all([models.tvPreferences, models.tvWatchlist, models.tvShows, models.tvShowLocalizations, models.tvSeasons, models.tvSeasonLocalizations,
-    models.tvEpisodes, models.tvEpisodeLocalizations].map((model) => model.init()));
-  const tvProvider = new TmdbTvClient(new TmdbHttpClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS, undefined, externalUsageStore));
-  const tvLock = new RedisSyncLock(infrastructure.redis.getClient(), config.REDIS_LOCK_TRACE_ENABLED && config.VERBOSE, loggers.app);
+  await Promise.all(
+    [
+      models.tvPreferences,
+      models.tvWatchlist,
+      models.tvShows,
+      models.tvShowLocalizations,
+      models.tvSeasons,
+      models.tvSeasonLocalizations,
+      models.tvEpisodes,
+      models.tvEpisodeLocalizations,
+    ].map((model) => model.init())
+  );
+  const tvProvider = new TmdbTvClient(
+    new TmdbHttpClient(config.TMDB_READ_ACCESS_TOKEN, config.TMDB_REQUEST_TIMEOUT_MS, undefined, externalUsageStore)
+  );
+  const tvLock = new RedisSyncLock(
+    infrastructure.redis.getClient(),
+    config.REDIS_LOCK_TRACE_ENABLED && config.VERBOSE,
+    loggers.app
+  );
   const tvSeasonStore = new MongoTvSeasonStore(models);
   const tvCatalog = new MongoTvShowStore(models, tvSeasonStore);
   const tvShowService = new TvShowService(tvCatalog, tvProvider, tvLock);
   const tvSeasonService = new TvSeasonService(tvSeasonStore, tvProvider, tvLock);
-  const tvTrendingService = new MediaTrendingService('tv', mediaTrendingStore, {
-    fetch: (page, locale, context) => tvProvider.fetchTrending(page, locale, context),
-    save: (items, locale, now) => tvCatalog.upsertSummaries(items, locale, now),
-    read: (ids, locale) => tvCatalog.readSummaries(ids, locale),
-  }, mediaTrendingLock, mediaTrendingOptions);
+  const tvTrendingService = new MediaTrendingService(
+    'tv',
+    mediaTrendingStore,
+    {
+      fetch: (page, locale, context) => tvProvider.fetchTrending(page, locale, context),
+      save: (items, locale, now) => tvCatalog.upsertSummaries(items, locale, now),
+      read: (ids, locale) => tvCatalog.readSummaries(ids, locale),
+    },
+    mediaTrendingLock,
+    mediaTrendingOptions
+  );
   const movieService = new MovieService(movieTrending, tmdb, movieCatalog, movieStatusStore);
   await Promise.all([models.integrationConfigs.init(), models.resourceSiteCredentials.init()]);
   const hdarea = new HDAreaAdapter(config.HDAREA_BASE_URL);
   const resourceSiteService = new ResourceSiteService(
-    new Map<string, ResourceSiteAdapter>([[hdarea.id, hdarea], ['hdwing', new HDWingAdapter(config.HDWING_BASE_URL)]]),
+    new Map<string, ResourceSiteAdapter>([
+      [hdarea.id, hdarea],
+      ['hdwing', new HDWingAdapter(config.HDWING_BASE_URL)],
+    ]),
     new MongoResourceSiteCredentialStore(models.resourceSiteCredentials),
     secrets,
     new ResourceSiteHttpClient(),
     { logger: loggers.error, verbose: config.VERBOSE }
   );
-  const resourceSearchService: ResourceSearchService = new ResourceSearchService([
-    new MTeamSearchSource(integrationConfigStore, secrets, mteam),
-    ...[...resourceSiteService.registry.values()].map((site) => {
-      return new ResourceSiteSearchSource(site.id, site.name, resourceSiteService);
-    }),
-  ], async (ownerId) => (await integrationPreferencesService.get(ownerId)).effectiveSites, {
-    cache: movieReleaseCache,
-    credentialVersion: async (ownerId, site) => {
-      if (site === 'mteam') {
-        const config = await integrationConfigStore.find(ownerId, 'mteam');
-        return config?.externalUserId ? String(config.verifiedAt?.getTime() ?? 0) : undefined;
-      }
-      if (await resourceSiteService.status(ownerId, site) !== 'configured_valid') return undefined;
-      return resourceSiteService.cacheVersion(ownerId, site);
-    },
+  await models.integrationPreferences.init();
+  const integrationPreferencesStore = new MongoIntegrationPreferencesStore(models.integrationPreferences);
+  const agentResourceService = new AgentResourceService({
+    preferences: integrationPreferencesStore,
+    authorization: new MongoRemoteAuthorizationStore(models.users, models.remoteDevices),
+    gateway: gatewayPool,
   });
+  resourceSiteService.agentResources = agentResourceService;
+  const resourceSearchService: ResourceSearchService = new ResourceSearchService(
+    [
+      new MTeamSearchSource(integrationConfigStore, secrets, mteam),
+      ...[...resourceSiteService.registry.values()].map((site) => {
+        return new ResourceSiteSearchSource(site.id, site.name, resourceSiteService);
+      }),
+    ].map((source) => new AgentResourceSource(source, agentResourceService)),
+    async (ownerId) => (await integrationPreferencesService.get(ownerId)).effectiveSites,
+    {
+      cache: movieReleaseCache,
+      credentialVersion: async (ownerId, site) => {
+        if (await agentResourceService.enabled(ownerId)) return agentResourceService.cacheVersion(ownerId, site);
+        if (site === 'mteam') {
+          const config = await integrationConfigStore.find(ownerId, 'mteam');
+          return config?.externalUserId ? String(config.verifiedAt?.getTime() ?? 0) : undefined;
+        }
+        if ((await resourceSiteService.status(ownerId, site)) !== 'configured_valid') return undefined;
+        return resourceSiteService.cacheVersion(ownerId, site);
+      },
+    }
+  );
   const integrationService = new IntegrationService(
     authService,
     integrationConfigStore,
@@ -378,20 +442,22 @@ try {
   );
   await models.aiConfigs.init();
   const legacyOpenaiConfigStore = new MongoOpenAIConfigStore(models.openaiConfigs);
-  const aiConfigStores = Object.fromEntries(AI_PROVIDERS.map((provider) => [provider,
-    new MongoAiConfigStore(models.aiConfigs, provider, provider === 'openai' ? legacyOpenaiConfigStore : undefined),
-  ])) as Record<import('@movie-hub/contract').AiProvider, MongoAiConfigStore>;
+  const aiConfigStores = Object.fromEntries(
+    AI_PROVIDERS.map((provider) => [
+      provider,
+      new MongoAiConfigStore(models.aiConfigs, provider, provider === 'openai' ? legacyOpenaiConfigStore : undefined),
+    ])
+  ) as Record<import('@movie-hub/contract').AiProvider, MongoAiConfigStore>;
   await models.integrationPreferences.init();
   const integrationPreferencesService = new IntegrationPreferencesService(
-    new MongoIntegrationPreferencesStore(models.integrationPreferences),
+    integrationPreferencesStore,
     async (ownerId) => {
       const [resources, qb, tr, ai] = await Promise.all([
         resourceSearchService.list(ownerId),
         qbittorrentConfigStore.list(ownerId),
         transmissionConfigStore.list(ownerId),
         Promise.all(AI_PROVIDERS.map((provider) => aiConfigStores[provider].find(ownerId))),
-      ]
-      );
+      ]);
       return [
         ...resources.sources.map((source) => ({ ...source, category: 'resource' as const })),
         ...qb.map((instance) => ({
@@ -415,17 +481,20 @@ try {
               : ('configured_unverified' as const),
         })),
         ...AI_PROVIDERS.map((provider, index) => ({
-          id: provider, name: AI_PROVIDER_NAMES[provider], category: 'ai' as const,
+          id: provider,
+          name: AI_PROVIDER_NAMES[provider],
+          category: 'ai' as const,
           status: !ai[index]
-            ? 'unconfigured' as const
+            ? ('unconfigured' as const)
             : ai[index].validation?.status === 'failed'
-              ? 'configured_invalid' as const
+              ? ('configured_invalid' as const)
               : ai[index].validation?.status === 'valid' && ai[index].model && modelLimits(provider, ai[index].model!)
-                ? 'configured_valid' as const
-                : 'configured_unverified' as const,
+                ? ('configured_valid' as const)
+                : ('configured_unverified' as const),
         })),
       ];
-    });
+    }
+  );
   for (const service of [
     integrationService,
     transmissionIntegrationService,
@@ -446,6 +515,27 @@ try {
     movieReleaseCache,
     config.MTEAM_RESOURCE_AVAILABLE_TTL_SECONDS * 1_000
   );
+  movieSiteResourcesService.agentResources = agentResourceService;
+  integrationService.agentResources = agentResourceService;
+  movieResourceChecks.agentResources = {
+    enabled: (owner) => agentResourceService.enabled(owner),
+    request: async (owner, tmdbId, force) => {
+      movieSiteResourcesService.schedule(owner, tmdbId, { force });
+      return true;
+    },
+    check: (owner, tmdbId, force) => movieSiteResourcesService.checkNowDetailed(owner, tmdbId, force, ['mteam']),
+    releases: async (owner, tmdbId, force) => {
+      const result = await movieSiteResourcesService.listReleases(owner, tmdbId, 'mteam', 1, force);
+      return {
+        provider: 'mteam',
+        availability: result.availability,
+        queriedAt: result.queriedAt,
+        cached: result.cached,
+        ...(result.cacheExpiresAt ? { cacheExpiresAt: result.cacheExpiresAt } : {}),
+        releases: result.releases,
+      };
+    },
+  };
   await Promise.all([
     models.remoteControl.commands.init(),
     models.remoteControl.receipts.init(),
@@ -453,10 +543,14 @@ try {
     models.movieDownloads.init(),
   ]);
   const downloadSources = new DownloadSourceService({
-    configs: integrationConfigStore, secrets, mteam, resources: movieResourceChecks,
+    configs: integrationConfigStore,
+    secrets,
+    mteam,
+    resources: movieResourceChecks,
     siteDownloads: { resources: movieSiteResourcesService, sites: resourceSiteService },
   });
   const remoteTorrents = new RemoteTorrentService(downloadSources);
+  remoteTorrents.agentResources = agentResourceService;
   const remoteDownloads = new RemoteDownloadService({
     diagnostics: { logger: loggers.error, verbose: config.VERBOSE },
     store: new MongoRemoteControlStore(models.users, models.remoteDevices, models.movieDownloads, models.remoteControl),
@@ -505,7 +599,13 @@ try {
     loggers.app
   );
   const telegramClient = config.TELEGRAM_BOT_TOKEN
-    ? new TelegramClient(config.TELEGRAM_BOT_TOKEN, undefined, loggers.app, config.TELEGRAM_POLL_TRACE_ENABLED, config.VERBOSE)
+    ? new TelegramClient(
+        config.TELEGRAM_BOT_TOKEN,
+        undefined,
+        loggers.app,
+        config.TELEGRAM_POLL_TRACE_ENABLED,
+        config.VERBOSE
+      )
     : undefined;
   const receiveMessage = async (
     ownerId: string,
@@ -589,13 +689,21 @@ try {
       },
     ]
   );
-  const resourceNotificationService = new ResourceNotificationService(new MongoResourceNotificationStore(models.resourceNotifications), {
-    notifications: notificationService, movies: movieCatalog, tv: tvCatalog, search: resourceSearchService,
-    enabledSites: async (ownerId) => (await integrationPreferencesService.get(ownerId)).effectiveSites,
-    resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
-    logger: loggers.error, verbose: config.VERBOSE, webOrigin: config.WEB_ORIGIN,
-    intervalMs: config.RESOURCE_NOTIFICATION_INTERVAL_MS,
-  });
+  const resourceNotificationService = new ResourceNotificationService(
+    new MongoResourceNotificationStore(models.resourceNotifications),
+    {
+      notifications: notificationService,
+      movies: movieCatalog,
+      tv: tvCatalog,
+      search: resourceSearchService,
+      enabledSites: async (ownerId) => (await integrationPreferencesService.get(ownerId)).effectiveSites,
+      resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
+      logger: loggers.error,
+      verbose: config.VERBOSE,
+      webOrigin: config.WEB_ORIGIN,
+      intervalMs: config.RESOURCE_NOTIFICATION_INTERVAL_MS,
+    }
+  );
   const resourceNotificationWorker = new ResourceNotificationWorker(resourceNotificationService, taskStatistics);
   shutdown.register('resource_notification_worker', 29, () => resourceNotificationWorker.stop());
   const movieDownloadService = new MovieDownloadService(
@@ -610,33 +718,62 @@ try {
     undefined,
     notificationService
   );
-  movieDownloadService.remote = new RemoteMovieDownloadService(new MongoMovieDownloadStore(models.movieDownloads),
-    remoteClientService, remoteDownloadCoordinator);
+  movieDownloadService.remote = new RemoteMovieDownloadService(
+    new MongoMovieDownloadStore(models.movieDownloads),
+    remoteClientService,
+    remoteDownloadCoordinator
+  );
+  movieDownloadService.agentResources = agentResourceService;
+  movieDownloadService.remote.agentResources = agentResourceService;
   movieDownloadService.preferences = integrationPreferencesService;
   movieDownloadService.resourceSearch = resourceSearchService;
   const conversationStore = new MongoConversationStore(models.conversationThreads, models.conversationMessages);
   const conversationService = new ConversationService(authService, conversationStore);
-  const aiSettings = Object.fromEntries(AI_PROVIDERS.map((provider) => {
-    const service = new AiSettingsService(authService, aiConfigStores[provider], secrets, {
-      model: provider === 'openai' ? config.OPENAI_MODEL : Object.keys(AI_MODEL_LIMITS[provider])[0]!,
-      recommendedModels: provider === 'openai' && config.OPENAI_RECOMMENDED_MODELS.length
-        ? config.OPENAI_RECOMMENDED_MODELS.filter((model) => modelLimits(provider, model))
-        : Object.keys(AI_MODEL_LIMITS[provider]),
-      verify: (apiKey) => probeAiModels({ provider, apiKey, timeoutMs: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000) }),
-    }, provider);
-    service.preferences = integrationPreferencesService;
-    return [provider, service];
-  })) as AiSettingsRegistry;
+  const aiSettings = Object.fromEntries(
+    AI_PROVIDERS.map((provider) => {
+      const service = new AiSettingsService(
+        authService,
+        aiConfigStores[provider],
+        secrets,
+        {
+          model: provider === 'openai' ? config.OPENAI_MODEL : Object.keys(AI_MODEL_LIMITS[provider])[0]!,
+          recommendedModels:
+            provider === 'openai' && config.OPENAI_RECOMMENDED_MODELS.length
+              ? config.OPENAI_RECOMMENDED_MODELS.filter((model) => modelLimits(provider, model))
+              : Object.keys(AI_MODEL_LIMITS[provider]),
+          verify: (apiKey) =>
+            probeAiModels({ provider, apiKey, timeoutMs: Math.min(config.OPENAI_REQUEST_TIMEOUT_MS, 20_000) }),
+        },
+        provider
+      );
+      service.preferences = integrationPreferencesService;
+      return [provider, service];
+    })
+  ) as AiSettingsRegistry;
   const userLlm = new UserLlmService({
     defaultProvider: async (ownerId) => (await integrationPreferencesService.get(ownerId)).defaults.ai,
     credentials: (ownerId, provider) => aiSettings[provider].requireCredentials(ownerId),
     createClient: ({ provider, apiKey, model }, ownerId) => {
       const accounting = { ownerId, recorder: externalUsageStore, maxRetries: config.OPENAI_MAX_RETRIES, provider };
-      if (provider === 'claude') return new ClaudeLlmAdapter(model, {
-        provider, apiKey, timeoutMs: config.OPENAI_REQUEST_TIMEOUT_MS,
-      }, accounting);
-      const sdk = new OpenAI({ apiKey, baseURL: AI_PROVIDER_URLS[provider], timeout: config.OPENAI_REQUEST_TIMEOUT_MS, maxRetries: 0 });
-      return provider === 'deepseek' ? new DeepSeekLlmAdapter(sdk, model, accounting) : new OpenAILlmClient(sdk, model, accounting);
+      if (provider === 'claude')
+        return new ClaudeLlmAdapter(
+          model,
+          {
+            provider,
+            apiKey,
+            timeoutMs: config.OPENAI_REQUEST_TIMEOUT_MS,
+          },
+          accounting
+        );
+      const sdk = new OpenAI({
+        apiKey,
+        baseURL: AI_PROVIDER_URLS[provider],
+        timeout: config.OPENAI_REQUEST_TIMEOUT_MS,
+        maxRetries: 0,
+      });
+      return provider === 'deepseek'
+        ? new DeepSeekLlmAdapter(sdk, model, accounting)
+        : new OpenAILlmClient(sdk, model, accounting);
     },
   });
   const createOwnerLlmClient = (ownerId: string) => userLlm.create(ownerId);
@@ -656,7 +793,13 @@ try {
     new PreferenceAgent(createOwnerLlmClient),
     (job, signal) => preferenceService.enrich(job, signal)
   );
-  const preferenceWorker = new PreferenceWorker(preferenceStore, preferenceWorkflow, loggers.error, config.VERBOSE, taskStatistics);
+  const preferenceWorker = new PreferenceWorker(
+    preferenceStore,
+    preferenceWorkflow,
+    loggers.error,
+    config.VERBOSE,
+    taskStatistics
+  );
   shutdown.register('preference_worker', 21, () => preferenceWorker.stop());
   const recommendationModel = createRecommendationModel(models.users.db);
   await recommendationModel.init();
@@ -770,8 +913,11 @@ try {
     undefined,
     undefined,
     config.SCAN_TRACE_ENABLED,
-    { resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
-      logger: loggers.app, verbose: config.VERBOSE },
+    {
+      resolveLocale: (ownerId) => authService.localeForOwner(ownerId, config.TMDB_LANGUAGE),
+      logger: loggers.app,
+      verbose: config.VERBOSE,
+    },
     taskStatistics
   );
   shutdown.register('notification_worker', 30, () => notificationWorker.stop());
@@ -788,6 +934,7 @@ try {
   );
   const app = await buildApp({
     resourceNotificationService,
+    agentResourceService,
     remoteClientService,
     remoteDownloadCoordinator,
     resourceSiteService,
@@ -805,7 +952,13 @@ try {
     userService,
     movieService,
     tvPreferenceService: new TvPreferenceService(new MongoTvPreferenceStore(models.tvPreferences), tvCatalog),
-    watchlistService: new WatchlistService(movieStatusService, tvCatalog, new MongoTvWatchlistStore(models.tvWatchlist), movieStatusStore, resourceNotificationService),
+    watchlistService: new WatchlistService(
+      movieStatusService,
+      tvCatalog,
+      new MongoTvWatchlistStore(models.tvWatchlist),
+      movieStatusStore,
+      resourceNotificationService
+    ),
     tvShowService,
     tvSeasonService,
     tvTrendingService,

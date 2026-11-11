@@ -11,23 +11,40 @@ export class IntegrationPreferencesService {
     const choices = await aiStep('integration-preferences.choices', () => this.choices(ownerId));
     const record = await this.store.read(ownerId);
     for (const category of ['resource', 'downloader', 'ai'] as const) {
+      if (category === 'resource' && record.resourceAgentDeviceId) continue;
       if (!record.defaults[category]) {
         const first = choices.find((choice) => choice.category === category && choice.status === 'configured_valid');
         if (first) await this.store.setDefault(ownerId, category, first.id, true);
       }
     }
     const current = await this.store.read(ownerId);
-    const selectedSites = current.selectedSites.filter((id) => {
+    const agent = !!current.resourceAgentDeviceId;
+    const defaults = { ...current.defaults };
+    if (agent) {
+      const available = choices
+        .filter((choice) => choice.category === 'resource' && choice.status !== 'unconfigured')
+        .map((choice) => choice.id);
+      const primary
+        = current.agentDefaultSite && available.includes(current.agentDefaultSite)
+          ? current.agentDefaultSite
+          : available[0];
+      if (primary) defaults.resource = primary;
+      else delete defaults.resource;
+    }
+    const selectedSites = (agent ? (current.agentSelectedSites ?? []) : current.selectedSites).filter((id) => {
       return choices.some(
         (choice) => choice.category === 'resource' && choice.id === id && choice.status !== 'unconfigured'
       );
     });
     // The primary site participates even when an older selection omitted it.
-    const effectiveSites = [...new Set([
-      ...selectedSites,
-      ...(current.defaults.resource ? [current.defaults.resource] : []),
-    ])];
-    return { ...current, selectedSites, effectiveSites, choices };
+    const effectiveSites = [...new Set([...selectedSites, ...(defaults.resource ? [defaults.resource] : [])])];
+    return {
+      defaults,
+      selectedSites,
+      effectiveSites,
+      choices,
+      ...(current.resourceAgentDeviceId ? { resourceAgentDeviceId: current.resourceAgentDeviceId } : {}),
+    };
   }
 
   async setDefault(ownerId: string, category: IntegrationCategory, id: string): Promise<IntegrationPreferences> {
@@ -37,10 +54,17 @@ export class IntegrationPreferencesService {
     if (category === 'resource') {
       const previous = await this.get(ownerId);
       await aiStep('integration-preferences.selection.save', () => {
-        return this.store.selectSites(ownerId, [...new Set([...previous.effectiveSites, id])]);
+        return previous.resourceAgentDeviceId && this.store.selectAgentSites
+          ? this.store.selectAgentSites(ownerId, [...new Set([...previous.effectiveSites, id])])
+          : this.store.selectSites(ownerId, [...new Set([...previous.effectiveSites, id])]);
       });
     }
-    await aiStep('integration-preferences.default.save', () => this.store.setDefault(ownerId, category, id));
+    const agent = category === 'resource' && (await this.store.read(ownerId)).resourceAgentDeviceId;
+    await aiStep('integration-preferences.default.save', () =>
+      agent && this.store.setAgentDefault
+        ? this.store.setAgentDefault(ownerId, id)
+        : this.store.setDefault(ownerId, category, id)
+    );
     return this.get(ownerId);
   }
 
@@ -56,7 +80,11 @@ export class IntegrationPreferencesService {
       throw new AppError(400, 'INTEGRATION_DEFAULT_INVALID', messages.en.invalid);
     const current = await this.get(ownerId);
     const enabled = [...new Set([...sites, ...(current.defaults.resource ? [current.defaults.resource] : [])])];
-    await aiStep('integration-preferences.selection.save', () => this.store.selectSites(ownerId, enabled));
+    await aiStep('integration-preferences.selection.save', () =>
+      current.resourceAgentDeviceId && this.store.selectAgentSites
+        ? this.store.selectAgentSites(ownerId, enabled)
+        : this.store.selectSites(ownerId, enabled)
+    );
     return this.get(ownerId);
   }
 

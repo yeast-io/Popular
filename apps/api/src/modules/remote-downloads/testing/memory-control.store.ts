@@ -118,6 +118,8 @@ export class MemoryControlStore implements RemoteControlStore {
           resourceId: d.resourceId,
           executionMode: d.executionMode,
           downloaderType: d.downloaderType ?? 'qbittorrent',
+          ...(d.resourceExecution ? { resourceExecution: d.resourceExecution } : {}),
+          ...(d.resourceCredentialVersion ? { resourceCredentialVersion: d.resourceCredentialVersion } : {}),
         }
       : null;
   }

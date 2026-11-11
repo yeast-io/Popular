@@ -568,6 +568,13 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     };
     currentAiTrace()?.sensitive(release.title);
     delete session.provider;
+    const agentDevice = await aiStep('assistant.download.agent', async () => this.options.downloads!.agentDeviceFor?.(input.ownerId));
+    if (agentDevice) {
+      session.provider = `agent:${agentDevice}`;
+      session.stage = 'submitting';
+      session.submissionEventId = turn.eventId;
+      return undefined;
+    }
     session.providers = await aiStep('assistant.download.providers', async () => {
       if (this.options.downloads!.instancesFor) return this.options.downloads!.instancesFor(input.ownerId);
       return (await this.options.downloads!.providersFor(input.ownerId)).map((provider) => ({ downloaderInstanceId: provider, provider, name: provider }));
@@ -622,6 +629,15 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     const selection = session.selection;
     currentAiTrace()?.sensitive(selection.title);
     try {
+      if (session.provider.startsWith('agent:')) {
+        const device = session.provider.slice(6);
+        if (await this.options.downloads!.agentDeviceFor?.(turn.input.ownerId) !== device)
+          throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', '');
+        const result = await aiStep('assistant.download.submit', () => this.options.downloads!.createForOwner(turn.input.ownerId, selection.tmdbId, selection.releaseId, undefined, 'mteam', undefined, device));
+        this.reset(session);
+        currentAiTrace()?.event('assistant.download.submitted', { taskId: result.id, outcome: result.status });
+        return this.downloadReply(downloadSubmittedText(turn.locale, result));
+      }
       const downloader = (await this.options.downloads!.instancesFor?.(turn.input.ownerId))?.find((choice) => choice.downloaderInstanceId === session.provider);
       if (this.options.downloads!.instancesFor && !downloader)
         throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', 'Selected downloader is unavailable');

@@ -11,7 +11,7 @@ export async function startMock({ port = 0 } = {}) {
   const f = await createFixture();
   f.gateway.now = Date.now;
   f.backend.now = Date.now;
-  f.router.now = Date.now;
+  f.gatewayCoordinator.now = Date.now;
   const stats = { binds: 0, auth: 0, adds: 0, grants: 0, duplicateEvents: 0, recoveries: 0, errors: [] };
   const received = [];
   const events = new Map();
@@ -71,7 +71,7 @@ export async function startMock({ port = 0 } = {}) {
         send(reply);
       };
     }
-    if (['__command_result__', '__download_status__'].includes(wire.command)) {
+    if (['__command_result__', '__download_status__', '__resource_response__'].includes(wire.command)) {
       received.push(structuredClone(wire));
       if (events.has(wire.messageId)) stats.duplicateEvents++;
       else events.set(wire.messageId, structuredClone(wire));
@@ -184,8 +184,8 @@ export async function startMock({ port = 0 } = {}) {
           deviceId: peer.session.deviceId,
           authVersion: peer.session.authVersion,
           deviceVersion: peer.session.deviceVersion,
-          source: 'mteam',
-          resourceId: 'resource-1',
+          source: body.source ?? 'mteam',
+          resourceId: body.resourceId ?? 'resource-1',
           correlationId: 'trace-' + id,
         };
         f.store.downloads.set(input.downloadId, {
@@ -193,6 +193,7 @@ export async function startMock({ port = 0 } = {}) {
           downloaderType: peer.status?.downloaderType,
           tmdbId: 1,
           executionMode: 'remote',
+          ...(body.resourceExecution ? { resourceExecution: body.resourceExecution, resourceCredentialVersion: body.resourceCredentialVersion } : {}),
         });
         const send = peer.send;
         const invalid = body.expired || body.wrongSession || body.wrongOwner || body.wrongHash || body.tampered;
@@ -336,7 +337,7 @@ export async function startMock({ port = 0 } = {}) {
     return json(request, reply, { result: 'success', tag: 1, arguments: args });
   });
   const address = await app.listen({ host: '127.0.0.1', port });
-  return { url: address, close: () => app.close() };
+  return { url: address, close: () => app.close(), fixture: f };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const mock = await startMock({ port: Number(process.env.MOCK_PORT ?? 0) });

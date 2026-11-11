@@ -1,3 +1,4 @@
+import { AgentResourceRequestSchema } from './agent-resource.schema.js';
 import { Type, type Static } from '@sinclair/typebox';
 import { RpcIdSchema as id } from './socket-rpc.schema.js';
 import { DownloadSourceSchema } from '../downloads/movie-download.schema.js';
@@ -13,7 +14,7 @@ export const GatewayDeviceKeysSchema = Type.Object({
 export const GatewaySessionSchema = Type.Object({ ownerId: id, deviceId: id, authVersion: integer, deviceVersion: integer,
   sessionId: id, instanceId: id }, object);
 export const GatewayAgentStatusSchema = Type.Object({ downloaderType: Type.Union([Type.Literal('qbittorrent'), Type.Literal('transmission')]),
-  instanceId: id, configured: Type.Boolean(), reachable: Type.Boolean() }, object);
+  instanceId: id, configured: Type.Boolean(), reachable: Type.Boolean(), resourceProtocol: Type.Optional(Type.Literal(1)) }, object);
 export const GatewayDeviceStatusSchema = Type.Object({
   online: Type.Boolean(), isAgentOnline: Type.Boolean(), isAgentDownloaderOnline: Type.Boolean(),
   checkedAt: Type.Number({ minimum: 0 }), statusObservedAt: Type.Optional(Type.Number({ minimum: 0 })),
@@ -70,6 +71,7 @@ export const PopularRpcSchemas = {
   __list_pending_deliveries__: Type.Object({ context: GatewaySessionSchema }, object),
 } as const;
 export const GatewayRpcSchemas = {
+  __agent_resource__: Type.Object({ ownerId: id, deviceId: id, authVersion: integer, deviceVersion: integer, request: AgentResourceRequestSchema }, object),
   __get_device_status__: Type.Object({ ownerId: id, deviceId: id, authVersion: integer, deviceVersion: integer }, object),
   __dispatch_download__: GatewayDownloadSchema,
   __authorization_changed__: RemoteAuthorizationChangeSchema,

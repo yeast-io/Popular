@@ -1,3 +1,4 @@
+import { registerAgentResourceRoutes } from './modules/agent-resources/agent-resource.routes.js';
 import { registerAiSettingsRoutes, registerDefaultAiSettingsRoute } from './modules/integrations/ai-settings.routes.js';
 import { AI_PROVIDERS, modelLimits } from './modules/integrations/ai-provider.policy.js';
 import { registerTvPreferenceRoutes } from './modules/tv-preferences/tv-preference.routes.js';
@@ -35,6 +36,7 @@ import { registerConversationRoutes } from './modules/conversations/conversation
 import { registerResourceNotificationRoutes } from './modules/resource-notifications/resource-notification.routes.js';
 
 export async function buildApp({
+  agentResourceService,
   resourceNotificationService,
   remoteClientService,
   resourceSiteService,
@@ -100,6 +102,7 @@ export async function buildApp({
         );
       if (resourceSearchService && authService)
         registerResourceSearchRoutes(api, resourceSearchService, authService, config, loggers.error);
+      if (agentResourceService && authService) registerAgentResourceRoutes(api, agentResourceService, authService, config, loggers.error);
       if (resourceSiteService && authService)
         registerResourceSiteRoutes(api, resourceSiteService, authService, config, loggers.error);
       if (telegramService) registerTelegramRoutes(api, telegramService, config);

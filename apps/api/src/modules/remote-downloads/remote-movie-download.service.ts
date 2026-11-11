@@ -1,3 +1,5 @@
+import type { AgentResourceService } from '../agent-resources/agent-resource.service.js';
+import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
 import { randomUUID } from 'node:crypto';
 import type { DownloadSource, Locale, MovieDownload, ResourceSiteRelease } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
@@ -9,6 +11,8 @@ import type { RemoteDownloadCoordinator } from './remote-download-coordinator.se
 import { remoteDownloadMessages } from './remote-download.messages.js';
 
 export class RemoteMovieDownloadService {
+  agentResources?: AgentResourceService;
+
   constructor(
     readonly downloads: MovieDownloadStore,
     readonly clients: RemoteClientService,
@@ -17,15 +21,20 @@ export class RemoteMovieDownloadService {
 
   async create(ownerId: string, tmdbId: number | undefined, releaseId: string, source: DownloadSource,
     deviceId: string, locale: Locale, displayTitle?: string, resource?: ResourceSiteRelease): Promise<MovieDownload> {
+    const agentDevice = await this.agentResources?.device(ownerId);
+    if (agentDevice && agentDevice !== deviceId) throw new ResourceSiteError('agentModeConflict');
+    const localSite = agentDevice ? (await this.agentResources!.states(ownerId)).find((row) => row.site === source) : undefined;
+    if (agentDevice && (!localSite?.enabled || localSite.status !== 'configured_valid')) throw new ResourceSiteError('notConfigured');
     const correlationId = currentAiTrace()?.correlationId ?? randomUUID();
     const configuration = await this.clients.get(ownerId);
     const device = configuration.devices.find((item) => item.id === deviceId);
     if (!configuration.hasKey || !device)
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', remoteDownloadMessages[locale].invalidDevice);
     const existing = await this.downloads.findByRelease(ownerId, tmdbId, releaseId, source);
+    if (existing && existing.status !== 'missing' && (existing.resourceExecution ?? 'cloud') !== (agentDevice ? 'agent' : 'cloud')) throw new ResourceSiteError('agentModeConflict');
     if (existing && existing.status !== 'missing' && (existing.executionMode !== 'remote' || existing.remoteDeviceId !== deviceId))
       throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', remoteDownloadMessages[locale].targetConflict);
-    const remote = { ...(displayTitle ? { displayTitle } : {}), deviceId, authVersion: device.authVersion,
+    const remote = { ...(agentDevice ? { resourceExecution: 'agent' as const } : {}), ...(localSite ? { resourceCredentialVersion: localSite.version } : {}), ...(displayTitle ? { displayTitle } : {}), deviceId, authVersion: device.authVersion,
       deviceVersion: device.deviceVersion, correlationId,
       ...(device.downloaderType && device.downloaderInstanceId
         ? { targetDownloader: {

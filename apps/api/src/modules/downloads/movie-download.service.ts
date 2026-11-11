@@ -1,3 +1,4 @@
+import type { AgentResourceService } from '../agent-resources/agent-resource.service.js';
 import type { DownloadSourceService } from './download-source.service.js';
 import { downloadClientError } from './download-client.errors.js';
 import type { ResourceSearchService } from '../resource-search/resource-search.service.js';
@@ -24,6 +25,7 @@ import type { NotificationService } from '../notifications/notification.service.
 
 export class MovieDownloadService {
   remote?: RemoteMovieDownloadService;
+  agentResources?: AgentResourceService;
   resourceSearch?: Pick<ResourceSearchService, 'search'>;
   preferences?: Pick<IntegrationPreferencesService, 'get'>;
   private readonly syncs = new Map<string, Promise<MovieDownloadRecord[]>>();
@@ -55,7 +57,12 @@ export class MovieDownloadService {
   }
 
   async instancesFor(ownerId: string): Promise<DownloaderChoice[]> {
+    if (await this.agentResources?.enabled(ownerId)) return [];
     return this.clients.instancesFor(ownerId);
+  }
+
+  async agentDeviceFor(ownerId: string): Promise<string | undefined> {
+    return this.agentResources?.device(ownerId);
   }
 
   async create(
@@ -107,6 +114,11 @@ export class MovieDownloadService {
     sourceReleaseTitle?: string,
     resource?: ResourceSiteRelease
   ): Promise<MovieDownload> {
+    const agentDevice = await this.agentResources?.device(ownerId);
+    if (agentDevice) {
+      if (requestedProvider || requestedInstanceId || (remoteDeviceId && remoteDeviceId !== agentDevice)) throw new ResourceSiteError('agentModeConflict');
+      remoteDeviceId = agentDevice;
+    }
     if (remoteDeviceId) {
       if (!this.remote || requestedInstanceId || requestedProvider)
         throw new AppError(409, 'DOWNLOAD_PROVIDER_CONFLICT', '');

@@ -1,3 +1,4 @@
+import type { AgentResourceService } from './modules/agent-resources/agent-resource.service.js';
 import type { AiSettingsRegistry } from './modules/integrations/ai-settings.types.js';
 import type { TvPreferenceService } from './modules/tv-preferences/tv-preference.service.js';
 import type { WatchlistService } from './modules/watchlist/watchlist.service.js';
@@ -35,6 +36,7 @@ import type { ConversationTurnService } from './modules/conversations/conversati
 import type { ResourceNotificationService } from './modules/resource-notifications/resource-notification.service.js';
 
 export interface BuildAppOptions {
+  agentResourceService?: AgentResourceService;
   resourceNotificationService?: ResourceNotificationService;
   tvPreferenceService?: TvPreferenceService;
   watchlistService?: WatchlistService;

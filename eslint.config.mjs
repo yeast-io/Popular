@@ -26,6 +26,7 @@ export default ts.config(
       '**/node_modules/**',
       '**/dist/**',
       '**/src-tauri/target/**',
+      'apps/helpers/agent/target/**',
       '**/src-tauri/gen/**',
       '**/coverage/**',
       '**/.cache/**',

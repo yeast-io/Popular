@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "apps/helpers/agent/src-tauri/tauri.conf.json"
+      - "apps/helpers/agent/app/src-tauri/tauri.conf.json"
 
   workflow_dispatch:
 
@@ -44,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          CONFIG="apps/helpers/agent/src-tauri/tauri.conf.json"
+          CONFIG="apps/helpers/agent/app/src-tauri/tauri.conf.json"
 
           echo "Checking config: $CONFIG"
 
@@ -94,8 +94,12 @@ jobs:
               exit 1
             fi
 
+            PREVIOUS_CONFIG="$CONFIG"
+            if ! git cat-file -e "${BEFORE}:${PREVIOUS_CONFIG}" 2>/dev/null; then
+              PREVIOUS_CONFIG="apps/helpers/agent/src-tauri/tauri.conf.json"
+            fi
             PREVIOUS_VERSION=$(
-              git show "${BEFORE}:${CONFIG}" 2>/dev/null |
+              git show "${BEFORE}:${PREVIOUS_CONFIG}" 2>/dev/null |
               jq -r '.version // empty'
             ) || {
               echo "::error::Cannot read previous version"
@@ -156,7 +160,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: apps/helpers/agent
+        working-directory: apps/helpers/agent/app
 
     steps:
       - name: Checkout
@@ -170,7 +174,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/helpers/agent/src-tauri
+          workspaces: apps/helpers/agent
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -223,7 +227,7 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/release"
 
-          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg \
+          DMG=$(find ../target/universal-apple-darwin/release/bundle/dmg \
             -maxdepth 1 -type f -name '*.dmg' -print -quit)
 
           if [[ -z "$DMG" ]]; then
@@ -241,7 +245,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          $targetDir = "src-tauri/target/x86_64-pc-windows-msvc/release"
+          $targetDir = "../target/x86_64-pc-windows-msvc/release"
           $bundleDir = Join-Path $env:GITHUB_WORKSPACE "release"
           $portableDir = Join-Path $env:RUNNER_TEMP "PLA"
 

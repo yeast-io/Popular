@@ -1,5 +1,9 @@
 export const resourceSiteMessages = {
   en: {
+    agentUnavailable: 'Your Agent is offline or unavailable. No cloud credentials were used.',
+    agentUnsupported: 'Update your Agent to use local resource requests.',
+    agentModeConflict: 'Resource execution changed. Reload and retry using the selected mode.',
+    downloadLimited: 'This torrent has reached the site download limit. It will retry later.',
     passkeyRequired: 'Configure a Passkey before downloading.',
     notConfigured: 'Configure this resource site before querying or downloading.',
     authentication: 'The resource site Cookie has expired. Update it in settings.',
@@ -11,6 +15,10 @@ export const resourceSiteMessages = {
     invalidCredential: 'A valid Cookie is required.',
   },
   zh: {
+    agentUnavailable: '你的 Agent 离线或暂时不可用，未使用云端凭据。',
+    agentUnsupported: '请更新 Agent，以使用本地资源请求。',
+    agentModeConflict: '资源执行方式已变化，请刷新后使用当前模式重试。',
+    downloadLimited: '该种子已达到站点下载限制，将稍后重试。',
     passkeyRequired: '请先配置 Passkey，再下载。',
     notConfigured: '请先配置该资源站点，再查询或下载。',
     authentication: '资源站点 Cookie 已失效，请在设置中更新。',

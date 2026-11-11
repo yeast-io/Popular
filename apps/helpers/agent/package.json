@@ -4,31 +4,25 @@
   "version": "0.1.1-beta.1",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "dev:ui": "vite --host 127.0.0.1 --port 1421 --strictPort",
-    "build": "vue-tsc --noEmit && vite build",
-    "typecheck": "vue-tsc --noEmit",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "tauri": "tauri",
-    "test:mock": "node tools/test-mock.mjs",
+    "dev": "pnpm --filter @movie-hub/helper-agent-app dev",
+    "dev:ui": "pnpm --filter @movie-hub/helper-agent-app dev:ui",
+    "build": "pnpm --filter @movie-hub/helper-agent-ui build && pnpm --filter @movie-hub/helper-agent-app build && pnpm --filter @movie-hub/helper-agent-web build",
+    "typecheck": "pnpm --filter @movie-hub/helper-agent-ui typecheck && pnpm --filter @movie-hub/helper-agent-app typecheck && pnpm --filter @movie-hub/helper-agent-web typecheck",
+    "test": "cargo test --manifest-path Cargo.toml --workspace",
+    "test:core": "cargo test --manifest-path Cargo.toml -p popular-agent-core",
+    "tauri": "pnpm --filter @movie-hub/helper-agent-app tauri",
+    "test:mock": "pnpm --filter @movie-hub/contract build && node tools/test-mock.mjs",
     "package:macos": "node tools/package-macos.mjs",
     "icons:generate": "node tools/generate-icons.mjs",
-    "test:tray:macos": "cargo run --offline --manifest-path src-tauri/Cargo.toml --example tray-status-check",
-    "test:ui": "vitest run src/PendingTasks.test.ts src/App.test.ts"
-  },
-  "dependencies": {
-    "@tauri-apps/api": "^2.0.0",
-    "vue": "^3.5.22"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0",
-    "@vitejs/plugin-vue": "^6.0.1",
-    "@vue/test-utils": "^2.5.1",
-    "happy-dom": "^20.14.6",
-    "typescript": "^5.9.3",
-    "vite": "^7.1.10",
-    "vitest": "^3.2.7",
-    "vue-tsc": "^3.1.1",
-    "ws": "^8.22.0"
+    "test:tray:macos": "cargo run --offline --manifest-path app/src-tauri/Cargo.toml --example tray-status-check",
+    "test:ui": "pnpm --filter @movie-hub/helper-agent-ui test && pnpm --filter @movie-hub/helper-agent-app test:ui && pnpm --filter @movie-hub/helper-agent-web test",
+    "dev:preview": "pnpm --filter @movie-hub/helper-agent-ui dev:preview",
+    "dev:web": "pnpm --filter @movie-hub/helper-agent-web dev:server",
+    "build:web": "pnpm --filter @movie-hub/helper-agent-web build && pnpm --filter @movie-hub/helper-agent-web build:server",
+    "test:web": "pnpm --filter @movie-hub/helper-agent-web test && cargo test --locked --manifest-path Cargo.toml -p popular-agent-web",
+    "test:web:integration": "pnpm --filter @movie-hub/contract build && node --import ../../api/node_modules/tsx/dist/loader.mjs tools/test-web-agent.mjs",
+    "test:docker": "node tools/test-docker-agent.mjs",
+    "test:sites": "pnpm --filter @movie-hub/helper-agent-web build && cargo build --locked --manifest-path Cargo.toml -p popular-agent-web && node tools/test-site-agent.mjs",
+    "test:resources": "pnpm --filter @movie-hub/contract build && pnpm --filter @movie-hub/helper-agent-web build && cargo build --locked --manifest-path Cargo.toml -p popular-agent-web && node --import ../../api/node_modules/tsx/dist/loader.mjs tools/test-agent-resources.mjs"
   }
 }

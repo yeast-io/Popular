@@ -1,0 +1,54 @@
+.management-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background: var(--canvas);
+}
+.management-card {
+  width: min(100%, 420px);
+  padding: 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+.management-card h1 {
+  font-size: 25px;
+  margin-bottom: 12px;
+}
+.management-intro {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 26px;
+}
+.management-card form {
+  display: grid;
+  gap: 18px;
+}
+.management-card label {
+  font-size: 12px;
+}
+.management-card input {
+  font-size: 16px;
+}
+.management-hint {
+  font-size: 10px;
+  color: var(--muted);
+  margin: 22px 0;
+}
+.management-language {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+.management-language select {
+  font-size: 12px;
+}
+@media (max-width: 480px) {
+  .management-card {
+    padding: 27px;
+  }
+}

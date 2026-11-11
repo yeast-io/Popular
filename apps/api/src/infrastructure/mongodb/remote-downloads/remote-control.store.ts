@@ -195,6 +195,8 @@ export class MongoRemoteControlStore implements RemoteControlStore {
           source: row.sourceProvider,
           resourceId: row.sourceReleaseId,
           executionMode: 'remote',
+          ...(row.remoteRequest?.resourceExecution ? { resourceExecution: row.remoteRequest.resourceExecution as 'cloud' | 'agent' } : {}),
+          ...(row.remoteRequest?.resourceCredentialVersion ? { resourceCredentialVersion: row.remoteRequest.resourceCredentialVersion } : {}),
           ...(row.provider ? { downloaderType: row.provider } : {}),
           ...(row.remoteRequest?.commandId ? { remoteCommandId: row.remoteRequest.commandId } : {}),
         }

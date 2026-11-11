@@ -1,6 +1,9 @@
 packages:
   - apps/*
   - apps/helpers/*
+  - apps/helpers/agent/app
+  - apps/helpers/agent/ui
+  - apps/helpers/agent/web
   - packages/*
 
 allowBuilds:

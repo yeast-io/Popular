@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import type { AgentResourceService } from '../agent-resources/agent-resource.service.js';
+import { MTEAM_DEFAULT_WEB_BASE_URL } from '@movie-hub/contract';
 import {
   MOVIE_SITE_CHECK_LEASE_MS,
   MOVIE_SITE_CHECK_RETRY_MS,
@@ -28,6 +31,7 @@ import { MovieReleaseCacheError } from './movie-release-cache.errors.js';
 import { aggregateSiteChecks, completionForSiteCheck, siteCheckResponse } from './movie-site-resources.domain.js';
 
 export class MovieSiteResourcesService {
+  agentResources?: AgentResourceService;
   private readonly tasks = new Set<Promise<unknown>>();
   private stopped = false;
   private readonly siteQueues = new Map<string, Promise<void>>();
@@ -47,6 +51,19 @@ export class MovieSiteResourcesService {
     private readonly availabilityTtlMs: number
   ) {}
 
+  private async checkProvider(ownerId: string, site: string): Promise<string> {
+    const device = await this.agentResources?.device(ownerId);
+    if (!device) return site;
+    let version = `${device}:unavailable`;
+    try {
+      version = await this.agentResources!.cacheVersion(ownerId, site);
+    } catch (error) {
+      currentAiTrace()?.fail(error, { stage: 'movie-resources.agent-scope' });
+      currentAiTrace()?.clearFailure();
+    }
+    return `agent-${createHash('sha256').update(version).digest('hex').slice(0, 12)}-${site}`;
+  }
+
   async selectedSites(ownerId: string): Promise<string[]> {
     return (await this.preferences.get(ownerId)).effectiveSites;
   }
@@ -60,7 +77,7 @@ export class MovieSiteResourcesService {
             ownerId,
             tmdbId,
             site,
-            await this.checks.readOne({ ownerId, tmdbId, provider: site })
+            await this.checks.readOne({ ownerId, tmdbId, provider: await this.checkProvider(ownerId, site) })
           );
         })
       )
@@ -69,6 +86,9 @@ export class MovieSiteResourcesService {
 
   async summaries(ownerId: string, tmdbIds: number[]): Promise<Map<number, MovieResourceCheckResponse>> {
     const ids = await this.selectedSites(ownerId);
+    const providers = new Map(
+      await Promise.all(ids.map(async (site) => [site, await this.checkProvider(ownerId, site)] as const))
+    );
     const rows = await this.checks.readForMovies(ownerId, tmdbIds);
     return new Map(
       tmdbIds.map((tmdbId) => {
@@ -80,7 +100,7 @@ export class MovieSiteResourcesService {
                 ownerId,
                 tmdbId,
                 site,
-                rows.find((row) => row.tmdbId === tmdbId && row.provider === site)
+                rows.find((row) => row.tmdbId === tmdbId && row.provider === providers.get(site))
               );
             })
           ),
@@ -108,11 +128,13 @@ export class MovieSiteResourcesService {
       .then(() => {
         return this.trace(ownerId, tmdbId, async () => {
           const attemptedAt = new Date();
+          const provider = await this.checkProvider(ownerId, site);
+          const generation = await this.agentResources?.executionVersion(ownerId);
           const config = await this.sites.configuration(ownerId, site);
           const identity = await this.movies.readMovieIdentity?.(tmdbId, this.locale);
           const fingerprint = identity ? JSON.stringify([identity.title, identity.imdbId ?? null]) : undefined;
           const acquired = await this.checks.tryAcquire(
-            { ownerId, tmdbId, provider: site },
+            { ownerId, tmdbId, provider },
             attemptedAt,
             new Date(attemptedAt.getTime() + MOVIE_SITE_CHECK_LEASE_MS),
             new Date(attemptedAt.getTime() - MOVIE_SITE_CHECK_RETRY_MS),
@@ -122,7 +144,9 @@ export class MovieSiteResourcesService {
           );
           if (!acquired) return;
           const result = await this.executeSite(ownerId, tmdbId, site);
-          await this.checks.complete({ ownerId, tmdbId, provider: site }, attemptedAt, result);
+          if (generation && (await this.agentResources?.executionVersion(ownerId)) !== generation)
+            throw new ResourceSiteError('agentModeConflict');
+          await this.checks.complete({ ownerId, tmdbId, provider }, attemptedAt, result);
         });
       })
       .catch((error) => {
@@ -155,12 +179,17 @@ export class MovieSiteResourcesService {
     if (!(await this.movies.hasMovie(tmdbId))) throw new AppError(404, 'NOT_FOUND', '');
     for (const site of ids) {
       try {
-        if (site === 'mteam') await this.mteam.request(ownerId, tmdbId, force);
+        if (site === 'mteam' && !(await this.agentResources?.enabled(ownerId)))
+          await this.mteam.request(ownerId, tmdbId, force);
         else this.queueSite(ownerId, tmdbId, site, force);
       } catch (error) {
         currentAiTrace()?.fail(error, { stage: 'movie-resources.site.enqueue', site });
         currentAiTrace()?.clearFailure();
-        await this.checks.recordAttempt({ ownerId, tmdbId, provider: site }, new Date(), this.failureResult(error));
+        await this.checks.recordAttempt(
+          { ownerId, tmdbId, provider: await this.checkProvider(ownerId, site) },
+          new Date(),
+          this.failureResult(error)
+        );
       }
     }
     return ids.length > 0;
@@ -176,7 +205,9 @@ export class MovieSiteResourcesService {
     const results = await Promise.all(
       ids
         .map(async (site) => {
-          if (site === 'mteam') {
+          const provider = await this.checkProvider(ownerId, site);
+          const generation = await this.agentResources?.executionVersion(ownerId);
+          if (site === 'mteam' && !(await this.agentResources?.enabled(ownerId))) {
             const execution = await this.mteam.checkNowDetailed(ownerId, tmdbId, force);
             if (execution.started) return execution.result;
           } else {
@@ -184,7 +215,7 @@ export class MovieSiteResourcesService {
             const config = await this.sites.configuration(ownerId, site);
             if (
               await this.checks.tryAcquire(
-                { ownerId, tmdbId, provider: site },
+                { ownerId, tmdbId, provider },
                 attemptedAt,
                 new Date(attemptedAt.getTime() + MOVIE_SITE_CHECK_LEASE_MS),
                 new Date(attemptedAt.getTime() - MOVIE_SITE_CHECK_RETRY_MS),
@@ -194,15 +225,17 @@ export class MovieSiteResourcesService {
               )
             ) {
               const result = await this.trace(ownerId, tmdbId, () => this.executeSite(ownerId, tmdbId, site));
-              await this.checks.complete({ ownerId, tmdbId, provider: site }, attemptedAt, result);
+              if (generation && (await this.agentResources?.executionVersion(ownerId)) !== generation)
+                throw new ResourceSiteError('agentModeConflict');
+              await this.checks.complete({ ownerId, tmdbId, provider }, attemptedAt, result);
               return result;
             }
           }
           const deadline = Date.now() + MOVIE_SITE_CHECK_LEASE_MS;
-          let row = await this.checks.readOne({ ownerId, tmdbId, provider: site });
+          let row = await this.checks.readOne({ ownerId, tmdbId, provider });
           while (row?.checking && !this.stopped && Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 250));
-            row = await this.checks.readOne({ ownerId, tmdbId, provider: site });
+            row = await this.checks.readOne({ ownerId, tmdbId, provider });
           }
           return completionForSiteCheck(row);
         })
@@ -277,12 +310,21 @@ export class MovieSiteResourcesService {
     force = false
   ): Promise<MovieSiteReleaseList> {
     const attemptedAt = new Date();
+    const generation = await this.agentResources?.executionVersion(ownerId);
     try {
-      return await this.queryReleases(ownerId, tmdbId, site, page, force);
+      const result = await this.queryReleases(ownerId, tmdbId, site, page, force);
+      if (generation && (await this.agentResources?.executionVersion(ownerId)) !== generation)
+        throw new ResourceSiteError('agentModeConflict');
+      return result;
     } catch (error) {
+      if (generation && await this.agentResources?.executionVersion(ownerId) !== generation) throw error;
       if (!(error instanceof MovieReleaseCacheError) && site !== 'mteam' && this.sites.registry.has(site)) {
         try {
-          await this.checks.recordAttempt({ ownerId, tmdbId, provider: site }, attemptedAt, this.failureResult(error));
+          await this.checks.recordAttempt(
+            { ownerId, tmdbId, provider: await this.checkProvider(ownerId, site) },
+            attemptedAt,
+            this.failureResult(error)
+          );
         } catch (recordError) {
           currentAiTrace()?.fail(recordError, { stage: 'movie-resources.failure.persist', site });
         }
@@ -316,12 +358,25 @@ export class MovieSiteResourcesService {
     page: number,
     force: boolean
   ): Promise<MovieSiteReleaseList> {
+    const generation = await this.agentResources?.executionVersion(ownerId);
+    const provider = await this.checkProvider(ownerId, site);
     if (!(await this.movies.hasMovie(tmdbId))) throw new AppError(404, 'NOT_FOUND', '');
-    if (site === 'mteam') {
+    if (site === 'mteam' && !(await this.agentResources?.enabled(ownerId))) {
       const result = await this.mteam.listReleases(ownerId, tmdbId, { force });
       return { ...result, site, name: 'M-Team', supportsDownload: true };
     }
-    const adapter = this.sites.registry.get(site);
+    const agentMode = await this.agentResources?.enabled(ownerId);
+    const adapter
+      = this.sites.registry.get(site)
+        ?? (agentMode && site === 'mteam'
+          ? {
+              name: 'M-Team',
+              baseUrl: MTEAM_DEFAULT_WEB_BASE_URL,
+              detailsUrl: (id: string) => new URL(`/detail/${encodeURIComponent(id)}`, MTEAM_DEFAULT_WEB_BASE_URL).href,
+              torrentUrl: undefined,
+              resolveTorrentUrl: undefined,
+            }
+          : undefined);
     if (!adapter) throw new AppError(404, 'NOT_FOUND', '');
     const configuration = await this.sites.configuration(ownerId, site);
     if (configuration.status !== 'configured_valid') throw new ResourceSiteError('authentication');
@@ -337,9 +392,13 @@ export class MovieSiteResourcesService {
     }
     return this.releaseCache.getOrFetch({
       identity: {
-        ownerId, tmdbId, site, page, locale: this.locale,
+        ownerId,
+        tmdbId,
+        site,
+        page,
+        locale: this.locale,
         ...(identity.imdbId ? { imdbId: identity.imdbId } : {}),
-        credentialVersion: await this.sites.cacheVersion(ownerId, site) ?? '',
+        credentialVersion: (await this.sites.cacheVersion(ownerId, site)) ?? '',
       },
       force,
       validate: isSiteReleaseCacheValue,
@@ -365,9 +424,7 @@ export class MovieSiteResourcesService {
             );
             releases = result.releases
               .filter((release) => {
-                return (
-                  !release.imdbId || release.imdbId === identity!.imdbId
-                );
+                return !release.imdbId || release.imdbId === identity!.imdbId;
               })
               .map((release) => {
                 return {
@@ -375,7 +432,12 @@ export class MovieSiteResourcesService {
                   seeders: release.seeders ?? 0,
                   seedersKnown: release.seeders !== undefined,
                   tags: release.tags ?? [],
-                  detailsUrl: adapter.detailsUrl?.(release.id) ?? adapter.baseUrl,
+                  detailsUrl:
+                    agentMode && configuration.baseUrl
+                      ? site === 'mteam'
+                        ? (adapter.detailsUrl?.(release.id) ?? configuration.baseUrl)
+                        : new URL(`details.php?id=${encodeURIComponent(release.id)}`, configuration.baseUrl).href
+                      : (adapter.detailsUrl?.(release.id) ?? adapter.baseUrl),
                 };
               });
             nextPage = result.nextPage;
@@ -387,6 +449,8 @@ export class MovieSiteResourcesService {
           } while (!this.stopped);
         }
         const queriedAt = new Date();
+        if (generation && (await this.agentResources?.executionVersion(ownerId)) !== generation)
+          throw new ResourceSiteError('agentModeConflict');
         const availability = !identity?.imdbId
           ? ('unmatchable' as const)
           : releases.length
@@ -395,7 +459,7 @@ export class MovieSiteResourcesService {
         const value: MovieSiteReleaseList = {
           site,
           name: adapter.name,
-          supportsDownload: Boolean(adapter.torrentUrl),
+          supportsDownload: Boolean(agentMode || adapter.torrentUrl || adapter.resolveTorrentUrl),
           queriedAt: queriedAt.toISOString(),
           cached: false,
           availability,
@@ -405,7 +469,7 @@ export class MovieSiteResourcesService {
         // Later pages must not overwrite the whole movie's positive availability with a page-local empty result.
         if (page === 1)
           await this.checks.recordAttempt(
-            { ownerId, tmdbId, provider: site },
+            { ownerId, tmdbId, provider },
             attemptedAt,
             availability === 'unmatchable'
               ? {

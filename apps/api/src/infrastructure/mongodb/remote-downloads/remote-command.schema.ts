@@ -9,6 +9,8 @@ const evidence = new Schema(
 const result = new Schema({ commandId: String, executionId: String, outcome: String, evidence }, { _id: false });
 export const remoteRequestSchema = new Schema(
   {
+    resourceExecution: { type: String, enum: ['cloud', 'agent'] },
+    resourceCredentialVersion: String,
     displayTitle: String,
     commandId: String,
     deviceId: String,

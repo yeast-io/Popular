@@ -1,3 +1,5 @@
+import type { AgentResourceService } from '../agent-resources/agent-resource.service.js';
+import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type { IntegrationPreferencesService } from './integration-preferences.service.js';
 import { maskIntegrationSecret } from '@movie-hub/contract';
@@ -32,6 +34,7 @@ export class IntegrationValidationError extends Error {
 
 export class IntegrationService {
   preferences?: IntegrationPreferencesService;
+  agentResources?: AgentResourceService;
 
   constructor(
     private readonly auth: AuthService,
@@ -50,6 +53,7 @@ export class IntegrationService {
 
   async saveMTeam(token: string | undefined, input: SaveMTeamConfigurationRequest): Promise<MTeamConfiguration> {
     const ownerId = await this.auth.requireOwnerId(token);
+    if (await this.agentResources?.enabled(ownerId)) throw new ResourceSiteError('agentModeConflict');
     const baseUrl = normalizeMTeamBaseUrl(this.endpoints?.baseUrl ?? input.baseUrl, this.allowedMTeamHosts);
     const existing = await this.configs.find(ownerId, 'mteam');
     const webBaseUrl
@@ -97,6 +101,7 @@ export class IntegrationService {
 
   async retestMTeam(token: string | undefined): Promise<MTeamConfiguration> {
     const ownerId = await this.auth.requireOwnerId(token);
+    if (await this.agentResources?.enabled(ownerId)) throw new ResourceSiteError('agentModeConflict');
     const existing = await this.configs.find(ownerId, 'mteam');
     if (!existing) throw new AppError(404, 'NOT_FOUND', 'M-Team is not configured');
     const attemptedAt = this.now();

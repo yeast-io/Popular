@@ -1,3 +1,26 @@
+# Agent 资源执行（第 5 批，2026-11-11）
+
+本批源码接通 Popular → Gateway → Core 的站点业务请求，以及本地票据 → 执行授权 → Agent 下载器的下载路径。Resources 增加单设备 Agent 模式胶囊；云端默认站点与 Agent 默认站点分别保留。AI 下载沿用选定设备。凭据和真实种子 URL 不回传云端，离线不回退云端。
+
+| 检查 | 结果与边界 |
+| --- | --- |
+| Rust 工作区测试 | 73 通过，14 项按现有设置忽略；包括签名连接、Web 认证、本地凭据、哈希、票据绑定、账号一致性与 HTML 解析回归 |
+| Popular API/工作流相关测试 | 69 通过；包含 Agent 所有权、离线无回退、模式切换、临时票据、AI 下载和既有资源/下载回归 |
+| Popular Web / 共享 Agent UI | 383 / 54 通过；含 en-US、zh-CN 设置开关、加载失败、设备发现失败和默认配置保留 |
+| Gateway / 远程队列 | 11 / 26 通过，各 3 项需要独立外部服务的测试保持跳过；含会话隔离、严格响应、超时和断开清理 |
+| 编译与规范 | contract 构建、API/Gateway/Popular Web/Agent 三端类型检查、Popular Web 生产构建、Rust 全目标 Clippy、rustfmt、作用域 ESLint 与 diff 空白检查通过 |
+| 原生 Web/Core/Gateway/API 联调 | 最新二进制通过三站搜索、HDArea/HDWing 详情、三站种子准备、M-Team 票据重复准备去重与下载器提交；模拟账户/持久化/下载器，站点为本机合成 HTTP 服务 |
+
+端到端测试额外检查：保留 HDArea 集数副标题、0 做种与未知做种的区别、其他 owner 拒绝、云端响应不含测试 Cookie/API Key/Passkey/真实下载地址、认证失效后标记本地站点无效、加密存储重启后复用 deviceId、Agent 离线失败、关闭 Agent 模式恢复云端偏好。测试仅在显式开发模式下允许合成本机 HTTP 地址；生产请求继续遵循既有 HTTPS 限制。
+
+回环集成测试在允许监听本机端口的环境通过；受限沙箱中的端口权限失败不计为应用故障。
+
+**尚未验证**：真实 PT 账号及页面、真实 Mongo 存储/索引、真实下载器、OS keychain 写入、Docker 镜像启动/重启、桌面安装包与远程部署。未重新打包 `.app`，未提交或推送代码。之前 Docker 运行验收仍单独待办；本机原生 Web 联调不能替代它。
+
+复现命令及目录：[Agent 资源路由](../../../docs/agent-resource-routing.md)。
+
+---
+
 # 设置交互与凭据掩码（2026-10-22）
 
 本轮仅修改 Agent，未打包，未使用真实 Key、下载工具密码或系统凭据库。
@@ -42,9 +65,9 @@
 
 ```sh
 pnpm --filter @movie-hub/helper-agent build
-pnpm exec eslint apps/helpers/agent/src apps/helpers/agent/tools --max-warnings 0
-cargo test --offline --manifest-path apps/helpers/agent/src-tauri/Cargo.toml
-cargo clippy --offline --manifest-path apps/helpers/agent/src-tauri/Cargo.toml --all-targets -- -D warnings
+pnpm exec eslint apps/helpers/agent/ui/src apps/helpers/agent/ui/preview apps/helpers/agent/app/src apps/helpers/agent/tools --max-warnings 0
+cargo test --offline --locked --manifest-path apps/helpers/agent/Cargo.toml --workspace
+cargo clippy --offline --locked --manifest-path apps/helpers/agent/Cargo.toml --workspace --all-targets -- -D warnings
 pnpm --filter @movie-hub/helper-agent test:mock
 ```
 
@@ -66,7 +89,7 @@ pnpm --filter @movie-hub/helper-agent test:mock
 | --- | --- |
 | `pnpm --filter @movie-hub/helper-agent build` | Vue/TypeScript 类型检查、Vite 生产 UI 构建通过 |
 | `pnpm exec eslint apps/helpers/agent --max-warnings 0` | 通过 |
-| `cargo clippy --offline --manifest-path apps/helpers/agent/src-tauri/Cargo.toml --all-targets -- -D warnings` | 通过，包含 Rust 类型/编译检查 |
+| `cargo clippy --offline --locked --manifest-path apps/helpers/agent/Cargo.toml --workspace --all-targets -- -D warnings` | 通过，包含 Rust 类型/编译检查 |
 | 常规 `cargo test` | 14 通过，2 项默认跳过；包括存储故障、旧设置兼容、双语资源一致性、URL 限制、AEAD/会话/过期校验、事件持久化与精确 ACK、脱敏错误分类 |
 | `cargo test ... native_credential_roundtrip -- --ignored` | 真实 macOS Keychain 虚构凭据写入、读回、删除通过；未读取或修改用户真实凭据 |
 | `pnpm --filter @movie-hub/helper-agent tauri build --debug --bundles app` | 最终 macOS Apple Silicon 调试 `.app` 构建通过，约 39.20 MiB；不是发布体积/性能数据 |
@@ -125,3 +148,72 @@ macOS 设置窗口打开时采用 Regular 模式，关闭后恢复 Accessory 菜
 验证：Vue/TypeScript 与 Vite 构建、限定客户端文件的 ESLint、Rust Clippy（含测试目标）通过。Rust 常规测试 20 项通过，2 项显式集成测试保持忽略；新增回归覆盖下载器测试成功自动保存、失败保留原设置及凭据、改目标不复用密码、保存不修改 Gateway/设备身份、Connect 复用已绑定身份、偏好修改保留凭据引用。下载器 HTTP 为真实 loopback + 模拟响应，凭据库使用内存替身。
 
 通过临时 Vite 预览与模拟 Tauri IPC 检查中英文布局、Connect 启用条件、连接/绑定状态、下载器错误提示及成功后状态；预览未访问真实 Gateway、下载器或系统凭据库。macOS/Windows 的托盘勾选、自启启停及设置写入失败后的原生恢复行为尚未实测。现存 `.app` 未更新。
+
+
+## 2026-11-11 Core/App 第 1 批
+
+代码已整理为 `core/` 与 `app/`，Rust workspace 和锁文件位于 Agent 根目录，前端仍是原有桌面界面。共享 UI、Web/Docker、本地站点凭据和站点代理属于后续批次。
+
+本地检查：workspace 常规 Rust 测试 48 项、桌面 UI 测试 13 项通过；新增 Core 完整运行流程覆盖两种下载器；本地 Gateway 恢复矩阵通过。ESLint、Clippy（禁止警告）、格式检查、前端构建和 macOS ARM64 调试打包通过，调试应用通过本地 ad-hoc 签名校验。
+
+现有本地测试夹具更新为当前协调器字段；恢复用例按活跃任务的恢复增量断言，不再假设已经停止监控的任务继续恢复。生产 Gateway 协议和下载执行恢复规则未改变。
+
+未执行真实下载器写入、原生凭据写入测试、Windows 打包、Linux 实机运行或远端 Actions。新 CI 负责后续 Linux Core 与 macOS/Windows 检查，但本地新增工作流不代表远端验证完成。目录、数据兼容性和命令见 [Core 与桌面宿主](../../../docs/agent-core.md)。
+
+
+## 2026-11-11 统一 UI 第 2 批
+
+共享 Vue 产品界面已迁至 `ui/`，桌面 `app/src/` 仅挂载页面和提供 Tauri 适配。五个入口为总览、资源站点、下载器、任务和设置；资源站点明确显示尚未开放。双语草稿、凭据隔离、显式重置、初始失败重试、旧快照提示及生命周期清理已覆盖。
+
+| 本地验证范围 | 结果 |
+| --- | --- |
+| 共享 UI、状态与队列测试 | 31 项通过 |
+| 桌面 IPC 与宿主能力适配测试 | 2 项通过 |
+| Rust workspace 回归 | 48 项通过，真实服务和原生凭据写入用例仍跳过 |
+| TypeScript / UI 与 App 构建 / ESLint / Clippy / Rust 格式 | 通过 |
+| macOS ARM64 调试打包及本地 ad-hoc 签名 | 通过 |
+| 浏览器实际布局 | 中文桌面 1040×820、英文手机 390×844、手机表单、未配置与状态失败场景已检查；手机内容宽度等于视口宽度 |
+
+浏览器使用独立且明确标注的模拟预览入口，不读取凭据，不连接设备。共享 UI 源代码不依赖 Tauri；现有业务协议与数据格式保持不变。新增桌面启动偏好操作复用托盘的原生应用、持久化和回滚逻辑，但未对用户的真实 OS 自启动配置执行操作。Windows、Linux 和远端 Actions 尚未运行。
+
+本批仍不包含 Web 管理服务、Docker、站点凭据或站点请求代理。开发与预览入口见 [共享 UI 说明](../../../docs/agent-ui.md)。
+
+
+## 2026-11-11 Web / Docker 第 3 批
+
+Web 宿主已接入同一 Core 与共享 UI，具备本地管理口令、HttpOnly 会话、同源/CSRF 校验、登录限流、SSE 状态、独立主密钥加密凭据、数据锁及优雅退出。Dockerfile、Compose、初始化和独立验收脚本已加入；资源站点凭据与站点请求仍留在后续批次。
+
+| 本地验证范围 | 结果 |
+| --- | --- |
+| Rust 常规回归 | Core 46、App 2、Web 8 项通过；显式真实服务/系统凭据用例仍跳过 |
+| 共享 UI / 桌面适配 / Web | 32 / 2 / 10 项通过；最终使用单 worker 验证 |
+| Web/Core/Gateway 进程联调 | qBittorrent、Transmission 均通过登录、绑定、下载成功、加密持久化、重启复用 deviceId、无重复绑定/添加及退出失效；账户/下载器为本机模拟 |
+| 真实 Chrome | 连接实际 Rust Web 服务，中英登录和共享页面、390×844 手机布局无横向溢出、退出清空口令；最终无浏览器错误 |
+| TypeScript / UI、App、Web 构建 / ESLint / Web Clippy / 格式 | 通过 |
+| Compose | 配置解析通过；不等于运行验收 |
+| Docker 镜像构建、启动和卷重启 | **未完成**：Docker Hub 下载缓慢，两次外部前端退出；改用内置前端后本机 Docker API 又出现 15 秒无响应，未获得可运行的最终镜像 |
+
+一轮默认多 worker UI 回归中，原有 TasksPage 英文用例超过 5 秒，整轮耗时 172 秒；单 worker 重跑全部 32 项在约 2.4 秒通过。未修改测试断言，未修改默认超时配置。
+
+Docker 的公共缓存检查得到相同版本 manifest，但缓存构建不能代替容器运行验收。未重启 Docker Desktop，未改动现有容器、卷或默认 builder；只终止本任务的构建客户端。`tools/test-docker-agent.mjs` 已准备好，待引擎恢复后执行。Linux/Windows、远端 Actions、真实 Gateway/下载器写入和真实手机 LAN 访问均未实测。桌面安装包未在本批重新生成。
+
+启动、凭据备份和后续验证命令见 [Web/Docker 说明](../../../docs/agent-web.md)。本批代码已实现，Docker 运行验收仍为明确的待办。
+
+## 2026-11-11 本地资源站点第 4 批
+
+Core 新增本地站点配置服务、M-Team/HDArea/HDWing 身份验证器、独立站点凭据引用、加密载荷的站点/地址绑定和持久化清理记录。App 与 Web 共用服务与双语页面，支持验证后保存、重新验证、启停和确认删除。Popular 的资源搜索、详情、下载来源解析及 Gateway 站点请求路由未在本批切换；界面明确说明此边界。
+
+| 本地验证范围 | 结果 |
+| --- | --- |
+| Rust workspace | Core 57、Web 9、App 2，共 68 项通过；13 项显式集成/真实服务与 1 项原生凭据写入测试仍跳过 |
+| 共享 UI / App 适配 / Web | 40 / 3 / 11，共 54 项通过 |
+| 站点 Core 专项 | 11 项覆盖三个站点、账号身份解析、跨域/重复身份拒绝、地址更换不复用凭据、失败替换保留原配置、账号变化、失效/限流/重定向、大响应、删除重试、损坏凭据恢复和并行提交 |
+| 独立 Web/Core 进程联调 | 默认模式拒绝 HTTP 且不发出站点请求；显式 loopback 开发模式下三站点验证、真实加密文件存储、重启恢复、停用状态保留、失效登录标记、删除后凭据文件清空均通过；站点响应均为本机合成 |
+| 实际 Chrome | 独立临时 Web Agent；登录后三站点表单、明确切换中文的桌面页、390×844 英文手机页及退出通过；无横向溢出和浏览器错误 |
+| TypeScript / UI、App、Web 构建 / ESLint / workspace Clippy / Rust 格式 / diff 空白检查 | 通过 |
+
+浏览器截图保存于本机验收产物目录 `agent-batch4/`。端到端使用临时数据目录、初始化的测试主密钥和合成凭据，结束后清理；未连接真实资源站、Gateway 或下载器，未写用户的真实系统凭据库。默认 HTTP 拒绝由非测试 Web 二进制验证；Rust 单元夹具仅对 loopback 开启测试许可，不修改全局环境变量。
+
+中途的测试夹具类型、类型检查及格式问题已修正。默认并行编译在本机发生持续资源竞争；最终 Rust 检查改为 `CARGO_BUILD_JOBS=1`，完整通过。未以修改断言或跳过新增测试替代验证。
+
+本批没有重新生成桌面安装包，未执行 Windows/Linux 实机验收或远端 Actions。第 3 批 Docker 镜像/启动/卷恢复仍为独立待验收项；本机 Web 加密存储的通过不能代替容器运行验收。实现边界和命令见 [本地站点说明](../../../docs/agent-resource-sites.md)。

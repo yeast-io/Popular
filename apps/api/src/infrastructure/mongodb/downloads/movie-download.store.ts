@@ -48,7 +48,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
           source: sourceProvider, resourceId: releaseId, correlationId: remote.correlationId }
       : undefined;
     const remoteRequest = input
-      ? { ...input, digest: fingerprint(input), createdAt: now, ...(remote?.displayTitle ? { displayTitle: remote.displayTitle } : {}),
+      ? { ...input, ...(remote?.resourceExecution ? { resourceExecution: remote.resourceExecution } : {}), ...(remote?.resourceCredentialVersion ? { resourceCredentialVersion: remote.resourceCredentialVersion } : {}), digest: fingerprint(input), createdAt: now, ...(remote?.displayTitle ? { displayTitle: remote.displayTitle } : {}),
           expiresAt: now + REMOTE_DELIVERY_TTL_MS, queueExpiresAt: now + REMOTE_QUEUE_RETENTION_MS,
           deliverySessionId: 'queued', deliveryMessageId: randomUUID(), ...(remote?.targetDownloader ? { targetDownloader: remote.targetDownloader } : {}) }
       : undefined;
@@ -123,7 +123,7 @@ export class MongoMovieDownloadStore implements MovieDownloadStore {
           source: record.sourceProvider, resourceId: record.sourceReleaseId, correlationId: remote.correlationId }
       : undefined;
     const remoteRequest = input
-      ? { ...input, digest: fingerprint(input), createdAt: now, ...(remote?.displayTitle ? { displayTitle: remote.displayTitle } : {}),
+      ? { ...input, ...(remote?.resourceExecution ? { resourceExecution: remote.resourceExecution } : {}), ...(remote?.resourceCredentialVersion ? { resourceCredentialVersion: remote.resourceCredentialVersion } : {}), digest: fingerprint(input), createdAt: now, ...(remote?.displayTitle ? { displayTitle: remote.displayTitle } : {}),
           expiresAt: now + REMOTE_DELIVERY_TTL_MS, queueExpiresAt: now + REMOTE_QUEUE_RETENTION_MS,
           deliverySessionId: 'queued', deliveryMessageId: randomUUID(),
           ...(remote?.targetDownloader ? { targetDownloader: remote.targetDownloader } : {}) }
@@ -219,6 +219,8 @@ export function toMovieDownloadRecord(row: MovieDownloadDocument & { _id: unknow
     ...(row.downloaderName ? { downloaderName: row.downloaderName } : {}),
     lookupTag: row.lookupTag,
     ...(row.executionMode ? { executionMode: row.executionMode as 'local' | 'remote' } : {}),
+    ...(row.remoteRequest?.resourceExecution ? { resourceExecution: row.remoteRequest.resourceExecution as 'cloud' | 'agent' } : {}),
+    ...(row.remoteRequest?.resourceCredentialVersion ? { resourceCredentialVersion: row.remoteRequest.resourceCredentialVersion } : {}),
     ...(row.remoteRequest?.deviceId ? { remoteDeviceId: row.remoteRequest.deviceId } : {}),
     ...(row.remoteRequest?.commandId ? { remoteCommandId: row.remoteRequest.commandId } : {}),
     ...(row.remoteRequest?.correlationId ? { remoteCorrelationId: row.remoteRequest.correlationId } : {}),

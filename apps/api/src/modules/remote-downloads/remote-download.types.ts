@@ -1,6 +1,7 @@
 import type { ResourceDownloadScope, ResourceDownloadLimit } from '../resource-sites/resource-download-limit.types.js';
 import type { RemoteClientDiagnostics } from '../remote-clients/remote-client.types.js';
 import type {
+  PreparedTorrent,
   CommandRecord,
   DownloadRequest,
   Session,
@@ -20,6 +21,8 @@ export interface RemoteDownloadSource {
   resourceId: string;
   remoteCommandId?: string;
   executionMode?: string;
+  resourceExecution?: 'cloud' | 'agent';
+  resourceCredentialVersion?: string;
   downloaderType?: AgentStatus['downloaderType'];
 }
 export interface RemoteControlStore {
@@ -48,10 +51,7 @@ export interface RemoteDownloadServiceOptions {
   report(error: unknown, fields: Record<string, unknown>): void;
 }
 
-export interface RemoteTorrentResult {
-  url: string;
-  torrentHash: string;
-}
+export type RemoteTorrentResult = PreparedTorrent;
 
 export interface RemoteCommandScan {
   deviceId?: string; pendingOnly?: boolean; retryBefore?: number;

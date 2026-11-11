@@ -1,3 +1,4 @@
+import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
 import { isResourceSearchCacheValue } from './resource-search.schema.js';
 import type { Locale, ResourceSiteSearch, ResourceSiteSearchResult } from '@movie-hub/contract';
 import type { ResourceSearchCacheDependencies, ResourceSearchSource } from './resource-search.types.js';
@@ -46,7 +47,11 @@ export class ResourceSearchService {
           identity: { ownerId, site: id, mediaType: 'tv' as const, query: input.query.trim(), page: input.page ?? 1, locale, credentialVersion },
           validate: isResourceSearchCacheValue,
           force: refresh === true,
-          fetch: async () => ({ ...await fetch(), cached: false, queriedAt: new Date().toISOString() }),
+          fetch: async () => {
+            const result = await fetch();
+            if (await this.cacheDependencies!.credentialVersion(ownerId, id) !== credentialVersion) throw new ResourceSiteError('agentModeConflict');
+            return { ...result, cached: false, queriedAt: new Date().toISOString() };
+          },
         };
         if (cacheOnly) return await this.cacheDependencies.cache.readCached(query) ?? { releases: [], cacheMiss: true };
         const result = await this.cacheDependencies.cache.getOrFetch(query);

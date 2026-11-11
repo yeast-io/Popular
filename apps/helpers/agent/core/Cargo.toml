@@ -1,0 +1,24 @@
+[package]
+name = "popular-agent-core"
+version = "0.1.1-beta.1"
+edition = "2021"
+rust-version = "1.96"
+
+[dependencies]
+ring = "0.17"
+rsa = "0.9.10"
+rand = "0.8"
+sha2 = "0.10"
+base64 = "0.23"
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "sync", "macros", "rt-multi-thread", "net", "io-util"] }
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+tempfile = "3"
+dotenvy = "0.15"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "query"] }
+
+dom_query = { version = "0.28", default-features = false }

@@ -1,3 +1,4 @@
+import type { MovieReleaseListResponse } from '@movie-hub/contract';
 import type { IntegrationFailureType, MovieRelease } from '@movie-hub/contract';
 import type { ExternalRequestContext } from '../external-usage/external-usage.types.js';
 
@@ -126,4 +127,11 @@ export interface MTeamSearchOptions {
   page?: number;
   signal?: AbortSignal;
   mediaType?: 'movie' | 'tv';
+}
+
+export interface AgentMovieResourceBridge {
+  enabled(ownerId: string): Promise<boolean>;
+  request(ownerId: string, tmdbId: number, force: boolean): Promise<boolean>;
+  check(ownerId: string, tmdbId: number, force: boolean): Promise<MovieResourceCheckExecution>;
+  releases(ownerId: string, tmdbId: number, force: boolean): Promise<MovieReleaseListResponse>;
 }

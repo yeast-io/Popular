@@ -1,0 +1,31 @@
+{
+  "name": "@movie-hub/helper-agent-ui",
+  "private": true,
+  "version": "0.1.1-beta.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./transport": "./src/transport/agent-transport.types.ts",
+    "./styles.css": "./src/style.css",
+    "./messages": "./src/locales/messages.json",
+    "./documentation": "./src/documentation.resources.json"
+  },
+  "scripts": {
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "dev:preview": "vite --host 127.0.0.1 --port 1422 --strictPort"
+  },
+  "dependencies": {
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.5.1",
+    "happy-dom": "^20.14.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10",
+    "vitest": "^3.2.7",
+    "vue-tsc": "^3.1.1"
+  }
+}

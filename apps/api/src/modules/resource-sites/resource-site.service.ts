@@ -1,3 +1,4 @@
+import type { AgentResourceService } from '../agent-resources/agent-resource.service.js';
 import { siteAccountIdentityPending } from './site-account.errors.js';
 import type { IntegrationPreferencesService } from '../integrations/integration-preferences.service.js';
 import { maskIntegrationSecret } from '@movie-hub/contract';
@@ -17,6 +18,7 @@ import { ResourceSiteError } from './resource-site.errors.js';
 
 export class ResourceSiteService {
   preferences?: IntegrationPreferencesService;
+  agentResources?: AgentResourceService;
 
   constructor(
     readonly registry: ReadonlyMap<string, ResourceSiteAdapter>,
@@ -27,16 +29,19 @@ export class ResourceSiteService {
   ) {}
 
   async cacheVersion(ownerId: string, site: string): Promise<string | undefined> {
+    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.cacheVersion(ownerId, site);
     return (await this.credentials.find(ownerId, site))?.version;
   }
 
   async status(ownerId: string, site: string) {
+    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.status(ownerId, site);
     this.adapter(site);
     const row = await this.credentials.find(ownerId, site);
     return !row ? 'unconfigured' : row.externalUserId ? row.status : 'configured_invalid';
   }
 
   async configuration(ownerId: string, site: string): Promise<ResourceSiteConfiguration> {
+    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.configuration(ownerId, site);
     const { baseUrl } = this.adapter(site);
     const row = await this.credentials.find(ownerId, site);
     return row
@@ -64,6 +69,7 @@ export class ResourceSiteService {
     cookie?: string,
     passkey?: string
   ): Promise<ResourceSiteConfiguration> {
+    if (await this.agentResources?.enabled(ownerId)) throw new ResourceSiteError('agentModeConflict');
     return this.trace(ownerId, site, 'configure', async () => {
       const adapter = this.adapter(site);
       const existing = await this.credentials.find(ownerId, site);
@@ -124,6 +130,7 @@ export class ResourceSiteService {
   }
 
   async torrentUrl(ownerId: string, site: string, id: string): Promise<string> {
+    if (await this.agentResources?.enabled(ownerId)) throw new ResourceSiteError('agentModeConflict');
     return this.trace(ownerId, site, 'torrent-url', async () => {
       const adapter = this.adapter(site);
       const row = await aiStep('resource-sites.credentials.load', () => this.credentials.find(ownerId, site));
@@ -158,6 +165,7 @@ export class ResourceSiteService {
   }
 
   async search(ownerId: string, site: string, input: ResourceSiteSearch, signal?: AbortSignal) {
+    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.search(ownerId, site, input, signal ?? AbortSignal.timeout(25_000));
     return this.run(ownerId, site, 'search', (adapter, session) => {
       currentAiTrace()?.sensitive(input.query ?? '');
       return adapter.search(session, input, signal);
@@ -165,6 +173,7 @@ export class ResourceSiteService {
   }
 
   async detail(ownerId: string, site: string, id: string, signal?: AbortSignal) {
+    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.detail(ownerId, site, id, signal ?? AbortSignal.timeout(25_000));
     return this.run(ownerId, site, 'detail', (adapter, session) => adapter.detail(session, id, signal));
   }
 

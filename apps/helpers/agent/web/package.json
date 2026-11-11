@@ -1,0 +1,27 @@
+{
+  "name": "@movie-hub/helper-agent-web",
+  "private": true,
+  "version": "0.1.1-beta.1",
+  "type": "module",
+  "scripts": {
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "dev": "vite --host 127.0.0.1 --port 1424 --strictPort",
+    "dev:server": "cd ../../../.. && cargo run --manifest-path apps/helpers/agent/web/server/Cargo.toml",
+    "build:server": "cargo build --locked --manifest-path server/Cargo.toml --release"
+  },
+  "dependencies": {
+    "@movie-hub/helper-agent-ui": "workspace:*",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.5.1",
+    "happy-dom": "^20.14.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10",
+    "vitest": "^3.2.7",
+    "vue-tsc": "^3.1.1"
+  }
+}

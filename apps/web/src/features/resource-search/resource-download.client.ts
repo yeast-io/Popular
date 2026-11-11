@@ -37,7 +37,7 @@ export function useResourceDownloads(context: ResourceDownloadContext) {
         headers: { 'accept-language': locale.value } });
       if (!response.ok) throw new Error('Device status unavailable');
       const result = await response.json() as RemoteClientConfiguration;
-      remoteDevices.value = result.hasKey && Array.isArray(result.devices) ? result.devices : [];
+      remoteDevices.value = result.hasKey && Array.isArray(result.devices) ? result.devices.filter((device) => !integrationPreferences.value?.resourceAgentDeviceId || device.id === integrationPreferences.value.resourceAgentDeviceId) : [];
     } catch { remoteDevices.value = []; }
   }
 
@@ -49,6 +49,7 @@ export function useResourceDownloads(context: ResourceDownloadContext) {
   async function loadDownloadProviders() {
     downloadProviders.value = [];
     downloadProvidersError.value = '';
+    if (integrationPreferences.value?.resourceAgentDeviceId) return;
     try {
       const response = await fetch(`${apiBaseUrl}/me/download-providers`, { credentials: 'include' });
       if (!response.ok) throw localizedApiError(await response.json(), 'movie.download.providersFailed');

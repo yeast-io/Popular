@@ -8,6 +8,10 @@ const integrationPreferencesSchema = new Schema(
       downloader: { type: String },
       ai: { type: String },
     },
+    resourceExecutionId: { type: String },
+    resourceAgentDeviceId: { type: String },
+    agentSelectedSites: { type: [String], default: undefined },
+    agentDefaultSite: { type: String },
     selectedSites: { type: [String], default: [] },
   },
   { collection: 'integration_preferences', timestamps: true }

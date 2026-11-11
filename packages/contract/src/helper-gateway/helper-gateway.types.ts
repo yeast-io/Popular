@@ -11,7 +11,7 @@ export interface Session {
   sessionId: string; instanceId: string;
 }
 export interface AgentStatus {
-  downloaderType: 'qbittorrent' | 'transmission'; instanceId: string; configured: boolean; reachable: boolean;
+  downloaderType: 'qbittorrent' | 'transmission'; instanceId: string; configured: boolean; reachable: boolean; resourceProtocol?: 1 | undefined;
 }
 export interface DeviceStatus {
   online: boolean; isAgentOnline: boolean; isAgentDownloaderOnline: boolean;
@@ -45,7 +45,7 @@ export interface CommandRecord extends DownloadRequest {
   result?: ResultPayload; resultDigest?: string; projected?: boolean; closeId?: string;
 }
 export interface PreparedDelivery {
-  command: CommandRecord; keys: DeviceKeys; torrent?: { url: string; torrentHash: string };
+  command: CommandRecord; keys: DeviceKeys; torrent?: PreparedTorrent;
 }
 export interface PublicCommand {
   commandId: string; downloadId: string; state: CommandState; expiresAt: number;
@@ -55,3 +55,5 @@ export interface PublicCommand {
 export interface WireMessage {
   protocolVersion: 1; command: string; messageId: string; replyTo?: string; correlationId?: string; payload: unknown;
 }
+
+export type PreparedTorrent = { url: string; torrentHash: string; agentTicket?: never } | { agentTicket: string; torrentHash: string; url?: never };

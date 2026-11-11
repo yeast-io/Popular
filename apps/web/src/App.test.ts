@@ -405,6 +405,7 @@ describe('settings workspace', () => {
           generatedAt: null, generatedFingerprint: null, updatedAt: null, text: '',
           ratedCount: 0, minimumRatings: 5, marksChanged: false, task: null,
         });
+        if (url.endsWith('/me/resource-execution')) return Response.json({ deviceId: null });
         if (url.endsWith('/resource-search/sources')) return Response.json({ sources: [] });
         if (url.endsWith('/resource-sites/hdarea')) return Response.json({ site: 'hdarea', status: 'unconfigured' });
         if (url.endsWith(

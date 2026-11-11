@@ -86,6 +86,7 @@ export const agentStatusSchema = z
     instanceId: id,
     configured: z.boolean(),
     reachable: z.boolean(),
+    resourceProtocol: z.literal(1).optional(),
   })
   .strict();
 export const configSchema = z.object({

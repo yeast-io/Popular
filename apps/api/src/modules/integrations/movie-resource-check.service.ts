@@ -1,6 +1,7 @@
 import { siteAccountIdentityPending } from '../resource-sites/site-account.errors.js';
 import type {
   CheckLogger,
+  AgentMovieResourceBridge,
   MovieResourceCheckOptions,
   QueuedCheck,
   MovieResourceCheckExecution,
@@ -31,6 +32,7 @@ import type { MovieReleaseCacheService } from './movie-release-cache.service.js'
 import { isMTeamReleaseCacheValue } from './movie-release-cache.schema.js';
 
 export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
+  agentResources?: AgentMovieResourceBridge;
   private readonly queue = new Map<string, QueuedCheck>();
   private draining = false;
   private drainingTask: Promise<void> | undefined;
@@ -71,6 +73,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }
 
   async request(ownerId: string, tmdbId: number, force = true): Promise<boolean> {
+    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.request(ownerId, tmdbId, force);
     if (!(await this.movies.hasMovie(tmdbId))) {
       throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded before its resources can be checked.');
     }
@@ -87,6 +90,8 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     tmdbId: number,
     options: { force?: boolean } = {}
   ): Promise<MovieReleaseListResponse> {
+    if (await this.agentResources?.enabled(ownerId))
+      return this.agentResources!.releases(ownerId, tmdbId, options.force ?? false);
     if (!(await this.movies.hasMovie(tmdbId))) {
       throw new AppError(404, 'NOT_FOUND', 'Movie must be loaded before its releases can be queried.');
     }
@@ -97,15 +102,23 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
     if (!config.externalUserId) throw siteAccountIdentityPending();
     return this.releaseCache.getOrFetch({
       identity: {
-        ownerId, tmdbId, site: 'mteam', page: 1, locale: this.locale,
+        ownerId,
+        tmdbId,
+        site: 'mteam',
+        page: 1,
+        locale: this.locale,
         credentialVersion: String(config.verifiedAt?.getTime() ?? 0),
       },
       force: options.force === true,
       validate: isMTeamReleaseCacheValue,
-      fetch: () => this.fetchReleases(
-        ownerId, tmdbId, config.baseUrl,
-        config.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL, config.encryptedApiKey
-      ),
+      fetch: () =>
+        this.fetchReleases(
+          ownerId,
+          tmdbId,
+          config.baseUrl,
+          config.webBaseUrl ?? MTEAM_DEFAULT_WEB_BASE_URL,
+          config.encryptedApiKey
+        ),
     });
   }
 
@@ -189,6 +202,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }
 
   private async enqueue(ownerId: string, tmdbId: number, force: boolean): Promise<boolean> {
+    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.request(ownerId, tmdbId, force);
     if (this.stopped) return false;
     const config = await this.configs.find(ownerId, 'mteam');
     if (!config || !config.externalUserId || config.lastFailureType === 'authentication') return false;
@@ -219,6 +233,7 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   }
 
   async checkNowDetailed(ownerId: string, tmdbId: number, force = false): Promise<MovieResourceCheckExecution> {
+    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.check(ownerId, tmdbId, force);
     const config = await this.configs.find(ownerId, 'mteam');
     if (!config || !config.externalUserId || config.lastFailureType === 'authentication') {
       return { started: true, result: { lastAttemptStatus: 'error', lastErrorCode: 'authentication' } };
@@ -243,8 +258,14 @@ export class MovieResourceCheckService implements MovieResourceCheckDispatcher {
   private async executeAcquired(key: MovieResourceCheckKey, attemptedAt: Date): Promise<MovieResourceCheckCompletion> {
     const startedAt = Date.now();
     try {
+      if (await this.agentResources?.enabled(key.ownerId)) {
+        const failure = { lastAttemptStatus: 'error' as const, lastErrorCode: 'remote_error' as const };
+        await this.checks.complete(key, attemptedAt, failure);
+        return failure;
+      }
       const config = await this.configs.find(key.ownerId, 'mteam');
-      if (!config || !config.externalUserId) throw new IntegrationValidationError('authentication', 'M-Team identity is not verified');
+      if (!config || !config.externalUserId)
+        throw new IntegrationValidationError('authentication', 'M-Team identity is not verified');
       let apiKey: string;
       try {
         apiKey = this.secrets.decrypt(config.encryptedApiKey, integrationSecretContext(key.ownerId, 'mteam'));

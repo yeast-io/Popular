@@ -1,0 +1,101 @@
+name: Check Agent
+
+on:
+  pull_request:
+    paths:
+      - "apps/helpers/agent/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/check-agent.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Headless Core (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/helpers/agent
+      - name: Check Core without desktop libraries
+        run: |
+          cargo test --locked --manifest-path apps/helpers/agent/Cargo.toml -p popular-agent-core
+          cargo clippy --locked --manifest-path apps/helpers/agent/Cargo.toml -p popular-agent-core --all-targets -- -D warnings
+          cargo fmt --manifest-path apps/helpers/agent/Cargo.toml --all --check
+
+  app:
+    name: Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/helpers/agent
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @movie-hub/helper-agent build
+      - run: pnpm --filter @movie-hub/helper-agent test:ui
+      - name: Check shared UI and desktop adapter boundaries
+        run: pnpm exec eslint apps/helpers/agent/ui/src apps/helpers/agent/ui/preview apps/helpers/agent/app/src apps/helpers/agent/tools --max-warnings 0
+      - run: cargo test --locked --manifest-path apps/helpers/agent/Cargo.toml --workspace
+      - name: Local Gateway and downloader integration
+        if: matrix.os == 'macos-latest'
+        run: pnpm --filter @movie-hub/helper-agent test:mock
+
+  web:
+    name: Web and Docker (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/helpers/agent
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @movie-hub/contract build
+      - run: pnpm --filter @movie-hub/helper-agent-web build
+      - run: pnpm --filter @movie-hub/helper-agent-web test
+      - run: pnpm exec eslint apps/helpers/agent/web/src apps/helpers/agent/web/vite.config.ts apps/helpers/agent/tools --max-warnings 0
+      - run: cargo test --locked --manifest-path apps/helpers/agent/Cargo.toml -p popular-agent-web
+      - run: cargo clippy --locked --manifest-path apps/helpers/agent/Cargo.toml -p popular-agent-web --all-targets -- -D warnings
+      - run: cargo build --locked --manifest-path apps/helpers/agent/Cargo.toml -p popular-agent-web
+      - run: node --import ./apps/api/node_modules/tsx/dist/loader.mjs apps/helpers/agent/tools/test-web-agent.mjs
+      - run: node apps/helpers/agent/tools/test-site-agent.mjs
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/helpers/agent/web/Dockerfile
+          tags: popular-agent-web:ci
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: node apps/helpers/agent/tools/test-docker-agent.mjs popular-agent-web:ci

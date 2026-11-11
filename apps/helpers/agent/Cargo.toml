@@ -1,0 +1,4 @@
+[workspace]
+members = ["core", "app/src-tauri", "web/server"]
+default-members = ["core", "app/src-tauri"]
+resolver = "2"

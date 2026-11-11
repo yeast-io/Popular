@@ -1,0 +1,152 @@
+name: Publish Agent Docker
+run-name: Agent Docker · ${{ github.ref_name }} · ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-agent-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare image metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.metadata.outputs.image }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      version: ${{ steps.metadata.outputs.version }}
+      created: ${{ steps.metadata.outputs.created }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read version and image name
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(jq -r '.version' apps/helpers/agent/web/package.json)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image=ghcr.io/$owner/popular-agent" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$version-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "created=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and verify ${{ matrix.arch }}
+    needs: prepare
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      IMAGE: ${{ needs.prepare.outputs.image }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: docker/setup-buildx-action@v3
+      - name: Build native image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/helpers/agent/web/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          tags: ${{ env.IMAGE }}:sha-${{ github.sha }}-${{ matrix.arch }}
+          load: true
+          push: false
+          provenance: false
+          labels: |
+            org.opencontainers.image.title=Popular Agent
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.created=${{ needs.prepare.outputs.created }}
+          cache-from: type=gha,scope=agent-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=agent-${{ matrix.arch }}
+      - name: Verify architecture and container lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$IMAGE:sha-$GITHUB_SHA-$ARCH"
+          test "$(docker image inspect --format '{{.Architecture}}' "$image")" = "$ARCH"
+          node apps/helpers/agent/tools/test-docker-agent.mjs "$image"
+      - name: Sign in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push verified architecture
+        shell: bash
+        run: docker push "$IMAGE:sha-$GITHUB_SHA-$ARCH"
+
+  publish:
+    name: Publish multi-platform image
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ${{ needs.prepare.outputs.image }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish architecture tags and shared manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            docker buildx imagetools create \
+              --tag "$IMAGE:$TAG-$arch" \
+              "$IMAGE:sha-$GITHUB_SHA-$arch"
+          done
+          docker buildx imagetools create \
+            --tag "$IMAGE:$TAG" \
+            --tag "$IMAGE:edge" \
+            "$IMAGE:sha-$GITHUB_SHA-amd64" \
+            "$IMAGE:sha-$GITHUB_SHA-arm64"
+      - name: Verify published platforms
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "$IMAGE:$TAG" --raw > manifest.json
+          jq -e '
+            [.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]
+          ' manifest.json
+          {
+            echo "## Popular Agent Docker"
+            echo
+            echo "Both architectures passed the container lifecycle test before publishing."
+            echo
+            echo "\`docker pull $IMAGE:$TAG\`"
+            echo
+            echo "Architecture tags: \`$TAG-amd64\`, \`$TAG-arm64\`."
+            echo
+            echo "Moving tag: \`edge\`. First-time GHCR package visibility may require changing the package to public."
+          } >> "$GITHUB_STEP_SUMMARY"
