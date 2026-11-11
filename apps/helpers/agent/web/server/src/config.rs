@@ -11,6 +11,7 @@ pub struct Config {
     pub master_key: PathBuf,
     pub admin_password: PathBuf,
     pub session_ttl: Duration,
+    pub login: Option<(String, String)>,
 }
 impl Config {
     pub fn from_env() -> Result<Self, AgentError> {
@@ -39,11 +40,22 @@ impl Config {
                 "./.data/agent-secrets/admin-password",
             ),
             session_ttl: Duration::from_secs(ttl),
+            login: login_from_env()?,
         };
         config.validate()?;
         Ok(config)
     }
     pub fn validate(&mut self) -> Result<(), AgentError> {
+        if let Some((username, password)) = &self.login {
+            if username.is_empty()
+                || username.len() > 128
+                || username.trim() != username
+                || username.chars().any(char::is_control)
+                || !(8..=4096).contains(&password.len())
+            {
+                return Err(AgentError::code("managementLoginInvalid"));
+            }
+        }
         if !(60..=86400).contains(&self.session_ttl.as_secs()) {
             return Err(AgentError::code("invalidSettings"));
         }
@@ -68,4 +80,19 @@ fn env_path(name: &str, default: &str) -> PathBuf {
     std::env::var_os(name)
         .map(PathBuf::from)
         .unwrap_or_else(|| default.into())
+}
+
+fn login_from_env() -> Result<Option<(String, String)>, AgentError> {
+    let read = |name| match std::env::var(name) {
+        Ok(value) => Ok(value),
+        Err(std::env::VarError::NotPresent) => Ok(String::new()),
+        Err(_) => Err(AgentError::code("managementLoginInvalid")),
+    };
+    let username = read("WEB_LOGIN_USER")?;
+    let password = read("WEB_LOGIN_PASSWORD")?;
+    if username.is_empty() && password.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some((username, password)))
+    }
 }

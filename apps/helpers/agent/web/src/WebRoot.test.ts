@@ -71,3 +71,41 @@ it('keeps the management screen visible if logout fails, and permits retry', asy
     wrapper.unmount();
   }
 });
+
+it.each(['zh-CN', 'en-US'] as const)('requires and submits the configured username in %s', async (locale) => {
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async () => reply({ authenticated: false, usernameRequired: true, version: 'test' }));
+  vi.stubGlobal('fetch', fetcher);
+  const wrapper = mount(WebRoot);
+  try {
+    await flushPromises();
+    await wrapper.get('select').setValue(locale);
+    expect(wrapper.text()).toContain(messages[locale].managementUsername);
+    expect(wrapper.text()).toContain(messages[locale].managementLoginHint);
+    await wrapper.get('#management-password').setValue('private-password');
+    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('#management-username').setValue('operator');
+    fetcher.mockResolvedValueOnce(reply({ error: { code: 'managementUnauthorized' } }, 401));
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string)).toEqual({
+      username: 'operator',
+      password: 'private-password',
+    });
+    expect(wrapper.get<HTMLInputElement>('#management-password').element.value).toBe('');
+    expect(wrapper.get('[role="alert"]').text()).toBe(messages[locale].managementUnauthorized);
+    await wrapper.get('#management-password').setValue('private-password');
+    fetcher.mockResolvedValueOnce(reply({ authenticated: true, csrf: 'csrf', version: 'test' }));
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.find('[data-agent-root]').exists()).toBe(true);
+    const host = wrapper.findComponent({ name: 'AgentRoot' }).props('host') as AgentHost;
+    fetcher.mockResolvedValueOnce(reply({ authenticated: false }));
+    await host.signOut!();
+    await flushPromises();
+    expect(wrapper.find('#management-username').exists()).toBe(true);
+  } finally {
+    wrapper.unmount();
+  }
+});

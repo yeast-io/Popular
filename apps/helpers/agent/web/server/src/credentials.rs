@@ -181,3 +181,81 @@ pub fn initialize_secrets(directory: &Path) -> Result<(), AgentError> {
     }
     Ok(())
 }
+
+// Publish a complete secret without ever truncating an existing file.
+fn create_secret(path: &Path, bytes: &[u8]) -> Result<(), AgentError> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let write = || -> Result<(), std::io::Error> {
+        let mut file = tempfile::NamedTempFile::new_in(parent)?;
+        file.write_all(bytes)?;
+        file.as_file().sync_all()?;
+        match file.persist_noclobber(path) {
+            Ok(_) => {
+                std::fs::File::open(parent)?.sync_all()?;
+                Ok(())
+            }
+            Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            Err(error) => Err(error.error),
+        }
+    };
+    write().map_err(|error| AgentError::caused("managementSecretInitializationFailed", error))
+}
+fn missing(path: &Path) -> Result<bool, AgentError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(error.into()),
+    }
+}
+pub fn ensure_master_key(data: &Path, path: &Path) -> Result<(), AgentError> {
+    if !missing(path)? {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(data)? {
+        if entry?.file_name() != ".agent.lock" {
+            return Err(AgentError::code("managementMasterKeyMissing"));
+        }
+    }
+    let mut key = [0; 32];
+    SystemRandom::new()
+        .fill(&mut key)
+        .map_err(|e| AgentError::caused("cryptoError", e))?;
+    let result = create_secret(path, &key);
+    key.fill(0);
+    result
+}
+pub fn ensure_admin_password(path: &Path) -> Result<(), AgentError> {
+    if !missing(path)? {
+        return Ok(());
+    }
+    let mut random = [0; 32];
+    SystemRandom::new()
+        .fill(&mut random)
+        .map_err(|e| AgentError::caused("cryptoError", e))?;
+    let mut password = STANDARD.encode(random).into_bytes();
+    random.fill(0);
+    let result = create_secret(path, &password);
+    password.fill(0);
+    result
+}
+// Resolve even an absent secret before initialization, so secrets cannot be
+// generated under the data directory or the publicly served static directory.
+pub fn secret_destination(path: &Path) -> Result<std::path::PathBuf, AgentError> {
+    if !missing(path)? {
+        return Ok(std::fs::canonicalize(path)?);
+    }
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if !parent.exists() {
+        private_directory(parent)?;
+    }
+    Ok(std::fs::canonicalize(parent)?.join(
+        path.file_name()
+            .ok_or_else(|| AgentError::code("invalidSettings"))?,
+    ))
+}

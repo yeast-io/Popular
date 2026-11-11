@@ -1,6 +1,7 @@
 # Defaults: published image, local access, Docker-managed storage.
-# First start: docker compose --profile setup run --rm init-secrets
-# Then: docker compose up -d agent
+# Images built from this revision initialize secrets automatically on first start.
+# The older published default still requires the setup step; see README.md.
+# Start: docker compose up -d agent
 services:
   agent:
     image: ${AGENT_IMAGE:-ghcr.io/yeast-io/popular-agent:0.1.1-beta.1-647526a803ef}
@@ -8,12 +9,14 @@ services:
       - '${AGENT_PUBLISH_ADDRESS:-127.0.0.1}:${AGENT_WEB_PORT:-1423}:1423'
     environment:
       AGENT_WEB_ORIGIN: ${AGENT_WEB_ORIGIN:-http://127.0.0.1:${AGENT_WEB_PORT:-1423}}
+      WEB_LOGIN_USER: ${WEB_LOGIN_USER:-}
+      WEB_LOGIN_PASSWORD: ${WEB_LOGIN_PASSWORD:-}
       AGENT_SESSION_TTL_SECONDS: ${AGENT_SESSION_TTL_SECONDS:-28800}
       VERBOSE: ${VERBOSE:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - '${AGENT_DATA_MOUNT:-agent-data}:/var/lib/popular-agent'
-      - '${AGENT_SECRETS_MOUNT:-agent-secrets}:/run/agent-secrets:ro'
+      - '${AGENT_SECRETS_MOUNT:-agent-secrets}:/run/agent-secrets'
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m

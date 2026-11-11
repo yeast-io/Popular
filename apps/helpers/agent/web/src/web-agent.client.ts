@@ -109,9 +109,15 @@ export function createWebAgentClient(options: WebAgentOptions): WebAgentClient {
       const current = revision;
       return receiveSession(await request<ManagementSession>('/session'), current);
     },
-    login: async (password) => {
+    login: async (password, username) => {
       const current = revision;
-      return receiveSession(await request<ManagementSession>('/session', 'POST', { password }), current);
+      return receiveSession(
+        await request<ManagementSession>('/session', 'POST', {
+          password,
+          ...(username === undefined ? {} : { username }),
+        }),
+        current
+      );
     },
     logout: async () => {
       await request('/session', 'DELETE');

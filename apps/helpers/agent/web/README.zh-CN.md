@@ -69,6 +69,28 @@ AGENT_WEB_ORIGIN=http://192.168.1.10:1423
 
 将 IP 替换为 Docker 宿主机地址。CLI 与 Compose 默认使用不同的数据卷名；同一安装应保持原部署方式和项目名。
 
+## 自动初始化与环境变量登录（本次源码构建）
+
+此功能需使用包含本次修改的新镜像；上面的旧发布标签尚未更新。先在仓库根目录构建：
+
+```sh
+docker build -f apps/helpers/agent/web/Dockerfile -t popular-agent-web:local .
+```
+
+使用本次源码中的 Compose 文件，在 `.env` 中设置：
+
+```dotenv
+AGENT_IMAGE=popular-agent-web:local
+WEB_LOGIN_USER=admin
+WEB_LOGIN_PASSWORD=replace-with-your-private-password
+```
+
+执行 `docker compose up -d agent` 即可，无需手动运行 `init-secrets`。secrets 卷需可写，新安装会自动生成并保存 `master.key`。已有数据缺少密钥时拒绝启动，必须恢复原密钥。重启或升级不会替换密钥。
+
+两个登录变量必须同时设置：用户名为 1–128 字节、不含首尾空白或控制字符；密码为 8–4096 字节。环境变量登录优先于密码文件，且不会写入或覆盖 `admin-password`；更改后需重建容器。两项均为空或未设置时使用密码文件，不存在则自动生成，界面仅要求密码。恢复文件登录时，若无密码文件，需允许 secrets 卷写入以生成密码。已有完整文件可继续只读挂载；使用上面的旧 CLI 命令自动初始化时，需删除 secrets 挂载末尾的 `:ro`。
+
+保留数据和 secrets 两个卷。环境变量密码变化不会更换加密密钥。
+
 ## 配置
 
 ### 连接 Popular 和下载器
@@ -110,7 +132,7 @@ Compose 可覆盖参数见 [.env.example](.env.example)。`AGENT_WEB_PORT` 会�
 | 挂载路径                 | 内容                                 |
 | ------------------------ | ------------------------------------ |
 | `/var/lib/popular-agent` | 配置、设备身份、任务记录、加密凭据   |
-| `/run/agent-secrets`     | 加密主密钥、管理密码；运行时只读挂载 |
+| `/run/agent-secrets`     | 加密主密钥、可选管理密码；自动初始化时需可写挂载 |
 
 启动命令已挂载 `popular-agent-data` 和 `popular-agent-secrets` 两个命名卷。备份时停止容器并同时备份两个卷，恢复时使用同一组数据与密钥。
 

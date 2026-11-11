@@ -18,6 +18,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_login(None).await
+    }
+    async fn with_login(login: Option<(String, String)>) -> Self {
         let root = tempfile::tempdir().unwrap();
         initialize_secrets(&root.path().join("secrets")).unwrap();
         std::fs::write(root.path().join("secrets/admin-password"), PASSWORD).unwrap();
@@ -40,6 +43,7 @@ impl Fixture {
             master_key: root.path().join("secrets/master.key"),
             admin_password: root.path().join("secrets/admin-password"),
             session_ttl: Duration::from_secs(3600),
+            login,
         };
         let server = WebServer::new(config).unwrap();
         let (stop, stopped) = tokio::sync::oneshot::channel();
@@ -359,6 +363,7 @@ async fn login_throttling_and_data_directory_lock_are_enforced() {
         master_key: f.root.path().join("secrets/master.key"),
         admin_password: f.root.path().join("secrets/admin-password"),
         session_ttl: Duration::from_secs(3600),
+        login: None,
     };
     assert!(WebServer::new(config).is_err());
     for _ in 0..8 {
@@ -405,6 +410,7 @@ fn origin_validation_rejects_credentials_paths_and_fragments() {
             master_key: PathBuf::new(),
             admin_password: PathBuf::new(),
             session_ttl: Duration::from_secs(3600),
+            login: None,
         };
         assert!(config.validate().is_err());
     }
@@ -521,4 +527,192 @@ async fn site_management_requires_session_csrf_and_strict_site_inputs() {
         400
     );
     f.stop().await;
+}
+
+fn startup_config(root: &std::path::Path) -> Config {
+    std::fs::create_dir_all(root.join("ui")).unwrap();
+    std::fs::write(root.join("ui/index.html"), "<div id=app></div>").unwrap();
+    Config {
+        bind: "127.0.0.1:0".parse().unwrap(),
+        origin: "http://127.0.0.1:1423".into(),
+        authority: String::new(),
+        secure_cookie: false,
+        data: root.join("data"),
+        static_dir: root.join("ui"),
+        master_key: root.join("secrets/master.key"),
+        admin_password: root.join("secrets/admin-password"),
+        session_ttl: Duration::from_secs(3600),
+        login: None,
+    }
+}
+#[test]
+fn first_start_initializes_secrets_and_restart_preserves_them() {
+    let root = tempfile::tempdir().unwrap();
+    let server = WebServer::new(startup_config(root.path())).unwrap();
+    let key = std::fs::read(root.path().join("secrets/master.key")).unwrap();
+    let password = std::fs::read(root.path().join("secrets/admin-password")).unwrap();
+    assert_eq!(key.len(), 32);
+    assert!(password.len() >= 8);
+    drop(server);
+    let server = WebServer::new(startup_config(root.path())).unwrap();
+    assert_eq!(
+        std::fs::read(root.path().join("secrets/master.key")).unwrap(),
+        key
+    );
+    assert_eq!(
+        std::fs::read(root.path().join("secrets/admin-password")).unwrap(),
+        password
+    );
+    drop(server);
+    std::fs::remove_file(root.path().join("secrets/master.key")).unwrap();
+    let error = WebServer::new(startup_config(root.path())).err().unwrap();
+    assert_eq!(error.code, "managementMasterKeyMissing");
+    assert!(!root.path().join("secrets/master.key").exists());
+}
+#[test]
+fn existing_data_without_a_master_key_is_never_reinitialized() {
+    for name in [
+        "settings.json",
+        "identity.json",
+        "resource-sites.json",
+        "credentials",
+        "journal",
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("data")).unwrap();
+        std::fs::write(root.path().join("data").join(name), "existing-data").unwrap();
+        let error = WebServer::new(startup_config(root.path())).err().unwrap();
+        assert_eq!(error.code, "managementMasterKeyMissing");
+        assert!(!root.path().join("secrets/master.key").exists());
+    }
+}
+
+#[tokio::test]
+async fn configured_username_and_password_are_both_required() {
+    let f = Fixture::with_login(Some(("operator".into(), "12345678".into()))).await;
+    let info: Value = f
+        .client
+        .get(format!("{}/api/session", f.base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(info["usernameRequired"], true);
+    assert!(!info.to_string().contains("operator"));
+    for credentials in [
+        json!({"password":"12345678"}),
+        json!({"username":"wrong", "password":"12345678"}),
+        json!({"username":"operator", "password":PASSWORD}),
+    ] {
+        let response = f
+            .client
+            .post(format!("{}/api/session", f.base))
+            .header("origin", &f.base)
+            .json(&credentials)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 401);
+    }
+    let response = f
+        .client
+        .post(format!("{}/api/session", f.base))
+        .header("origin", &f.base)
+        .json(&json!({"username":"operator", "password":"12345678"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert!(response.headers().contains_key("set-cookie"));
+    assert_eq!(
+        std::fs::read_to_string(f.root.path().join("secrets/admin-password")).unwrap(),
+        PASSWORD
+    );
+    f.stop().await;
+}
+#[test]
+fn configured_login_does_not_require_or_write_a_password_file() {
+    let root = tempfile::tempdir().unwrap();
+    let mut config = startup_config(root.path());
+    config.login = Some(("operator".into(), PASSWORD.into()));
+    let server = WebServer::new(config).unwrap();
+    assert!(root.path().join("secrets/master.key").is_file());
+    assert!(!root.path().join("secrets/admin-password").exists());
+    drop(server);
+}
+#[test]
+fn configured_login_rejects_partial_empty_or_invalid_values_before_writing_secrets() {
+    for (username, password) in [
+        ("", PASSWORD),
+        ("operator", ""),
+        ("operator", "1234567"),
+        (" operator", PASSWORD),
+        ("operator\n", PASSWORD),
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let mut config = startup_config(root.path());
+        config.login = Some((username.into(), password.into()));
+        let error = WebServer::new(config).err().unwrap();
+        assert_eq!(error.code, "managementLoginInvalid");
+        assert!(!root.path().join("secrets/master.key").exists());
+    }
+}
+#[test]
+fn automatic_initialization_cannot_publish_secrets_under_static_or_data_roots() {
+    for directory in ["data", "ui"] {
+        let root = tempfile::tempdir().unwrap();
+        let mut config = startup_config(root.path());
+        config.master_key = root.path().join(directory).join("master.key");
+        let error = WebServer::new(config).err().unwrap();
+        assert_eq!(error.code, "invalidSettings");
+        assert!(!root.path().join(directory).join("master.key").exists());
+    }
+}
+#[test]
+fn automatic_initialization_keeps_private_permissions_and_never_replaces_invalid_keys() {
+    let root = tempfile::tempdir().unwrap();
+    let server = WebServer::new(startup_config(root.path())).unwrap();
+    drop(server);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for name in ["master.key", "admin-password"] {
+            assert_eq!(
+                std::fs::metadata(root.path().join("secrets").join(name))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+    }
+    std::fs::write(root.path().join("secrets/master.key"), b"invalid").unwrap();
+    assert!(WebServer::new(startup_config(root.path())).is_err());
+    assert_eq!(
+        std::fs::read(root.path().join("secrets/master.key")).unwrap(),
+        b"invalid"
+    );
+}
+
+#[test]
+fn management_password_minimum_is_eight_bytes_for_file_login_and_verification() {
+    let root = tempfile::tempdir().unwrap();
+    initialize_secrets(&root.path().join("secrets")).unwrap();
+    std::fs::write(root.path().join("secrets/admin-password"), "12345678").unwrap();
+    let server = WebServer::new(startup_config(root.path())).unwrap();
+    drop(server);
+    std::fs::write(root.path().join("secrets/admin-password"), "1234567").unwrap();
+    assert_eq!(
+        WebServer::new(startup_config(root.path()))
+            .err()
+            .unwrap()
+            .code,
+        "managementPasswordInvalid"
+    );
+    let auth = Auth::new(b"12345678", Duration::from_secs(3600)).unwrap();
+    assert!(auth.verify(None, b"12345678"));
+    assert!(!auth.verify(None, b"1234567"));
 }

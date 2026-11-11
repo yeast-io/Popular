@@ -16,6 +16,8 @@ export function useManagement() {
     { immediate: true }
   );
   const password = ref('');
+  const username = ref('');
+  const usernameRequired = ref(false);
   const authenticated = ref(false);
   const loading = ref(true);
   const busy = ref(false);
@@ -57,6 +59,7 @@ export function useManagement() {
       if (!active || current !== generation) return;
       authenticated.value = session.authenticated;
       version.value = session.version;
+      if (session.usernameRequired !== undefined) usernameRequired.value = session.usernameRequired;
     } catch (cause) {
       if (active && current === generation) error.value = typeof cause === 'string' ? cause : 'networkError';
     } finally {
@@ -64,15 +67,16 @@ export function useManagement() {
     }
   }
   async function login() {
-    if (busy.value || !password.value || loading.value) return;
+    if (busy.value || !password.value || (usernameRequired.value && !username.value) || loading.value) return;
     const current = ++generation;
     busy.value = true;
     error.value = '';
     try {
-      const session = await transport.login(password.value);
+      const session = await transport.login(password.value, usernameRequired.value ? username.value : undefined);
       if (!active || current !== generation) return;
       authenticated.value = session.authenticated;
       version.value = session.version;
+      if (session.usernameRequired !== undefined) usernameRequired.value = session.usernameRequired;
     } catch (cause) {
       if (active && current === generation) error.value = typeof cause === 'string' ? cause : 'networkError';
     } finally {
@@ -101,6 +105,7 @@ export function useManagement() {
     active = false;
     generation++;
     password.value = '';
+    username.value = '';
     transport.close();
   });
   return {
@@ -108,6 +113,8 @@ export function useManagement() {
     t,
     text,
     password,
+    username,
+    usernameRequired,
     authenticated,
     loading,
     busy,

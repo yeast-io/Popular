@@ -19,7 +19,7 @@ pub struct PasswordVerifier {
 }
 impl PasswordVerifier {
     pub fn new(password: &[u8]) -> Result<Self, AgentError> {
-        if !(16..=4096).contains(&password.len()) {
+        if !(8..=4096).contains(&password.len()) {
             return Err(AgentError::code("managementPasswordInvalid"));
         }
         let mut salt = [0; 32];
@@ -37,7 +37,7 @@ impl PasswordVerifier {
         Ok(Self { salt, digest })
     }
     pub fn verify(&self, password: &[u8]) -> bool {
-        (16..=4096).contains(&password.len())
+        (8..=4096).contains(&password.len())
             && pbkdf2::verify(
                 pbkdf2::PBKDF2_HMAC_SHA256,
                 NonZeroU32::new(ITERATIONS).unwrap(),
@@ -62,6 +62,7 @@ pub struct Auth {
     rates: Mutex<HashMap<Option<IpAddr>, Rate>>,
     pub verifier: PasswordVerifier,
     pub ttl: Duration,
+    pub username: Option<String>,
 }
 fn hash(token: &str) -> [u8; 32] {
     digest::digest(&digest::SHA256, token.as_bytes())
@@ -83,7 +84,17 @@ impl Auth {
             rates: Default::default(),
             verifier: PasswordVerifier::new(password)?,
             ttl,
+            username: None,
         })
+    }
+    pub fn verify(&self, username: Option<&str>, password: &[u8]) -> bool {
+        // Always perform password verification, including when the username is wrong.
+        let password_valid = self.verifier.verify(password);
+        let username_valid = self
+            .username
+            .as_deref()
+            .is_none_or(|expected| Some(expected) == username);
+        password_valid && username_valid
     }
     pub fn allow_login(&self, ip: IpAddr) -> bool {
         let now = Instant::now();

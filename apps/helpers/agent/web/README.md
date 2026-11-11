@@ -69,6 +69,28 @@ AGENT_WEB_ORIGIN=http://192.168.1.10:1423
 
 Replace the IP with the Docker host address. CLI and Compose use different default volume names. Keep the original deployment method and project name for an existing installation.
 
+## Automatic initialization and environment login (this source build)
+
+This feature requires an image containing this change; the published tag above has not been updated. Build from the repository root:
+
+```sh
+docker build -f apps/helpers/agent/web/Dockerfile -t popular-agent-web:local .
+```
+
+Use the Compose file from this revision with the following `.env`:
+
+```dotenv
+AGENT_IMAGE=popular-agent-web:local
+WEB_LOGIN_USER=admin
+WEB_LOGIN_PASSWORD=replace-with-your-private-password
+```
+
+Run `docker compose up -d agent`; a manual `init-secrets` step is unnecessary. The secrets volume must be writable to generate and persist `master.key` on a new installation. Existing data without its key stops startup: restore the original key. Restarts and upgrades never replace it.
+
+Set both login variables together: username 1–128 bytes without surrounding whitespace or control characters; password 8–4096 bytes. Environment login takes precedence over the password file and never writes or overwrites `admin-password`. Recreate the container to change these settings. When both values are empty or unset, file-based password-only login applies; an absent password file is generated automatically. Returning to file login without an existing password file requires a writable secrets volume. Existing complete secret files still support read-only mounts; to use automatic initialization with the older CLI example above, remove `:ro` from its secrets mount.
+
+Keep both data and secrets volumes. Changing the environment password does not change the encryption key.
+
 ## Configuration
 
 ### Popular and downloader connections
@@ -110,7 +132,7 @@ Compose overrides are listed in [.env.example](.env.example). `AGENT_WEB_PORT` a
 | Mount path               | Contents                                                                    |
 | ------------------------ | --------------------------------------------------------------------------- |
 | `/var/lib/popular-agent` | Configuration, device identity, task journal, encrypted credentials         |
-| `/run/agent-secrets`     | Encryption master key and management password; mounted read-only at runtime |
+| `/run/agent-secrets`     | Encryption master key and optional management password; writable for automatic initialization |
 
 The start command mounts the named volumes `popular-agent-data` and `popular-agent-secrets`. Stop the container before backing up both volumes together, and restore the matching data/key pair.
 

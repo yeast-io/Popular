@@ -1,7 +1,10 @@
 use crate::{
     auth::Auth,
     config::Config,
-    credentials::{private_directory, read_secret, FileCredentials},
+    credentials::{
+        ensure_admin_password, ensure_master_key, private_directory, read_secret,
+        secret_destination, FileCredentials,
+    },
     management_schema,
 };
 use bytes::Bytes;
@@ -127,8 +130,13 @@ pub struct WebServer {
     _data_lock: File,
 }
 impl WebServer {
-    pub fn new(mut config: Config) -> Result<Self, AgentError> {
+    pub fn new(config: Config) -> Result<Self, AgentError> {
+        Self::new_with_trace(config, &Trace::new())
+    }
+    pub fn new_with_trace(mut config: Config, trace: &Trace) -> Result<Self, AgentError> {
+        trace.stage("web.startup.config.started");
         config.validate()?;
+        trace.stage("web.startup.data.started");
         private_directory(&config.data)?;
         let mut options = std::fs::OpenOptions::new();
         options.create(true).truncate(false).read(true).write(true);
@@ -141,9 +149,29 @@ impl WebServer {
         data_lock
             .try_lock()
             .map_err(|e| AgentError::caused("managementDataLocked", e))?;
+        trace.stage("web.startup.assets.started");
         if !config.static_dir.join("index.html").is_file() {
             return Err(AgentError::code("managementAssetsMissing"));
         }
+        let data_root = std::fs::canonicalize(&config.data)?;
+        let static_root = std::fs::canonicalize(&config.static_dir)?;
+        trace.stage("web.startup.secret-paths.started");
+        let secrets = if config.login.is_some() {
+            vec![&config.master_key]
+        } else {
+            vec![&config.master_key, &config.admin_password]
+        };
+        for secret in secrets {
+            let secret = secret_destination(secret)?;
+            if secret.starts_with(&data_root) || secret.starts_with(&static_root) {
+                return Err(AgentError::code("invalidSettings"));
+            }
+        }
+        if data_root.starts_with(&static_root) || static_root.starts_with(&data_root) {
+            return Err(AgentError::code("invalidSettings"));
+        }
+        trace.stage("web.startup.master-key.started");
+        ensure_master_key(&config.data, &config.master_key)?;
         let credential_dir = config.data.join("credentials");
         if (config.data.join("resource-sites.json").exists()
             || config.data.join("settings.json").exists()
@@ -152,24 +180,24 @@ impl WebServer {
         {
             return Err(AgentError::code("credentialError"));
         }
-        let data_root = std::fs::canonicalize(&config.data)?;
-        let static_root = std::fs::canonicalize(&config.static_dir)?;
-        for secret in [&config.master_key, &config.admin_password] {
-            let secret = std::fs::canonicalize(secret)?;
-            if secret.starts_with(&data_root) || secret.starts_with(&static_root) {
-                return Err(AgentError::code("invalidSettings"));
-            }
-        }
-        if data_root.starts_with(&static_root) || static_root.starts_with(&data_root) {
-            return Err(AgentError::code("invalidSettings"));
-        }
         let store = FileCredentials::open(&credential_dir, &config.master_key)?;
-        let mut password = read_secret(&config.admin_password, 4098)?;
-        while matches!(password.last(), Some(b'\n' | b'\r')) {
-            password.pop();
-        }
-        let auth = Arc::new(Auth::new(&password, config.session_ttl)?);
+        trace.stage("web.startup.authentication.started");
+        let (username, mut password) = if let Some((username, password)) = config.login.take() {
+            (Some(username), password.into_bytes())
+        } else {
+            ensure_admin_password(&config.admin_password)?;
+            let mut password = read_secret(&config.admin_password, 4098)?;
+            while matches!(password.last(), Some(b'\n' | b'\r')) {
+                password.pop();
+            }
+            (None, password)
+        };
+        let auth = Auth::new(&password, config.session_ttl);
         password.fill(0);
+        let mut auth = auth?;
+        auth.username = username;
+        let auth = Arc::new(auth);
+        trace.stage("web.startup.credentials.started");
         // Prove referenced credentials can be decrypted before exposing management or starting Core.
         let stored = popular_agent_core::storage::load(&config.data)?;
         popular_agent_core::storage::secrets(&stored, &store)?;
@@ -334,7 +362,7 @@ async fn dispatch(
         let auth = state.auth.clone();
         let valid = tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            auth.verifier.verify(login.password.as_bytes())
+            auth.verify(login.username.as_deref(), login.password.as_bytes())
         })
         .await
         .map_err(|e| AgentError::caused("runtimeError", e))?;
@@ -361,9 +389,11 @@ async fn dispatch(
             StatusCode::OK,
             match state.auth.session(&token) {
                 Some(s) => {
-                    json!({"authenticated":true,"csrf":s.csrf,"version":env!("CARGO_PKG_VERSION")})
+                    json!({"authenticated":true,"csrf":s.csrf,"usernameRequired":state.auth.username.is_some(),"version":env!("CARGO_PKG_VERSION")})
                 }
-                None => json!({"authenticated":false,"version":env!("CARGO_PKG_VERSION")}),
+                None => {
+                    json!({"authenticated":false,"usernameRequired":state.auth.username.is_some(),"version":env!("CARGO_PKG_VERSION")})
+                }
             },
         ));
     }

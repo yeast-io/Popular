@@ -54,9 +54,11 @@ async fn run(trace: &Trace) -> Result<(), AgentError> {
         [] => {}
         _ => return Err(AgentError::code("invalidSettings")),
     }
+    trace.stage("web.startup.config.started");
     let config = Config::from_env()?;
     let bind = config.bind;
-    let server = WebServer::new(config)?;
+    let server = WebServer::new_with_trace(config, trace)?;
+    trace.stage("web.startup.listener.started");
     let listener = tokio::net::TcpListener::bind(bind).await?;
     trace.stage("web.startup.completed");
     server

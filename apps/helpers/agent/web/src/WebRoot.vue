@@ -2,8 +2,22 @@
 import { AgentRoot } from '@movie-hub/helper-agent-ui';
 import { useManagement } from './management.composable';
 
-const { locale, t, text, password, authenticated, loading, busy, error, host, client, checkSession, login }
-  = useManagement();
+const {
+  locale,
+  t,
+  text,
+  password,
+  username,
+  usernameRequired,
+  authenticated,
+  loading,
+  busy,
+  error,
+  host,
+  client,
+  checkSession,
+  login,
+} = useManagement();
 </script>
 <template>
   <AgentRoot v-if="authenticated" :client="client" :host="host" />
@@ -14,6 +28,18 @@ const { locale, t, text, password, authenticated, loading, busy, error, host, cl
       <p class="management-intro">{{ t.managementDescription }}</p>
       <p v-if="loading" role="status">{{ t.managementChecking }}</p>
       <form v-else @submit.prevent="login">
+        <label v-if="usernameRequired" for="management-username">
+          {{ t.managementUsername }}
+          <input
+            id="management-username"
+            v-model="username"
+            type="text"
+            autocomplete="username"
+            maxlength="128"
+            :disabled="busy"
+            required
+          />
+        </label>
         <label for="management-password"
           >{{ t.managementPassword
           }}<input
@@ -26,14 +52,14 @@ const { locale, t, text, password, authenticated, loading, busy, error, host, cl
             required
         /></label>
         <p v-if="error" class="error" role="alert">{{ text(error) }}</p>
-        <button type="submit" class="primary" :disabled="busy || !password">
+        <button type="submit" class="primary" :disabled="busy || !password || (usernameRequired && !username)">
           {{ busy ? t.busy : t.managementSignIn }}
         </button>
         <button v-if="error === 'networkError'" type="button" class="quiet" :disabled="busy" @click="checkSession">
           {{ t.retry }}
         </button>
       </form>
-      <p class="management-hint">{{ t.managementPasswordHint }}</p>
+      <p class="management-hint">{{ usernameRequired ? t.managementLoginHint : t.managementPasswordHint }}</p>
       <label class="management-language"
         >{{ t.language
         }}<select v-model="locale" :disabled="busy">

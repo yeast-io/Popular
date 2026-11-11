@@ -39,28 +39,6 @@ async function api(path, method = 'GET', body) {
 try {
   docker('volume', 'create', data);
   docker('volume', 'create', secrets);
-  docker(
-    'run',
-    '--rm',
-    '--read-only',
-    '--cap-drop=ALL',
-    '-v',
-    `${secrets}:/run/agent-secrets`,
-    image,
-    '--init-secrets',
-    '/run/agent-secrets'
-  );
-  // Synthetic, disposable initializer output is read into memory only, never printed.
-  const password = docker(
-    'run',
-    '--rm',
-    '--entrypoint',
-    'cat',
-    '-v',
-    `${secrets}:/run/agent-secrets:ro`,
-    image,
-    '/run/agent-secrets/admin-password'
-  );
   // Docker chooses a free loopback port; inspect the temporary container before starting the service.
   docker(
     'create',
@@ -77,7 +55,7 @@ try {
     '-v',
     `${data}:/var/lib/popular-agent`,
     '-v',
-    `${secrets}:/run/agent-secrets:ro`,
+    `${secrets}:/run/agent-secrets`,
     image
   );
   docker('start', prefix);
@@ -104,7 +82,7 @@ try {
     '-v',
     `${data}:/var/lib/popular-agent`,
     '-v',
-    `${secrets}:/run/agent-secrets:ro`,
+    `${secrets}:/run/agent-secrets`,
     image
   );
   const ready = () =>
@@ -112,6 +90,9 @@ try {
       .then((r) => r.ok)
       .catch(() => false);
   await waitFor(ready, 'Docker ready');
+  // First service start must initialize the empty volume without --init-secrets.
+  const password = docker('exec', prefix, 'cat', '/run/agent-secrets/admin-password');
+  const masterKey = docker('exec', prefix, 'sha256sum', '/run/agent-secrets/master.key');
   assert.equal(docker('exec', prefix, 'id', '-u'), '10001');
   assert.equal((await fetch(`${base}/api/settings`)).status, 401);
   assert.match(await (await fetch(base)).text(), /<div id="app"><\/div>/);
@@ -129,7 +110,60 @@ try {
   assert.equal((await fetch(`${base}/api/settings`, { headers: { cookie } })).status, 401);
   docker('exec', prefix, '/usr/local/bin/popular-agent-web', '--health-check');
   assert.equal(docker('inspect', '--format', '{{.Config.User}}', prefix), '10001:10001');
-  console.log('PASS Docker: non-root/read-only → health → login → persistent encrypted volume → restart → logout');
+
+  assert.equal(docker('exec', prefix, 'sha256sum', '/run/agent-secrets/master.key'), masterKey);
+  // Switch only the management login; encrypted data and the original key remain intact.
+  docker('rm', '-f', prefix);
+  const environmentPassword = `disposable-${randomUUID()}`;
+  docker(
+    'run',
+    '-d',
+    '--name',
+    prefix,
+    '--read-only',
+    '--cap-drop=ALL',
+    '--security-opt=no-new-privileges:true',
+    '--pids-limit=128',
+    '--tmpfs',
+    '/tmp:rw,noexec,nosuid,size=16m',
+    '-p',
+    `127.0.0.1:${port}:1423`,
+    '-e',
+    `AGENT_WEB_ORIGIN=${base}`,
+    '-e',
+    'WEB_LOGIN_USER=operator',
+    '-e',
+    `WEB_LOGIN_PASSWORD=${environmentPassword}`,
+    '-v',
+    `${data}:/var/lib/popular-agent`,
+    '-v',
+    `${secrets}:/run/agent-secrets:ro`,
+    image
+  );
+  await waitFor(ready, 'environment login ready with existing read-only secrets');
+  cookie = '';
+  csrf = '';
+  assert.equal((await api('/session')).usernameRequired, true);
+  for (const credentials of [
+    { password: environmentPassword },
+    { username: 'wrong', password: environmentPassword },
+    { username: 'operator', password },
+  ]) {
+    const response = await fetch(`${base}/api/session`, {
+      method: 'POST',
+      headers: { 'origin': base, 'content-type': 'application/json' },
+      body: JSON.stringify(credentials),
+      signal: AbortSignal.timeout(5000),
+    });
+    assert.equal(response.status, 401);
+  }
+  csrf = (await api('/session', 'POST', { username: 'operator', password: environmentPassword })).csrf;
+  assert.equal((await api('/settings')).settings.locale, 'zh-CN');
+  assert.equal(docker('exec', prefix, 'sha256sum', '/run/agent-secrets/master.key'), masterKey);
+  assert.equal(docker('exec', prefix, 'cat', '/run/agent-secrets/admin-password'), password);
+  console.log(
+    'PASS Docker: automatic initialization → login → persistent restart → environment account → read-only secret compatibility'
+  );
 } finally {
   try {
     docker('rm', '-f', prefix);
