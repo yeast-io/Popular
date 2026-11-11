@@ -1,12 +1,14 @@
-# Agent Web / Docker — batch 3
+# Agent Web / Docker
 
-Status: Web source, native runtime integration and browser checks are verified. Docker build/start/restart acceptance is pending because the local Docker builder/API became unresponsive. Do not interpret the Docker configuration or CI job as a completed runtime validation.
+For deployment, start with the [Chinese README](../apps/helpers/agent/web/README.md) or [English README](../apps/helpers/agent/web/README.en-US.md). Both provide a standalone Compose file and the initial configuration steps.
+
+Status: native `linux/amd64` and `linux/arm64` Docker images passed build/start/restart and encrypted-volume lifecycle checks in [GitHub Actions run 43034118917](https://github.com/yeast-io/Popular/actions/runs/43034118917). This guide also describes native development and advanced host configuration.
 
 ## Responsibility and scope
 
 `web/` is a second host for the existing `core/` and `ui/`, alongside desktop `app/`. It has no duplicate Gateway client, downloader implementation, task runtime or product pages. A single Rust process owns the HTTP management service and one Core runtime. Closing the browser or logging out leaves Core running; stopping the container stops Core gracefully. Docker restart policy provides service startup rather than the desktop OS startup option.
 
-This batch supports Gateway setup and explicit device binding, qBittorrent/Transmission configuration, pending tasks, observed runtime updates, disconnect/reset and locale preferences. Batch 4 adds [local site configuration and verification](agent-resource-sites.md). Resource-search routing and site download-source resolution remain outside that batch. Existing download protocol behavior is unchanged; this batch does not move cloud resource resolution to the Agent yet.
+The host supports Gateway setup and explicit device binding, qBittorrent/Transmission configuration, pending tasks, observed runtime updates, disconnect/reset and locale preferences. [Local site configuration and verification](agent-resource-sites.md) and [Agent resource routing](agent-resource-routing.md) now provide site search, resource details and local torrent preparation when Agent mode is enabled in Popular.
 
 ```text
 apps/helpers/agent/
