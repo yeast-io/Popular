@@ -1,6 +1,6 @@
 # Agent Web / Docker
 
-For deployment, start with the [Chinese README](../apps/helpers/agent/web/README.md) or [English README](../apps/helpers/agent/web/README.en-US.md). Both provide a standalone Compose file and the initial configuration steps.
+For deployment, start with the [English README](../apps/helpers/agent/web/README.md) or [Chinese README](../apps/helpers/agent/web/README.zh-CN.md). Both cover Docker CLI startup, optional Compose deployment, and initial configuration.
 
 Status: native `linux/amd64` and `linux/arm64` Docker images passed build/start/restart and encrypted-volume lifecycle checks in [GitHub Actions run 43034118917](https://github.com/yeast-io/Popular/actions/runs/43034118917). This guide also describes native development and advanced host configuration.
 

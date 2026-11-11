@@ -2,7 +2,7 @@
 
 Popular 的本机设备代理。设置窗口与菜单显示名称为 **Agent**，macOS 应用名称为 **Popular Link Agent**，打包文件名为 `popular-link-agent-$version-$arch.app`。
 
-**部署 Web/Docker Agent：** [简体中文快速开始](web/README.md) · [English quick start](web/README.en-US.md)。使用发布镜像无需安装源码依赖。
+**部署 Web/Docker Agent：** [English quick start](web/README.md) · [简体中文快速开始](web/README.zh-CN.md)。使用发布镜像无需安装源码依赖。
 
 桌面开发或源码构建：在仓库根目录安装依赖 `pnpm install --frozen-lockfile`。
 
