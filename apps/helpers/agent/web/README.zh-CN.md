@@ -1,8 +1,12 @@
 # Popular Agent
 
+[![Publish Agent Docker](https://github.com/yeast-io/Popular/actions/workflows/publish-agent-image.yml/badge.svg)](https://github.com/yeast-io/Popular/actions/workflows/publish-agent-image.yml)
+
 [English](README.md) | 简体中文
 
-用于连接 Popular、资源站点和本地下载器的 Docker 镜像，提供 Web 管理界面。支持 `linux/amd64`、`linux/arm64`。
+用于连接 Popular、资源站点和本地下载器的 Docker 镜像，提供 Web 管理界面。
+
+支持 `linux/amd64`、`linux/arm64`。
 
 - [快速开始](#快速开始)
 - [配置](#配置)
