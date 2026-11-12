@@ -59,7 +59,7 @@ const {
           {{ t.retry }}
         </button>
       </form>
-      <p class="management-hint">{{ usernameRequired ? t.managementLoginHint : t.managementPasswordHint }}</p>
+      <p v-if="!usernameRequired" class="management-hint">{{ t.managementPasswordHint }}</p>
       <label class="management-language"
         >{{ t.language
         }}<select v-model="locale" :disabled="busy">

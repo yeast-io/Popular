@@ -28,6 +28,7 @@ it.each(['zh-CN', 'en-US'] as const)(
       await flushPromises();
       await wrapper.get('select').setValue(locale);
       expect(wrapper.text()).toContain(messages[locale].managementTitle);
+      expect(wrapper.get('.management-hint').text()).toBe(messages[locale].managementPasswordHint);
       expect(document.documentElement.lang).toBe(locale);
       await wrapper.get('input').setValue('private-password');
       fetcher.mockResolvedValueOnce(reply({ error: { code: 'managementUnauthorized' } }, 401));
@@ -82,7 +83,7 @@ it.each(['zh-CN', 'en-US'] as const)('requires and submits the configured userna
     await flushPromises();
     await wrapper.get('select').setValue(locale);
     expect(wrapper.text()).toContain(messages[locale].managementUsername);
-    expect(wrapper.text()).toContain(messages[locale].managementLoginHint);
+    expect(wrapper.find('.management-hint').exists()).toBe(false);
     await wrapper.get('#management-password').setValue('private-password');
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined();
     await wrapper.get('#management-username').setValue('operator');
