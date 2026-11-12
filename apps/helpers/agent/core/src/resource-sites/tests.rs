@@ -474,3 +474,72 @@ async fn parallel_site_saves_do_not_overwrite_each_others_metadata_or_credential
         .all(|row| row.has_credential));
     assert_eq!(store.values.lock().unwrap().len(), 3);
 }
+
+#[tokio::test]
+async fn defaults_are_persistent_unique_and_require_an_enabled_verified_site() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Memory::default());
+    let service = ResourceSites::new(directory.path().into(), store.clone());
+    let trace = Trace::new();
+    assert!(service.set_default(Site::Mteam, &trace).await.is_err());
+    let mut rows = StoredSites::default();
+    for site in [Site::Mteam, Site::Hdwing] {
+        let credential_id = uuid::Uuid::new_v4().to_string();
+        let base = site.base().to_owned();
+        store
+            .write(
+                &credential_id,
+                &Secrets {
+                    api_key: serde_json::to_string(&SiteSecrets {
+                        site,
+                        base_url: base.clone(),
+                        credential: "site-secret".into(),
+                        passkey: String::new(),
+                        external_user_id: "123".into(),
+                    })
+                    .unwrap(),
+                    password: String::new(),
+                },
+            )
+            .unwrap();
+        rows.sites.push(StoredSite {
+            site,
+            base_url: base,
+            credential_id,
+            enabled: true,
+            status: Status::ConfiguredValid,
+            verified_at: 1000,
+            last_error: None,
+        });
+    }
+    journal::atomic(directory.path(), FILE, &rows).unwrap();
+    service.set_default(Site::Mteam, &trace).await.unwrap();
+    service.set_default(Site::Hdwing, &trace).await.unwrap();
+    let fresh = ResourceSites::new(directory.path().into(), store);
+    let states = fresh.list(&trace).await.unwrap();
+    assert_eq!(states.iter().filter(|row| row.is_default).count(), 1);
+    assert!(
+        states
+            .iter()
+            .find(|row| row.site == Site::Hdwing)
+            .unwrap()
+            .is_default
+    );
+    fresh
+        .set_enabled(
+            EnabledRequest {
+                site: Site::Hdwing,
+                enabled: false,
+            },
+            &trace,
+        )
+        .await
+        .unwrap();
+    assert!(fresh.set_default(Site::Hdwing, &trace).await.is_err());
+    assert!(!fresh
+        .list(&trace)
+        .await
+        .unwrap()
+        .iter()
+        .any(|row| row.is_default));
+}

@@ -9,6 +9,7 @@ COPY apps/helpers/agent/web/package.json apps/helpers/agent/web/package.json
 RUN pnpm install --frozen-lockfile --filter @movie-hub/helper-agent-web...
 COPY apps/helpers/agent/ui apps/helpers/agent/ui
 COPY apps/helpers/agent/web apps/helpers/agent/web
+COPY apps/web/public/favicon.svg apps/web/public/favicon.svg
 RUN pnpm --filter @movie-hub/helper-agent-web build
 
 FROM ${BASE_REGISTRY}/library/rust:1.96-bookworm AS server

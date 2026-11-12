@@ -10,6 +10,7 @@ const resourceId = Type.String({ pattern: '^[0-9]{1,32}$' });
 const requestId = Type.String({ pattern: '^[A-Za-z0-9_-]{1,160}$' });
 export const AgentResourceRequestSchema = Type.Union([
   Type.Object({ operation: Type.Literal('list') }, closed),
+  Type.Object({ operation: Type.Literal('setDefault'), site: AgentResourceSiteSchema }, closed),
   Type.Object(
     {
       operation: Type.Literal('search'),
@@ -38,6 +39,7 @@ export const AgentResourceSitesSchema = Type.Array(
     {
       site: AgentResourceSiteSchema,
       enabled: Type.Boolean(),
+      isDefault: Type.Optional(Type.Boolean()),
       baseUrl: Type.Optional(Type.String({ maxLength: 2048, pattern: '^https://[^?#@]+$' })),
       status: Type.Union(
         (['unconfigured', 'configured_valid', 'configured_invalid'] as const).map((value) => Type.Literal(value))
@@ -58,6 +60,7 @@ export const AgentPreparedTorrentSchema = Type.Object(
 );
 export const AgentResourceResultSchemas = {
   list: AgentResourceSitesSchema,
+  setDefault: AgentResourceSitesSchema,
   search: Type.Object(
     {
       releases: Type.Array(publicRelease, { maxItems: 100 }),

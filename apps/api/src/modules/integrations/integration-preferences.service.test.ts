@@ -3,11 +3,12 @@ import test from 'node:test';
 import { IntegrationPreferencesService } from './integration-preferences.service.js';
 import type {
   IntegrationChoice,
+  AgentDefaultSiteOperations,
   IntegrationPreferencesRecord,
   IntegrationPreferencesStore,
 } from './integration-preferences.types.js';
 
-function harness() {
+function harness(agentDefaults?: AgentDefaultSiteOperations) {
   const rows = new Map<string, IntegrationPreferencesRecord>();
   const read = async (owner: string) => structuredClone(rows.get(owner) ?? { defaults: {}, selectedSites: [] });
   const choices: IntegrationChoice[] = [
@@ -35,7 +36,7 @@ function harness() {
       rows.set(owner, row);
     },
   };
-  return { service: new IntegrationPreferencesService(store, async () => choices), choices, rows };
+  return { service: new IntegrationPreferencesService(store, async () => choices, agentDefaults), choices, rows };
 }
 test('defaults and explicit selections are owner scoped; clearing a selection restores the primary site', async () => {
   const { service } = harness();
@@ -43,8 +44,7 @@ test('defaults and explicit selections are owner scoped; clearing a selection re
     resource: 'mteam',
     downloader: 'transmission',
     ai: 'openai',
-  }
-  );
+  });
   await service.setDefault('alice', 'resource', 'hdarea');
   assert.deepEqual((await service.get('alice')).effectiveSites, ['mteam', 'hdarea']);
   assert.deepEqual((await service.get('bob')).effectiveSites, ['mteam']);
@@ -68,8 +68,7 @@ test('deleting a primary requires an explicit replacement; deleting the last con
   await service.get('alice');
   await assert.rejects(service.beforeDelete('alice', 'resource', 'mteam'), {
     code: 'INTEGRATION_DEFAULT_REPLACEMENT_REQUIRED',
-  }
-  );
+  });
   await service.setDefault('alice', 'resource', 'hdarea');
   await service.beforeDelete('alice', 'resource', 'mteam');
   choices[0]!.status = 'unconfigured';
@@ -94,10 +93,52 @@ test('the default stays enabled for legacy rows, explicit exclusions and newly s
 
 test('Agent selection stays separate and reading it never initializes a cloud resource default', async () => {
   const f = harness();
-  f.rows.set('alice', { defaults: {}, selectedSites: ['hdarea'], resourceAgentDeviceId: 'device-1', agentSelectedSites: ['hdarea'], agentDefaultSite: 'hdarea' });
+  f.rows.set('alice', {
+    defaults: {},
+    selectedSites: ['hdarea'],
+    resourceAgentDeviceId: 'device-1',
+    agentSelectedSites: ['hdarea'],
+    agentDefaultSite: 'hdarea',
+  });
   const local = await f.service.get('alice');
   assert.equal(local.resourceAgentDeviceId, 'device-1');
   assert.equal(local.defaults.resource, 'hdarea');
   assert.equal(f.rows.get('alice')!.defaults.resource, undefined);
   assert.deepEqual(f.rows.get('alice')!.selectedSites, ['hdarea']);
+});
+
+test('uses the Agent default for implicit searches and forwards website default changes to the Agent', async () => {
+  let primary = 'hdarea';
+  const f = harness({
+    get: async () => primary,
+    set: async (_owner, site) => {
+      primary = site;
+    },
+  });
+  f.rows.set('alice', {
+    defaults: {},
+    selectedSites: [],
+    resourceAgentDeviceId: 'device-1',
+    agentSelectedSites: [],
+    agentDefaultSite: 'mteam',
+  });
+  assert.equal((await f.service.get('alice')).defaults.resource, 'hdarea');
+  assert.equal((await f.service.setDefault('alice', 'resource', 'mteam')).defaults.resource, 'mteam');
+  assert.equal(primary, 'mteam');
+});
+test('retains stored Agent preferences when the device is offline', async () => {
+  const f = harness({
+    get: async () => {
+      throw new Error('offline');
+    },
+    set: async () => {},
+  });
+  f.rows.set('alice', {
+    defaults: {},
+    selectedSites: [],
+    resourceAgentDeviceId: 'device-1',
+    agentSelectedSites: [],
+    agentDefaultSite: 'hdarea',
+  });
+  assert.equal((await f.service.get('alice')).defaults.resource, 'hdarea');
 });

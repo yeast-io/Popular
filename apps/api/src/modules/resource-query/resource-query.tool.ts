@@ -138,12 +138,14 @@ export class ResourceQueryTool implements ResourceQueryCapability {
     signal: AbortSignal,
     locale: Locale
   ): Promise<string> {
-    const enabled = this.preferences
-      ? (await aiStep('resources.preferences.read', () => this.preferences!.get(ownerId))).effectiveSites
-      : [...this.sources.keys()];
+    const preferences = this.preferences
+      ? await aiStep('resources.preferences.read', () => this.preferences!.get(ownerId))
+      : undefined;
+    const enabled = preferences?.effectiveSites ?? [...this.sources.keys()];
+    const primary = preferences?.resourceAgentDeviceId ? preferences.defaults.resource : undefined;
     const enabledSources = new Map([...this.sources].filter(([id]) => enabled.includes(id)));
     state.providers = state.providers.filter((id) => enabledSources.has(id));
-    if (state.snapshot?.results.some((result) => !enabledSources.has(result.provider))) {
+    if (state.snapshot?.results.some((result) => !enabledSources.has(result.provider) || (!state.providers.length && primary && result.provider !== primary))) {
       // Source changes invalidate numbered results rather than silently renumbering them.
       delete state.snapshot;
       state.releases = [];
@@ -224,7 +226,7 @@ export class ResourceQueryTool implements ResourceQueryCapability {
         ? '请明确是选择候选电影，还是查询另一部电影。'
         : 'Please choose a candidate or search for a different title.';
     if (plan.resolution !== null) state.resolution = plan.resolution;
-    if (plan.providers !== null) state.providers = plan.providers;
+    if (plan.providers !== null) state.providers = primary && !plan.providers.length ? [...enabledSources.keys()] : plan.providers;
     if (plan.candidateId !== null) {
       const candidate = state.candidates.find((movie) => movie.tmdbId === plan.candidateId);
       if (!candidate)
@@ -287,7 +289,9 @@ export class ResourceQueryTool implements ResourceQueryCapability {
       ? state.providers.map((id) => {
           return enabledSources.get(id)!;
         })
-      : [...enabledSources.values()];
+      : primary && enabledSources.has(primary)
+        ? [enabledSources.get(primary)!]
+        : [...enabledSources.values()];
     if (!providers.length) return zh ? '当前没有接入资源服务。' : 'No resource services are available.';
     // Failed sources are not reusable query results; successful sources in a partial snapshot remain useful.
     const reusable

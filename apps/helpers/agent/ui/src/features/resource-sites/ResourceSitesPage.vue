@@ -2,14 +2,15 @@
 import { onMounted } from 'vue';
 import { useAgentContext } from '../../agent-context.composable';
 import AgentIcon from '../../components/AgentIcon.vue';
+import CapsuleSwitch from '../../components/CapsuleSwitch.vue';
 import SecretInput from '../../components/SecretInput.vue';
 import { resourceSitePreviews, siteNames } from './resource-sites.presentation';
 import { canConfigureSite, sameSiteEndpoint } from './resource-sites.domain';
 
 const { t, text, sites, form } = useAgentContext();
-const { entries, loading, loaded, error, available, load, configure, cancel, remove, verify, toggle } = sites;
+const { entries, loading, loaded, error, available, load, configure, cancel, remove, verify, toggle, setDefault, canSetDefault } = sites;
 onMounted(() => {
-  if (available && !loaded.value) void load();
+  if (available && !loaded.value && !error.value) void load();
 });
 </script>
 <template>
@@ -44,12 +45,19 @@ onMounted(() => {
         :data-site="entry.snapshot.site"
       >
         <header class="local-site-header">
+          <div class="local-site-identity">
           <span class="site-initial">{{ siteNames[entry.snapshot.site].slice(0, 1) }}</span>
           <div>
             <h2>{{ siteNames[entry.snapshot.site] }}</h2>
             <p>{{ t.localCredentials }}</p>
           </div>
-          <span class="pill" :class="entry.snapshot.status === 'configured_invalid' ? 'warning' : 'neutral'">
+          </div>
+          <div v-if="entry.snapshot.status !== 'unconfigured'" class="local-site-controls">
+            <CapsuleSwitch :checked="entry.snapshot.enabled" :label="entry.snapshot.enabled ? t.siteDisable : t.siteEnable" :disabled="entry.busy || entry.editing || (!entry.snapshot.enabled && entry.snapshot.status === 'configured_invalid')" @change="toggle(entry)" />
+            <button v-if="canSetDefault" type="button" :disabled="entry.busy || entry.editing || !entry.snapshot.enabled || entry.snapshot.status !== 'configured_valid' || entry.snapshot.isDefault" @click="setDefault(entry)">{{ entry.snapshot.isDefault ? t.defaultItem : t.setDefault }}</button>
+          </div>
+        </header>
+        <span class="pill" :class="entry.snapshot.status === 'configured_invalid' ? 'warning' : 'neutral'">
             <span
               class="status-dot"
               :class="{
@@ -67,7 +75,6 @@ onMounted(() => {
                     : t.siteDisabled
             }}</span
           >
-        </header>
         <p v-if="entry.error" class="error" role="alert">{{ text(entry.error) }}</p>
         <p v-else-if="entry.snapshot.lastError" class="error" role="status">{{ text(entry.snapshot.lastError) }}</p>
         <form v-if="entry.editing" @submit.prevent="configure(entry)">
@@ -125,13 +132,8 @@ onMounted(() => {
             >
               {{ t.editConfig }}</button
             ><button type="button" :disabled="entry.busy" @click="verify(entry)">{{ t.siteVerify }}</button
-            ><button
-              type="button"
-              :disabled="entry.busy || (!entry.snapshot.enabled && entry.snapshot.status === 'configured_invalid')"
-              @click="toggle(entry)"
             >
-              {{ entry.snapshot.enabled ? t.siteDisable : t.siteEnable }}
-            </button>
+
           </div>
         </div>
         <div v-if="entry.snapshot.status !== 'unconfigured'" class="local-site-delete">

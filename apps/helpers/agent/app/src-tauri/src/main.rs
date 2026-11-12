@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod credentials;
 mod desktop;
+mod downloader_profiles;
 #[cfg(test)]
 mod locale_tests;
 mod queue;
@@ -16,6 +17,14 @@ use tauri::Manager;
 
 type AgentState = std::sync::Arc<popular_agent_core::application::Agent<NativeCredentials>>;
 
+#[tauri::command]
+async fn download_history(
+    state: tauri::State<'_, AgentState>,
+) -> Result<Vec<popular_agent_core::download_history::Item>, String> {
+    let trace = Trace::new();
+    trace.stage("history.load.started");
+    trace.finish("history.load", state.download_history(&trace).await)
+}
 #[tauri::command]
 async fn load_settings(state: tauri::State<'_, AgentState>) -> Result<Snapshot, String> {
     let trace = Trace::new();
@@ -77,6 +86,10 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             desktop::runtime_status,
+            download_history,
+            downloader_profiles::downloaders_list,
+            downloader_profiles::downloader_configure,
+            downloader_profiles::downloader_action,
             queue::queue_status,
             queue::queue_page,
             queue::select_page,
@@ -89,6 +102,7 @@ fn main() {
             disconnect_gateway,
             reset_downloader,
             resource_sites::resource_sites_list,
+            resource_sites::resource_site_default,
             resource_sites::resource_site_configure,
             resource_sites::resource_site_verify,
             resource_sites::resource_site_enabled,

@@ -16,6 +16,10 @@ use url::Url;
 #[serde(tag = "operation", rename_all = "lowercase", deny_unknown_fields)]
 pub(crate) enum ResourceRequest {
     List,
+    #[serde(rename = "setDefault")]
+    SetDefault {
+        site: Site,
+    },
     Search {
         site: Site,
         query: Option<String>,
@@ -712,13 +716,19 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
         tickets: &super::tickets::ResourceTickets,
         trace: &Trace,
     ) -> Result<Value, AgentError> {
-        if matches!(input, ResourceRequest::List) {
+        if let ResourceRequest::SetDefault { site } = input {
+            self.set_default(site, trace).await?;
+        }
+        if matches!(
+            input,
+            ResourceRequest::List | ResourceRequest::SetDefault { .. }
+        ) {
             let snapshots = self.list(trace).await?;
             let rows = self.load()?;
-            return Ok(json!(snapshots.into_iter().map(|s|{ let mut value=json!({"site":s.site,"enabled":s.enabled,"status":s.status,"verifiedAt":s.verified_at,"version":rows.sites.iter().find(|r|r.site==s.site).map(|r|crate::protocol::fingerprint(&json!([r.credential_id,r.base_url]))).unwrap_or_default()}); if s.base_url.starts_with("https://") { value["baseUrl"]=json!(s.base_url); } value }).collect::<Vec<_>>()));
+            return Ok(json!(snapshots.into_iter().map(|s|{ let mut value=json!({"site":s.site,"enabled":s.enabled,"isDefault":s.is_default,"status":s.status,"verifiedAt":s.verified_at,"version":rows.sites.iter().find(|r|r.site==s.site).map(|r|crate::protocol::fingerprint(&json!([r.credential_id,r.base_url]))).unwrap_or_default()}); if s.base_url.starts_with("https://") { value["baseUrl"]=json!(s.base_url); } value }).collect::<Vec<_>>()));
         }
         let site = match &input {
-            ResourceRequest::List => unreachable!(),
+            ResourceRequest::List | ResourceRequest::SetDefault { .. } => unreachable!(),
             ResourceRequest::Search { site, .. }
             | ResourceRequest::Detail { site, .. }
             | ResourceRequest::Prepare { site, .. } => *site,
@@ -781,7 +791,7 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
                     let (url, hash) = torrent(site, &base, &secrets, &resource_id, trace).await?;
                     tickets.insert(context, &command_id, &row, &resource_id, url, hash)
                 }
-                ResourceRequest::List => unreachable!(),
+                ResourceRequest::List | ResourceRequest::SetDefault { .. } => unreachable!(),
             }
         }
         .await;

@@ -68,6 +68,11 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
     fn snapshot(&self, site: Site, row: Option<&StoredSite>) -> Result<SiteSnapshot, AgentError> {
         let secrets = row.map(|row| self.secrets(row)).transpose()?;
         Ok(SiteSnapshot {
+            is_default: journal::load::<Option<Site>>(&self.directory, "default-site.json")?
+                == Some(site)
+                && row.is_some_and(|row| {
+                    row.enabled && matches!(row.status, Status::ConfiguredValid)
+                }),
             site,
             base_url: row
                 .map(|r| r.base_url.clone())
@@ -90,12 +95,18 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
         let _guard = self.commit.lock().await;
         let mut stored = self.load()?;
         self.cleanup_pending(&mut stored, trace)?;
+        let primary: Option<Site> = journal::load(&self.directory, "default-site.json")?;
         Site::ALL
             .into_iter()
             .map(|site| {
                 let row = stored.sites.iter().find(|r| r.site == site);
                 match self.snapshot(site, row) {
-                    Ok(snapshot) => Ok(snapshot),
+                    Ok(mut snapshot) => {
+                        snapshot.is_default = primary == Some(site)
+                            && snapshot.enabled
+                            && snapshot.status == "configured_valid";
+                        Ok(snapshot)
+                    }
                     Err(error) => {
                         diagnostics::failure(
                             "resource-sites.credentials.read",
@@ -259,6 +270,26 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
         trace.stage("resource-sites.reverify.completed");
         self.snapshot(site, Some(&row))
     }
+    pub async fn set_default(
+        &self,
+        site: Site,
+        trace: &Trace,
+    ) -> Result<Vec<SiteSnapshot>, AgentError> {
+        trace.stage("resource-sites.default.started");
+        {
+            let _commit = self.commit.lock().await;
+            let stored = self.load()?;
+            if !stored.sites.iter().any(|row| {
+                row.site == site && row.enabled && matches!(row.status, Status::ConfiguredValid)
+            }) {
+                return Err(AgentError::code("siteNotConfigured"));
+            }
+            journal::atomic(&self.directory, "default-site.json", &Some(site))?;
+        }
+        let snapshots = self.list(trace).await?;
+        trace.stage("resource-sites.default.completed");
+        Ok(snapshots)
+    }
     pub async fn set_enabled(
         &self,
         input: EnabledRequest,
@@ -317,6 +348,9 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
             });
         }
         journal::atomic(&self.directory, FILE, &stored)?;
+        if journal::load::<Option<Site>>(&self.directory, "default-site.json")? == Some(site) {
+            journal::atomic(&self.directory, "default-site.json", &Option::<Site>::None)?;
+        }
         self.cleanup_pending(&mut stored, trace)?;
         if stored
             .pending_cleanup

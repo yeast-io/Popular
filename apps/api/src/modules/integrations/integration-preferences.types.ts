@@ -19,3 +19,8 @@ export interface IntegrationPreferencesStore {
 }
 export type IntegrationChoice = IntegrationPreferences['choices'][number];
 export type IntegrationChoicesReader = (ownerId: string) => Promise<IntegrationChoice[]>;
+
+export interface AgentDefaultSiteOperations {
+  get(ownerId: string): Promise<string | undefined>;
+  set(ownerId: string, site: string): Promise<void>;
+}

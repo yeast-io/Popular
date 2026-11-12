@@ -8,7 +8,7 @@ import { MovieReleaseCacheService } from './movie-release-cache.service.js';
 import type { MovieReleaseCacheEntry } from './movie-release-cache.types.js';
 import { MovieReleaseCacheError } from './movie-release-cache.errors.js';
 
-function harness() {
+function harness(agentDefault?: string) {
   const cacheRows = new Map<string, MovieReleaseCacheEntry>();
   const revisions = new Map<string, string>();
   let cacheFailure = false;
@@ -73,7 +73,8 @@ function harness() {
   const preferences = {
     async get(owner: string): Promise<IntegrationPreferences> {
       return {
-        defaults: { resource: 'mteam' },
+        defaults: { resource: agentDefault ?? 'mteam' },
+        ...(agentDefault ? { resourceAgentDeviceId: 'agent-1' } : {}),
         selectedSites: selections.get(owner) ?? [],
         effectiveSites: selections.get(owner) ?? ['mteam', 'hdarea'],
         choices: [],
@@ -360,4 +361,9 @@ test('download validation accepts a release on a later source page and rejects u
   assert.equal((await f.service.releaseForDownload('alice', 603, 'hdarea', '99')).id, '99');
   await assert.rejects(f.service.releaseForDownload('alice', 603, 'hdarea', '999'));
   await f.service.stop();
+});
+
+test('implicit Agent movie searches use its default site while cloud selections retain their meaning', async () => {
+  assert.deepEqual(await harness('hdarea').service.selectedSites('alice'), ['hdarea']);
+  assert.deepEqual(await harness().service.selectedSites('alice'), ['mteam', 'hdarea']);
 });

@@ -81,6 +81,22 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
       if (active) entry.busy = false;
     }
   }
+  async function setDefault(entry: ResourceSiteEntry) {
+    if (!client?.setDefault || entry.busy || loading.value || anyBusy.value) return;
+    entry.busy = true;
+    entry.error = '';
+    try {
+      const snapshots = await client.setDefault(entry.snapshot.site);
+      if (active) snapshots.forEach((snapshot) => {
+        const row = entries.find((row) => row.snapshot.site === snapshot.site);
+        if (row) row.snapshot.isDefault = snapshot.isDefault;
+      });
+    } catch (cause) {
+      if (active) entry.error = typeof cause === 'string' ? cause : 'unknownError';
+    } finally {
+      if (active) entry.busy = false;
+    }
+  }
   function configure(entry: ResourceSiteEntry) {
     if (!client || !canConfigureSite(entry)) return;
     const keep = sameSiteEndpoint(entry);
@@ -127,6 +143,8 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
     anyBusy,
     load,
     configure,
+    setDefault,
+    canSetDefault: !!client?.setDefault,
     cancel,
     remove,
     verify,

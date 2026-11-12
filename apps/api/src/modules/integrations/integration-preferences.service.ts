@@ -1,11 +1,15 @@
 import type { IntegrationCategory, IntegrationPreferences } from '@movie-hub/contract';
 import { AppError } from '../../infrastructure/http/app-error.js';
-import { aiStep } from '../../infrastructure/logging/ai-trace.js';
-import type { IntegrationChoicesReader, IntegrationPreferencesStore } from './integration-preferences.types.js';
+import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
+import type { AgentDefaultSiteOperations, IntegrationChoicesReader, IntegrationPreferencesStore } from './integration-preferences.types.js';
 import { integrationPreferencesMessages as messages } from './integration-preferences.messages.js';
 
 export class IntegrationPreferencesService {
-  constructor(private readonly store: IntegrationPreferencesStore, private readonly choices: IntegrationChoicesReader) {}
+  constructor(
+    private readonly store: IntegrationPreferencesStore,
+    private readonly choices: IntegrationChoicesReader,
+    private readonly agentDefaults?: AgentDefaultSiteOperations
+  ) {}
 
   async get(ownerId: string): Promise<IntegrationPreferences> {
     const choices = await aiStep('integration-preferences.choices', () => this.choices(ownerId));
@@ -24,10 +28,19 @@ export class IntegrationPreferencesService {
       const available = choices
         .filter((choice) => choice.category === 'resource' && choice.status !== 'unconfigured')
         .map((choice) => choice.id);
+      let localDefault: string | undefined;
+      try {
+        localDefault = await aiStep('integration-preferences.agent-default.read', async () => this.agentDefaults?.get(ownerId));
+      } catch (error) {
+        currentAiTrace()?.fail(error, { stage: 'integration-preferences.agent-default.read' });
+        currentAiTrace()?.clearFailure();
+      }
       const primary
-        = current.agentDefaultSite && available.includes(current.agentDefaultSite)
-          ? current.agentDefaultSite
-          : available[0];
+        = localDefault && available.includes(localDefault)
+          ? localDefault
+          : current.agentDefaultSite && available.includes(current.agentDefaultSite)
+            ? current.agentDefaultSite
+            : available[0];
       if (primary) defaults.resource = primary;
       else delete defaults.resource;
     }
@@ -60,6 +73,7 @@ export class IntegrationPreferencesService {
       });
     }
     const agent = category === 'resource' && (await this.store.read(ownerId)).resourceAgentDeviceId;
+    if (agent && this.agentDefaults) await aiStep('integration-preferences.agent-default.save', () => this.agentDefaults!.set(ownerId, id));
     await aiStep('integration-preferences.default.save', () =>
       agent && this.store.setAgentDefault
         ? this.store.setAgentDefault(ownerId, id)

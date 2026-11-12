@@ -432,6 +432,18 @@ async fn dispatch(
             set_cookie(&mut response, &state.config, "", 0);
             return Ok(response);
         }
+        (Method::POST, "/api/resource-sites/default") => {
+            trace.stage("management.resource-sites.default.started");
+            let input: popular_agent_core::resource_sites::SiteRequest = read_json(request).await?;
+            serde_json::to_value(
+                state
+                    .agent
+                    .resource_sites
+                    .set_default(input.site, trace)
+                    .await?,
+            )
+            .map_err(AgentError::from)?
+        }
         (Method::GET, "/api/resource-sites") => {
             trace.stage("resource-sites.list.started");
             serde_json::to_value(state.agent.resource_sites.list(trace).await?)
@@ -487,6 +499,30 @@ async fn dispatch(
             let input: management_schema::Locale = read_json(request).await?;
             state.agent.save_locale(input.locale).await?;
             json!({"ok":true})
+        }
+        (Method::GET, "/api/downloaders") => {
+            trace.stage("management.downloaders.list.started");
+            serde_json::to_value(state.agent.list_downloaders(trace).await?)
+                .map_err(AgentError::from)?
+        }
+        (Method::POST, "/api/downloaders/configure") => {
+            trace.stage("management.downloaders.configure.started");
+            let input = read_json(request).await?;
+            serde_json::to_value(state.agent.configure_downloader(input, trace).await?)
+                .map_err(AgentError::from)?
+        }
+        (Method::POST, "/api/downloaders/action") => {
+            trace.stage("management.downloaders.action.started");
+            let input = read_json(request).await?;
+            serde_json::to_value(state.agent.downloader_action(input, trace).await?)
+                .map_err(AgentError::from)?
+        }
+        (Method::GET, "/api/download-history") => {
+            trace.stage("management.history.load.started");
+            let value = serde_json::to_value(state.agent.download_history(trace).await?)
+                .map_err(AgentError::from)?;
+            trace.stage("management.history.load.completed");
+            value
         }
         (Method::GET, "/api/queue") => {
             trace.stage("management.queue.load.started");

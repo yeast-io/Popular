@@ -1084,10 +1084,35 @@ input:disabled {
   border-radius: 10px;
 }
 .local-site-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.local-site-identity {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  min-width: 0;
+}
+.local-site-identity > div {
+  min-width: 0;
+}
+.local-site-identity h2 {
+  overflow-wrap: anywhere;
+}
+.local-site-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.local-site-controls > button:not([role='switch']) {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .local-site-header h2 {
   margin: 0 0 4px;
@@ -1097,9 +1122,6 @@ input:disabled {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
-}
-.local-site-header .pill {
-  margin-left: auto;
 }
 .local-site-card form {
   display: grid;
@@ -1314,12 +1336,6 @@ input:disabled {
   }
   .queue-reason {
     text-align: left;
-  }
-  .local-site-header {
-    flex-wrap: wrap;
-  }
-  .local-site-header .pill {
-    white-space: nowrap;
   }
   .empty-feature {
     padding: 32px 20px;

@@ -28,6 +28,7 @@ function fixture(locale: Locale, configured = false) {
   }));
   const resources: ResourceSiteClient = {
     list: vi.fn(async () => structuredClone(initial)),
+    setDefault: vi.fn(async (site) => initial.map((row) => ({ ...row, isDefault: row.site === site }))),
     configure: vi.fn<ResourceSiteClient['configure']>(async (input) => ({
       ...initial.find((row) => row.site === input.site)!,
       baseUrl: input.baseUrl,
@@ -88,6 +89,37 @@ function fixture(locale: Locale, configured = false) {
 }
 for (const locale of ['en-US', 'zh-CN'] as const) {
   describe(locale, () => {
+    it('sets a site default and uses a capsule switch for enablement', async () => {
+      const f = fixture(locale, true);
+      await f.open();
+      const card = f.wrapper.get('[data-site=hdwing]');
+      const button = card.findAll('button').find((button) => button.text() === messages[locale].setDefault)!;
+      await button.trigger('click');
+      await flushPromises();
+      expect(f.resources.setDefault).toHaveBeenCalledWith('hdwing');
+      expect(card.text()).toContain(messages[locale].defaultItem);
+      expect(card.get('[role=switch]').attributes('aria-checked')).toBe('true');
+      await card.get('[role=switch]').trigger('click');
+      await flushPromises();
+      expect(f.resources.setEnabled).toHaveBeenCalledWith('hdwing', false);
+      expect(card.get('[role=switch]').attributes('aria-checked')).toBe('false');
+    });
+
+    it('loads site status on Overview without opening the sites page and retries failures', async () => {
+      const f = fixture(locale);
+      vi.mocked(f.resources.list).mockRejectedValueOnce('networkError');
+      await flushPromises();
+      expect(f.wrapper.text()).toContain(messages[locale].networkError);
+      const retry = f.wrapper.findAll('button').find((button) => button.text() === messages[locale].retry)!;
+      await retry.trigger('click');
+      await flushPromises();
+      expect(f.resources.list).toHaveBeenCalledTimes(2);
+      expect(f.wrapper.text()).toContain('M-Team');
+      expect(f.wrapper.text()).toContain('HDArea');
+      expect(f.wrapper.text()).toContain('HDWing');
+      expect(f.wrapper.findAll('dl .pill').map((pill) => pill.text())).toEqual(Array(3).fill(messages[locale].unconfigured));
+    });
+
     it('uses site-specific credential fields and saves only the selected site credentials', async () => {
       const f = fixture(locale);
       await f.open();
@@ -129,7 +161,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await card.findAll('.summary-actions button')[1]!.trigger('click');
       await flushPromises();
       expect(f.resources.verify).toHaveBeenCalledWith('mteam');
-      await card.findAll('.summary-actions button')[2]!.trigger('click');
+      await card.get('.local-site-controls [role=switch]').trigger('click');
       await flushPromises();
       expect(f.resources.setEnabled).toHaveBeenCalledWith('mteam', false);
       await card.get('.local-site-delete button').trigger('click');

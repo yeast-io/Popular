@@ -716,3 +716,31 @@ fn management_password_minimum_is_eight_bytes_for_file_login_and_verification() 
     assert!(auth.verify(None, b"12345678"));
     assert!(!auth.verify(None, b"1234567"));
 }
+
+#[tokio::test]
+async fn download_history_requires_a_session_and_reports_corruption() {
+    let f = Fixture::new().await;
+    let url = format!("{}/api/download-history", f.base);
+    assert_eq!(f.client.get(&url).send().await.unwrap().status(), 401);
+    let (cookie, _) = f.login().await;
+    let response = f
+        .client
+        .get(&url)
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.json::<Value>().await.unwrap(), json!([]));
+    std::fs::create_dir_all(f.root.path().join("data")).unwrap();
+    std::fs::write(f.root.path().join("data/gateway-journal.json"), b"broken").unwrap();
+    let response = f
+        .client
+        .get(&url)
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 502);
+    f.stop().await;
+}

@@ -73,6 +73,89 @@ impl<C: CredentialStore + Send + Sync + 'static> Agent<C> {
         self.shutdown.send_replace(true);
     }
 
+    pub async fn list_downloaders(
+        &self,
+        trace: &Trace,
+    ) -> Result<Vec<crate::downloader_profiles::Item>, AgentError> {
+        let _guard = self.lock.lock().await;
+        crate::downloader_profiles::list(&self.directory, self.credentials.as_ref(), trace)
+    }
+    pub async fn configure_downloader(
+        &self,
+        request: crate::downloader_profiles::ConfigureRequest,
+        trace: &Trace,
+    ) -> Result<Snapshot, AgentError> {
+        let _guard = self.lock.lock().await;
+        let before = storage::load(&self.directory)?;
+        let previous_password = storage::secrets(&before, self.credentials.as_ref())?.password;
+        let snapshot = crate::downloader_profiles::configure(
+            &self.directory,
+            request,
+            self.credentials.as_ref(),
+            trace,
+        )
+        .await?;
+        self.notify_downloader_change(&before.settings, &previous_password, &snapshot)?;
+        Ok(snapshot)
+    }
+    pub async fn downloader_action(
+        &self,
+        request: crate::downloader_profiles::ActionRequest,
+        trace: &Trace,
+    ) -> Result<Snapshot, AgentError> {
+        let _guard = self.lock.lock().await;
+        let before = storage::load(&self.directory)?;
+        let previous_password = storage::secrets(&before, self.credentials.as_ref())?.password;
+        let snapshot = crate::downloader_profiles::action(
+            &self.directory,
+            request,
+            self.credentials.as_ref(),
+            trace,
+        )?;
+        self.notify_downloader_change(&before.settings, &previous_password, &snapshot)?;
+        Ok(snapshot)
+    }
+    fn notify_downloader_change(
+        &self,
+        previous: &crate::settings::Settings,
+        previous_password: &str,
+        snapshot: &Snapshot,
+    ) -> Result<(), AgentError> {
+        let current = storage::load(&self.directory)?;
+        let secret = storage::secrets(&current, self.credentials.as_ref())?;
+        if previous.downloader_configured != snapshot.settings.downloader_configured
+            || !crate::settings::same_downloader_credentials(previous, &snapshot.settings)
+            || previous_password != secret.password
+        {
+            self.runtime.update(
+                None,
+                Some(if snapshot.settings.downloader_configured {
+                    "disconnected"
+                } else {
+                    "unconfigured"
+                }),
+                None,
+            );
+            self.runtime.changed.notify_one();
+            self.runtime.downloader_changed.notify_one();
+        }
+        Ok(())
+    }
+    pub async fn download_history(
+        &self,
+        trace: &Trace,
+    ) -> Result<Vec<crate::download_history::Item>, AgentError> {
+        trace.stage("history.journal.read.started");
+        let directory = self.directory.clone();
+        let result = tokio::task::spawn_blocking(move || crate::download_history::list(&directory))
+            .await
+            .map_err(|e| AgentError::caused("runtimeError", e))?;
+        if result.is_ok() {
+            trace.stage("history.journal.read.completed");
+        }
+        result
+    }
+
     pub async fn load_settings(&self) -> Result<Snapshot, AgentError> {
         let _guard = self.lock.lock().await;
         let directory = self.directory.clone();

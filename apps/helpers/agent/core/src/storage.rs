@@ -42,6 +42,20 @@ pub fn save(
     store: &impl CredentialStore,
     trace: &crate::diagnostics::Trace,
 ) -> Result<Snapshot, AgentError> {
+    save_with_profiles(directory, request, store, trace, None)
+}
+
+pub(crate) fn save_with_profiles(
+    directory: &Path,
+    request: SaveRequest,
+    store: &impl CredentialStore,
+    trace: &crate::diagnostics::Trace,
+    profiles: Option<(
+        Vec<crate::downloader_profiles::StoredProfile>,
+        Option<String>,
+        Option<crate::protocol::DownloaderTarget>,
+    )>,
+) -> Result<Snapshot, AgentError> {
     let old = load(directory)?;
     let settings = normalize(request.settings)?;
     trace.stage("settings.credentials.read.started");
@@ -65,16 +79,21 @@ pub fn save(
         .clone()
         .map(Ok)
         .unwrap_or_else(|| crate::device::target(directory, &old.settings))?;
-    let downloader_identity = Some(
-        if !settings.downloader_configured || same_downloader(&settings, &old.settings) {
-            previous_target
-        } else {
-            crate::protocol::DownloaderTarget {
-                downloader_type: settings.provider.clone(),
-                instance_id: uuid::Uuid::new_v4().to_string(),
-            }
-        },
-    );
+    let downloader_identity = profiles
+        .as_ref()
+        .and_then(|(_, _, target)| target.clone())
+        .or_else(|| {
+            Some(
+                if !settings.downloader_configured || same_downloader(&settings, &old.settings) {
+                    previous_target
+                } else {
+                    crate::protocol::DownloaderTarget {
+                        downloader_type: settings.provider.clone(),
+                        instance_id: uuid::Uuid::new_v4().to_string(),
+                    }
+                },
+            )
+        });
     std::fs::create_dir_all(directory)?;
     let credential_id = if secrets.api_key.is_empty() && secrets.password.is_empty() {
         None
@@ -91,7 +110,14 @@ pub fn save(
         }
     }
     trace.stage("settings.credentials.write.completed");
+    let (downloaders, default_downloader_id, _) = profiles.unwrap_or((
+        old.downloaders.clone(),
+        old.default_downloader_id.clone(),
+        None,
+    ));
     let stored = StoredSettings {
+        downloaders,
+        default_downloader_id,
         settings,
         credential_id,
         downloader_identity,

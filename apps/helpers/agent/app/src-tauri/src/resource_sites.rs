@@ -61,3 +61,16 @@ pub async fn resource_site_remove(
         state.resource_sites.remove(request.site, &trace).await,
     )
 }
+
+#[tauri::command]
+pub async fn resource_site_default(
+    state: tauri::State<'_, AgentState>,
+    request: SiteRequest,
+) -> Result<Vec<SiteSnapshot>, String> {
+    let trace = Trace::new();
+    trace.stage("resource-sites.default.requested");
+    trace.finish(
+        "resource-sites.default",
+        state.resource_sites.set_default(request.site, &trace).await,
+    )
+}

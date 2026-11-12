@@ -91,7 +91,10 @@ for (const provider of ['qbittorrent']) {
       }
     } else if (url.pathname === '/download.php') {
       assert.equal(request.headers['x-api-key'], undefined);
-      assert.equal(request.headers.cookie, undefined);
+      if (url.searchParams.has('id')) {
+        assert.equal(url.searchParams.get('id'), '123');
+        assert.equal(request.headers.cookie, siteCookie);
+      } else assert.equal(request.headers.cookie, undefined);
       response.end(`d4:info${info}e`);
     } else {
       assert.equal(request.headers.cookie, siteCookie);
@@ -103,7 +106,7 @@ for (const provider of ['qbittorrent']) {
         + (url.pathname === '/torrents.php'
           ? hdwing + hdarea
           : url.pathname === '/details.php'
-            ? `<h1>Synthetic.Movie.2026</h1><div id='site_content'><h2>Synthetic.Movie.2026</h2><a href='download.php?uid=8811&amp;hash=${token}'>download</a></div>`
+            ? `<h1>Synthetic.Movie.2026</h1><a href='download.php?id=123'>Cookie download</a><div id='site_content'><h2>Synthetic.Movie.2026</h2><a href='download.php?uid=8811&amp;hash=${token}'>download</a></div>`
             : '')
       );
     }

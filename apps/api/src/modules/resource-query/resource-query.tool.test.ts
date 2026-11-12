@@ -66,7 +66,7 @@ const defaults: ResourcePlan = {
   question: null,
   unsupported: [],
 };
-function fixture(sources?: ResourceProvider[], enabledSites?: () => string[]) {
+function fixture(sources?: ResourceProvider[], enabledSites?: () => string[], agentDefault?: () => string) {
   const store = new MemoryStore();
   let searches = 0,
     queries = 0,
@@ -110,7 +110,7 @@ function fixture(sources?: ResourceProvider[], enabledSites?: () => string[]) {
     },
   } as unknown as MovieCatalogStore;
   const tool = new ResourceQueryTool(store, sources ?? [provider], movies, catalog, 'zh-CN', { verbose: false },
-    enabledSites ? { get: async () => ({ defaults: {}, selectedSites: enabledSites(), effectiveSites: enabledSites(), choices: [] }) } : undefined);
+    enabledSites ? { get: async () => ({ defaults: agentDefault ? { resource: agentDefault() } : {}, ...(agentDefault ? { resourceAgentDeviceId: 'agent-1' } : {}), selectedSites: enabledSites(), effectiveSites: enabledSites(), choices: [] }) } : undefined);
   const run = (plan: Partial<ResourcePlan> = {}, eventId = 'm1', ownerId = 'alice', conversation = 'web:thread') => {
     return tool.run(ownerId, conversation, eventId, 'query', [], { plan: async () => ({ ...defaults, ...plan }) });
   };
@@ -614,4 +614,26 @@ test('assistant searches only enabled account sites and invalidates numbered res
   const rejected = await f.run({ title: null, providers: ['hdarea'] }, 'm4');
   assert.match(rejected.replyText, /未开启或尚未接入/);
   assert.deepEqual(queried, ['mteam', 'mteam', 'hdarea']);
+});
+
+test('Agent searches use the local default unless a source or all sources are explicitly requested', async () => {
+  const queried: string[] = [];
+  let primary = 'hdarea';
+  const sources: ResourceProvider[] = ['mteam', 'hdarea'].map((id) => ({
+    id, name: id,
+    query: async () => {
+      queried.push(id);
+      return { provider: id, status: 'available', releases: [] };
+    },
+  }));
+  const f = fixture(sources, () => ['mteam', 'hdarea'], () => primary);
+  await f.run();
+  assert.deepEqual(queried, ['hdarea']);
+  primary = 'mteam';
+  await f.run({ title: null, refresh: true }, 'm2');
+  assert.deepEqual(queried, ['hdarea', 'mteam']);
+  await f.run({ title: null, providers: ['hdarea'], refresh: true }, 'm3');
+  assert.deepEqual(queried, ['hdarea', 'mteam', 'hdarea']);
+  await f.run({ title: null, providers: [], refresh: true }, 'm4');
+  assert.deepEqual(queried, ['hdarea', 'mteam', 'hdarea', 'mteam', 'hdarea']);
 });

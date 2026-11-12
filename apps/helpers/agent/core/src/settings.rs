@@ -56,6 +56,10 @@ impl Default for Settings {
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StoredSettings {
+    #[serde(default)]
+    pub downloaders: Vec<crate::downloader_profiles::StoredProfile>,
+    #[serde(default)]
+    pub default_downloader_id: Option<String>,
     pub settings: Settings,
     pub credential_id: Option<String>,
     #[serde(default)]

@@ -1,5 +1,7 @@
 import type { Locale, Provider, RuntimeStatus, SecretChange, Snapshot } from '../settings.types';
+import type { DownloaderProfilesClient } from '../features/downloaders/downloader-profiles.types';
 import type { ResourceSiteClient } from '../features/resource-sites/resource-sites.types';
+import type { DownloadHistoryItem } from '../features/tasks/download-history.types';
 import type { QueueView } from '../features/tasks/queue.types';
 
 export type AgentPage = 'overview' | 'resource-sites' | 'downloaders' | 'tasks' | 'settings';
@@ -18,6 +20,8 @@ export interface DownloaderRequest {
 /** Business operations; implementations must never return saved credential values. */
 export interface AgentClient {
   resourceSites?: ResourceSiteClient;
+  downloaderProfiles?: DownloaderProfilesClient;
+  getDownloadHistory?(): Promise<DownloadHistoryItem[]>;
   loadSettings(): Promise<Snapshot>;
   getRuntime(): Promise<RuntimeStatus>;
   subscribeRuntime?(receive: (status: RuntimeStatus) => void, unavailable: () => void): Promise<() => void>;

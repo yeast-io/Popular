@@ -5,9 +5,10 @@ import {
   parseDownloaderAddress,
   downloaderAddressUrl,
 } from './features/downloaders/downloader-address.domain';
+import { useDownloaderProfiles } from './features/downloaders/downloader-profiles.composable';
 import { useResourceSites } from './features/resource-sites/resource-sites.composable';
 import { useAgentRuntime } from './agent-runtime.composable';
-import type { DownloaderAddress, Locale, SecretChange, Settings } from './settings.types';
+import type { DownloaderAddress, Locale, SecretChange, Settings, Snapshot } from './settings.types';
 import type { AgentClient, AgentHost, AgentPage, DownloaderRequest } from './transport/agent-transport.types';
 
 export function useAgentSession(client: AgentClient, host: AgentHost) {
@@ -188,6 +189,23 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
       busy.value = false;
     }
   }
+  function applyDownloaderSnapshot(snapshot: Snapshot) {
+    form.provider = snapshot.settings.provider;
+    form.authMode = snapshot.settings.authMode;
+    form.downloaderUrl = snapshot.settings.downloaderUrl;
+    loadAddress(snapshot.settings.downloaderUrl || 'http://127.0.0.1:8080');
+    form.username = snapshot.settings.username;
+    hasPassword.value = snapshot.hasPassword;
+    savedDownloader.value = downloaderTarget(snapshot.settings);
+    savedDownloaderUrl.value = snapshot.settings.downloaderUrl;
+    savedProvider.value = snapshot.settings.provider;
+    savedAuthMode.value = snapshot.settings.authMode;
+    savedUsername.value = snapshot.settings.username;
+    form.downloaderConfigured = snapshot.settings.downloaderConfigured;
+    editingDownloader.value = false;
+    password.value = '';
+  }
+  const profiles = useDownloaderProfiles(client.downloaderProfiles, applyDownloaderSnapshot);
   async function connectDownloader() {
     if (busy.value || !loaded.value) return;
     busy.value = true;
@@ -207,20 +225,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
     try {
       const snapshot = await client.testDownloader(request);
       if (!active) return;
-      form.provider = snapshot.settings.provider;
-      form.authMode = snapshot.settings.authMode;
-      form.downloaderUrl = snapshot.settings.downloaderUrl;
-      loadAddress(snapshot.settings.downloaderUrl || 'http://127.0.0.1:8080');
-      form.username = snapshot.settings.username;
-      hasPassword.value = snapshot.hasPassword;
-      savedDownloader.value = downloaderTarget(snapshot.settings);
-      savedDownloaderUrl.value = snapshot.settings.downloaderUrl;
-      savedProvider.value = snapshot.settings.provider;
-      savedAuthMode.value = snapshot.settings.authMode;
-      savedUsername.value = snapshot.settings.username;
-      form.downloaderConfigured = snapshot.settings.downloaderConfigured;
-      editingDownloader.value = false;
-      password.value = '';
+      applyDownloaderSnapshot(snapshot);
       if (active) await refreshRuntime(true);
     } catch (cause) {
       if (active) downloaderError.value = errorCode(cause);
@@ -287,7 +292,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
   }
 
   const dirtyGateway = computed(() => loaded.value && (gatewayChanged.value || !!apiKey.value));
-  const dirtyDownloader = computed(() => loaded.value && downloaderChanged.value);
+  const dirtyDownloader = computed(() => loaded.value && (downloaderChanged.value || profiles.dirty.value));
   const dirtySites = sites.dirty;
   const dirty = computed(() => dirtyGateway.value || dirtyDownloader.value || dirtySites.value);
   async function initialize() {
@@ -410,6 +415,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
   return {
     client,
     sites,
+    profiles,
     host,
     form,
     address,

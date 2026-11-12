@@ -123,6 +123,10 @@ export class AgentResourceService {
     }
   }
 
+  async setDefault(ownerId: string, site: string): Promise<void> {
+    await this.execute(ownerId, { operation: 'setDefault', site: this.site(site) });
+  }
+
   async states(ownerId: string): Promise<AgentResourceSites> {
     const execution = await this.execution(ownerId);
     if (!execution.deviceId) throw new ResourceSiteError('agentModeConflict');

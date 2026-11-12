@@ -10,7 +10,7 @@ import ResourceSitesPage from './features/resource-sites/ResourceSitesPage.vue';
 import DownloadersPage from './features/downloaders/DownloadersPage.vue';
 import TasksPage from './features/tasks/TasksPage.vue';
 import SettingsPage from './features/settings/SettingsPage.vue';
-import logo from './assets/popular-link-agent-white-ui.png';
+import logo from '../../../../web/public/favicon.svg';
 
 const props = defineProps<AgentRootProps>();
 const session = useAgentSession(props.client, props.host);

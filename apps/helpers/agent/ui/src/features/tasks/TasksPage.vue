@@ -4,6 +4,7 @@ import { useAgentClient } from '../../transport/agent-client.composable';
 import messages from '../../locales/messages.json';
 import { queueCount, queueDate, queueRemaining, queueSiteName } from './queue.presentation';
 import { useTaskQueue } from './task-queue.composable';
+import DownloadHistory from './DownloadHistory.vue';
 import type { QueuePageProps } from './queue.types';
 
 const props = defineProps<QueuePageProps>();
@@ -98,4 +99,5 @@ const { view, error, changing, now, page } = useTaskQueue(useAgentClient());
       </button>
     </footer>
   </section>
+  <DownloadHistory :locale="locale" />
 </template>

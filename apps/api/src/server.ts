@@ -386,7 +386,7 @@ try {
   );
   await models.integrationPreferences.init();
   const integrationPreferencesStore = new MongoIntegrationPreferencesStore(models.integrationPreferences);
-  const agentResourceService = new AgentResourceService({
+  const agentResourceService: AgentResourceService = new AgentResourceService({
     preferences: integrationPreferencesStore,
     authorization: new MongoRemoteAuthorizationStore(models.users, models.remoteDevices),
     gateway: gatewayPool,
@@ -449,7 +449,7 @@ try {
     ])
   ) as Record<import('@movie-hub/contract').AiProvider, MongoAiConfigStore>;
   await models.integrationPreferences.init();
-  const integrationPreferencesService = new IntegrationPreferencesService(
+  const integrationPreferencesService: IntegrationPreferencesService = new IntegrationPreferencesService(
     integrationPreferencesStore,
     async (ownerId) => {
       const [resources, qb, tr, ai] = await Promise.all([
@@ -493,6 +493,10 @@ try {
                 : ('configured_unverified' as const),
         })),
       ];
+    },
+    {
+      get: async (ownerId) => (await agentResourceService.states(ownerId)).find((site) => site.isDefault && site.enabled && site.status === 'configured_valid')?.site,
+      set: (ownerId, site) => agentResourceService.setDefault(ownerId, site),
     }
   );
   for (const service of [

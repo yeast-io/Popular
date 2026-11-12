@@ -210,6 +210,7 @@ impl Downloader {
         }
         Ok(matching)
     }
+    #[cfg(test)]
     pub async fn add(&mut self, url: &str, marker: &str) -> Result<bool, AgentError> {
         self.add_source(url, "", marker).await
     }

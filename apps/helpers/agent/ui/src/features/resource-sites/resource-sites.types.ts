@@ -3,6 +3,7 @@ import type { SecretChange } from '../../settings.types';
 export type ResourceSite = 'mteam' | 'hdarea' | 'hdwing';
 export interface ResourceSiteSnapshot {
   site: ResourceSite;
+  isDefault?: boolean;
   baseUrl: string;
   enabled: boolean;
   status: 'unconfigured' | 'configured_valid' | 'configured_invalid';
@@ -19,6 +20,7 @@ export interface ResourceSiteRequest {
 }
 export interface ResourceSiteClient {
   list(): Promise<ResourceSiteSnapshot[]>;
+  setDefault?(site: ResourceSite): Promise<ResourceSiteSnapshot[]>;
   configure(input: ResourceSiteRequest): Promise<ResourceSiteSnapshot>;
   verify(site: ResourceSite): Promise<ResourceSiteSnapshot>;
   setEnabled(site: ResourceSite, enabled: boolean): Promise<ResourceSiteSnapshot>;

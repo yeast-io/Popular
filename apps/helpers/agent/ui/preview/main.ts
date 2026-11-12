@@ -5,6 +5,7 @@ import '../src/style.css';
 import messages from '../src/locales/messages.json';
 import manifest from '../package.json';
 import type { AgentClient, AgentHost, AgentPage } from '../src/transport/agent-transport.types';
+import type { DownloaderProfile } from '../src/features/downloaders/downloader-profiles.types';
 import type { ResourceSiteSnapshot } from '../src/features/resource-sites/resource-sites.types';
 import type { Snapshot, RuntimeStatus } from '../src/settings.types';
 
@@ -51,8 +52,80 @@ function updateSite(site: ResourceSiteSnapshot['site'], update: Partial<Resource
   localSites = localSites.map((row) => (row.site === site ? { ...row, ...update } : row));
   return structuredClone(localSites.find((row) => row.site === site)!);
 }
+let downloaders: DownloaderProfile[] = configured
+  ? [
+      {
+        id: 'preview-qbittorrent',
+        provider: 'qbittorrent',
+        downloaderUrl: settings.settings.downloaderUrl,
+        username: 'popular',
+        authMode: 'password',
+        enabled: true,
+        isDefault: true,
+        hasPassword: true,
+      },
+      {
+        id: 'preview-transmission',
+        provider: 'transmission',
+        downloaderUrl: 'http://192.168.1.30:9091/transmission/rpc',
+        username: '',
+        authMode: 'password',
+        enabled: true,
+        isDefault: false,
+        hasPassword: false,
+      },
+    ]
+  : [];
+function activeDownloader() {
+  const row = downloaders.find((row) => row.isDefault);
+  if (row) {
+    Object.assign(settings.settings, {
+      provider: row.provider,
+      downloaderUrl: row.downloaderUrl,
+      username: row.username,
+      authMode: row.authMode,
+      downloaderConfigured: row.enabled,
+    });
+    settings.hasPassword = row.hasPassword;
+    runtime.downloader = row.enabled ? 'online' : 'unconfigured';
+  } else settings.settings.downloaderConfigured = false;
+  return structuredClone(settings);
+}
 const client: AgentClient = {
+  downloaderProfiles: {
+    list: async () => structuredClone(downloaders),
+    configure: async ({ id, configuration }) => {
+      const existing = downloaders.find((row) => row.id === id);
+      downloaders = downloaders.filter((row) => row.id !== id);
+      const { password, ...values } = configuration;
+      downloaders.push({
+        ...values,
+        id: id ?? crypto.randomUUID(),
+        enabled: existing?.enabled ?? true,
+        isDefault: existing?.isDefault ?? !downloaders.length,
+        hasPassword: password.action === 'set' || !!existing?.hasPassword,
+      });
+      return activeDownloader();
+    },
+    action: async (request) => {
+      if (request.operation === 'remove') downloaders = downloaders.filter((row) => row.id !== request.id);
+      else
+        downloaders = downloaders.map((row) => ({
+          ...row,
+          ...(request.operation === 'default'
+            ? { isDefault: row.id === request.id }
+            : row.id === request.id
+              ? { enabled: !!request.enabled }
+              : {}),
+        }));
+      return activeDownloader();
+    },
+  },
   resourceSites: {
+    setDefault: async (site) => {
+      localSites = localSites.map((row) => ({ ...row, isDefault: row.site === site }));
+      return structuredClone(localSites);
+    },
     list: async () => structuredClone(localSites),
     configure: async (request) =>
       updateSite(request.site, {
@@ -110,6 +183,16 @@ const client: AgentClient = {
     settings.settings.locale = next;
     if (banner) banner.textContent = messages[next].previewNotice;
   },
+  getDownloadHistory: async () => [
+    {
+      downloadId: 'preview-download',
+      executionId: 'preview-execution',
+      provider: 'qbittorrent',
+      phase: 'succeeded',
+      state: 'completed',
+      progress: 1,
+    },
+  ],
   getQueue: async () => ({
     stale: false,
     loading: false,

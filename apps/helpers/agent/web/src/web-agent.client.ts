@@ -55,7 +55,13 @@ export function createWebAgentClient(options: WebAgentOptions): WebAgentClient {
     return value;
   }
   const client: AgentClient = {
+    downloaderProfiles: {
+      list: () => request('/downloaders'),
+      configure: (input) => request('/downloaders/configure', 'POST', input),
+      action: (input) => request('/downloaders/action', 'POST', input),
+    },
     resourceSites: {
+      setDefault: (site) => request('/resource-sites/default', 'POST', { site }),
       list: () => request('/resource-sites'),
       configure: (input) => request('/resource-sites/configure', 'POST', input),
       verify: (site) => request('/resource-sites/verify', 'POST', { site }),
@@ -75,6 +81,7 @@ export function createWebAgentClient(options: WebAgentOptions): WebAgentClient {
     saveLocale: async (locale) => {
       await request('/locale', 'PUT', { locale });
     },
+    getDownloadHistory: () => request('/download-history'),
     getQueue: () => request('/queue'),
     setQueuePage: async (cursor) => {
       await request('/queue/page', 'PUT', { cursor });

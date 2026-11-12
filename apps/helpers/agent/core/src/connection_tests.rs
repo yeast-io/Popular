@@ -628,7 +628,8 @@ async fn gateway_queued_retry_preserves_attempt_history_and_never_adds_twice() {
     fixture.control(json!({"retry":"queued-retry"})).await;
     let stats = fixture.wait(|s| event(s, "outcome", "succeeded")).await;
     assert_eq!(stats["adds"], 1);
-    assert_eq!(stats["grants"], 2);
+    // Grant messages may be replayed; distinct execution identities represent retry attempts.
+    assert_eq!(stats["grantedExecutions"].as_array().unwrap().len(), 2);
     let journal = client.journal();
     assert_eq!(journal.records.len(), 2);
     assert_eq!(journal.records[0].retry_attempt, Some(1));

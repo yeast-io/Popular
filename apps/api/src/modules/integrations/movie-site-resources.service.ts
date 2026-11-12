@@ -65,7 +65,10 @@ export class MovieSiteResourcesService {
   }
 
   async selectedSites(ownerId: string): Promise<string[]> {
-    return (await this.preferences.get(ownerId)).effectiveSites;
+    const preferences = await this.preferences.get(ownerId);
+    return preferences.resourceAgentDeviceId && preferences.defaults.resource
+      ? [preferences.defaults.resource]
+      : preferences.effectiveSites;
   }
 
   async summary(ownerId: string, tmdbId: number, selected?: string[]): Promise<MovieResourceCheckResponse> {

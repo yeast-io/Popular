@@ -9,8 +9,6 @@ const {
   host,
   loaded,
   busy,
-  savingLocale,
-  chooseLocale,
   setAutostart,
   lastRuntimeAt,
   refreshRuntime,
@@ -24,24 +22,9 @@ function changeAutostart(event: Event) {
 </script>
 <template>
   <GatewaySettings />
-  <section class="settings-panel">
+  <section v-if="host.setAutostart" class="settings-panel">
     <h2>{{ t.preferences }}</h2>
     <div class="preference-row">
-      <div>
-        <label for="settings-language">{{ t.language }}</label>
-        <p>{{ t.languageDescription }}</p>
-      </div>
-      <select
-        id="settings-language"
-        :value="form.locale"
-        :disabled="busy || !loaded || savingLocale"
-        @change="chooseLocale(($event.target as HTMLSelectElement).value as typeof form.locale)"
-      >
-        <option value="zh-CN">{{ t.chineseLanguage }}</option>
-        <option value="en-US">{{ t.englishLanguage }}</option>
-      </select>
-    </div>
-    <div v-if="host.setAutostart" class="preference-row">
       <div>
         <label for="agent-autostart">{{ t.autostart }}</label>
         <p>{{ t.autostartDescription }}</p>
