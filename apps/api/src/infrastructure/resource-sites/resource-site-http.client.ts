@@ -1,7 +1,10 @@
 import { CookieJar } from 'tough-cookie';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { ResourceSiteHttpOptions, ResourceSiteHttpLane } from './resource-site-http.types.js';
-import type { ResourceSiteSession, ResourceSiteHttpClientPort } from '../../modules/resource-sites/resource-site.types.js';
+import type {
+  ResourceSiteSession,
+  ResourceSiteHttpClientPort,
+} from '../../modules/resource-sites/resource-site.types.js';
 import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
 import {
   RESOURCE_SITE_HTTP_INTERVAL_MS,
@@ -46,8 +49,7 @@ export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
                     headers: { 'Cookie': cookieHeader, 'Referer': baseUrl, 'User-Agent': 'Popular/1.0' },
                     redirect: 'manual',
                     signal: bounded,
-                  }
-                  );
+                  });
                 },
                 { host: origin, path: current.pathname, attempt: 1 }
               );
@@ -118,6 +120,123 @@ export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
           throw new ResourceSiteError(budget.aborted ? 'timeout' : 'network', { cause: error });
         }
       },
+    };
+  }
+
+  /** API credentials are header-only and are never sent to torrent URLs or redirects. */
+  async apiSession(baseUrl: string, apiKey: string): Promise<ResourceSiteSession> {
+    if (!/^[a-f0-9]{32}$/i.test(apiKey)) throw new ResourceSiteError('invalidCredential');
+    const origin = new URL(baseUrl).origin;
+    const request = async (path: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<Uint8Array> => {
+      const url = new URL(path, baseUrl);
+      const api = url.pathname.startsWith('/api/v1/');
+      if (
+        url.origin !== origin
+        || url.protocol !== 'https:'
+        || url.username
+        || url.password
+        || url.hash
+        || (!api && (url.pathname !== '/download.php' || body !== undefined))
+        || [...url.searchParams.keys()].some((key) => /^(?:apikey|passkey)$/i.test(key))
+      )
+        throw new ResourceSiteError('invalidResponse');
+      currentAiTrace()?.sensitive(apiKey);
+      if (!api) {
+        currentAiTrace()?.sensitive(url.href);
+        for (const value of url.searchParams.values()) currentAiTrace()?.sensitive(value);
+      }
+      const budget = AbortSignal.timeout(this.options.timeoutMs ?? RESOURCE_SITE_HTTP_TIMEOUT_MS);
+      const bounded = signal ? AbortSignal.any([signal, budget]) : budget;
+      try {
+        return await this.schedule(origin, bounded, () =>
+          aiStep(
+            'resource-sites.api.exchange',
+            async () => {
+              const response = await aiStep(
+                'resource-sites.api.http.request',
+                () =>
+                  (this.options.fetch ?? fetch)(url, {
+                    method: body ? 'POST' : 'GET',
+                    headers: {
+                      'User-Agent': 'Popular/1.0',
+                      ...(api ? { 'X-API-Key': apiKey } : {}),
+                      ...(body ? { 'Content-Type': 'application/json' } : {}),
+                    },
+                    ...(body ? { body: JSON.stringify(body) } : {}),
+                    redirect: 'manual',
+                    credentials: 'omit',
+                    signal: bounded,
+                  }),
+                { host: origin, path: url.pathname, attempt: 1 }
+              );
+              currentAiTrace()?.event('resource-sites.api.http.response', {
+                host: origin,
+                path: url.pathname,
+                httpStatus: response.status,
+                outcome: response.ok ? 'success' : 'failure',
+              });
+              if (!response.ok) {
+                const cause = new Error(`Resource site HTTP ${response.status} at ${url.pathname}`);
+                await response.body?.cancel();
+                if (response.status === 429) {
+                  const retry = response.headers.get('retry-after');
+                  const ms
+                    = retry && /^\d+$/.test(retry)
+                      ? Number(retry) * 1000
+                      : retry
+                        ? Date.parse(retry) - Date.now()
+                        : 60_000;
+                  this.lanes.get(origin)!.blockedUntil = Date.now() + Math.max(1000, Number.isFinite(ms) ? ms : 60_000);
+                  throw new ResourceSiteError('rateLimited', { cause });
+                }
+                throw new ResourceSiteError(
+                  response.status === 403 && !api
+                    ? 'downloadExpired'
+                    : response.status === 401 || response.status === 403
+                      ? 'authentication'
+                      : response.status >= 300 && response.status < 400
+                        ? 'blocked'
+                        : 'invalidResponse',
+                  { cause }
+                );
+              }
+              const max = this.options.maxBytes ?? RESOURCE_SITE_HTTP_MAX_BYTES;
+              if (Number(response.headers.get('content-length')) > max) {
+                await response.body?.cancel();
+                throw new ResourceSiteError('invalidResponse');
+              }
+              const reader = response.body?.getReader();
+              if (!reader) throw new ResourceSiteError('invalidResponse');
+              const chunks: Uint8Array[] = [];
+              let size = 0;
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  size += value.length;
+                  if (size > max) throw new ResourceSiteError('invalidResponse');
+                  chunks.push(value);
+                }
+              } finally {
+                try {
+                  await reader.cancel();
+                } catch {
+                  /* Preserve the original stream failure. */
+                }
+              }
+              return Buffer.concat(chunks);
+            },
+            { host: origin, path: url.pathname, attempt: 1 }
+          )
+        );
+      } catch (cause) {
+        if (cause instanceof ResourceSiteError || signal?.aborted) throw cause;
+        throw new ResourceSiteError(budget.aborted ? 'timeout' : 'network', { cause });
+      }
+    };
+    return {
+      get: (path, signal) => request(path, undefined, signal),
+      post: (path, body, signal) => request(path, body, signal),
     };
   }
 

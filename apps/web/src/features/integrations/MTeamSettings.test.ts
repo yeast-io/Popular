@@ -61,25 +61,27 @@ describe('M-Team settings', () => {
     }
     );
     expect(wrapper.get<HTMLInputElement>('#mteam-api-key').element.value).toBe('');
-    expect(wrapper.text()).toContain('validated and saved');
+    expect(wrapper.text()).toContain('Configuration tested and saved.');
   });
 
-  it('requires explicit confirmation before deleting', async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'DELETE') return new Response(null, { status: 204 });
-      return Response.json({ provider: 'mteam', status: 'configured_valid', baseUrl: 'https://api.m-team.cc' });
-    });
+  it('offers only test and save and revalidates saved credentials without sending their mask', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ provider: 'mteam', status: 'configured_valid',
+      baseUrl: 'https://api.m-team.cc', webBaseUrl: 'https://kp.m-team.cc', apiKeyMasked: '••••••••' }));
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mount(MTeamSettings);
     await flushPromises();
-
-    expect(wrapper.get('.integration-delete-trigger').element.closest('.integration-actions')).not.toBeNull();
-    await wrapper.get('.integration-delete-trigger').trigger('click');
-    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
-    await wrapper.get('.integration-delete .danger').trigger('click');
+    const actions = wrapper.findAll('button:not([role=switch])');
+    expect(actions).toHaveLength(1);
+    expect(actions[0]!.text()).toBe('Test and save');
+    expect(wrapper.find('.integration-disclosure').exists()).toBe(false);
+    expect(wrapper.find('.integration-delete-trigger').exists()).toBe(false);
+    await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true);
-    expect(wrapper.text()).toContain('Not configured');
+    const requests = vi.mocked(fetchMock).mock.calls as unknown as Array<[RequestInfo | URL, RequestInit | undefined]>;
+    const submitted = requests.find(([, init]) => init?.method === 'PUT');
+    expect(JSON.parse(String(submitted?.[1]?.body))).toEqual({ baseUrl: 'https://api.m-team.cc', webBaseUrl: 'https://kp.m-team.cc' });
+    expect(requests.some(([, init]) => init?.method === 'DELETE' || init?.method === 'POST')).toBe(false);
+    wrapper.unmount();
   });
 
   it('leaves validating state immediately when validation fails even if status refresh never returns', async () => {

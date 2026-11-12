@@ -38,6 +38,7 @@ for (const provider of ['qbittorrent']) {
   const secrets = join(directory, 'secrets');
   const mock = await startMock();
   const key = 'synthetic-resource-key';
+  const hdareaKey = 'a'.repeat(32);
   const siteCookie = 'uid=8811; session=synthetic-resource-cookie';
   const passkey = 'synthetic-resource-passkey';
   const info = 'd6:lengthi1e4:name1:a6:pieces0:e';
@@ -55,7 +56,18 @@ for (const provider of ['qbittorrent']) {
       response.end();
       return;
     }
-    if (url.pathname.startsWith('/api/')) {
+    if (url.pathname.startsWith('/api/v1/')) {
+      assert.equal(request.headers['x-api-key'], hdareaKey);
+      assert.equal(request.headers.cookie, undefined);
+      response.setHeader('content-type', 'application/json');
+      const row = { id: 123, name: 'Synthetic.Movie.2026.1080p.BluRay', small_descr: '第10-16集', size: 1073741824, seeders: 0, imdb_id: 'tt1234567' };
+      const data = url.pathname === '/api/v1/user/profile'
+        ? { id: 8811 }
+        : url.pathname === '/api/v1/torrents'
+          ? { items: [row], pagination: { page: Number(url.searchParams.get('page')), has_more: false } }
+          : url.pathname === '/api/v1/torrents/genDlToken' ? { id: 123, expires_in: 1800, download_url: `${siteBase}download.php?id=123&dl_token=synthetic-private-token` } : row;
+      response.end(JSON.stringify({ success: true, code: 0, data }));
+    } else if (url.pathname.startsWith('/api/')) {
       assert.equal(request.headers['x-api-key'], key);
       response.setHeader('content-type', 'application/json');
       if (url.pathname === '/api/member/profile') response.end(JSON.stringify({ code: '0', data: { id: '8811' } }));
@@ -93,7 +105,8 @@ for (const provider of ['qbittorrent']) {
       assert.equal(request.headers['x-api-key'], undefined);
       if (url.searchParams.has('id')) {
         assert.equal(url.searchParams.get('id'), '123');
-        assert.equal(request.headers.cookie, siteCookie);
+        assert.equal(url.searchParams.get('dl_token'), 'synthetic-private-token');
+        assert.equal(request.headers.cookie, undefined);
       } else assert.equal(request.headers.cookie, undefined);
       response.end(`d4:info${info}e`);
     } else {
@@ -250,7 +263,7 @@ for (const provider of ['qbittorrent']) {
       await api('/resource-sites/configure', 'POST', {
         site,
         baseUrl: siteBase,
-        credential: { action: 'set', value: site === 'mteam' ? key : siteCookie },
+        credential: { action: 'set', value: site === 'mteam' ? key : site === 'hdarea' ? hdareaKey : siteCookie },
         passkey: site === 'hdarea' ? { action: 'set', value: passkey } : { action: 'keep' },
       });
     await resources.setMode('owner-1', before);
@@ -263,7 +276,13 @@ for (const provider of ['qbittorrent']) {
     for (const site of ['hdarea', 'hdwing']) {
       const result = await resources.search('owner-1', site, { query: 'Synthetic' }, new AbortController().signal);
       assert.equal(result.releases[0].id, '123');
-      if (site === 'hdarea') assert.match(result.releases[0].description, /第10-16集/);
+      if (site === 'hdarea') {
+        assert.match(result.releases[0].description, /第10-16集/);
+        assert.equal(result.releases[0].resolution, '1080p');
+        assert.equal(result.releases[0].seeders, 0);
+        const exact = await resources.search('owner-1', site, { imdbId: 'tt1234567' }, new AbortController().signal);
+        assert.equal(exact.releases[0].imdbId, 'tt1234567');
+      }
       assert.equal((await resources.detail('owner-1', site, '123', new AbortController().signal)).id, '123');
       const version = metadata.find((row) => row.site === site).version;
       const ticket = await resources.prepare('owner-1', site, '123', crypto.randomUUID(), before, version);
@@ -308,7 +327,7 @@ for (const provider of ['qbittorrent']) {
     assert.equal((await stats()).adds, 1);
     assert.equal(preparations, 1);
     const wireText = JSON.stringify((await stats()).received);
-    for (const secret of [key, siteCookie, passkey, 'synthetic-private-token', siteBase])
+    for (const secret of [key, hdareaKey, siteCookie, passkey, 'synthetic-private-token', siteBase])
       assert.ok(!wireText.includes(secret), `cloud wire leaked ${secret}`);
     expired = true;
     await assert.rejects(source.search('owner-1', { query: 'Synthetic' }, new AbortController().signal), {
@@ -349,7 +368,7 @@ for (const provider of ['qbittorrent']) {
     assert.deepEqual(preferences.selectedSites, ['hdwing']);
     for (const name of ['resource-sites.json', 'journal.json']) {
       const disk = await readFile(join(directory, 'data', name), 'utf8').catch(() => '');
-      for (const secret of [key, siteCookie, passkey, 'synthetic-private-token']) assert.ok(!disk.includes(secret));
+      for (const secret of [key, hdareaKey, siteCookie, passkey, 'synthetic-private-token']) assert.ok(!disk.includes(secret));
     }
 
     await stop();

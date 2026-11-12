@@ -154,6 +154,7 @@ impl Fixture {
                         "blocked"=>("200 OK","","<title>Just a moment</title><form id='challenge-form'></form>".into()),
                         "limit"=>("429 Too Many Requests","","".into()),
                         "large"=>("200 OK","","x".repeat(2*1024*1024+1)),
+                        _ if request.starts_with("GET /api/v1/user/profile") =>("200 OK","",json!({"success":true,"code":0,"data":{"id":if current=="changed" {"456"}else{"123"}}}).to_string()),
                         _ if request.starts_with("POST /api/member/profile") =>("200 OK","",json!({"code":0,"data":{"id":if current=="changed" {"456"}else{"123"}}}).to_string()),
                         _ =>("200 OK","",format!("<a href='usercp.php'>me</a><div id='info_block'><a href='userdetails.php?id={0}'>me</a></div><div id='site_header'><div class='userinfo'><a href='userdetails.php?id={0}'>me</a></div></div>",if current=="changed" {"456"}else{"123"}))
                     };
@@ -182,7 +183,11 @@ fn request(site: Site, base: &str) -> ConfigureRequest {
     ConfigureRequest {
         site,
         base_url: base.into(),
-        credential: SecretChange::Set("synthetic-site-credential".into()),
+        credential: SecretChange::Set(if site == Site::Hdarea {
+            "a".repeat(32)
+        } else {
+            "synthetic-site-credential".into()
+        }),
         passkey: if site == Site::Hdarea {
             SecretChange::Set("synthetic-passkey".into())
         } else {
@@ -375,7 +380,7 @@ async fn deletion_failure_retains_a_cleanup_record_and_retry_removes_the_secret(
     assert!(service.load().unwrap().pending_cleanup.is_empty());
 }
 #[tokio::test]
-async fn a_cookie_for_a_different_hdarea_account_does_not_require_a_passkey() {
+async fn an_api_key_for_a_different_hdarea_account_does_not_require_a_passkey() {
     let f = Fixture::new().await;
     let directory = tempfile::tempdir().unwrap();
     let service = ResourceSites::new(directory.path().into(), Arc::new(Memory::default()));
@@ -542,4 +547,72 @@ async fn defaults_are_persistent_unique_and_require_an_enabled_verified_site() {
         .unwrap()
         .iter()
         .any(|row| row.is_default));
+}
+
+#[tokio::test]
+async fn legacy_hdarea_cookie_is_invalid_after_restart_and_never_reverified_or_enabled() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(Memory::default());
+    let service = ResourceSites::new(directory.path().into(), store.clone());
+    let row = StoredSite {
+        site: Site::Hdarea,
+        base_url: "https://hdarea.club/".into(),
+        credential_id: uuid::Uuid::new_v4().to_string(),
+        enabled: true,
+        status: Status::ConfiguredValid,
+        verified_at: 1,
+        last_error: None,
+    };
+    let secret = SiteSecrets {
+        site: Site::Hdarea,
+        base_url: row.base_url.clone(),
+        credential: "uid=old; session=private".into(),
+        passkey: String::new(),
+        external_user_id: "123".into(),
+    };
+    store
+        .write(
+            &row.credential_id,
+            &Secrets {
+                api_key: serde_json::to_string(&secret).unwrap(),
+                password: String::new(),
+            },
+        )
+        .unwrap();
+    journal::atomic(
+        directory.path(),
+        FILE,
+        &StoredSites {
+            sites: vec![row],
+            pending_cleanup: vec![],
+        },
+    )
+    .unwrap();
+    let rows = service.list(&Trace::new()).await.unwrap();
+    let hda = &rows[1];
+    assert_eq!(hda.status, "configured_invalid");
+    assert!(!hda.has_credential && !hda.is_default);
+    assert_eq!(hda.last_error.as_deref(), Some("siteApiKeyRequired"));
+    assert_eq!(
+        service
+            .verify(Site::Hdarea, &Trace::new())
+            .await
+            .unwrap_err()
+            .code,
+        "siteApiKeyRequired"
+    );
+    assert!(service
+        .set_enabled(
+            EnabledRequest {
+                site: Site::Hdarea,
+                enabled: true
+            },
+            &Trace::new()
+        )
+        .await
+        .is_err());
+    assert!(service
+        .set_default(Site::Hdarea, &Trace::new())
+        .await
+        .is_err());
 }

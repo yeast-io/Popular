@@ -3,6 +3,8 @@ import type { AgentIconName } from './agent-icon.types';
 
 defineProps<{ name: AgentIconName }>();
 const paths: Record<AgentIconName, string> = {
+  'sun': 'M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5',
+  'moon': 'M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z',
   'overview': 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
   'resource-sites': 'M12 3 2 8l10 5 10-5-10-5ZM2 12l10 5 10-5M2 16l10 5 10-5',
   'downloaders': 'M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5',

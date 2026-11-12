@@ -13,7 +13,7 @@ const {
   loaded,
   apiKey,
   hasApiKey,
-  gatewayError,
+  gatewayFailure,
   savedGateway,
   editingGateway,
   gatewayChanged,
@@ -87,7 +87,7 @@ const {
         </button>
         <button v-if="editingGateway" type="button" class="quiet" @click="closeGatewayEditor">{{ t.cancel }}</button>
       </div>
-      <p v-if="gatewayError" class="error" role="alert">{{ text(gatewayError) }}</p>
+      <p v-if="gatewayFailure" class="error" role="alert">{{ text(gatewayFailure) }}</p>
     </fieldset>
   </form>
 </template>

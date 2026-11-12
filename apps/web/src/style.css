@@ -2587,6 +2587,15 @@ label small {
 .integration-form-footer {
   margin-top: 2px;
 }
+.resource-site-form .integration-summary {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings-content .resource-site-form .integration-form-footer {
+  margin-top: 0;
+  padding-top: 18px;
+}
 .integration-feedback {
   min-width: 0;
 }

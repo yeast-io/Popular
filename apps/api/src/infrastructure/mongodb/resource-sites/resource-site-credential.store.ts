@@ -10,13 +10,14 @@ export class MongoResourceSiteCredentialStore implements ResourceSiteCredentialS
   constructor(private readonly model: Model<ResourceSiteCredentialDocument>) {}
 
   async find(ownerId: string, site: string): Promise<ResourceSiteCredential | null> {
-    const row = await this.model.findOne({ ownerId, site }).select('+encryptedCookie +encryptedPasskey').lean().exec();
+    const row = await this.model.findOne({ ownerId, site }).select('+encryptedCookie +encryptedPasskey +encryptedApiKey').lean().exec();
     return row
       ? {
           ownerId: row.ownerId.toString(),
           site: row.site,
           ...(row.externalUserId ? { externalUserId: row.externalUserId } : {}),
-          encryptedCookie: row.encryptedCookie,
+          ...(row.encryptedCookie ? { encryptedCookie: row.encryptedCookie } : {}),
+          ...(row.encryptedApiKey ? { encryptedApiKey: row.encryptedApiKey } : {}),
           ...(row.encryptedPasskey ? { encryptedPasskey: row.encryptedPasskey } : {}),
           version: row.version,
           verifiedAt: row.verifiedAt,
@@ -33,7 +34,7 @@ export class MongoResourceSiteCredentialStore implements ResourceSiteCredentialS
     if (!retainedBinding && await this.model.exists({ site: input.site, ownerId: { $ne: input.ownerId }, externalUserId: { $not: { $type: 'string' } } }))
       throw siteAccountIdentityPending();
     try {
-      await this.model.updateOne({ ownerId: input.ownerId, site: input.site }, { $set: input }, { upsert: true }).exec();
+      await this.model.updateOne({ ownerId: input.ownerId, site: input.site }, { $set: input, $unset: input.encryptedApiKey ? { encryptedCookie: 1, encryptedPasskey: 1 } : { encryptedApiKey: 1 } }, { upsert: true }).exec();
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error && error.code === 11000) throw siteAccountInUse(error);
       throw error;

@@ -27,7 +27,7 @@ const config = loadConfig({
   ACCESS_LOG_ENABLED: 'false',
 });
 
-test('authenticated Cookie save → search → detail → delete runs through the real adapter and HTTP session', async () => {
+test('authenticated API Key save → search → detail → delete runs through the real adapter and HTTP session', async () => {
   const rows = new Map<string, ResourceSiteCredential>();
   let requests = 0;
   const auth = {
@@ -54,15 +54,12 @@ test('authenticated Cookie save → search → detail → delete runs through th
       fetch: async (input, init) => {
         requests++;
         const url = new URL(String(input));
-        const cookie = new Headers(init?.headers).get('cookie');
-        const id = cookie === 'uid=A-secret' ? '101' : '202';
-        const account = `<a href="usercp.php">Account</a><div id="info_block"><a href="userdetails.php?id=${id}">Me</a></div>`;
-        if (url.pathname === '/torrents.php')
-          return new Response(
-            account
-            + `<table class="torrents"><tbody><tr><td><table class="torrentname"><tr><td><a href="details.php?id=${id}" title="Interstellar 2014">Film</a></td></tr></table></td><td></td><td></td><td>10 GiB</td><td>22</td><td></td><td></td><td></td></tr></tbody></table>`
-          );
-        return new Response(account + '<h1>Interstellar 2014</h1>');
+        assert.equal(new Headers(init?.headers).has('cookie'), false);
+        const id = new Headers(init?.headers).get('x-api-key') === 'a'.repeat(32) ? '101' : '202';
+        const row = { id, name: 'Interstellar 2014', imdb_id: 'tt0816692', size: 1024, seeders: 22 };
+        return Response.json({ success: true, code: 0, data: url.pathname.endsWith('/profile')
+          ? { id }
+          : url.pathname === '/api/v1/torrents' ? { items: [row], pagination: { page: 0, has_more: false } } : row });
       },
     }),
     { logger: { error() {} }, verbose: false }
@@ -80,14 +77,14 @@ test('authenticated Cookie save → search → detail → delete runs through th
         method: 'PUT',
         url: base,
         headers: { cookie: `${config.SESSION_COOKIE_NAME}=${owner}` },
-        payload: { cookie: `uid=${owner}-secret`, passkey: `passkey-${owner}-secret` },
+        payload: { apiKey: (owner === 'A' ? 'a' : 'b').repeat(32) },
       }
       );
       assert.equal(saved.statusCode, 200, saved.body);
       assert.equal(saved.json().baseUrl, 'https://hdarea.club/');
       assert.equal(saved.body.includes(`uid=${owner}-secret`), false);
       assert.equal(saved.body.includes(`passkey-${owner}-secret`), false);
-      assert.equal(saved.json().cookieMasked, maskIntegrationSecret(`uid=${owner}-secret`));
+      assert.equal(saved.json().apiKeyMasked, maskIntegrationSecret((owner === 'A' ? 'a' : 'b').repeat(32)));
       assert.equal(saved.json().passkeyMasked, undefined);
     }
     const a = { cookie: `${config.SESSION_COOKIE_NAME}=A` };
@@ -141,7 +138,7 @@ test('site account conflicts and pending legacy identities use safe localized HT
     },
     new SecretCrypto('test-integration-key-at-least-32-characters'),
     new ResourceSiteHttpClient({ intervalMs: 0, fetch: async () => {
-      return new Response('<a href="usercp.php">Account</a><div id="info_block"><a href="userdetails.php?id=123">Me</a></div>');
+      return Response.json({ success: true, code: 0, data: { id: 123 } });
     } }),
     { logger: { error() {} }, verbose: false }
   );
@@ -153,7 +150,7 @@ test('site account conflicts and pending legacy identities use safe localized HT
         error = failure;
         const response = await app.inject({
           method: 'PUT', url: '/api/v1/me/integrations/resource-sites/hdarea',
-          headers: { 'accept-language': language }, payload: { cookie: 'session=private-cookie' },
+          headers: { 'accept-language': language }, payload: { apiKey: 'a'.repeat(32) },
         });
         assert.equal(response.statusCode, failure.statusCode);
         assert.equal(response.json().error.code, failure.code);

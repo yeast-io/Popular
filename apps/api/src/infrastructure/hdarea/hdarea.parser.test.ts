@@ -1,139 +1,44 @@
-import { parseAuthenticatedUserId } from './hdarea.parser.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseSearch, parseDetail } from './hdarea.parser.js';
-import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
+import { apiData, apiRelease } from './hdarea.parser.js';
+import { hdareaReleaseSchema } from './hdarea.schema.js';
 
-const bytes = (value: string) => Buffer.from(value);
-const authenticated = '<a href="usercp.php">Account</a>';
-// Synthetic fixtures mirror the public Jackett definition; they are not captured live pages.
-const row = `<tr><td>x</td><td><table class="torrentname"><tr><td><a href="details.php?id=123" title="Interstellar 2014 1080p">Film</a><a href="https://imdb.com/title/tt0816692">IMDb</a></td></tr></table></td><td>x</td><td>x</td><td>x</td><td>15.5 GiB</td><td>22</td><td>3</td><td>4</td><td>x</td></tr>`;
-const searchHtml = `${authenticated}<table class="torrents"><tbody>${row}</tbody></table><a href="torrents.php?page=1">Next</a>`;
-test('extracts resource identity, title, binary size, seeders, IMDb and next page', () => {
-  assert.deepEqual(parseSearch(bytes(searchHtml), 1), {
-    releases: [
-      {
-        id: '123',
-        title: 'Interstellar 2014 1080p',
-        sizeBytes: 15.5 * 1024 ** 3,
-        seeders: 22,
-        imdbId: 'tt0816692',
-        resolution: '1080p',
-      },
-    ],
-    nextPage: 2,
-  }
-  );
-});
-test('retains the subtitle that identifies TV episode coverage', () => {
-  const html = searchHtml.replace('>Film</a>', '>Film</a><br>嫁金钗 第10-16集');
-  assert.equal(parseSearch(bytes(html), 1).releases[0]?.description, '嫁金钗 第10-16集');
-});
-test('distinguishes explicit empty results, changed pages, login pages and challenges', () => {
-  assert.deepEqual(parseSearch(bytes(authenticated + '<p>没有找到</p>'), 1), { releases: [] });
-  for (const [html, reason] of [
-    [authenticated + '<p>unknown layout</p>', 'invalidResponse'],
-    ['<form action="takelogin.php"><input type="password"></form>', 'authentication'],
-    ['<title>Just a moment</title>', 'blocked'],
-  ]) {
-    assert.throws(
-      () => parseSearch(bytes(html!), 1),
-      (error) => error instanceof ResourceSiteError && error.reason === reason
-    );
-  }
-});
-test('detail parsing requires a title but does not depend on a download link', () => {
-  assert.deepEqual(parseDetail(bytes(authenticated + '<h1>Interstellar 2014</h1>'), '123'), {
-    release: { id: '123', title: 'Interstellar 2014' },
-  }
-  );
+test('maps verified API fields, zero values, episode subtitles and semantic tags without exposing download URLs', () => {
+  const row = hdareaReleaseSchema.parse({
+    id: 123,
+    name: 'Movie 2160p WEB-DL H265 DDP5.1 Atmos-GROUP',
+    small_descr: '第10-16集 中英双字',
+    size: 0,
+    seeders: 0,
+    imdb_id: 'tt0816692',
+    added_ts: 1790000000,
+    tags: ['Dolby Vision'],
+    download_url: 'private-link',
+    info_hash: 'private-hash',
+  });
+  const result = apiRelease(row, 'https://hdarea.example/');
+  assert.equal(result.id, '123');
+  assert.equal(result.sizeBytes, 0);
+  assert.equal(result.seeders, 0);
+  assert.equal(result.description, '第10-16集 中英双字');
+  assert.equal(result.videoCodec, 'H.265');
+  assert.equal(result.audioCodec, 'E-AC-3 5.1 Atmos');
+  assert.equal(result.releaseGroup, 'GROUP');
+  assert.deepEqual(result.tags, ['4K', 'DoVi', 'chinese-subtitles']);
+  assert.equal(result.publishedAt, new Date(1790000000000).toISOString());
+  assert.equal(JSON.stringify(result).includes('private-'), false);
 });
 
-test('extracts title metadata and absolute publication time from either list time layout', () => {
-  const title = 'Movie 2160p WEB-DL H265 DDP5.1 Atmos-BiVerse@ADWeb';
-  for (const time of ['<span title="2026-10-05 23:05:14">15 days ago</span>', '2026-10-05<br>23:05:14']) {
-    const html
-      = authenticated
-        + '<table class="torrents"><tbody>'
-        + row
-          .replace('Interstellar 2014 1080p', title)
-          .replace(
-            '<td>x</td><td>15.5 GiB</td>',
-            `<td>${time}</td><td>15.5 GiB</td>`
-          )
-          + '</tbody></table>';
-    const release = parseSearch(bytes(html), 1).releases[0]!;
-    assert.equal(release.publishedAt, '2026-10-05 23:05:14');
-    assert.equal(release.medium, 'WEB-DL');
-    assert.equal(release.videoCodec, 'H.265');
-    assert.equal(release.audioCodec, 'E-AC-3 5.1 Atmos');
-    assert.equal(release.releaseGroup, 'BiVerse@ADWeb');
-  }
+test('handles explicit empty and unknown fields without inventing metadata', () => {
+  const row = hdareaReleaseSchema.parse({ id: 1, name: 'Movie', tags: [], added_ts: null });
+  assert.deepEqual(apiRelease(row, 'https://hdarea.example/'), {
+    id: '1',
+    title: 'Movie',
+    detailsUrl: 'https://hdarea.example/details.php?id=1',
+  });
 });
 
-test('omits unavailable, relative and impossible publication times rather than inventing a date', () => {
-  for (const time of ['unknown', '15 days ago', '2026-02-30 23:05:14', '2026-10-05 25:05:14']) {
-    const html
-      = authenticated
-        + '<table class="torrents"><tbody>'
-        + row.replace('<td>x</td><td>15.5 GiB</td>', `<td>${time}</td><td>15.5 GiB</td>`)
-        + '</tbody></table>';
-    assert.equal(parseSearch(bytes(html), 1).releases[0]!.publishedAt, undefined);
-  }
-  assert.equal(
-    parseDetail(bytes(authenticated + '<h1>Movie 1080p x264-GROUP</h1>'), '123').release.releaseGroup,
-    'GROUP'
-  );
-});
-
-test('extracts tags from resource title, subtitle and explicit images without reading unrelated page content', () => {
-  const html
-    = authenticated
-      + '<p>导航 4K DoVi 中字</p><table class="torrents"><tbody>'
-      + row
-        .replace('Interstellar 2014 1080p', 'Movie 2160p H265-GROUP')
-        .replace(
-          '>Film</a>', '>Film</a><br><span>简繁字幕</span><img alt="Dolby Vision"><span title="4K">UHD</span>'
-        )
-        + '</tbody></table>';
-  const result = parseSearch(bytes(html), 1);
-  assert.deepEqual(result.releases[0]?.tags, ['4K', 'DoVi', 'chinese-subtitles']);
-  assert.equal(
-    parseSearch(
-      bytes(authenticated + '<p>4K DoVi 中字</p><table class="torrents"><tbody>' + row + '</tbody></table>'),
-      1
-    ).releases[0]?.tags,
-    undefined
-  );
-});
-
-test('detail tags use heading and metadata rows while ignoring the description', () => {
-  const html
-    = authenticated
-      + '<h1>Movie 2160p H265-GROUP</h1><table><tr><td>副标题</td><td>中英双字 <img title="DoVi"></td></tr><tr><td>描述</td><td>Other version: HDR 4K</td></tr></table>';
-  assert.deepEqual(parseDetail(bytes(html), '123').release.tags, ['4K', 'DoVi', 'chinese-subtitles']);
-  assert.equal(
-    parseDetail(bytes(authenticated + '<h1>Movie 1080p</h1><div id="description">4K DoVi 中字</div>'), '123').release
-      .tags,
-    undefined
-  );
-});
-
-test('reads only the authenticated current-user block, ignoring other member links and names', () => {
-  const page = authenticated
-    + '<a href="userdetails.php?id=999">Another user</a>'
-    + '<div id="info_block"><a href="userdetails.php?id=00123">Me</a></div>';
-  assert.equal(parseAuthenticatedUserId(Buffer.from(page), 'https://hdarea.club/'), '123');
-});
-
-test('missing, ambiguous, foreign and malformed current-user links fail closed', () => {
-  for (const content of [
-    '<a href="userdetails.php?id=123">Not in the current-user block</a>',
-    '<div id="info_block"><a href="userdetails.php?id=123">A</a><a href="userdetails.php?id=456">B</a></div>',
-    '<div id="info_block"><a href="https://evil.example/userdetails.php?id=123">Me</a></div>',
-    '<div id="info_block"><a href="userdetails.php?id=0">Me</a></div>',
-    '<div id="info_block"><a href="userdetails.php?id=123&id=456">Me</a></div>',
-    '<div id="info_block"><a href="userdetails.php?id=not-an-id">Me</a></div>',
-  ]) assert.throws(() => parseAuthenticatedUserId(Buffer.from(authenticated + content), 'https://hdarea.club/'), ResourceSiteError);
-  assert.throws(() => parseAuthenticatedUserId(Buffer.from('<input type="password">'), 'https://hdarea.club/'), ResourceSiteError);
+test('rejects HTML, malformed envelopes and HTTP-200 API errors', () => {
+  for (const text of ['<html>404</html>', '{}', '{"success":false,"code":403}', '{"success":true,"code":12,"data":{}}'])
+    assert.throws(() => apiData(Buffer.from(text)));
 });

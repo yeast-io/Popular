@@ -4,7 +4,8 @@ import type { AiLogger } from '../../infrastructure/logging/ai-trace.types.js';
 export interface ResourceSiteCredential {
   ownerId: string;
   site: string;
-  encryptedCookie: string;
+  encryptedCookie?: string;
+  encryptedApiKey?: string;
   externalUserId?: string;
   encryptedPasskey?: string;
   version: string;
@@ -19,6 +20,7 @@ export interface ResourceSiteCredentialStore {
 }
 export interface ResourceSiteSession {
   get(path: string, signal?: AbortSignal): Promise<Uint8Array>;
+  post?(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Uint8Array>;
 }
 export interface ResourceSiteAdapter {
   readonly id: string;
@@ -26,6 +28,7 @@ export interface ResourceSiteAdapter {
   readonly baseUrl: string;
   detailsUrl?(id: string): string;
   readonly requiresPasskey?: boolean;
+  readonly credentialType?: 'apiKey' | 'cookie';
   torrentFile?(session: ResourceSiteSession, id: string, signal?: AbortSignal): Promise<Uint8Array>;
   resolveTorrentUrl?(session: ResourceSiteSession, id: string, externalUserId: string, signal?: AbortSignal): Promise<string>;
   verify(session: ResourceSiteSession, signal?: AbortSignal): Promise<string>;
@@ -42,4 +45,5 @@ export interface ResourceSiteDiagnostics {
 }
 export interface ResourceSiteHttpClientPort {
   session(baseUrl: string, cookie: string): Promise<ResourceSiteSession>;
+  apiSession?(baseUrl: string, apiKey: string): Promise<ResourceSiteSession>;
 }

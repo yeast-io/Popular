@@ -194,7 +194,7 @@ impl<C: CredentialStore + Send + Sync + 'static> Agent<C> {
             identity.device_id,
         );
         self.runtime.suspended.store(false, Ordering::SeqCst);
-        self.runtime.update(Some("connecting"), None, None);
+        self.runtime.gateway_result("connecting", None);
         self.runtime.changed.notify_one();
         Ok(snapshot)
     }

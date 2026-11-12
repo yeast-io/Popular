@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useAgentTheme } from './agent-theme.composable';
 import { useAgentSession } from './agent-session.composable';
 import { provideAgentContext } from './agent-context.composable';
 import { provideAgentClient } from './transport/agent-client.composable';
@@ -13,6 +14,7 @@ import SettingsPage from './features/settings/SettingsPage.vue';
 import logo from '../../../../web/public/favicon.svg';
 
 const props = defineProps<AgentRootProps>();
+const { theme, toggleTheme } = useAgentTheme();
 const session = useAgentSession(props.client, props.host);
 provideAgentContext(session);
 provideAgentClient(props.client);
@@ -98,6 +100,15 @@ const descriptions = computed(() => ({
           <option value="zh-CN">{{ t.chineseLanguage }}</option>
           <option value="en-US">{{ t.englishLanguage }}</option>
         </select>
+        <button
+          type="button"
+          class="quiet theme-control"
+          :aria-label="theme === 'dark' ? t.switchToLightMode : t.switchToDarkMode"
+          :title="theme === 'dark' ? t.switchToLightMode : t.switchToDarkMode"
+          @click="toggleTheme"
+        >
+          <AgentIcon :name="theme === 'dark' ? 'sun' : 'moon'" />
+        </button>
         <button v-if="host.signOut" type="button" class="quiet sign-out-button" @click="signOut" :disabled="busy">
           {{ t.managementSignOut }}
         </button>

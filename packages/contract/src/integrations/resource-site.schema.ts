@@ -9,11 +9,15 @@ export const ResourceSiteConfigurationSchema = Type.Object({
   site: Type.String(), status: IntegrationStatusSchema,
   requiresPasskey: Type.Optional(Type.Boolean()),
   baseUrl: Type.Optional(Type.String({ format: 'uri' })),
+  apiKeyMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
+  requiresApiKey: Type.Optional(Type.Boolean()),
+  credentialUpdateRequired: Type.Optional(Type.Boolean()),
   cookieMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
   passkeyMasked: Type.Optional(Type.String({ minLength: 1, pattern: '•' })),
   verifiedAt: Type.Optional(Type.String({ format: 'date-time' })),
 }, { additionalProperties: false });
 export const SaveResourceSiteSchema = Type.Object({
+  apiKey: Type.Optional(Type.String({ pattern: '^[a-fA-F0-9]{32}$' })),
   passkey: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
   cookie: Type.Optional(Type.String({ minLength: 1, maxLength: 16384, pattern: '^[^\\r\\n]+$' })) }, { additionalProperties: false });
 export const ResourceSiteSearchSchema = Type.Object({

@@ -68,6 +68,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
   const busy = ref(true);
   const loaded = ref(false);
   const gatewayError = ref('');
+  const connectingGateway = ref(false);
   const downloaderError = ref('');
   const settingsError = ref('');
   const documentationError = ref(false);
@@ -128,7 +129,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
   const gatewayChanged = computed(() => endpoint(form.gatewayUrl) !== endpoint(savedGateway.value));
   const downloaderChanged = computed(() => downloaderTarget(form) !== savedDownloader.value || Boolean(password.value));
   const gatewayPending = computed(
-    () => form.gatewayEnabled && (runtime.value.service === 'connecting' || runtime.value.binding === 'binding')
+    () => connectingGateway.value || (!runtimeFailed.value && form.gatewayEnabled && runtime.value.service === 'connecting')
   );
   const canConnect = computed(
     () =>
@@ -137,7 +138,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
       && !gatewayPending.value
       && Boolean(form.gatewayUrl.trim())
       && (Boolean(apiKey.value) || (hasApiKey.value && !gatewayChanged.value))
-      && (runtime.value.service !== 'online' || gatewayChanged.value || Boolean(apiKey.value))
+      && (runtimeFailed.value || runtime.value.service !== 'online' || gatewayChanged.value || Boolean(apiKey.value))
   );
   const downloaderStatus = computed(() =>
     runtimeFailed.value
@@ -152,14 +153,17 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
   const showGatewayForm = computed(() => !gatewayConfigured.value || editingGateway.value);
   const showDownloaderForm = computed(() => !form.downloaderConfigured || editingDownloader.value);
   const canDisconnect = computed(
-    () =>
-      ['online', 'connecting'].includes(runtime.value.service)
-      || (form.gatewayEnabled
-        && gatewayConfigured.value
-        && !['unconfigured', 'rebindRequired', 'bindingFailed', 'unbound', 'legacyIdentity', 'sessionRevoked'].includes(
-          runtime.value.service
-        ))
+    () => !runtimeFailed.value && Boolean(lastRuntimeAt.value) && form.gatewayEnabled && runtime.value.service === 'online'
   );
+  const gatewayFailure = computed(() => {
+    if (gatewayError.value) return gatewayError.value;
+    if (runtimeFailed.value) return 'runtimeError';
+    if (runtime.value.gatewayError) return runtime.value.gatewayError;
+    if (['gatewayProtocol', 'legacyIdentity', 'deviceLimitReached', 'sessionRevoked', 'bindingFailed', 'rebindRequired'].includes(runtime.value.service)) {
+      return runtime.value.service;
+    }
+    return form.gatewayEnabled && runtime.value.service === 'disconnected' ? 'gatewayConnectionFailed' : '';
+  });
   const hasGatewayChanges = computed(() => gatewayChanged.value || Boolean(apiKey.value));
   const passwordSaved = computed(() => hasPassword.value && downloaderTarget(form) === savedDownloader.value);
   const connectLabel = computed(() => (gatewayPending.value ? 'connecting' : 'connect'));
@@ -167,6 +171,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
   async function connect() {
     if (!canConnect.value) return;
     busy.value = true;
+    connectingGateway.value = true;
     gatewayError.value = '';
     try {
       const snapshot = await client.connectGateway({
@@ -186,6 +191,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
     } catch (cause) {
       if (active) gatewayError.value = errorCode(cause);
     } finally {
+      connectingGateway.value = false;
       busy.value = false;
     }
   }
@@ -439,6 +445,7 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
     apiKey,
     password,
     gatewayError,
+    gatewayFailure,
     downloaderError,
     savedGateway,
     savedDownloaderUrl,

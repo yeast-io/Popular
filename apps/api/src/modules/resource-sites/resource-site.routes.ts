@@ -84,7 +84,7 @@ export function registerResourceSiteRoutes(
     },
     (request) => {
       return execute(request, 'configure', (owner) => {
-        return service.configure(owner, request.params.site, request.body.cookie, request.body.passkey);
+        return service.configure(owner, request.params.site, request.body.cookie, request.body.passkey, request.body.apiKey);
       });
     });
   app.post<{ Params: ResourceSiteParams }>(

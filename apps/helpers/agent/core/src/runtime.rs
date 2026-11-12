@@ -35,6 +35,7 @@ pub fn binding(identity: &Identity, settings: &Settings) -> BindingState {
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     pub service: String,
+    pub gateway_error: Option<String>,
     pub downloader: String,
     pub device_id: Option<String>,
     pub binding: BindingState,
@@ -55,6 +56,7 @@ impl Default for Runtime {
             queue_refresh: Default::default(),
             status: Mutex::new(Status {
                 service: "unconfigured".into(),
+                gateway_error: None,
                 downloader: "disconnected".into(),
                 device_id: None,
                 binding: BindingState::Unbound,
@@ -84,6 +86,9 @@ impl Runtime {
         let mut s = self.status.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(v) = service {
             s.service = v.into();
+            if matches!(v, "online" | "manuallyDisconnected" | "unconfigured") {
+                s.gateway_error = None;
+            }
         }
         if let Some(v) = downloader {
             s.downloader = v.into();
@@ -100,6 +105,14 @@ impl Runtime {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
+    }
+    pub fn gateway_result(&self, service: &str, error: Option<&str>) {
+        let mut status = self.status.lock().unwrap_or_else(|e| e.into_inner());
+        status.service = service.into();
+        status.gateway_error = error.map(str::to_owned);
+        let snapshot = status.clone();
+        drop(status);
+        let _ = self.events.send(snapshot);
     }
 }
 async fn session<C: CredentialStore + Send + Sync + 'static>(
@@ -201,8 +214,8 @@ pub(crate) async fn run<C: CredentialStore + Send + Sync + 'static>(
                     .unwrap_or_default();
                 let binding = binding(&identity, &settings);
                 runtime.set_binding(binding, identity.device_id.clone());
-                runtime.update(
-                    Some(if !settings.gateway_enabled {
+                runtime.gateway_result(
+                    if !settings.gateway_enabled {
                         "manuallyDisconnected"
                     } else if e.code == "rebindRequired" {
                         if binding == BindingState::Unbound {
@@ -220,9 +233,8 @@ pub(crate) async fn run<C: CredentialStore + Send + Sync + 'static>(
                         e.code
                     } else {
                         "disconnected"
-                    }),
-                    None,
-                    None,
+                    },
+                    settings.gateway_enabled.then_some(e.code),
                 );
                 diagnostics::failure(
                     "gateway.session",

@@ -7,9 +7,7 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
   const loading = ref(false);
   const loaded = ref(false);
   const error = ref('');
-  const dirty = computed(() =>
-    entries.some((entry) => !!entry.credential || entry.baseUrl !== entry.snapshot.baseUrl)
-  );
+  const dirty = computed(() => entries.some((entry) => !!entry.credential || entry.baseUrl !== entry.snapshot.baseUrl));
   const anyBusy = computed(() => entries.some((entry) => entry.busy));
   let active = true;
   let generation = 0;
@@ -17,8 +15,6 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
     entry.snapshot = snapshot;
     entry.baseUrl = snapshot.baseUrl;
     entry.credential = '';
-    entry.editing = snapshot.status === 'unconfigured';
-    entry.confirmingDelete = false;
   }
   async function load() {
     if (!client || loading.value || anyBusy.value) return;
@@ -38,10 +34,9 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
           snapshot,
           baseUrl: snapshot.baseUrl,
           credential: '',
-          editing: snapshot.status === 'unconfigured',
-          confirmingDelete: false,
           busy: false,
           error: '',
+          saved: false,
         }))
       );
       loaded.value = true;
@@ -51,28 +46,25 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
       if (active && current === generation) loading.value = false;
     }
   }
-  async function action(entry: ResourceSiteEntry, operation: () => Promise<ResourceSiteSnapshot | void>) {
+  async function action(
+    entry: ResourceSiteEntry,
+    operation: () => Promise<ResourceSiteSnapshot>,
+    revalidating = false,
+    reportSaved = false
+  ) {
     if (!client || entry.busy || loading.value || !active) return;
     entry.busy = true;
     entry.error = '';
+    entry.saved = false;
     try {
       const snapshot = await operation();
       if (!active) return;
-      apply(
-        entry,
-        snapshot ?? {
-          ...entry.snapshot,
-          enabled: false,
-          status: 'unconfigured',
-          hasCredential: false,
-          verifiedAt: null,
-          lastError: null,
-        }
-      );
+      apply(entry, snapshot);
+      entry.saved = reportSaved;
     } catch (cause) {
       if (active) {
         entry.error = typeof cause === 'string' ? cause : 'unknownError';
-        if (['siteAuthentication', 'siteBlocked', 'siteAccountChanged'].includes(entry.error) && !entry.editing) {
+        if (['siteAuthentication', 'siteBlocked', 'siteAccountChanged'].includes(entry.error) && revalidating) {
           entry.snapshot.status = 'configured_invalid';
           entry.snapshot.lastError = entry.error;
         }
@@ -87,10 +79,11 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
     entry.error = '';
     try {
       const snapshots = await client.setDefault(entry.snapshot.site);
-      if (active) snapshots.forEach((snapshot) => {
-        const row = entries.find((row) => row.snapshot.site === snapshot.site);
-        if (row) row.snapshot.isDefault = snapshot.isDefault;
-      });
+      if (active)
+        snapshots.forEach((snapshot) => {
+          const row = entries.find((row) => row.snapshot.site === snapshot.site);
+          if (row) row.snapshot.isDefault = snapshot.isDefault;
+        });
     } catch (cause) {
       if (active) entry.error = typeof cause === 'string' ? cause : 'unknownError';
     } finally {
@@ -104,23 +97,9 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
       site: entry.snapshot.site,
       baseUrl: entry.baseUrl.trim(),
       credential: entry.credential ? { action: 'set' as const, value: entry.credential } : { action: 'keep' as const },
-
     };
     if (!keep && !entry.credential) return;
-    return action(entry, () => client.configure(request));
-  }
-  function cancel(entry: ResourceSiteEntry) {
-    if (entry.busy) return;
-    apply(entry, entry.snapshot);
-    entry.error = '';
-  }
-  function remove(entry: ResourceSiteEntry) {
-    if (!client || !entry.confirmingDelete) return;
-    return action(entry, () => client.remove(entry.snapshot.site));
-  }
-  function verify(entry: ResourceSiteEntry) {
-    if (!client) return;
-    return action(entry, () => client.verify(entry.snapshot.site));
+    return action(entry, () => client.configure(request), !entry.credential.trim() && keep, true);
   }
   function toggle(entry: ResourceSiteEntry) {
     if (!client) return;
@@ -145,9 +124,6 @@ export function useResourceSites(client: ResourceSiteClient | undefined) {
     configure,
     setDefault,
     canSetDefault: !!client?.setDefault,
-    cancel,
-    remove,
-    verify,
     toggle,
   };
 }

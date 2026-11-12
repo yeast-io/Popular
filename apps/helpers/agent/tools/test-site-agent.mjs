@@ -17,6 +17,7 @@ let server;
 let cookie = '';
 let csrf = '';
 const key = 'synthetic-mteam-local-key';
+const hdareaKey = 'a'.repeat(32);
 const siteCookie = 'uid=synthetic; session=synthetic';
 const passkey = 'synthetic-local-passkey';
 const observed = [];
@@ -31,6 +32,10 @@ const fixture = createServer((request, response) => {
     assert.equal(request.headers['x-api-key'], key);
     response.setHeader('content-type', 'application/json');
     response.end(JSON.stringify({ code: '0', data: { id: '8811' } }));
+  } else if (request.url === '/api/v1/user/profile') {
+    assert.equal(request.headers['x-api-key'], hdareaKey);
+    assert.equal(request.headers.cookie, undefined);
+    response.end(JSON.stringify({ success: true, code: 0, data: { id: 8811 } }));
   } else if (request.url === '/index.php') {
     assert.equal(request.headers.cookie, siteCookie);
     response.setHeader('content-type', 'text/html');
@@ -140,12 +145,12 @@ try {
     const row = await api('/resource-sites/configure', 'POST', {
       site,
       baseUrl: siteBase,
-      credential: { action: 'set', value: site === 'mteam' ? key : siteCookie },
+      credential: { action: 'set', value: site === 'mteam' ? key : site === 'hdarea' ? hdareaKey : siteCookie },
       passkey: site === 'hdarea' ? { action: 'set', value: passkey } : { action: 'keep' },
     });
     assert.equal(row.status, 'configured_valid');
     assert.equal(row.hasCredential, true);
-    assert.equal(row.hasPasskey, site === 'hdarea');
+    assert.equal(row.hasPasskey, false);
     assert.equal(row.credential, undefined);
     assert.equal(row.externalUserId, undefined);
     await api('/resource-sites/verify', 'POST', { site });
@@ -153,14 +158,14 @@ try {
   await api('/resource-sites/enabled', 'PUT', { site: 'hdarea', enabled: false });
   const publicText = JSON.stringify(await api('/resource-sites'));
   const disk = await readFile(join(directory, 'data/resource-sites.json'), 'utf8');
-  for (const secret of [key, siteCookie, passkey]) {
+  for (const secret of [key, hdareaKey, siteCookie, passkey]) {
     assert.ok(!publicText.includes(secret));
     assert.ok(!disk.includes(secret));
   }
   const credentials = join(directory, 'data/credentials');
   for (const name of await readdir(credentials)) {
     const bytes = await readFile(join(credentials, name), 'utf8');
-    for (const secret of [key, siteCookie, passkey]) assert.ok(!bytes.includes(secret));
+    for (const secret of [key, hdareaKey, siteCookie, passkey]) assert.ok(!bytes.includes(secret));
   }
   assert.equal((await api('/runtime')).service, 'unconfigured');
   await stop();

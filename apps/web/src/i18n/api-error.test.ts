@@ -25,7 +25,7 @@ it('preserves actionable site failure reasons in both languages and ignores unkn
   for (const locale of ['en-US', 'zh-CN'] as const) {
     setLocale(locale);
     const message = localizedErrorMessage(localizedApiError(failure), 'errors.unknown');
-    expect(message).toContain('Cookie');
+    expect(message).toContain(locale === 'zh-CN' ? '凭据' : 'credentials');
     expect(message).not.toContain('raw payload');
   }
   expect(apiErrorKey({ error: { code: 'RESOURCE_SITE_FAILED', details: { reason: '__proto__' } } })).toBe(
@@ -40,3 +40,16 @@ it.each(['en-US', 'zh-CN'] as const)('explains site account conflicts and pendin
     ['RESOURCE_SITE_IDENTITY_PENDING', locale === 'zh-CN' ? '已有站点账号尚未完成身份验证，暂时无法添加新的绑定。' : 'Existing site accounts still need identity verification. New bindings are temporarily unavailable.'],
   ]) expect(localizedErrorMessage(localizedApiError({ error: { code, message: 'private internal details' } }), 'errors.unknown')).toBe(expected);
 });
+
+for (const locale of ['en-US', 'zh-CN'] as const) {
+  it(`explains the HDArea API migration and short-link failure in ${locale}`, () => {
+    setLocale(locale);
+    for (const reason of ['apiKeyRequired', 'downloadExpired']) {
+      const failure = { error: { code: 'RESOURCE_SITE_FAILED', details: { reason }, message: 'private server response' } };
+      expect(apiErrorKey(failure)).toBe(`resourceSite.error.${reason}`);
+      const message = localizedErrorMessage(localizedApiError(failure), 'errors.unknown');
+      expect(message).not.toContain('private server response');
+      expect(message).toContain(reason === 'apiKeyRequired' ? 'API Key' : locale === 'zh-CN' ? '重试' : 'Try again');
+    }
+  });
+}

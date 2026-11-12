@@ -2,7 +2,14 @@
 import { replacementSecret } from './integration-secret.domain';
 import SourceConfigurationActions from './SourceConfigurationActions.vue';
 import IntegrationCard from '../settings/IntegrationCard.vue';
-import { MTEAM_DEFAULT_BASE_URL, MTEAM_DEFAULT_WEB_BASE_URL, type ApiError, type IntegrationFailureType, type IntegrationStatus, type MTeamConfiguration } from '@movie-hub/contract';
+import {
+  MTEAM_DEFAULT_BASE_URL,
+  MTEAM_DEFAULT_WEB_BASE_URL,
+  type ApiError,
+  type IntegrationFailureType,
+  type IntegrationStatus,
+  type MTeamConfiguration,
+} from '@movie-hub/contract';
 import { computed, onMounted, ref } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { formatDate, t } from '../../i18n';
@@ -16,8 +23,6 @@ const webBaseUrl = ref(MTEAM_DEFAULT_WEB_BASE_URL);
 const apiKey = ref('');
 const loading = ref(true);
 const submitting = ref(false);
-const deleting = ref(false);
-const confirmDelete = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 const ACTION_TIMEOUT_MS = 15_000;
@@ -65,7 +70,9 @@ async function testAndSave() {
         body: JSON.stringify({
           baseUrl: baseUrl.value.trim(),
           webBaseUrl: webBaseUrl.value.trim(),
-          ...(replacementSecret(apiKey.value, config.value.apiKeyMasked) ? { apiKey: replacementSecret(apiKey.value, config.value.apiKeyMasked) } : {}),
+          ...(replacementSecret(apiKey.value, config.value.apiKeyMasked)
+            ? { apiKey: replacementSecret(apiKey.value, config.value.apiKeyMasked) }
+            : {}),
         }),
       },
       ACTION_TIMEOUT_MS
@@ -76,66 +83,13 @@ async function testAndSave() {
       throw localizedApiError(result, 'errors.mteamValidation');
     }
     applyConfiguration(result as MTeamConfiguration);
-    successMessage.value = t('mteam.saved');
+    successMessage.value = t('sourceActions.saved');
     emit('configuration-changed');
   } catch (error) {
     errorMessage.value = localizedErrorMessage(error, 'errors.mteamValidation');
     void refreshAfterFailure();
   } finally {
     submitting.value = false;
-  }
-}
-
-async function retest() {
-  clearMessages();
-  submitting.value = true;
-  try {
-    const response = await timedFetch(
-      `${apiBaseUrl}/me/integrations/mteam/test`,
-      {
-        method: 'POST',
-        credentials: 'include',
-      },
-      ACTION_TIMEOUT_MS
-    );
-    const result = (await response.json()) as MTeamConfiguration | ApiError;
-    if (!response.ok) {
-      applyFailureState(result);
-      throw localizedApiError(result, 'errors.mteamValidation');
-    }
-    applyConfiguration(result as MTeamConfiguration);
-    successMessage.value = t('mteam.retested');
-    emit('configuration-changed');
-  } catch (error) {
-    errorMessage.value = localizedErrorMessage(error, 'errors.mteamValidation');
-    void refreshAfterFailure();
-  } finally {
-    submitting.value = false;
-  }
-}
-
-async function deleteConfiguration() {
-  clearMessages();
-  deleting.value = true;
-  try {
-    const response = await timedFetch(
-      `${apiBaseUrl}/me/integrations/mteam`,
-      {
-        method: 'DELETE',
-        credentials: 'include',
-      },
-      ACTION_TIMEOUT_MS
-    );
-    if (!response.ok) throw localizedApiError((await response.json()) as ApiError, 'errors.requestFailed');
-    applyConfiguration({ provider: 'mteam', status: 'unconfigured' });
-    apiKey.value = '';
-    confirmDelete.value = false;
-    successMessage.value = t('mteam.deleted');
-    emit('configuration-changed');
-  } catch (error) {
-    errorMessage.value = localizedErrorMessage(error, 'errors.requestFailed');
-  } finally {
-    deleting.value = false;
   }
 }
 
@@ -146,14 +100,14 @@ async function refreshAfterFailure() {
       { credentials: 'include' },
       STATUS_REFRESH_TIMEOUT_MS
     );
-    if (response.ok) applyConfiguration((await response.json()) as MTeamConfiguration);
+    if (response.ok) config.value = (await response.json()) as MTeamConfiguration;
   } catch {
     // The primary validation result is already visible. A status refresh must never keep the form busy.
   }
 }
 
 function applyFailureState(result: MTeamConfiguration | ApiError) {
-  if (!configured.value || !('error' in result)) return;
+  if (!configured.value || !('error' in result) || replacementSecret(apiKey.value, config.value.apiKeyMasked)) return;
   const failureType = (result.error.details as { failureType?: unknown } | undefined)?.failureType;
   if (!isFailureType(failureType)) return;
   config.value = { ...config.value, status: 'configured_invalid', lastFailureType: failureType };
@@ -169,7 +123,6 @@ function applyConfiguration(next: MTeamConfiguration) {
 function clearMessages() {
   errorMessage.value = '';
   successMessage.value = '';
-  confirmDelete.value = false;
 }
 
 function timedFetch(input: RequestInfo | URL, init: RequestInit, timeoutMs: number): Promise<Response> {
@@ -187,44 +140,20 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
     :title="t('mteam.title')"
     badge="MT"
     :description="t('settings.mteamSummary')"
+    static-form
     :status-label="statusLabel"
     :status-class="config.status"
     :configured="configured"
-    :busy="submitting || deleting"
+    :busy="submitting"
     :loading="loading"
     :notice="errorMessage"
   >
     <div v-if="loading" class="loading compact-loading">{{ t('mteam.loading') }}</div>
     <template v-else>
-      <dl v-if="configured" class="integration-summary">
-        <div>
-          <dt>{{ t('mteam.currentBaseUrl') }}</dt>
-          <dd>{{ config.baseUrl }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('mteam.currentWebBaseUrl') }}</dt>
-          <dd>{{ config.webBaseUrl }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('mteam.lastValidation') }}</dt>
-          <dd>
-            {{
-              config.lastValidationAt
-                ? formatDate(config.lastValidationAt, { dateStyle: 'medium', timeStyle: 'short' })
-                : t('mteam.neverValidated')
-            }}
-          </dd>
-        </div>
-        <div v-if="config.lastFailureType">
-          <dt>{{ t('mteam.lastFailure') }}</dt>
-          <dd>{{ failureLabel }}</dd>
-        </div>
-      </dl>
-
-      <form class="integration-form" novalidate @submit.prevent="testAndSave">
+      <form class="integration-form resource-site-form" novalidate @submit.prevent="testAndSave">
         <div class="settings-fields integration-fields">
           <label for="mteam-base-url">
-            {{ t('mteam.baseUrl') }}
+            {{ t('resourceSite.apiAddress') }}
             <input
               id="mteam-base-url"
               v-model="baseUrl"
@@ -235,10 +164,10 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
               required
               autocomplete="url"
             />
-            <small>{{ t('mteam.baseUrlHint') }}</small>
+            <small>{{ t('resourceSite.addressHint') }}</small>
           </label>
           <label for="mteam-web-base-url">
-            {{ t('mteam.webBaseUrl') }}
+            {{ t('resourceSite.webAddress') }}
             <input
               id="mteam-web-base-url"
               v-model="webBaseUrl"
@@ -249,10 +178,10 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
               required
               autocomplete="url"
             />
-            <small>{{ t('mteam.webBaseUrlHint') }}</small>
+            <small>{{ t('resourceSite.addressHint') }}</small>
           </label>
           <label for="mteam-api-key">
-            {{ t('mteam.apiKey') }}
+            {{ t('resourceSite.apiKey') }}
             <input
               id="mteam-api-key"
               v-model="apiKey"
@@ -262,10 +191,28 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
               autocomplete="new-password"
               :placeholder="configured ? t('mteam.replaceKeyPlaceholder') : t('mteam.keyPlaceholder')"
             />
-            <small v-if="config.apiKeyMasked">{{ t('settings.credentialLength', { length: Array.from(config.apiKeyMasked).length }) }}</small>
+            <small v-if="config.apiKeyMasked">{{
+              t('settings.credentialLength', { length: Array.from(config.apiKeyMasked).length })
+            }}</small>
             <small>{{ t('mteam.apiKeyHint') }}</small>
           </label>
         </div>
+        <dl v-if="configured" class="integration-summary">
+          <div>
+            <dt>{{ t('resourceSite.lastValidation') }}</dt>
+            <dd>
+              {{
+                config.lastValidationAt
+                  ? formatDate(config.lastValidationAt, { dateStyle: 'medium', timeStyle: 'short' })
+                  : t('resourceSite.neverValidated')
+              }}
+            </dd>
+          </div>
+          <div v-if="config.lastFailureType">
+            <dt>{{ t('mteam.lastFailure') }}</dt>
+            <dd>{{ failureLabel }}</dd>
+          </div>
+        </dl>
         <div class="settings-card-footer integration-form-footer">
           <div class="settings-feedback integration-feedback">
             <p v-if="errorMessage" class="error settings-message" role="alert">{{ errorMessage }}</p>
@@ -274,14 +221,8 @@ function isFailureType(value: unknown): value is IntegrationFailureType {
             </p>
           </div>
           <SourceConfigurationActions
-            v-model:confirm-delete="confirmDelete"
-            :configured="configured"
-            :busy="submitting || deleting"
-            :deleting="deleting"
-            :delete-prompt="t('mteam.deleteConfirm')"
+            :busy="submitting"
             :can-save="Boolean(baseUrl.trim() && webBaseUrl.trim() && (configured || apiKey))"
-            @delete="deleteConfiguration"
-            @retest="retest"
           />
         </div>
       </form>

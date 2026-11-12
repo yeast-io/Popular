@@ -1,4 +1,5 @@
 //! Locally owned site configuration and fixed, session-bound resource operations.
+mod hdarea;
 pub(crate) mod resources;
 pub(crate) mod tickets;
 pub(crate) mod torrent;
@@ -37,7 +38,7 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
         }
     }
     fn load(&self) -> Result<StoredSites, AgentError> {
-        let rows: StoredSites = journal::load(&self.directory, FILE)?;
+        let mut rows: StoredSites = journal::load(&self.directory, FILE)?;
         let mut seen = std::collections::BTreeSet::new();
         if rows.pending_cleanup.len() > 64
             || rows.pending_cleanup.iter().any(|id| {
@@ -53,6 +54,16 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
             })
         {
             return Err(AgentError::code("invalidSettings"));
+        }
+        for row in &mut rows.sites {
+            if row.site == Site::Hdarea
+                && self
+                    .secrets(row)
+                    .is_ok_and(|s| !hdarea::valid_key(&s.credential))
+            {
+                row.status = Status::ConfiguredInvalid;
+                row.last_error = Some("siteApiKeyRequired".into());
+            }
         }
         Ok(rows)
     }
@@ -83,7 +94,10 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
                 Some(Status::ConfiguredValid) => "configured_valid",
                 Some(Status::ConfiguredInvalid) => "configured_invalid",
             },
-            has_credential: secrets.as_ref().is_some_and(|s| !s.credential.is_empty()),
+            has_credential: secrets.as_ref().is_some_and(|s| {
+                !s.credential.is_empty()
+                    && (site != Site::Hdarea || hdarea::valid_key(&s.credential))
+            }),
             has_passkey: false,
             requires_passkey: false,
             verified_at: row.map(|r| r.verified_at),
@@ -169,7 +183,10 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
             input.credential,
             old_secrets.as_ref().map(|s| s.credential.as_str()),
         )?;
-        // Legacy passkeys are ignored; Cookie authentication also handles torrent retrieval.
+        // Legacy passkeys are ignored; the site adapter handles authenticated torrent retrieval.
+        if input.site == Site::Hdarea && !hdarea::valid_key(&credential) {
+            return Err(AgentError::code("siteApiKeyRequired"));
+        }
         let passkey = String::new();
         if credential.len() > 8192
             || (input.site == Site::Mteam && credential.len() > 4096)

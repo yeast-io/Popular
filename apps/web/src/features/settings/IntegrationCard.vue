@@ -19,6 +19,7 @@ const props = defineProps<{
   notice?: string;
   actionLabel?: string | undefined;
   forceOpen?: boolean;
+  staticForm?: boolean;
   embedded?: boolean;
 }>();
 const emit = defineEmits<{ open: [] }>();
@@ -55,7 +56,7 @@ function toggle() {
 <template>
   <section
     class="settings-card integration-card"
-    :class="{ 'is-expanded': expanded, 'is-embedded': embedded }"
+    :class="{ 'is-expanded': staticForm || expanded, 'is-embedded': embedded }"
     :aria-labelledby="embedded ? undefined : `${id}-title`"
     :aria-busy="loading || busy"
   >
@@ -82,6 +83,7 @@ function toggle() {
       <IntegrationDefaultAction v-if="configured && defaultCategory" :id="defaultId ?? id" :category="defaultCategory" :status="statusClass" :disabled="loading || busy" />
       <slot name="actions" />
       <button
+        v-if="!staticForm"
         class="integration-disclosure"
         type="button"
         :disabled="loading || busy"
@@ -99,7 +101,7 @@ function toggle() {
         </svg>
       </button>
     </div>
-    <p v-if="notice && !expanded" class="error settings-message connection-card-notice" role="alert">{{ notice }}</p>
-    <div v-show="embedded || expanded" :id="`${id}-body`" class="connection-card-body"><slot /></div>
+    <p v-if="notice && !expanded && !staticForm" class="error settings-message connection-card-notice" role="alert">{{ notice }}</p>
+    <div v-show="embedded || staticForm || expanded" :id="`${id}-body`" class="connection-card-body"><slot /></div>
   </section>
 </template>

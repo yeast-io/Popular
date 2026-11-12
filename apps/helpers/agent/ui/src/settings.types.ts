@@ -21,6 +21,7 @@ export type SecretChange = { action: 'keep' | 'clear' } | { action: 'set'; value
 
 export type BindingState = 'unbound' | 'binding' | 'bound' | 'rebindRequired';
 export interface RuntimeStatus {
+  gatewayError?: string | null;
   autostart?: boolean;
   service: string;
   downloader: string;

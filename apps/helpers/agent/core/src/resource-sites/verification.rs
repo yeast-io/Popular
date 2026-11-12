@@ -140,6 +140,9 @@ pub(super) async fn verify(
     credential: &str,
     trace: &Trace,
 ) -> Result<String, AgentError> {
+    if site == Site::Hdarea {
+        return super::hdarea::verify(base, credential, trace).await;
+    }
     let builder = reqwest::Client::builder()
         .user_agent(concat!("Popular-Link-Agent/", env!("CARGO_PKG_VERSION")))
         .redirect(Policy::none())

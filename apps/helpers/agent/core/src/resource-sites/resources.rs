@@ -4,6 +4,7 @@ use super::{
     verification, ResourceSites,
 };
 use crate::{credentials::CredentialStore, diagnostics::Trace, errors::AgentError};
+#[cfg(test)]
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use dom_query::Document;
 use reqwest::{header, redirect::Policy, Method};
@@ -260,6 +261,18 @@ pub(super) async fn search(
     {
         return Err(invalid());
     }
+    if site == Site::Hdarea {
+        return super::hdarea::search(
+            base,
+            &secrets.credential,
+            query,
+            imdb_id,
+            page,
+            media_type,
+            trace,
+        )
+        .await;
+    }
     if site == Site::Mteam {
         let mut body = json!({"pageNumber":page,"pageSize":50,"mode":if media_type.as_deref()==Some("tv"){ "tvshow" }else{"movie"},"visible":1,"sortField":"SEEDERS","sortDirection":"DESC"});
         if let Some(imdb) = imdb_id {
@@ -503,6 +516,9 @@ pub(super) async fn detail(
     trace: &Trace,
 ) -> Result<Value, AgentError> {
     id(resource_id)?;
+    if site == Site::Hdarea {
+        return super::hdarea::detail(base, &secrets.credential, resource_id, trace).await;
+    }
     if site == Site::Mteam {
         return Err(AgentError::code("siteUnsupported"));
     }
@@ -569,54 +585,7 @@ pub(super) async fn torrent(
             Url::parse(payload["data"].as_str().ok_or_else(invalid)?).map_err(|_| invalid())?
         }
         Site::Hdarea => {
-            let page = request(
-                site,
-                base,
-                secrets,
-                &format!("details.php?id={resource_id}"),
-                None,
-                None,
-                trace,
-            )
-            .await?;
-            let download_url = {
-                let document = html(&page, base, site, secrets)?;
-                let mut urls = std::collections::BTreeSet::new();
-                for link in document.select("a[href*='download.php']").iter() {
-                    let Some(href) = link.attr("href") else {
-                        continue;
-                    };
-                    let url = base.join(&href).map_err(|_| invalid())?;
-                    if url.origin() != base.origin()
-                        || url.path() != "/download.php"
-                        || !url.username().is_empty()
-                        || url.password().is_some()
-                        || url.fragment().is_some()
-                    {
-                        return Err(invalid());
-                    }
-                    let ids = url
-                        .query_pairs()
-                        .filter(|(k, _)| k == "id")
-                        .map(|(_, v)| v.into_owned())
-                        .collect::<Vec<_>>();
-                    if ids.len() == 1
-                        && ids[0] == resource_id
-                        && url.query_pairs().all(|(k, _)| k == "id")
-                    {
-                        urls.insert(url.to_string());
-                    }
-                }
-                if urls.len() != 1 {
-                    return Err(invalid());
-                }
-                urls.into_iter().next().unwrap()
-            };
-            trace.stage("resource-sites.torrent.read.started");
-            let data = request(site, base, secrets, &download_url, None, None, trace).await?;
-            let hash = super::torrent::info_hash(&data)?;
-            trace.stage("resource-sites.torrent.read.completed");
-            return Ok((TorrentSource::Metainfo(BASE64.encode(&data)), hash));
+            return super::hdarea::torrent(base, &secrets.credential, resource_id, trace).await
         }
         Site::Hdwing => {
             let document = html(
@@ -865,17 +834,18 @@ mod parser_tests {
         assert_eq!(row.children().filter("td").length(), 6);
     }
     #[tokio::test]
-    async fn hdarea_extracts_cookie_links_and_keeps_torrent_contents_local() {
+    async fn hdarea_uses_short_tokens_and_keeps_torrent_contents_local() {
         use tokio::{
             io::{AsyncReadExt, AsyncWriteExt},
             net::TcpListener,
         };
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let token_base = base.clone();
         let server = tokio::spawn(async move {
-            let page = "<a href='usercp.php'>me</a><div id='info_block'><a href='userdetails.php?id=123'>me</a></div><a href='download.php?id=42'>one</a><a href='download.php?id=42'>two</a>";
+            let page = json!({"success":true,"code":0,"data":{"id":42,"expires_in":1800,"download_url":format!("{}download.php?id=42&dl_token=short",token_base)}}).to_string();
             let mut requests = Vec::new();
-            for body in [page, "d4:infod4:name4:test6:pieces0:ee"] {
+            for body in [page, "d4:infod4:name4:test6:pieces0:ee".into()] {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let mut data = Vec::new();
                 loop {
@@ -905,7 +875,7 @@ mod parser_tests {
         let secrets = SiteSecrets {
             site: Site::Hdarea,
             base_url: base.to_string(),
-            credential: "uid=123; session=local-cookie".into(),
+            credential: "a".repeat(32),
             passkey: String::new(),
             external_user_id: "123".into(),
         };
@@ -924,10 +894,12 @@ mod parser_tests {
             super::super::torrent::info_hash(b"d4:infod4:name4:test6:pieces0:ee").unwrap()
         );
         let requests = server.await.unwrap();
-        assert!(requests[0].starts_with("GET /details.php?id=42 "));
-        assert!(requests[1].starts_with("GET /download.php?id=42 "));
+        assert!(requests[0].starts_with("POST /api/v1/torrents/genDlToken "));
+        assert!(requests[0].contains(&format!("x-api-key: {}", "a".repeat(32))));
+        assert!(requests[1].starts_with("GET /download.php?id=42&dl_token=short "));
+        assert!(!requests[1].contains("x-api-key:"));
         for request in requests {
-            assert!(request.contains("uid=123; session=local-cookie"));
+            assert!(!request.contains("cookie:"));
             assert!(!request.contains("passkey"));
         }
     }

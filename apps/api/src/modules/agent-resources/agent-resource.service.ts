@@ -100,25 +100,29 @@ export class AgentResourceService {
       if (cause instanceof ResourceSiteError) throw cause;
       const code = cause instanceof RpcError ? cause.code : '';
       const reason
-        = code === 'AGENT_SITE_AUTHENTICATION' || code === 'AGENT_SITE_ACCOUNT_CHANGED'
-          ? 'authentication'
-          : code === 'AGENT_SITE_NOT_CONFIGURED'
-            ? 'notConfigured'
-            : code === 'AGENT_SITE_BLOCKED'
-              ? 'blocked'
-              : code === 'AGENT_SITE_RATE_LIMITED' || code === 'AGENT_RESOURCE_BUSY'
-                ? 'rateLimited'
-                : code === 'AGENT_RESOURCE_TIMEOUT' || code === 'AGENT_SITE_TIMEOUT'
-                  ? 'timeout'
-                  : code === 'AGENT_RESOURCE_UNSUPPORTED' || code === 'AGENT_SITE_UNSUPPORTED'
-                    ? 'agentUnsupported'
-                    : code === 'AGENT_SITE_TARGET_CHANGED'
-                      ? 'agentModeConflict'
-                      : code === 'AGENT_SITE_DOWNLOAD_LIMITED'
-                        ? 'downloadLimited'
-                        : code === 'AGENT_RESOURCE_INVALID_RESPONSE' || code === 'AGENT_SITE_INVALID_RESPONSE'
-                          ? 'invalidResponse'
-                          : 'agentUnavailable';
+        = code === 'AGENT_SITE_API_KEY_REQUIRED'
+          ? 'apiKeyRequired'
+          : code === 'AGENT_SITE_DOWNLOAD_EXPIRED'
+            ? 'downloadExpired'
+            : code === 'AGENT_SITE_AUTHENTICATION' || code === 'AGENT_SITE_ACCOUNT_CHANGED'
+              ? 'authentication'
+              : code === 'AGENT_SITE_NOT_CONFIGURED'
+                ? 'notConfigured'
+                : code === 'AGENT_SITE_BLOCKED'
+                  ? 'blocked'
+                  : code === 'AGENT_SITE_RATE_LIMITED' || code === 'AGENT_RESOURCE_BUSY'
+                    ? 'rateLimited'
+                    : code === 'AGENT_RESOURCE_TIMEOUT' || code === 'AGENT_SITE_TIMEOUT'
+                      ? 'timeout'
+                      : code === 'AGENT_RESOURCE_UNSUPPORTED' || code === 'AGENT_SITE_UNSUPPORTED'
+                        ? 'agentUnsupported'
+                        : code === 'AGENT_SITE_TARGET_CHANGED'
+                          ? 'agentModeConflict'
+                          : code === 'AGENT_SITE_DOWNLOAD_LIMITED'
+                            ? 'downloadLimited'
+                            : code === 'AGENT_RESOURCE_INVALID_RESPONSE' || code === 'AGENT_SITE_INVALID_RESPONSE'
+                              ? 'invalidResponse'
+                              : 'agentUnavailable';
       throw new ResourceSiteError(reason, { cause });
     }
   }

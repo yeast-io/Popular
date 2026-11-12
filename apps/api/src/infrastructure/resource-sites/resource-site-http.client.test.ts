@@ -18,8 +18,7 @@ test('concurrent users have independent Cookie jars, including Set-Cookie update
   const [a, b] = await Promise.all([
     client.session('https://hdarea.club/', 'uid=A'),
     client.session('https://hdarea.club/', 'uid=B'),
-  ]
-  );
+  ]);
   await Promise.all([a.get('index.php'), b.get('index.php')]);
   await Promise.all([a.get('torrents.php'), b.get('torrents.php')]);
   assert.equal(seen[2]!.cookie, 'uid=A; session=A');
@@ -73,4 +72,63 @@ test('bounded bodies and cancellation reject without another network request', a
   await assert.rejects(session.get('a'), (e) => e instanceof ResourceSiteError && e.reason === 'invalidResponse');
   await assert.rejects(session.get('b', AbortSignal.abort()));
   assert.equal(calls, 1);
+});
+
+test('API requests isolate keys per owner and never attach permanent credentials to downloads', async () => {
+  const seen: Array<{ url: string; headers: Headers; method: string | undefined }> = [];
+  const client = new ResourceSiteHttpClient({
+    intervalMs: 0,
+    fetch: async (url, init) => {
+      seen.push({ url: String(url), headers: new Headers(init?.headers), method: init?.method });
+      return new Response('ok', { headers: { 'set-cookie': 'session=must-not-be-used; Secure' } });
+    },
+  });
+  const a = await client.apiSession('https://hdarea.example/', 'a'.repeat(32));
+  const b = await client.apiSession('https://hdarea.example/', 'b'.repeat(32));
+  await Promise.all([a.get('/api/v1/user/profile'), b.get('/api/v1/torrents')]);
+  await a.post!('/api/v1/torrents/genDlToken', { id: '123' });
+  await a.get('/download.php?id=123&dl_token=short');
+  assert.equal(seen[0]!.headers.get('x-api-key'), 'a'.repeat(32));
+  assert.equal(seen[1]!.headers.get('x-api-key'), 'b'.repeat(32));
+  assert.equal(seen[2]!.method, 'POST');
+  assert.equal(seen[3]!.headers.has('x-api-key'), false);
+  assert.ok(seen.every((r) => !r.headers.has('cookie') && !r.url.includes('apikey=')));
+  await assert.rejects(a.get('https://foreign.example/api/v1/status'));
+  assert.equal(seen.length, 4);
+});
+
+test('API transport handles HTML errors, 403, redirects, limits and oversized bodies without leaking credentials', async () => {
+  for (const [status, reason] of [
+    [403, 'authentication'],
+    [404, 'invalidResponse'],
+    [302, 'blocked'],
+    [429, 'rateLimited'],
+  ] as const) {
+    let calls = 0;
+    const client = new ResourceSiteHttpClient({
+      intervalMs: 0,
+      fetch: async () => {
+        calls++;
+        return new Response('<html>error</html>', {
+          status,
+          headers: { 'Retry-After': '120', 'location': 'https://foreign.example/' },
+        });
+      },
+    });
+    const session = await client.apiSession('https://hdarea.example/', 'a'.repeat(32));
+    await assert.rejects(session.get('/api/v1/status'), (e) => e instanceof ResourceSiteError && e.reason === reason);
+    if (status === 429) {
+      await assert.rejects(session.get('/api/v1/status'));
+      assert.equal(calls, 1);
+    }
+    if (status === 302) assert.equal(calls, 1);
+  }
+  const large = await new ResourceSiteHttpClient({ maxBytes: 2, fetch: async () => new Response('long') }).apiSession(
+    'https://hdarea.example/',
+    'a'.repeat(32)
+  );
+  await assert.rejects(
+    large.get('/api/v1/status'),
+    (e) => e instanceof ResourceSiteError && e.reason === 'invalidResponse'
+  );
 });

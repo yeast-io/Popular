@@ -25,15 +25,16 @@ it.each([
     { props: { id: target, category, status: 'configured_valid' } }
   );
   await flushPromises();
-  expect(wrapper.get('.integration-default-button').classes()).toContain('integration-default-badge');
-  expect(wrapper.get('.integration-default-button').classes()).toContain('integration-default-button');
-  await wrapper.get('.integration-default-button').trigger('click');
+  if (category === 'resource') await wrapper.get('input[type=radio]').setValue();
+  else await wrapper.get('.integration-default-button').trigger('click');
   await flushPromises();
   const submitted = fetch.mock.calls.find(([, init]) => init?.method === 'PUT');
   expect(JSON.parse(String(submitted?.[1]?.body))).toEqual({ category, id: target });
   expect(wrapper.find('.integration-default-button').exists()).toBe(false);
-  expect(wrapper.get('.integration-default-badge').classes()).not.toContain('integration-default-button');
-  expect(wrapper.get('.integration-default-badge').text()).toBe(locale === 'zh-CN' ? '默认' : 'Default');
+  const defaultIndicator = wrapper.get(category === 'resource' ? '.integration-default-choice' : '.integration-default-badge');
+  expect(defaultIndicator.classes()).not.toContain('integration-default-button');
+  if (category === 'resource') expect(wrapper.get<HTMLInputElement>('input[type=radio]').element.checked).toBe(true);
+  expect(defaultIndicator.text()).toBe(locale === 'zh-CN' ? '默认' : 'Default');
   expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(3);
   wrapper.unmount();
 });

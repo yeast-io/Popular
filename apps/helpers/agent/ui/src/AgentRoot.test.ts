@@ -79,6 +79,8 @@ async function navigate(wrapper: VueWrapper, page: AgentPage) {
 }
 beforeEach(() => {
   vi.useFakeTimers();
+  localStorage.removeItem('popular-agent-theme');
+  delete document.documentElement.dataset.agentTheme;
 });
 afterEach(() => {
   mounted.splice(0).forEach((wrapper) => wrapper.unmount());
@@ -88,6 +90,116 @@ afterEach(() => {
 
 for (const locale of ['en-US', 'zh-CN'] as const) {
   describe(locale, () => {
+    it('switches themes and restores the saved choice on remount', async () => {
+      const wrapper = setup(snapshot(locale)).render();
+      await flushPromises();
+      const label = locale === 'zh-CN' ? '切换为深色模式' : 'Switch to dark mode';
+      expect(wrapper.get('.theme-control').attributes('aria-label')).toBe(label);
+      await wrapper.get('.theme-control').trigger('click');
+      expect(document.documentElement.dataset.agentTheme).toBe('dark');
+      expect(localStorage.getItem('popular-agent-theme')).toBe('dark');
+      expect(wrapper.get('.theme-control').attributes('aria-label')).toBe(
+        locale === 'zh-CN' ? '切换为浅色模式' : 'Switch to light mode'
+      );
+      wrapper.unmount();
+      const restored = setup(snapshot(locale)).render();
+      await flushPromises();
+      expect(document.documentElement.dataset.agentTheme).toBe('dark');
+      await restored.get('.theme-control').trigger('click');
+      expect(document.documentElement.dataset.agentTheme).toBe('light');
+      expect(localStorage.getItem('popular-agent-theme')).toBe('light');
+    });
+
+    it.each(['disconnected', 'manuallyDisconnected', 'gatewayProtocol', 'deviceLimitReached', 'sessionRevoked', 'bindingFailed'])(
+      'allows a manual Gateway connection from %s and displays request errors', async (service) => {
+        const f = setup({ ...snapshot(locale, { gatewayUrl: 'https://gateway.example' }), hasApiKey: true });
+        f.runtime.service = service;
+        f.runtime.binding = 'bound';
+        vi.mocked(f.client.connectGateway).mockRejectedValueOnce('networkError');
+        const wrapper = f.render();
+        await flushPromises();
+        await navigate(wrapper, 'settings');
+        expect(wrapper.findAll('button').some((button) => button.text() === messages[locale].disconnect)).toBe(false);
+        const connect = wrapper.get('form button[type=submit]');
+        expect(connect.text()).toBe(messages[locale].connect);
+        expect((connect.element as HTMLButtonElement).disabled).toBe(false);
+        await wrapper.get('form').trigger('submit');
+        await flushPromises();
+        expect(f.client.connectGateway).toHaveBeenCalledWith({
+          gatewayUrl: 'https://gateway.example', locale, apiKey: { action: 'keep' },
+        });
+        expect(wrapper.get('form [role=alert]').text()).toBe(messages[locale].networkError);
+        expect((wrapper.get('form button[type=submit]').element as HTMLButtonElement).disabled).toBe(false);
+      }
+    );
+
+    it('shows Disconnect only while online and disables Connect while connecting', async () => {
+      const f = setup({ ...snapshot(locale, { gatewayUrl: 'https://gateway.example' }), hasApiKey: true });
+      f.runtime.service = 'online';
+      f.runtime.binding = 'bound';
+      const wrapper = f.render();
+      await flushPromises();
+      await navigate(wrapper, 'settings');
+      expect(wrapper.get('form .summary-actions button:last-child').text()).toBe(messages[locale].disconnect);
+      vi.mocked(f.client.disconnectGateway).mockImplementationOnce(async () => {
+        f.runtime.service = 'manuallyDisconnected';
+      });
+      await wrapper.get('form .summary-actions button:last-child').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('form button[type=submit]').text()).toBe(messages[locale].connect);
+      vi.mocked(f.client.connectGateway).mockImplementationOnce(async () => {
+        f.runtime.service = 'connecting';
+        return { ...snapshot(locale, { gatewayUrl: 'https://gateway.example' }), hasApiKey: true };
+      });
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(wrapper.get('form button[type=submit]').text()).toBe(messages[locale].connecting);
+      expect((wrapper.get('form button[type=submit]').element as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('shows asynchronous Gateway errors and clears them after recovery', async () => {
+      const f = setup({ ...snapshot(locale, { gatewayUrl: 'https://gateway.example' }), hasApiKey: true });
+      f.runtime.service = 'connecting';
+      f.runtime.binding = 'binding';
+      const wrapper = f.render();
+      await flushPromises();
+      await navigate(wrapper, 'settings');
+      expect((wrapper.get('form button[type=submit]').element as HTMLButtonElement).disabled).toBe(true);
+      f.runtime.service = 'disconnected';
+      f.runtime.gatewayError = 'gatewayUnavailable';
+      await vi.advanceTimersByTimeAsync(2000);
+      await flushPromises();
+      expect(wrapper.get('form [role=alert]').text()).toBe(messages[locale].gatewayUnavailable);
+      expect(wrapper.get('form button[type=submit]').text()).toBe(messages[locale].connect);
+      expect((wrapper.get('form button[type=submit]').element as HTMLButtonElement).disabled).toBe(false);
+      f.runtime.service = 'online';
+      f.runtime.binding = 'bound';
+      f.runtime.gatewayError = null;
+      await vi.advanceTimersByTimeAsync(2000);
+      await flushPromises();
+      expect(wrapper.find('form [role=alert]').exists()).toBe(false);
+      expect(wrapper.get('form .summary-actions button:last-child').text()).toBe(messages[locale].disconnect);
+    });
+
+    it('blocks repeated connection requests and shows the pending result', async () => {
+      const f = setup({ ...snapshot(locale, { gatewayUrl: 'https://gateway.example' }), hasApiKey: true });
+      let reject!: (error: string) => void;
+      vi.mocked(f.client.connectGateway).mockImplementationOnce(() => new Promise((_, fail) => {
+        reject = fail;
+      }));
+      const wrapper = f.render();
+      await flushPromises();
+      await navigate(wrapper, 'settings');
+      await wrapper.get('form').trigger('submit');
+      expect(wrapper.get('form button[type=submit]').text()).toBe(messages[locale].connecting);
+      await wrapper.get('form').trigger('submit');
+      expect(f.client.connectGateway).toHaveBeenCalledTimes(1);
+      reject('gatewayRejected');
+      await flushPromises();
+      expect(wrapper.get('form [role=alert]').text()).toBe(messages[locale].gatewayRejected);
+      expect(wrapper.get('form button[type=submit]').text()).toBe(messages[locale].connect);
+    });
+
     it('switches downloader defaults, toggles capsules and adds a separately saved configuration', async () => {
       const base = snapshot(locale, { downloaderConfigured: true });
       const f = setup(base);

@@ -851,6 +851,67 @@ async fn gateway_queue_metadata_is_available_without_a_download_tool() {
 }
 
 #[tokio::test]
+#[ignore = "Local Gateway fixture; HELPER_ALLOW_INSECURE_DEV=true; no native credentials or real services"]
+async fn gateway_runtime_reports_failed_connection_and_clears_error_on_manual_retry() {
+    let fixture = Fixture::start();
+    let directory = tempfile::tempdir().unwrap();
+    let agent = Arc::new(crate::application::Agent::new(
+        directory.path().into(),
+        Memory::default(),
+    ));
+    let request = |gateway_url| crate::settings::GatewayRequest {
+        gateway_url,
+        locale: "en-US".into(),
+        api_key: crate::settings::SecretChange::Set("fixture-api-key".into()),
+    };
+    agent
+        .connect_device(
+            request(format!("{}/unavailable", fixture.url)),
+            &Trace::new(),
+        )
+        .await
+        .unwrap();
+    let mut events = agent.runtime.subscribe();
+    let task = tokio::spawn(agent.clone().run());
+    let failed = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let status = events.recv().await.unwrap();
+            if status.gateway_error.is_some() {
+                break status;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(failed.service, "gatewayProtocol");
+    assert_eq!(failed.gateway_error.as_deref(), Some("gatewayProtocol"));
+    assert_eq!(
+        serde_json::to_value(&failed).unwrap()["gatewayError"],
+        "gatewayProtocol"
+    );
+    agent
+        .connect_device(request(fixture.url.clone()), &Trace::new())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let status = events.recv().await.unwrap();
+            if status.service == "online" {
+                assert!(status.gateway_error.is_none());
+                break;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    agent.disconnect_gateway().await.unwrap();
+    assert_eq!(agent.runtime.snapshot().service, "manuallyDisconnected");
+    assert!(agent.runtime.snapshot().gateway_error.is_none());
+    agent.shutdown();
+    stop(task).await.unwrap();
+}
+
+#[tokio::test]
 #[ignore = "Starts only local Gateway and downloader fixtures; no native credentials or real services"]
 async fn gateway_application_runtime_reuses_saved_identity_and_owns_download_lifecycle() {
     for provider in [Provider::Qbittorrent, Provider::Transmission] {

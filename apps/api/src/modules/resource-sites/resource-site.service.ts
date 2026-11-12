@@ -10,6 +10,7 @@ import type { ResourceSiteConfiguration, ResourceSiteSearch } from '@movie-hub/c
 import type {
   ResourceSiteAdapter,
   ResourceSiteCredentialStore,
+  ResourceSiteCredential,
   ResourceSiteDiagnostics,
   ResourceSiteSession,
 } from './resource-site.types.js';
@@ -39,47 +40,66 @@ export class ResourceSiteService {
     if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.status(ownerId, site);
     this.adapter(site);
     const row = await this.credentials.find(ownerId, site);
-    return !row ? 'unconfigured' : row.externalUserId ? row.status : 'configured_invalid';
+    return !row
+      ? 'unconfigured'
+      : this.credentialUpdateRequired(site, row) || !row.externalUserId
+        ? 'configured_invalid'
+        : row.status;
   }
 
   async configuration(ownerId: string, site: string): Promise<ResourceSiteConfiguration> {
     if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.configuration(ownerId, site);
-    const { baseUrl } = this.adapter(site);
+    const adapter = this.adapter(site);
     const row = await this.credentials.find(ownerId, site);
-    return row
-      ? {
-          site,
-          baseUrl,
-          requiresPasskey: this.adapter(site).requiresPasskey ?? false,
-          status: row.externalUserId ? row.status : 'configured_invalid',
-          cookieMasked: maskIntegrationSecret(this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site))),
-          verifiedAt: row.verifiedAt.toISOString(),
-        }
-      : { site, baseUrl, requiresPasskey: this.adapter(site).requiresPasskey ?? false, status: 'unconfigured' };
+    const apiKey = adapter.credentialType === 'apiKey';
+    const base = {
+      site,
+      baseUrl: adapter.baseUrl,
+      requiresPasskey: adapter.requiresPasskey ?? false,
+      requiresApiKey: apiKey,
+    };
+    if (!row) return { ...base, status: 'unconfigured' };
+    const update = this.credentialUpdateRequired(site, row);
+    const encrypted = apiKey ? row.encryptedApiKey : row.encryptedCookie;
+    return {
+      ...base,
+      status: update || !row.externalUserId ? 'configured_invalid' : row.status,
+      ...(encrypted
+        ? {
+            [apiKey ? 'apiKeyMasked' : 'cookieMasked']: maskIntegrationSecret(
+              this.secrets.decrypt(encrypted, this.context(ownerId, site))
+            ),
+          }
+        : {}),
+      ...(update ? { credentialUpdateRequired: true } : {}),
+      verifiedAt: row.verifiedAt.toISOString(),
+    };
   }
 
   async configure(
     ownerId: string,
     site: string,
     cookie?: string,
-    _legacyPasskey?: string
+    _legacyPasskey?: string,
+    apiKey?: string
   ): Promise<ResourceSiteConfiguration> {
     if (await this.agentResources?.enabled(ownerId)) throw new ResourceSiteError('agentModeConflict');
     return this.trace(ownerId, site, 'configure', async () => {
       const adapter = this.adapter(site);
       const existing = await this.credentials.find(ownerId, site);
-      cookie = replacementSecret(
-        cookie,
-        existing ? this.secrets.decrypt(existing.encryptedCookie, this.context(ownerId, site)) : undefined
-      );
-      const revalidating = !cookie;
-      if (!cookie) {
-        const row = existing;
-        if (!row) throw new ResourceSiteError('invalidCredential');
-        cookie = this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site));
-      }
-      this.protect(cookie);
-      const session = await this.http.session(adapter.baseUrl, cookie);
+      const usesApiKey = adapter.credentialType === 'apiKey';
+      if ((usesApiKey && cookie !== undefined) || (!usesApiKey && apiKey !== undefined))
+        throw new ResourceSiteError('invalidCredential');
+      const encrypted = usesApiKey ? existing?.encryptedApiKey : existing?.encryptedCookie;
+      const previous = encrypted ? this.secrets.decrypt(encrypted, this.context(ownerId, site)) : undefined;
+      const replacement = replacementSecret(usesApiKey ? apiKey : cookie, previous);
+      const revalidating = !replacement;
+      if (!replacement && existing && this.credentialUpdateRequired(site, existing))
+        throw new ResourceSiteError('apiKeyRequired');
+      const credential = replacement ?? previous;
+      if (!credential) throw new ResourceSiteError('invalidCredential');
+      this.protect(credential);
+      const session = await this.session(adapter, credential);
       let externalUserId: string;
       try {
         externalUserId = await aiStep('resource-sites.verify', () => adapter.verify(session));
@@ -99,12 +119,13 @@ export class ResourceSiteService {
           ownerId,
           site,
           externalUserId,
-          encryptedCookie: this.secrets.encrypt(cookie!, this.context(ownerId, site)),
+          ...(usesApiKey
+            ? { encryptedApiKey: this.secrets.encrypt(credential, this.context(ownerId, site)) }
+            : { encryptedCookie: this.secrets.encrypt(credential, this.context(ownerId, site)) }),
           version: randomUUID(),
           status: 'configured_valid',
           verifiedAt: new Date(),
-        }
-        );
+        });
       });
       await this.preferences?.configured(ownerId, 'resource', site);
       return this.configuration(ownerId, site);
@@ -149,7 +170,8 @@ export class ResourceSiteService {
   }
 
   async search(ownerId: string, site: string, input: ResourceSiteSearch, signal?: AbortSignal) {
-    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.search(ownerId, site, input, signal ?? AbortSignal.timeout(25_000));
+    if (await this.agentResources?.enabled(ownerId))
+      return this.agentResources!.search(ownerId, site, input, signal ?? AbortSignal.timeout(25_000));
     return this.run(ownerId, site, 'search', (adapter, session) => {
       currentAiTrace()?.sensitive(input.query ?? '');
       return adapter.search(session, input, signal);
@@ -157,7 +179,8 @@ export class ResourceSiteService {
   }
 
   async detail(ownerId: string, site: string, id: string, signal?: AbortSignal) {
-    if (await this.agentResources?.enabled(ownerId)) return this.agentResources!.detail(ownerId, site, id, signal ?? AbortSignal.timeout(25_000));
+    if (await this.agentResources?.enabled(ownerId))
+      return this.agentResources!.detail(ownerId, site, id, signal ?? AbortSignal.timeout(25_000));
     return this.run(ownerId, site, 'detail', (adapter, session) => adapter.detail(session, id, signal));
   }
 
@@ -173,10 +196,13 @@ export class ResourceSiteService {
       if (!row) throw new ResourceSiteError('notConfigured');
       if (!row.externalUserId) throw siteAccountIdentityPending();
       if (row.status !== 'configured_valid') throw new ResourceSiteError('authentication');
-      const cookie = this.secrets.decrypt(row.encryptedCookie, this.context(ownerId, site));
-      this.protect(cookie);
+      if (this.credentialUpdateRequired(site, row)) throw new ResourceSiteError('apiKeyRequired');
+      const encrypted = adapter.credentialType === 'apiKey' ? row.encryptedApiKey : row.encryptedCookie;
+      if (!encrypted) throw new ResourceSiteError('invalidCredential');
+      const credential = this.secrets.decrypt(encrypted, this.context(ownerId, site));
+      this.protect(credential);
       try {
-        return await action(adapter, await this.http.session(adapter.baseUrl, cookie));
+        return await action(adapter, await this.session(adapter, credential));
       } catch (error) {
         if (error instanceof ResourceSiteError && ['authentication', 'blocked'].includes(error.reason))
           await this.invalidate(ownerId, site, row.version);
@@ -197,6 +223,19 @@ export class ResourceSiteService {
     const adapter = this.registry.get(site);
     if (!adapter) throw new ResourceSiteError('invalidResponse');
     return adapter;
+  }
+
+  private credentialUpdateRequired(site: string, row: ResourceSiteCredential): boolean {
+    return this.adapter(site).credentialType === 'apiKey' && !row.encryptedApiKey;
+  }
+
+  private async session(adapter: ResourceSiteAdapter, credential: string): Promise<ResourceSiteSession> {
+    if (adapter.credentialType === 'apiKey') {
+      if (!/^[a-f0-9]{32}$/i.test(credential)) throw new ResourceSiteError('invalidCredential');
+      if (!this.http.apiSession) throw new ResourceSiteError('invalidResponse');
+      return this.http.apiSession(adapter.baseUrl, credential);
+    }
+    return this.http.session(adapter.baseUrl, credential);
   }
 
   private context(ownerId: string, site: string): string {

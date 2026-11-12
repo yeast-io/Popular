@@ -4,11 +4,11 @@ import { useAgentContext } from '../../agent-context.composable';
 import AgentIcon from '../../components/AgentIcon.vue';
 import CapsuleSwitch from '../../components/CapsuleSwitch.vue';
 import SecretInput from '../../components/SecretInput.vue';
-import { resourceSitePreviews, siteNames } from './resource-sites.presentation';
+import { resourceSitePreviews, siteNames, hdareaApiAddress } from './resource-sites.presentation';
 import { canConfigureSite, sameSiteEndpoint } from './resource-sites.domain';
 
 const { t, text, sites, form } = useAgentContext();
-const { entries, loading, loaded, error, available, load, configure, cancel, remove, verify, toggle, setDefault, canSetDefault } = sites;
+const { entries, loading, loaded, error, available, load, configure, toggle, setDefault, canSetDefault } = sites;
 onMounted(() => {
   if (available && !loaded.value && !error.value) void load();
 });
@@ -46,116 +46,124 @@ onMounted(() => {
       >
         <header class="local-site-header">
           <div class="local-site-identity">
-          <span class="site-initial">{{ siteNames[entry.snapshot.site].slice(0, 1) }}</span>
-          <div>
-            <h2>{{ siteNames[entry.snapshot.site] }}</h2>
-            <p>{{ t.localCredentials }}</p>
-          </div>
+            <span class="site-initial">{{ siteNames[entry.snapshot.site].slice(0, 1) }}</span>
+            <div>
+              <h2>{{ siteNames[entry.snapshot.site] }}</h2>
+              <p>{{ t.localCredentials }}</p>
+            </div>
           </div>
           <div v-if="entry.snapshot.status !== 'unconfigured'" class="local-site-controls">
-            <CapsuleSwitch :checked="entry.snapshot.enabled" :label="entry.snapshot.enabled ? t.siteDisable : t.siteEnable" :disabled="entry.busy || entry.editing || (!entry.snapshot.enabled && entry.snapshot.status === 'configured_invalid')" @change="toggle(entry)" />
-            <button v-if="canSetDefault" type="button" :disabled="entry.busy || entry.editing || !entry.snapshot.enabled || entry.snapshot.status !== 'configured_valid' || entry.snapshot.isDefault" @click="setDefault(entry)">{{ entry.snapshot.isDefault ? t.defaultItem : t.setDefault }}</button>
+            <CapsuleSwitch
+              :checked="entry.snapshot.enabled"
+              :label="entry.snapshot.enabled ? t.siteEnabled : t.siteDisabled"
+              :disabled="entry.busy || (!entry.snapshot.enabled && entry.snapshot.status === 'configured_invalid')"
+              @change="toggle(entry)"
+            />
+            <label v-if="canSetDefault" class="site-default-choice">
+              <input
+                type="radio"
+                name="default-resource-site"
+                :value="entry.snapshot.site"
+                :checked="entry.snapshot.isDefault"
+                :disabled="entry.busy || !entry.snapshot.enabled || entry.snapshot.status !== 'configured_valid'"
+                @change="setDefault(entry)"
+              />
+              {{ t.defaultItem }}
+            </label>
           </div>
         </header>
         <span class="pill" :class="entry.snapshot.status === 'configured_invalid' ? 'warning' : 'neutral'">
-            <span
-              class="status-dot"
-              :class="{
-                online: entry.snapshot.status === 'configured_valid' && entry.snapshot.enabled,
-                failed: entry.snapshot.status === 'configured_invalid',
-                unconfigured: entry.snapshot.status === 'unconfigured',
-              }"
-            />{{
-              entry.snapshot.status === 'unconfigured'
-                ? t.unconfigured
-                : entry.snapshot.status === 'configured_invalid'
-                  ? t.siteInvalid
-                  : entry.snapshot.enabled
-                    ? t.siteEnabled
-                    : t.siteDisabled
-            }}</span
-          >
+          <span
+            class="status-dot"
+            :class="{
+              online: entry.snapshot.status === 'configured_valid' && entry.snapshot.enabled,
+              failed: entry.snapshot.status === 'configured_invalid',
+              unconfigured: entry.snapshot.status === 'unconfigured',
+            }"
+          />{{
+            entry.snapshot.status === 'unconfigured'
+              ? t.unconfigured
+              : entry.snapshot.status === 'configured_invalid'
+                ? t.siteInvalid
+                : t.siteConfigured
+          }}</span
+        >
         <p v-if="entry.error" class="error" role="alert">{{ text(entry.error) }}</p>
         <p v-else-if="entry.snapshot.lastError" class="error" role="status">{{ text(entry.snapshot.lastError) }}</p>
-        <form v-if="entry.editing" @submit.prevent="configure(entry)">
-          <label
-            >{{ t.siteBaseUrl
-            }}<input
+        <form novalidate @submit.prevent="configure(entry)">
+          <label v-if="entry.snapshot.site === 'hdarea'" :for="`${entry.snapshot.site}-api-url`">
+            {{ t.siteApiAddress }}
+            <input
+              :id="`${entry.snapshot.site}-api-url`"
+              :value="hdareaApiAddress(entry.baseUrl)"
+              type="url"
+              readonly
+              autocomplete="url"
+            />
+          </label>
+          <label :for="`${entry.snapshot.site}-base-url`">
+            {{ entry.snapshot.site === 'mteam' ? t.siteApiAddress : t.siteWebAddress }}
+            <input
+              :id="`${entry.snapshot.site}-base-url`"
               v-model="entry.baseUrl"
               type="url"
               maxlength="2048"
               :disabled="entry.busy"
               required
-              autocomplete="off"
-          /></label>
+              autocomplete="url"
+            />
+          </label>
           <p class="field-note">{{ t.siteEndpointHint }}</p>
           <label
-            >{{ entry.snapshot.site === 'mteam' ? t.siteApiKey : t.siteCookie
+            >{{ entry.snapshot.site !== 'hdwing' ? t.siteApiKey : t.siteCookie
             }}<SecretInput
+              :id="`${entry.snapshot.site}-${entry.snapshot.site === 'hdwing' ? 'cookie' : 'api-key'}`"
               v-model="entry.credential"
               :saved="sameSiteEndpoint(entry) && entry.snapshot.hasCredential"
-              :maxlength="entry.snapshot.site === 'mteam' ? 4096 : 8192"
+              :maxlength="entry.snapshot.site === 'hdarea' ? 32 : entry.snapshot.site === 'mteam' ? 4096 : 8192"
               :disabled="entry.busy"
           /></label>
 
-          <div class="summary-actions">
+          <p v-if="entry.snapshot.site === 'hdarea'" class="field-note">{{ t.hdareaApiKeyHint }}</p>
+          <p v-if="entry.snapshot.verifiedAt" class="field-note">
+            {{ t.siteVerifiedAt }}: {{ new Date(entry.snapshot.verifiedAt).toLocaleString(form.locale) }}
+          </p>
+          <div class="site-form-footer">
+            <p v-if="entry.saved" class="success" role="status" aria-live="polite">{{ t.siteSaved }}</p>
             <button class="primary" type="submit" :disabled="!canConfigureSite(entry)">
-              {{ entry.busy ? t.busy : t.siteVerifySave }}</button
-            ><button
-              v-if="entry.snapshot.status !== 'unconfigured'"
-              type="button"
-              :disabled="entry.busy"
-              @click="cancel(entry)"
-            >
-              {{ t.cancel }}
+              {{ entry.busy ? t.siteTesting : t.siteVerifySave }}
             </button>
           </div>
         </form>
-        <div v-else class="local-site-summary">
-          <p class="endpoint">{{ entry.snapshot.baseUrl }}</p>
-          <p class="field-note">
-            {{ t.siteVerifiedAt }}:
-            {{
-              entry.snapshot.verifiedAt
-                ? new Date(entry.snapshot.verifiedAt).toLocaleString(form.locale)
-                : t.siteNeverVerified
-            }}
-          </p>
-          <div class="summary-actions">
-            <button
-              type="button"
-              :disabled="entry.busy"
-              @click="
-                entry.editing = true;
-                entry.error = '';
-              "
-            >
-              {{ t.editConfig }}</button
-            ><button type="button" :disabled="entry.busy" @click="verify(entry)">{{ t.siteVerify }}</button
-            >
-
-          </div>
-        </div>
-        <div v-if="entry.snapshot.status !== 'unconfigured'" class="local-site-delete">
-          <template v-if="entry.confirmingDelete"
-            ><p>{{ t.siteDeleteConfirm }}</p>
-            <button type="button" class="danger" :disabled="entry.busy" @click="remove(entry)">
-              {{ t.siteDelete }}</button
-            ><button type="button" :disabled="entry.busy" @click="entry.confirmingDelete = false">
-              {{ t.cancel }}
-            </button></template
-          >
-          <button
-            v-else
-            type="button"
-            class="text-action"
-            :disabled="entry.busy"
-            @click="entry.confirmingDelete = true"
-          >
-            {{ t.siteDelete }}
-          </button>
-        </div>
       </article>
     </div>
   </template>
 </template>
+
+<style scoped>
+.site-default-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.site-default-choice input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.site-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.site-form-footer .success {
+  margin: 0 auto 0 0;
+}
+</style>

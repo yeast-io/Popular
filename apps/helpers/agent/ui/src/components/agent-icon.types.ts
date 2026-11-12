@@ -8,4 +8,6 @@ export type AgentIconName
     | 'shield'
     | 'check'
     | 'link'
-    | 'refresh';
+    | 'refresh'
+    | 'sun'
+    | 'moon';

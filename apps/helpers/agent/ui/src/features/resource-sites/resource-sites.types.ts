@@ -30,8 +30,7 @@ export interface ResourceSiteEntry {
   snapshot: ResourceSiteSnapshot;
   baseUrl: string;
   credential: string;
-  editing: boolean;
-  confirmingDelete: boolean;
+  saved: boolean;
   busy: boolean;
   error: string;
 }
