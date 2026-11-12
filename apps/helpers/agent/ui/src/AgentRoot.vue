@@ -58,8 +58,7 @@ const descriptions = computed(() => ({
     <aside class="agent-sidebar">
       <a class="agent-brand" href="#overview" @click.prevent="navigate('overview')"
         ><img :src="logo" alt="" /><span
-          ><strong>{{ t.agentName }}</strong
-          ><small>{{ t.brandFamily }}</small></span
+          ><strong>{{ t.agentName }}</strong></span
         ></a
       >
       <p class="sidebar-caption">{{ t.workspace }}</p>
