@@ -85,21 +85,10 @@ watch(
 );
 </script>
 <template>
-  <div class="integration-default-action">
-    <label v-if="category === 'resource'" class="integration-default-choice">
-      <input
-        type="radio"
-        name="default-resource-site"
-        :value="id"
-        :checked="isDefault"
-        :disabled="busy || disabled || status !== 'configured_valid' || !preferences"
-        @change="setDefault"
-      />
-      {{ t('integrationDefaults.default') }}
-    </label>
-    <span v-else-if="isDefault" class="integration-default-badge">{{ t('integrationDefaults.default') }}</span>
+  <div class="integration-default-action" :class="{ 'resource-site-controls': category === 'resource' }">
+    <span v-if="category !== 'resource' && isDefault" class="integration-default-badge">{{ t('integrationDefaults.default') }}</span>
     <button
-      v-else
+      v-else-if="category !== 'resource'"
       type="button"
       class="integration-default-badge integration-default-button"
       :disabled="busy || disabled || status !== 'configured_valid' || !preferences"
@@ -111,7 +100,7 @@ watch(
       v-if="category === 'resource'"
       type="button"
       role="switch"
-      class="resource-site-switch"
+      class="site-enable-toggle"
       :aria-label="
         t('resourceSelection.enableSite', {
           name: siteName,
@@ -122,82 +111,161 @@ watch(
       :disabled="busy || disabled || !preferences || isDefault || status === 'unconfigured'"
       @click="toggleResourceSite"
     >
-      <span class="resource-site-switch-track" aria-hidden="true"><span /></span>
+      <span class="site-enable-track" aria-hidden="true"><span /></span>
       <span>{{
         t(preferences?.effectiveSites?.includes(id) ? 'resourceSelection.enabled' : 'resourceSelection.disabled')
       }}</span>
     </button>
+    <span v-if="category === 'resource'" class="site-control-divider" aria-hidden="true" />
+    <label v-if="category === 'resource'" class="integration-default-choice">
+      <input
+        type="radio"
+        name="default-resource-site"
+        :value="id"
+        :checked="isDefault"
+        :disabled="busy || disabled || status !== 'configured_valid' || !preferences"
+        @change="setDefault"
+      />
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="m10 2 2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.3l-4.8 2.6.9-5.4L2.2 7.7l5.4-.8Z" />
+      </svg>
+      <span>{{ t(isDefault ? 'integrationDefaults.default' : 'integrationDefaults.setDefault') }}</span>
+    </label>
     <span v-if="error" class="error" role="alert">{{ error }}</span>
   </div>
 </template>
 
 <style scoped>
-.integration-default-choice {
+/* Site control treatment informed by unslop by @heydamir, CC BY 4.0. */
+.resource-site-controls {
+  --control-border: #444742;
+  --control-text: #aeb3ba;
+  --control-accent: #f58165;
+  --control-tint: #34231d;
+  --control-off: #545b52;
+  --control-hover: #282b27;
+  flex-wrap: nowrap;
+  gap: 16px;
+}
+
+.site-enable-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: #aeb3ba;
-  font-size: 0.75rem;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--control-text);
+  font: inherit;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
 }
-.integration-default-choice input[type="radio"] {
-  width: 14px;
-  height: 14px;
+.site-enable-toggle:hover:not(:disabled) {
+  background: transparent;
+  color: inherit;
+}
+.site-enable-toggle:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.site-enable-track {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 22px;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--control-off);
+  transition: background-color 150ms ease;
+}
+.site-enable-track > span {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px #0002;
+  transition: transform 150ms ease;
+}
+.site-enable-toggle[aria-checked='true'] .site-enable-track {
+  background: #e54c2a;
+}
+.site-enable-toggle[aria-checked='true'] .site-enable-track > span {
+  transform: translateX(14px);
+}
+.site-control-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--control-border);
+}
+.integration-default-choice {
+  position: relative;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 96px;
+  min-height: 36px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--control-text);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.integration-default-choice input[type='radio'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   min-height: 0;
-  flex: 0 0 14px;
   margin: 0;
   padding: 0;
-  border-radius: 50%;
-  box-shadow: none;
-  accent-color: #367a56;
+  opacity: 0;
 }
-.resource-site-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 0;
-  border: 0;
-  background: none;
-  color: #aeb3ba;
-  font: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
-  white-space: nowrap;
+.integration-default-choice svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
 }
-.resource-site-switch-track {
-  display: inline-flex;
-  align-items: center;
-  width: 36px;
-  height: 21px;
-  padding: 3px;
-  border-radius: 999px;
-  background: #444849;
-  transition: background 0.15s;
+.integration-default-choice:hover:not(:has(input:disabled)) {
+  background: var(--control-hover);
 }
-.resource-site-switch-track > span {
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: #e2e0d9;
-  transition: transform 0.15s;
+.integration-default-choice:has(input:checked) {
+  border-color: transparent;
+  color: var(--control-accent);
+  background: var(--control-tint);
 }
-.resource-site-switch[aria-checked='true'] .resource-site-switch-track {
-  background: #367a56;
+.integration-default-choice:has(input:checked) svg {
+  fill: currentColor;
 }
-.resource-site-switch[aria-checked='true'] .resource-site-switch-track > span {
-  transform: translateX(15px);
-}
-.resource-site-switch:disabled {
+.integration-default-choice:has(input:disabled) {
+  opacity: 0.4;
   cursor: default;
-  opacity: 0.65;
 }
-.resource-site-switch:focus-visible {
-  outline: 2px solid #8bd6a8;
+.integration-default-choice:focus-within,
+.site-enable-toggle:focus-visible {
+  outline: 2px solid var(--control-accent);
   outline-offset: 4px;
-  border-radius: 4px;
+  border-radius: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-enable-track,
+  .site-enable-track > span {
+    transition: none;
+  }
 }
 </style>
