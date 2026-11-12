@@ -25,15 +25,10 @@ const props = defineProps<{
 const emit = defineEmits<{ open: [] }>();
 const defaultCategory = computed(() => {
   const identity = props.provider ?? props.id;
-  return ['mteam', 'hdarea', 'hdwing'].includes(
-    identity
-  )
-    ? 'resource' as const
-    : ['qbittorrent', 'transmission'].includes(
-        identity
-      )
-        ? 'downloader' as const
-        : ['openai', 'deepseek', 'claude'].includes(identity) ? 'ai' as const : undefined;
+  if (['mteam', 'hdarea', 'hdwing'].includes(identity)) return 'resource' as const;
+  if (['qbittorrent', 'transmission'].includes(identity)) return 'downloader' as const;
+  if (['openai', 'deepseek', 'claude'].includes(identity)) return 'ai' as const;
+  return undefined;
 });
 const expanded = ref(false);
 const logoFailed = ref(false);

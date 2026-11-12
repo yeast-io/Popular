@@ -2,11 +2,18 @@ import { computed, onBeforeUnmount, onMounted, readonly, ref } from 'vue';
 import { useI18n } from '../i18n';
 import { settingsSectionFromSearch, settingsSectionSlug } from '../features/settings/settings-navigation.domain';
 import type { NavigationOptions, Page, SettingsSection } from './navigation.types';
+import { PAGE_PATHS } from './navigation.policy';
 
 export function useNavigation(options: NavigationOptions) {
   const { t } = useI18n();
   const currentPage = ref<Page>(pageFromPath());
-  const tvDetailBackLabel = computed(() => t(window.history.state?.tvShowOrigin === 'resource-notifications' ? 'resourceNotifications.back' : currentPage.value === 'tv-show-detail' && window.history.state?.tvShowOrigin === 'viewing-preferences' ? 'viewingPreferences.back' : currentPage.value === 'tv-show-detail' && window.history.state?.tvShowOrigin === 'watchlist' ? 'watchlist.back' : 'actions.backTvShows'));
+  const tvDetailBackLabel = computed(() => {
+    const origin = window.history.state?.tvShowOrigin;
+    if (origin === 'resource-notifications') return t('resourceNotifications.back');
+    if (currentPage.value === 'tv-show-detail' && origin === 'viewing-preferences') return t('viewingPreferences.back');
+    if (currentPage.value === 'tv-show-detail' && origin === 'watchlist') return t('watchlist.back');
+    return t('actions.backTvShows');
+  });
   const settingsSection = ref<SettingsSection>(settingsSectionFromSearch(window.location.search));
   const settingsVisited = ref(new Set<SettingsSection>([settingsSection.value]));
   const settingsSections = ['profile', 'language', 'ai', 'preferences', 'resources', 'downloads', 'keys', 'notifications'] as const;
@@ -111,7 +118,8 @@ export function useNavigation(options: NavigationOptions) {
   }
 
   function openMovie(tmdbId: number) {
-    const movieOrigin = currentPage.value === 'resource-notifications' ? 'resource-notifications' : currentPage.value === 'watchlist' ? 'watchlist' : currentPage.value === 'viewing-preferences' ? 'viewing-preferences' : 'movies';
+    const origin = currentPage.value;
+    const movieOrigin = ['resource-notifications', 'watchlist', 'viewing-preferences'].includes(origin) ? origin : 'movies';
     rememberListScroll();
     window.history.pushState({ movieOrigin }, '', `/movies/${tmdbId}`);
     selectedMovieId.value = tmdbId;
@@ -128,28 +136,9 @@ export function useNavigation(options: NavigationOptions) {
   function navigate(page: Page) {
     if (page === 'ai' && !options.aiEnabled()) return;
     rememberListScroll();
-    const path
-      = page === 'home'
-        ? '/'
-        : page === 'link-agent'
-          ? '/link-agent'
-          : page === 'notification-tests'
-            ? '/dev/notification-tests'
-            : page === 'settings'
-              ? `/settings?section=${settingsSectionSlug(settingsSection.value)}`
-              : page === 'usage'
-                ? '/usage'
-                : page === 'resource-notifications'
-                  ? '/resource-notifications'
-                  : page === 'watchlist'
-                    ? '/watchlist'
-                    : page === 'viewing-preferences'
-                      ? '/viewing-preferences'
-                      : page === 'ai'
-                        ? '/ai'
-                        : page === 'tv-shows'
-                          ? '/tv-shows'
-                          : '/movies';
+    const path = page === 'settings'
+      ? `/settings?section=${settingsSectionSlug(settingsSection.value)}`
+      : (PAGE_PATHS.get(page) ?? '/movies');
     if (`${window.location.pathname}${window.location.search}` !== path) window.history.pushState({}, '', path);
     currentPage.value = page;
     options.onPageChanged(currentPage.value);

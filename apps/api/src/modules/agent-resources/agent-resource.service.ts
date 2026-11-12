@@ -11,6 +11,7 @@ import type {
 } from '@movie-hub/contract';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
 import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
+import { AGENT_RESOURCE_ERROR_REASONS } from './agent-resource-error.policy.js';
 import { aiStep, currentAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import { releaseTitleMetadata } from '../resource-sites/release-metadata.domain.js';
 import { releaseTags } from '../resource-sites/release-tags.domain.js';
@@ -79,6 +80,13 @@ export class AgentResourceService {
     ]);
     if (!account.key?.active || !device || device.status !== 'bound' || device.authVersion !== account.key.authVersion)
       throw new ResourceSiteError('agentUnavailable');
+    const diagnosticFields = {
+      deviceId,
+      resourceOperation: request.operation,
+      ...('site' in request ? { site: request.site } : {}),
+      ...('resourceId' in request ? { resourceId: request.resourceId } : {}),
+      ...('commandId' in request ? { commandId: request.commandId } : {}),
+    };
     try {
       const result = await aiStep('agent-resource.gateway.request', () =>
         this.dependencies.gateway.call(
@@ -91,39 +99,21 @@ export class AgentResourceService {
             request,
           },
           currentAiTrace()?.correlationId
-        )
-      );
+        ),
+      diagnosticFields);
       if (!Value.Check(AgentResourceResultSchemas[request.operation], result))
         throw new ResourceSiteError('invalidResponse');
       return result as T;
     } catch (cause) {
-      if (cause instanceof ResourceSiteError) throw cause;
+      if (cause instanceof ResourceSiteError) {
+        currentAiTrace()?.fail(cause, diagnosticFields);
+        throw cause;
+      }
       const code = cause instanceof RpcError ? cause.code : '';
-      const reason
-        = code === 'AGENT_SITE_API_KEY_REQUIRED'
-          ? 'apiKeyRequired'
-          : code === 'AGENT_SITE_DOWNLOAD_EXPIRED'
-            ? 'downloadExpired'
-            : code === 'AGENT_SITE_AUTHENTICATION' || code === 'AGENT_SITE_ACCOUNT_CHANGED'
-              ? 'authentication'
-              : code === 'AGENT_SITE_NOT_CONFIGURED'
-                ? 'notConfigured'
-                : code === 'AGENT_SITE_BLOCKED'
-                  ? 'blocked'
-                  : code === 'AGENT_SITE_RATE_LIMITED' || code === 'AGENT_RESOURCE_BUSY'
-                    ? 'rateLimited'
-                    : code === 'AGENT_RESOURCE_TIMEOUT' || code === 'AGENT_SITE_TIMEOUT'
-                      ? 'timeout'
-                      : code === 'AGENT_RESOURCE_UNSUPPORTED' || code === 'AGENT_SITE_UNSUPPORTED'
-                        ? 'agentUnsupported'
-                        : code === 'AGENT_SITE_TARGET_CHANGED'
-                          ? 'agentModeConflict'
-                          : code === 'AGENT_SITE_DOWNLOAD_LIMITED'
-                            ? 'downloadLimited'
-                            : code === 'AGENT_RESOURCE_INVALID_RESPONSE' || code === 'AGENT_SITE_INVALID_RESPONSE'
-                              ? 'invalidResponse'
-                              : 'agentUnavailable';
-      throw new ResourceSiteError(reason, { cause });
+      const reason = AGENT_RESOURCE_ERROR_REASONS.get(code) ?? 'agentUnavailable';
+      const error = new ResourceSiteError(reason, { cause });
+      currentAiTrace()?.fail(error, { ...diagnosticFields, rpcErrorCode: code || undefined });
+      throw error;
     }
   }
 

@@ -9,6 +9,11 @@ import { resourceNotificationRequest } from './resource-notification.client';
 const emit = defineEmits<{ openMovie: [tmdbId: number]; openTvShow: [tmdbId: number] }>();
 const { t, locale, formatDate } = useI18n();
 const failedPosters = ref(new Set<string>());
+function statusIcon(item: ResourceNotificationItem) {
+  if (item.status === 'notified') return 'check' as const;
+  if (item.lastOutcome === 'failed' || item.lastOutcome === 'no-channels') return 'warning' as const;
+  return item.lastOutcome === 'no-resources' ? 'search' as const : 'info' as const;
+}
 const items = ref<ResourceNotificationItem[]>([]);
 const limit = ref<number | null>(null);
 const full = computed(() => limit.value !== null && items.value.length >= limit.value);
@@ -118,7 +123,7 @@ onBeforeUnmount(() => {
         </button>
         <div class="resource-notification-actions">
           <ResourceNotificationInfo class="resource-notification-status" :label="status(item)"
-            :icon="item.status === 'notified' ? 'check' : item.lastOutcome === 'failed' || item.lastOutcome === 'no-channels' ? 'warning' : item.lastOutcome === 'no-resources' ? 'search' : 'info'"
+            :icon="statusIcon(item)"
             :tone="item.status === 'notified' ? 'notified' : item.lastOutcome === 'failed' || item.lastOutcome === 'no-channels' ? 'warning' : undefined" />
           <ResourceNotificationInfo v-if="item.status !== 'notified' && item.nextCheckAt && Number.isFinite(Date.parse(item.nextCheckAt))"
             class="resource-notification-next-check" icon="clock"

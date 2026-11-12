@@ -1,4 +1,5 @@
 import { resourceDownloadLimitKind } from '../resource-sites/resource-download-limit.schema.js';
+import { resourceSiteRedirectTarget } from '../../infrastructure/resource-sites/resource-site-redirect.domain.js';
 import { ResourceDownloadLimitError } from '../resource-sites/resource-download-limit.errors.js';
 import { serializeDiagnosticError } from '@movie-hub/contract';
 import { RpcError } from '@movie-hub/contract/socket-rpc';
@@ -50,7 +51,8 @@ export async function readTorrentMetadata(url: string, options: TorrentMetadataO
           protect(location);
           const next = new URL(location, current);
           protect(next.href);
-          current = validateUrl(next);
+          validateUrl(next);
+          current = resourceSiteRedirectTarget(current, location);
           currentAiTrace()?.event('remote-download.torrent-metadata.redirect', {
             httpStatus: response.status, redirectCount: redirects + 1,
           });

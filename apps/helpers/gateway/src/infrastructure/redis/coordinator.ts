@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 import { once } from 'node:events';
-import { gatewayLogger } from '../../gateway-logging.service.js';
+import { gatewayLogger } from '../../gateway.logger.js';
 import type { AgentStatus, Route, GatewayCoordinator, Session } from '../../gateway.types.js';
 
 const renewScript = `

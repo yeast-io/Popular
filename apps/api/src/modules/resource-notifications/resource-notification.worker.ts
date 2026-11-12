@@ -205,7 +205,9 @@ export class ResourceNotificationWorker {
         await aiStep('resource-notification.finish', () => store.finish(claim, outcome), { outcome });
         persisted = true;
       } finally {
-        finishStatistics(!persisted ? 'failure' : cancelled ? 'cancelled' : outcome === 'failed' ? 'failure' : 'success');
+        const completedOutcome = outcome === 'failed' ? 'failure' : 'success';
+        const executionOutcome = cancelled ? 'cancelled' : completedOutcome;
+        finishStatistics(!persisted ? 'failure' : executionOutcome);
       }
     }
   }

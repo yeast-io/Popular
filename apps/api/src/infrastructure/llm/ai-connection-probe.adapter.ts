@@ -1,6 +1,7 @@
 import type { ProviderHttpOptions } from './provider-http.types.js';
 import { ProviderHttpClient } from './provider-http.client.js';
 import { AiProbeError } from '../../modules/integrations/ai-settings.service.js';
+import { AI_PROBE_HTTP_REASONS } from './ai-connection-probe.policy.js';
 
 export async function probeAiModels(options: ProviderHttpOptions): Promise<string[]> {
   const client = new ProviderHttpClient(options);
@@ -23,13 +24,9 @@ export async function probeAiModels(options: ProviderHttpOptions): Promise<strin
   } catch (error) {
     if (error instanceof AiProbeError) throw error;
     const value = error as { status?: number; name?: string };
-    const reason = value.status === 401 || value.status === 403
-      ? 'authentication'
-      : value.status === 402
-        ? 'quota'
-        : value.status === 429
-          ? 'rate_limit'
-          : value.name === 'TimeoutError' ? 'timeout' : value.status ? 'request_failed' : 'network';
-    throw new AiProbeError(reason, { cause: error });
+    const mappedReason = AI_PROBE_HTTP_REASONS.get(value.status ?? 0);
+    if (mappedReason) throw new AiProbeError(mappedReason, { cause: error });
+    if (value.name === 'TimeoutError') throw new AiProbeError('timeout', { cause: error });
+    throw new AiProbeError(value.status ? 'request_failed' : 'network', { cause: error });
   }
 }

@@ -98,11 +98,13 @@ async fn read(
     if api {
         request = request.header("X-API-Key", key);
     }
-    trace.stage("resource-sites.hdarea.api.http.started");
-    let mut response = request
-        .send()
-        .await
-        .map_err(|e| AgentError::from(e.without_url()))?;
+    let mut response = super::http_diagnostics::send(
+        request,
+        super::types::Site::Hdarea,
+        trace,
+        "resource-sites.hdarea.api.http.started",
+    )
+    .await?;
     let status = response.status();
     if !status.is_success() {
         if status.as_u16() == 429 {

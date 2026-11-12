@@ -2,7 +2,7 @@ import { generateKeyPair, exportJWK, CompactSign } from '../../apps/helpers/gate
 import { GatewayService } from '../../apps/helpers/gateway/src/gateway.service.ts';
 import { GatewayBridge } from '../../apps/helpers/gateway/src/infrastructure/gateway-bridge.service.ts';
 import { MemoryCoordinator } from '../../apps/helpers/gateway/src/testing/memory-coordinator.fake.ts';
-import { gatewayLogger } from '../../apps/helpers/gateway/src/gateway-logging.service.ts';
+import { gatewayLogger } from '../../apps/helpers/gateway/src/gateway.logger.ts';
 import { signingIdentity } from '../../apps/helpers/gateway/src/gateway-crypto.service.ts';
 import { keyDigest, message } from '../../apps/helpers/gateway/src/gateway.domain.ts';
 import { RemoteDownloadService } from '../../apps/api/src/modules/remote-downloads/remote-download.service.ts';

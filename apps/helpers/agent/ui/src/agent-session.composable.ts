@@ -140,15 +140,11 @@ export function useAgentSession(client: AgentClient, host: AgentHost) {
       && (Boolean(apiKey.value) || (hasApiKey.value && !gatewayChanged.value))
       && (runtimeFailed.value || runtime.value.service !== 'online' || gatewayChanged.value || Boolean(apiKey.value))
   );
-  const downloaderStatus = computed(() =>
-    runtimeFailed.value
-      ? 'statusUnknown'
-      : !lastRuntimeAt.value
-          ? 'checkingStatus'
-          : form.downloaderConfigured
-            ? runtime.value.downloader
-            : 'unconfigured'
-  );
+  const downloaderStatus = computed(() => {
+    if (runtimeFailed.value) return 'statusUnknown' as const;
+    if (!lastRuntimeAt.value) return 'checkingStatus' as const;
+    return form.downloaderConfigured ? runtime.value.downloader : 'unconfigured' as const;
+  });
   const gatewayConfigured = computed(() => Boolean(savedGateway.value && hasApiKey.value));
   const showGatewayForm = computed(() => !gatewayConfigured.value || editingGateway.value);
   const showDownloaderForm = computed(() => !form.downloaderConfigured || editingDownloader.value);

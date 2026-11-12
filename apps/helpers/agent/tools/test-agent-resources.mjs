@@ -61,11 +61,10 @@ for (const provider of ['qbittorrent']) {
       assert.equal(request.headers.cookie, undefined);
       response.setHeader('content-type', 'application/json');
       const row = { id: 123, name: 'Synthetic.Movie.2026.1080p.BluRay', small_descr: '第10-16集', size: 1073741824, seeders: 0, imdb_id: 'tt1234567' };
-      const data = url.pathname === '/api/v1/user/profile'
-        ? { id: 8811 }
-        : url.pathname === '/api/v1/torrents'
-          ? { items: [row], pagination: { page: Number(url.searchParams.get('page')), has_more: false } }
-          : url.pathname === '/api/v1/torrents/genDlToken' ? { id: 123, expires_in: 1800, download_url: `${siteBase}download.php?id=123&dl_token=synthetic-private-token` } : row;
+      let data = row;
+      if (url.pathname === '/api/v1/user/profile') data = { id: 8811 };
+      else if (url.pathname === '/api/v1/torrents') data = { items: [row], pagination: { page: Number(url.searchParams.get('page')), has_more: false } };
+      else if (url.pathname === '/api/v1/torrents/genDlToken') data = { id: 123, expires_in: 1800, download_url: `${siteBase}download.php?id=123&dl_token=synthetic-private-token` };
       response.end(JSON.stringify({ success: true, code: 0, data }));
     } else if (url.pathname.startsWith('/api/')) {
       assert.equal(request.headers['x-api-key'], key);

@@ -99,14 +99,11 @@ function retryDelay(error: unknown, fallback: number): number {
   if (!headers?.get) return fallback;
   const milliseconds = headers.get('retry-after-ms');
   const seconds = headers.get('retry-after');
-  const value
-    = milliseconds !== null
-      ? Number(milliseconds)
-      : seconds !== null
-        ? Number.isFinite(Number(seconds))
-          ? Number(seconds) * 1_000
-          : Date.parse(seconds) - Date.now()
-        : NaN;
+  let value = NaN;
+  if (milliseconds !== null) value = Number(milliseconds);
+  else if (seconds !== null) {
+    value = Number.isFinite(Number(seconds)) ? Number(seconds) * 1_000 : Date.parse(seconds) - Date.now();
+  }
   return Number.isFinite(value) && value >= 0 ? Math.min(value, 60_000) : fallback;
 }
 

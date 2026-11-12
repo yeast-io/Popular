@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loadWebConfig } from '../../config/env';
 import { useI18n } from '../../i18n';
 import { localizedErrorMessage, localizedResponseError } from '../../i18n/api-error';
+import { agentResourceNames } from './agent-resource.presentation';
 
 const props = defineProps<{
   id: string;
@@ -11,6 +12,10 @@ const props = defineProps<{
   status: string;
   disabled?: boolean | undefined;
 }>();
+const siteName = computed(() => {
+  if (Object.hasOwn(agentResourceNames, props.id)) return agentResourceNames[props.id as keyof typeof agentResourceNames];
+  return props.id;
+});
 const { apiBaseUrl } = loadWebConfig();
 const { t, locale } = useI18n();
 const preferences = ref<IntegrationPreferences | null>(null);
@@ -109,7 +114,7 @@ watch(
       class="resource-site-switch"
       :aria-label="
         t('resourceSelection.enableSite', {
-          name: id === 'mteam' ? 'M-Team' : id === 'hdarea' ? 'HDArea' : id === 'hdwing' ? 'HDWing' : id,
+          name: siteName,
         })
       "
       :aria-checked="preferences?.effectiveSites?.includes(id) ?? false"

@@ -159,10 +159,6 @@ pub(super) async fn verify(
         base.join("index.php")
     }
     .map_err(|e| AgentError::caused("invalidUrl", e))?;
-    trace.stage(&format!(
-        "resource-sites.{}.verification.http.started",
-        site.id()
-    ));
     let request = if site == Site::Mteam {
         client
             .post(target)
@@ -171,7 +167,13 @@ pub(super) async fn verify(
     } else {
         client.get(target).header(header::COOKIE, credential)
     };
-    let mut response = request.send().await?;
+    let mut response = super::http_diagnostics::send(
+        request,
+        site,
+        trace,
+        &format!("resource-sites.{}.verification.http.started", site.id()),
+    )
+    .await?;
     let status = response.status();
     let remote_error = |code| {
         match response.error_for_status_ref() {

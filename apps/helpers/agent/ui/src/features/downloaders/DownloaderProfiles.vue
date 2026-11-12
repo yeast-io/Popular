@@ -57,13 +57,9 @@ const {
       </header>
       <p class="endpoint">{{ row.downloaderUrl }}</p>
       <p role="status">
-        {{
-          !row.enabled
-            ? t.siteDisabled
-            : row.isDefault
-              ? text(runtimeFailed ? 'statusUnknown' : runtime.downloader)
-              : t.siteEnabled
-        }}
+        <template v-if="!row.enabled">{{ t.siteDisabled }}</template>
+        <template v-else-if="row.isDefault">{{ text(runtimeFailed ? 'statusUnknown' : runtime.downloader) }}</template>
+        <template v-else>{{ t.siteEnabled }}</template>
       </p>
       <div class="summary-actions">
         <button type="button" :disabled="loading || editing" @click="edit(row)">{{ t.editConfig }}</button>

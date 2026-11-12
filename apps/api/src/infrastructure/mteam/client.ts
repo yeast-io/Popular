@@ -1,4 +1,7 @@
 import { resourceDownloadLimitKind } from '../../modules/resource-sites/resource-download-limit.schema.js';
+import { resourceSiteRedirectTarget } from '../resource-sites/resource-site-redirect.domain.js';
+import { RESOURCE_SITE_HTTP_MAX_REDIRECTS } from '../resource-sites/resource-site-http.policy.js';
+import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
 import { ResourceDownloadLimitError } from '../../modules/resource-sites/resource-download-limit.errors.js';
 import { MTeamMemberProfileSchema } from './member-profile.schema.js';
 import { parseTorrentUrl } from './torrent-url.schema.js';
@@ -355,63 +358,15 @@ function postJson(
   signal: AbortSignal,
   maxResponseBytes: number
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const options = {
-      method: 'POST',
-      signal,
-      family: address.family,
-      headers: {
-        'accept': 'application/json',
-        ...(body ? { 'content-type': 'application/json' } : {}),
-        'user-agent': 'MovieHub/1.0',
-        'x-api-key': apiKey,
-      },
-      lookup: createPinnedLookup(address),
-    };
-    const req = request(url, options, (response) => {
-      if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-        response.resume();
-        reject(
-          new MTeamHttpError(
-            classifyMTeamHttpFailure(response.statusCode),
-            response.statusCode ?? 0,
-            parseRetryAfter(
-              Array.isArray(response.headers['retry-after'])
-                ? response.headers['retry-after'][0]
-                : response.headers['retry-after']
-            )
-          )
-        );
-        return;
-      }
-      const chunks: Buffer[] = [];
-      let length = 0;
-      response.on('data', (chunk: Buffer) => {
-        length += chunk.length;
-        if (length > maxResponseBytes)
-          response.destroy(new IntegrationValidationError('invalid_response', 'M-Team response is too large'));
-        else chunks.push(chunk);
-      });
-      response.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-      response.on('error', (error) => {
-        return reject(
-          error instanceof IntegrationValidationError
-            ? error
-            : new IntegrationValidationError('network', 'Could not read M-Team response', { cause: error })
-        );
-      });
-    });
-    req.on('error', (error) => {
-      const reason
-        = signal.aborted && signal.reason instanceof IntegrationValidationError
-          ? signal.reason
-          : error instanceof IntegrationValidationError
-            ? error
-            : new IntegrationValidationError('network', 'Could not connect to M-Team', { cause: error });
-      reject(reason);
-    });
-    req.end(body ? JSON.stringify(body) : undefined);
-  });
+  return requestBytes(url, address, signal, maxResponseBytes, {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      ...(body ? { 'content-type': 'application/json' } : {}),
+      'user-agent': 'MovieHub/1.0',
+      'x-api-key': apiKey,
+    },
+  }, body ? JSON.stringify(body) : undefined).then((value) => value.toString('utf8'));
 }
 
 function postForm(
@@ -441,25 +396,58 @@ function postForm(
   ).then((value) => value.toString('utf8'));
 }
 
-function requestBytes(
+export function requestBytes(
   url: URL,
   address: LookupAddress,
   signal: AbortSignal,
   maxResponseBytes: number,
   options: { method: string; headers: Record<string, string | number> },
-  body?: string
+  body?: string,
+  transport: typeof request = request,
+  visited = new Set<string>()
 ): Promise<Buffer> {
+  signal.throwIfAborted();
+  if (visited.has(url.href)) return Promise.reject(new IntegrationValidationError('remote_error', new ResourceSiteError('redirected').message));
+  const redirectCount = visited.size;
+  visited.add(url.href);
+  const trace = currentAiTrace();
+  trace?.event('mteam.http.request', { host: url.origin, redirectCount });
   return new Promise((resolve, reject) => {
-    const req = request(
+    const req = transport(
       url,
       { ...options, signal, family: address.family, lookup: createPinnedLookup(address) },
       (response) => {
+        trace?.event('mteam.http.response', { host: url.origin, httpStatus: response.statusCode, redirectCount });
+        if ([301, 302, 303, 307, 308].includes(response.statusCode ?? 0)) {
+          response.resume();
+          try {
+            if (redirectCount === RESOURCE_SITE_HTTP_MAX_REDIRECTS) throw new ResourceSiteError('redirected');
+            const next = resourceSiteRedirectTarget(url, response.headers.location ?? null, url.origin);
+            let nextOptions = options;
+            let nextBody = body;
+            const switchToGet = (response.statusCode === 303 && options.method !== 'HEAD')
+              || ([301, 302].includes(response.statusCode!) && options.method === 'POST');
+            if (switchToGet) {
+              const headers = Object.fromEntries(Object.entries(options.headers)
+                .filter(([name]) => !['content-type', 'content-length', 'transfer-encoding'].includes(name.toLowerCase())));
+              nextOptions = { method: 'GET', headers };
+              nextBody = undefined;
+            }
+            resolve(requestBytes(next, address, signal, maxResponseBytes, nextOptions, nextBody, transport, visited));
+          } catch (cause) {
+            reject(cause instanceof ResourceSiteError
+              ? new IntegrationValidationError(cause.reason === 'authentication' ? 'authentication' : 'remote_error', cause.message, { cause })
+              : cause);
+          }
+          return;
+        }
         if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
           response.resume();
           reject(
-            new IntegrationValidationError(
+            new MTeamHttpError(
               classifyMTeamHttpFailure(response.statusCode),
-              `M-Team returned HTTP ${response.statusCode ?? 'unknown'}`
+              response.statusCode ?? 0,
+              parseRetryAfter(Array.isArray(response.headers['retry-after']) ? response.headers['retry-after'][0] : response.headers['retry-after'])
             )
           );
           return;
@@ -540,13 +528,10 @@ export function parseSearchReleases(payload: unknown): MTeamRelease[] {
   if (!payload || typeof payload !== 'object') throw invalidSearchResponse();
   const data = (payload as { data?: unknown }).data;
   if (!data || typeof data !== 'object') throw invalidSearchResponse();
-  const rows = Array.isArray(data)
-    ? data
-    : Array.isArray((data as { data?: unknown }).data)
-      ? (data as { data: unknown[] }).data
-      : Array.isArray((data as { list?: unknown }).list)
-        ? (data as { list: unknown[] }).list
-        : null;
+  let rows: unknown[] | null = null;
+  if (Array.isArray(data)) rows = data;
+  else if (Array.isArray((data as { data?: unknown }).data)) rows = (data as { data: unknown[] }).data;
+  else if (Array.isArray((data as { list?: unknown }).list)) rows = (data as { list: unknown[] }).list;
   if (!rows) throw invalidSearchResponse();
   return rows.map((row) => parseRelease(row));
 }

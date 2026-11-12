@@ -4,6 +4,7 @@ import vue from 'eslint-plugin-vue';
 import globals from 'globals';
 import stylistic from '@stylistic/eslint-plugin';
 import constructorLayout from './tools/eslint/constructor-layout.mjs';
+import ternaryDepth from './tools/eslint/ternary-depth.mjs';
 
 const schemaBoundaryRestrictions = [
   {
@@ -46,7 +47,7 @@ export default ts.config(
     ],
     languageOptions: { globals: { ...globals.node, ...globals.browser }, parserOptions: { parser: ts.parser } },
     plugins: {
-      project: { rules: { 'constructor-layout': constructorLayout } },
+      project: { rules: { 'constructor-layout': constructorLayout, 'ternary-depth': ternaryDepth } },
     },
     rules: {
       '@stylistic/padding-line-between-statements': [
@@ -73,6 +74,7 @@ export default ts.config(
         exports: 'always-multiline', functions: 'never', generics: 'always-multiline', tuples: 'always-multiline',
       }],
       'project/constructor-layout': ['error', { maxLength: 120 }],
+      'project/ternary-depth': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_', ignoreRestSiblings: true },

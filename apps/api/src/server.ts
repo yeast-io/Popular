@@ -480,18 +480,15 @@ try {
               ? ('configured_valid' as const)
               : ('configured_unverified' as const),
         })),
-        ...AI_PROVIDERS.map((provider, index) => ({
-          id: provider,
-          name: AI_PROVIDER_NAMES[provider],
-          category: 'ai' as const,
-          status: !ai[index]
-            ? ('unconfigured' as const)
-            : ai[index].validation?.status === 'failed'
-              ? ('configured_invalid' as const)
-              : ai[index].validation?.status === 'valid' && ai[index].model && modelLimits(provider, ai[index].model!)
-                ? ('configured_valid' as const)
-                : ('configured_unverified' as const),
-        })),
+        ...AI_PROVIDERS.map((provider, index) => {
+          const config = ai[index];
+          let status: import('@movie-hub/contract').IntegrationStatus;
+          if (!config) status = 'unconfigured';
+          else if (config.validation?.status === 'failed') status = 'configured_invalid';
+          else if (config.validation?.status === 'valid' && config.model && modelLimits(provider, config.model)) status = 'configured_valid';
+          else status = 'configured_unverified';
+          return { id: provider, name: AI_PROVIDER_NAMES[provider], category: 'ai' as const, status };
+        }),
       ];
     },
     {

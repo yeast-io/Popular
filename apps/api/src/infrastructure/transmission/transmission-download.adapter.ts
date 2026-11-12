@@ -33,15 +33,12 @@ export class TransmissionDownloadAdapter implements DownloadClient {
 }
 
 function transmissionSnapshot(torrent: TransmissionTorrent): TorrentSnapshot {
-  const status: MovieDownloadStatus = torrent.error
-    ? 'failed'
-    : torrent.status === 5 || torrent.status === 6
-      ? 'seeding'
-      : torrent.progress >= 1
-        ? 'completed'
-        : torrent.status === 0
-          ? 'paused'
-          : 'downloading';
+  let status: MovieDownloadStatus;
+  if (torrent.error) status = 'failed';
+  else if (torrent.status === 5 || torrent.status === 6) status = 'seeding';
+  else if (torrent.progress >= 1) status = 'completed';
+  else if (torrent.status === 0) status = 'paused';
+  else status = 'downloading';
   return {
     torrentHash: torrent.hash,
     name: torrent.name,

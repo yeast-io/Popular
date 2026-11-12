@@ -98,12 +98,12 @@ export class MongoMovieStatusStore implements MovieStatusStore {
     page: number,
     pageSize: number
   ) {
-    const filter
-      = filterValue === 'liked'
-        ? { ownerId, preference: 'liked' }
-        : filterValue === 'disliked'
-          ? { ownerId, $or: [{ preference: 'disliked' }, { status: 'not_interested' }] }
-          : { ownerId, ...(filterValue ? { status: filterValue } : {}) };
+    const statusFilter = { ownerId, ...(filterValue ? { status: filterValue } : {}) };
+    const filter = filterValue === 'liked'
+      ? { ownerId, preference: 'liked' }
+      : filterValue === 'disliked'
+        ? { ownerId, $or: [{ preference: 'disliked' }, { status: 'not_interested' }] }
+        : statusFilter;
     const [rows, total] = await Promise.all([
       this.states
         .find(filter)

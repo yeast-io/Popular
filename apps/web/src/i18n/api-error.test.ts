@@ -42,6 +42,14 @@ it.each(['en-US', 'zh-CN'] as const)('explains site account conflicts and pendin
 });
 
 for (const locale of ['en-US', 'zh-CN'] as const) {
+  it(`explains site redirects without claiming the Agent is offline in ${locale}`, () => {
+    setLocale(locale);
+    const failure = { error: { code: 'RESOURCE_SITE_FAILED', details: { reason: 'redirected' } } };
+    expect(apiErrorKey(failure)).toBe('resourceSite.error.redirected');
+    const message = localizedErrorMessage(localizedApiError(failure), 'errors.unknown');
+    expect(message).toContain(locale === 'zh-CN' ? '重定向' : 'redirected');
+    expect(message).not.toMatch(/offline|离线/);
+  });
   it(`explains the HDArea API migration and short-link failure in ${locale}`, () => {
     setLocale(locale);
     for (const reason of ['apiKeyRequired', 'downloadExpired']) {

@@ -6,11 +6,13 @@ import type {
   ResourceSiteHttpClientPort,
 } from '../../modules/resource-sites/resource-site.types.js';
 import { ResourceSiteError } from '../../modules/resource-sites/resource-site.errors.js';
+import { resourceSiteEndpoint, resourceSiteRedirectTarget } from './resource-site-redirect.domain.js';
 import {
   RESOURCE_SITE_HTTP_INTERVAL_MS,
   RESOURCE_SITE_HTTP_MAX_BYTES,
   RESOURCE_SITE_HTTP_MAX_PENDING,
   RESOURCE_SITE_HTTP_TIMEOUT_MS,
+  RESOURCE_SITE_HTTP_MAX_REDIRECTS,
 } from './resource-site-http.policy.js';
 import { aiStep, currentAiTrace } from '../logging/ai-trace.js';
 
@@ -38,7 +40,10 @@ export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
         try {
           return await this.schedule(origin, bounded, async () => {
             let current = url;
-            for (let redirects = 0; redirects <= 3; redirects++) {
+            const visited = new Set<string>();
+            for (let redirects = 0; redirects <= RESOURCE_SITE_HTTP_MAX_REDIRECTS; redirects++) {
+              if (visited.has(current.href)) throw new ResourceSiteError('redirected');
+              visited.add(current.href);
               bounded.throwIfAborted();
               const cookieHeader = await jar.getCookieString(current.href);
               currentAiTrace()?.sensitive(cookieHeader);
@@ -51,8 +56,9 @@ export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
                     signal: bounded,
                   });
                 },
-                { host: origin, path: current.pathname, attempt: 1 }
+                { host: origin, path: resourceSiteEndpoint(current), attempt: 1, redirectCount: redirects }
               );
+              currentAiTrace()?.event('resource-sites.http.response', { host: origin, httpStatus: response.status, redirectCount: redirects });
               for (const value of response.headers.getSetCookie()) {
                 currentAiTrace()?.sensitive(value);
                 const pair = value.split(';')[0] ?? '';
@@ -61,12 +67,8 @@ export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
               }
               if ([301, 302, 303, 307, 308].includes(response.status)) {
                 await response.body?.cancel();
-                const location = response.headers.get('location');
-                if (!location) throw new ResourceSiteError('invalidResponse');
-                const next = new URL(location, current);
-                if (next.origin !== origin || next.username || next.password) throw new ResourceSiteError('blocked');
-                if (/login|verify|captcha/i.test(next.pathname)) throw new ResourceSiteError('authentication');
-                current = next;
+                if (redirects === RESOURCE_SITE_HTTP_MAX_REDIRECTS) throw new ResourceSiteError('redirected');
+                current = resourceSiteRedirectTarget(current, response.headers.get('location'), origin);
                 // Redirects also consume the site's request interval.
                 await delay(this.options.intervalMs ?? RESOURCE_SITE_HTTP_INTERVAL_MS, undefined, { signal: bounded });
                 continue;
@@ -112,7 +114,7 @@ export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
               }
               return Buffer.concat(chunks);
             }
-            throw new ResourceSiteError('invalidResponse');
+            throw new ResourceSiteError('redirected');
           });
         } catch (error) {
           if (signal?.aborted) throw error;
@@ -123,7 +125,7 @@ export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
     };
   }
 
-  /** API credentials are header-only and are never sent to torrent URLs or redirects. */
+  /** API credentials are header-only; credentialed redirects are restricted to the same origin. */
   async apiSession(baseUrl: string, apiKey: string): Promise<ResourceSiteSession> {
     if (!/^[a-f0-9]{32}$/i.test(apiKey)) throw new ResourceSiteError('invalidCredential');
     const origin = new URL(baseUrl).origin;
@@ -152,79 +154,95 @@ export class ResourceSiteHttpClient implements ResourceSiteHttpClientPort {
           aiStep(
             'resource-sites.api.exchange',
             async () => {
-              const response = await aiStep(
-                'resource-sites.api.http.request',
-                () =>
-                  (this.options.fetch ?? fetch)(url, {
-                    method: body ? 'POST' : 'GET',
-                    headers: {
-                      'User-Agent': 'Popular/1.0',
-                      ...(api ? { 'X-API-Key': apiKey } : {}),
-                      ...(body ? { 'Content-Type': 'application/json' } : {}),
-                    },
-                    ...(body ? { body: JSON.stringify(body) } : {}),
-                    redirect: 'manual',
-                    credentials: 'omit',
-                    signal: bounded,
-                  }),
-                { host: origin, path: url.pathname, attempt: 1 }
-              );
-              currentAiTrace()?.event('resource-sites.api.http.response', {
-                host: origin,
-                path: url.pathname,
-                httpStatus: response.status,
-                outcome: response.ok ? 'success' : 'failure',
-              });
-              if (!response.ok) {
-                const cause = new Error(`Resource site HTTP ${response.status} at ${url.pathname}`);
-                await response.body?.cancel();
-                if (response.status === 429) {
-                  const retry = response.headers.get('retry-after');
-                  const ms
-                    = retry && /^\d+$/.test(retry)
-                      ? Number(retry) * 1000
-                      : retry
-                        ? Date.parse(retry) - Date.now()
-                        : 60_000;
-                  this.lanes.get(origin)!.blockedUntil = Date.now() + Math.max(1000, Number.isFinite(ms) ? ms : 60_000);
-                  throw new ResourceSiteError('rateLimited', { cause });
-                }
-                throw new ResourceSiteError(
-                  response.status === 403 && !api
-                    ? 'downloadExpired'
-                    : response.status === 401 || response.status === 403
-                      ? 'authentication'
-                      : response.status >= 300 && response.status < 400
-                        ? 'blocked'
-                        : 'invalidResponse',
-                  { cause }
+              let current = url;
+              let method = body ? 'POST' : 'GET';
+              let payload = body ? JSON.stringify(body) : undefined;
+              const visited = new Set<string>();
+              for (let redirects = 0; redirects <= RESOURCE_SITE_HTTP_MAX_REDIRECTS; redirects++) {
+                bounded.throwIfAborted();
+                if (visited.has(current.href)) throw new ResourceSiteError('redirected');
+                visited.add(current.href);
+                const response = await aiStep(
+                  'resource-sites.api.http.request',
+                  () =>
+                    (this.options.fetch ?? fetch)(current, {
+                      method,
+                      headers: {
+                        'User-Agent': 'Popular/1.0',
+                        ...(api ? { 'X-API-Key': apiKey } : {}),
+                        ...(payload ? { 'Content-Type': 'application/json' } : {}),
+                      },
+                      ...(payload ? { body: payload } : {}),
+                      redirect: 'manual',
+                      credentials: 'omit',
+                      signal: bounded,
+                    }),
+                  { host: current.origin, path: resourceSiteEndpoint(current), attempt: 1, redirectCount: redirects }
                 );
-              }
-              const max = this.options.maxBytes ?? RESOURCE_SITE_HTTP_MAX_BYTES;
-              if (Number(response.headers.get('content-length')) > max) {
-                await response.body?.cancel();
-                throw new ResourceSiteError('invalidResponse');
-              }
-              const reader = response.body?.getReader();
-              if (!reader) throw new ResourceSiteError('invalidResponse');
-              const chunks: Uint8Array[] = [];
-              let size = 0;
-              try {
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  size += value.length;
-                  if (size > max) throw new ResourceSiteError('invalidResponse');
-                  chunks.push(value);
+                currentAiTrace()?.event('resource-sites.api.http.response', {
+                  host: current.origin,
+                  path: resourceSiteEndpoint(current),
+                  httpStatus: response.status,
+                  redirectCount: redirects,
+                  outcome: response.ok ? 'success' : 'failure',
+                });
+                if ([301, 302, 303, 307, 308].includes(response.status)) {
+                  await response.body?.cancel();
+                  if (redirects === RESOURCE_SITE_HTTP_MAX_REDIRECTS) throw new ResourceSiteError('redirected');
+                  current = resourceSiteRedirectTarget(current, response.headers.get('location'), api ? origin : undefined);
+                  if (response.status === 303 || ([301, 302].includes(response.status) && method === 'POST')) {
+                    method = 'GET';
+                    payload = undefined;
+                  }
+                  await delay(this.options.intervalMs ?? RESOURCE_SITE_HTTP_INTERVAL_MS, undefined, { signal: bounded });
+                  continue;
                 }
-              } finally {
+                if (!response.ok) {
+                  const cause = new Error(`Resource site HTTP ${response.status} at ${resourceSiteEndpoint(current)}`);
+                  await response.body?.cancel();
+                  if (response.status === 429) {
+                    const retry = response.headers.get('retry-after');
+                    const ms
+                      = retry && /^\d+$/.test(retry)
+                        ? Number(retry) * 1000
+                        : retry
+                          ? Date.parse(retry) - Date.now()
+                          : 60_000;
+                    this.lanes.get(origin)!.blockedUntil = Date.now() + Math.max(1000, Number.isFinite(ms) ? ms : 60_000);
+                    throw new ResourceSiteError('rateLimited', { cause });
+                  }
+                  if (response.status === 403 && !api) throw new ResourceSiteError('downloadExpired', { cause });
+                  if (response.status === 401 || response.status === 403) throw new ResourceSiteError('authentication', { cause });
+                  if (response.status >= 300 && response.status < 400) throw new ResourceSiteError('blocked', { cause });
+                  throw new ResourceSiteError('invalidResponse', { cause });
+                }
+                const max = this.options.maxBytes ?? RESOURCE_SITE_HTTP_MAX_BYTES;
+                if (Number(response.headers.get('content-length')) > max) {
+                  await response.body?.cancel();
+                  throw new ResourceSiteError('invalidResponse');
+                }
+                const reader = response.body?.getReader();
+                if (!reader) throw new ResourceSiteError('invalidResponse');
+                const chunks: Uint8Array[] = [];
+                let size = 0;
                 try {
-                  await reader.cancel();
-                } catch {
-                  /* Preserve the original stream failure. */
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    size += value.length;
+                    if (size > max) throw new ResourceSiteError('invalidResponse');
+                    chunks.push(value);
+                  }
+                } finally {
+                  try {
+                    await reader.cancel();
+                  } catch {
+                    /* Preserve the original stream failure. */
+                  }
                 }
+                return Buffer.concat(chunks);
               }
-              return Buffer.concat(chunks);
+              throw new ResourceSiteError('redirected');
             },
             { host: origin, path: url.pathname, attempt: 1 }
           )

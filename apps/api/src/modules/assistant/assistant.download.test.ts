@@ -111,14 +111,10 @@ function fixture(
               const payload = JSON.parse(request.messages.at(-1)!.content) as { context: AssistantDownloadContext };
               planningContexts.push(payload.context);
             }
-            const content
-              = request.operation === 'assistant.intent'
-                ? { intent, handling, preferenceSignal: 'none', locale: detectedLocale }
-                : request.operation === 'assistant.download.plan'
-                  ? action
-                  : request.operation === 'assistant.resources.plan'
-                    ? plan
-                    : 'Discussion reply';
+            let content: unknown = 'Discussion reply';
+            if (request.operation === 'assistant.intent') content = { intent, handling, preferenceSignal: 'none', locale: detectedLocale };
+            else if (request.operation === 'assistant.download.plan') content = action;
+            else if (request.operation === 'assistant.resources.plan') content = plan;
             return {
               content: typeof content === 'string' ? content : JSON.stringify(content),
               inputTokens: 1,

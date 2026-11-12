@@ -76,9 +76,19 @@ test('bounds redirects, rejects loops and missing Location, and cancels redirect
           headers: mode === 'missing' ? {} : { location: mode === 'loop' ? '/start' : `/hop-${calls}` } });
       },
     }), { code: 'TORRENT_METADATA_UNAVAILABLE' });
-    assert.equal(calls, mode === 'limit' ? 4 : 1);
+    assert.equal(calls, mode === 'limit' ? 6 : 1);
     assert.equal(cancelled, calls);
   }
+});
+
+test('accepts exactly five torrent redirects', async () => {
+  let calls = 0;
+  assert.equal(await readTorrentMetadata('https://tracker.example/start', {
+    fetch: async () => ++calls <= 5
+      ? new Response(null, { status: 302, headers: { location: `/hop-${calls}` } })
+      : new Response(torrent),
+  }), hash);
+  assert.equal(calls, 6);
 });
 
 test('preserves HTTP failures, parsing failures and final-body size limits', async () => {

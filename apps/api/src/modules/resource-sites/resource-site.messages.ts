@@ -1,5 +1,6 @@
 export const resourceSiteMessages = {
   en: {
+    redirected: 'The resource site redirected the request. Check the site address and login credentials.',
     agentUnavailable: 'Your Agent is offline or unavailable. No cloud credentials were used.',
     agentUnsupported: 'Update your Agent to use local resource requests.',
     agentModeConflict: 'Resource execution changed. Reload and retry using the selected mode.',
@@ -17,6 +18,7 @@ export const resourceSiteMessages = {
     invalidCredential: 'Valid resource site credentials are required.',
   },
   zh: {
+    redirected: '资源站点重定向了请求，请检查站点地址和登录凭据。',
     agentUnavailable: '你的 Agent 离线或暂时不可用，未使用云端凭据。',
     agentUnsupported: '请更新 Agent，以使用本地资源请求。',
     agentModeConflict: '资源执行方式已变化，请刷新后使用当前模式重试。',

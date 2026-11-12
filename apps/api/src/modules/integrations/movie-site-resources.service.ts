@@ -292,16 +292,14 @@ export class MovieSiteResourcesService {
 
   private failureResult(error: unknown): Extract<MovieResourceCheckCompletion, { lastAttemptStatus: 'error' }> {
     const reason = error instanceof ResourceSiteError ? error.reason : undefined;
+    let lastErrorCode: Extract<MovieResourceCheckCompletion, { lastAttemptStatus: 'error' }>['lastErrorCode'];
+    if (reason && ['authentication', 'notConfigured', 'blocked'].includes(reason)) lastErrorCode = 'authentication';
+    else if (reason === 'rateLimited') lastErrorCode = 'rate_limited';
+    else if (reason === 'timeout') lastErrorCode = 'timeout';
+    else lastErrorCode = 'remote_error';
     return {
       lastAttemptStatus: 'error',
-      lastErrorCode:
-        reason && ['authentication', 'notConfigured', 'blocked'].includes(reason)
-          ? 'authentication'
-          : reason === 'rateLimited'
-            ? 'rate_limited'
-            : reason === 'timeout'
-              ? 'timeout'
-              : 'remote_error',
+      lastErrorCode,
     };
   }
 

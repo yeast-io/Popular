@@ -1,5 +1,6 @@
 import messages from '../../locales/messages.json';
 import type { Locale } from '../../settings.types';
+import { siteNames } from '../resource-sites/resource-sites.presentation';
 
 export function queueDate(value: number, locale: Locale): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(value);
@@ -15,7 +16,8 @@ export function queueRemaining(expiry: number, now: number, locale: Locale): str
 }
 
 export function queueSiteName(source: string): string {
-  return source === 'mteam' ? 'M-Team' : source === 'hdarea' ? 'HDArea' : source === 'hdwing' ? 'HDWing' : source;
+  if (Object.hasOwn(siteNames, source)) return siteNames[source as keyof typeof siteNames];
+  return source;
 }
 
 export function queueCount(total: number, locale: Locale): string {

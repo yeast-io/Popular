@@ -1,5 +1,7 @@
 //! Locally owned site configuration and fixed, session-bound resource operations.
 mod hdarea;
+#[path = "http-diagnostics.rs"]
+mod http_diagnostics;
 pub(crate) mod resources;
 pub(crate) mod tickets;
 pub(crate) mod torrent;

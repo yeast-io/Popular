@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { test } from 'node:test';
-import { gatewayLogger } from '../../gateway-logging.service.js';
+import { gatewayLogger } from '../../gateway.logger.js';
 import { createRedisClient } from './client.js';
 
 for (const failCleanup of [false, true]) {

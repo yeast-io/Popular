@@ -23,6 +23,14 @@
 - Clearly distinguish facts, reasonable inferences, uncertainties, and opinions.
 - Be concise and direct. Criticize the reasoning or work, not the person.
 
+## Readable conditional logic
+
+- Keep ternary expressions to at most two levels: the outer expression counts as level one, and a ternary inside its condition or either branch counts as level two. Replace any third level with a lookup, named intermediate value, or explicit control flow; do not hide the same chain in an immediately invoked function.
+- Represent fixed correspondences, such as error code to error reason or status to label, with a typed lookup table or `ReadonlyMap`, one entry per line. Keep policy mappings in the feature's `*.policy.ts` file and make the fallback explicit at the lookup site.
+- Use `if`/`else`, guard clauses, or `switch` for branches that perform actions or depend on different conditions. Name complex conditions so a reader can understand each decision without tracking several operators or levels of indentation.
+- When refactoring conditional logic, preserve branch precedence, mapped values, fallback behavior, error causes, and diagnostics unless the user authorizes a behavior change. Cover distinct outcomes and unknown inputs in existing behavioral tests.
+- Before finishing, inspect added or modified conditional expressions for these rules. Apply them to the scoped change; do not rewrite unrelated code.
+
 ## File and directory naming
 
 - Use lowercase kebab-case for directories and business-name segments, grouping files by feature and responsibility. Keep model decisions in `agents/` and persistence implementations under `infrastructure/`; do not create generic `types/`, `interfaces/`, or `utils/` directories merely to separate file kinds.

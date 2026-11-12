@@ -2,6 +2,7 @@ import type { LockAction, Fields } from './lock-trace.types.js';
 import { randomUUID } from 'node:crypto';
 import type { AiLogger } from '../logging/ai-trace.types.js';
 import { serializeDiagnosticError } from '../logging/diagnostic-error.js';
+import { LOCK_OUTCOMES } from './lock-trace.policy.js';
 
 const instanceId = randomUUID();
 
@@ -21,22 +22,8 @@ export class RedisLockTrace {
     try {
       const result = await execute();
       const success = result === 'OK' || result === 1;
-      const outcome
-        = action === 'acquire'
-          ? success
-            ? 'acquired'
-            : 'busy'
-          : action === 'renew'
-            ? success
-              ? 'renewed'
-              : 'lost'
-            : action === 'release'
-              ? success
-                ? 'released'
-                : 'not_owned'
-              : success
-                ? 'checkpointed'
-                : 'lost';
+      const outcomes = LOCK_OUTCOMES.get(action) ?? LOCK_OUTCOMES.get('checkpoint')!;
+      const outcome = success ? outcomes.success : outcomes.failure;
       let ttlSeconds: number[] | undefined;
       if (!success && this.ttl) {
         try {

@@ -1,4 +1,5 @@
 import type { ResourceSiteRelease } from '@movie-hub/contract';
+import { VIDEO_CODEC_NAMES } from './release-metadata.policy.js';
 
 /** Recognize semantic markers regardless of their order in a release title. */
 export function releaseTitleMetadata(
@@ -31,17 +32,7 @@ export function releaseTitleMetadata(
   const video = title.match(/\b(?:[hx][ .-]?26[456]|HEVC|AVC|AV1|VC[- .]?1|MPEG[- .]?2)\b/i)?.[0];
   if (video) {
     const key = video.replace(/[ .-]/g, '').toLowerCase();
-    metadata.videoCodec = /^(?:[hx]265|hevc)$/.test(key)
-      ? 'H.265'
-      : /^(?:[hx]264|avc)$/.test(key)
-        ? 'H.264'
-        : key === 'h266' || key === 'x266'
-          ? 'H.266'
-          : key === 'vc1'
-            ? 'VC-1'
-            : key === 'mpeg2'
-              ? 'MPEG-2'
-              : 'AV1';
+    metadata.videoCodec = VIDEO_CODEC_NAMES.get(key) ?? 'AV1';
   }
   const audio = title.match(
     /\b(?:DTS[- .]?HD[- .]?MA|DTS[- .]?HD[- .]?HR|DTS[- .]?[Xx]|DTS|TrueHD|DDP|DD\+|E[- .]?AC[- .]?3|AC[- .]?3|DD|AAC|FLAC|LPCM|PCM|MP3)(?=\d|\b|[ ._-])/i

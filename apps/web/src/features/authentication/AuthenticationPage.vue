@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from '../../i18n';
 import type { AuthenticationPageProps, AuthMode } from './authentication.types';
 
@@ -7,6 +8,11 @@ const emit = defineEmits<{ 'back': []; 'open-auth': [mode: AuthMode] }>();
 const { t } = useI18n();
 const { mode, verificationEmail, verificationCode, email, password, displayName,
   submitting, errorMessage, authFieldErrors, submit, clearAuthFieldError } = props.authentication;
+const submitLabel = computed(() => {
+  if (verificationEmail.value) return t(submitting.value ? 'auth.verifying' : 'auth.verifyEmail');
+  if (submitting.value) return t(mode.value === 'login' ? 'account.loggingIn' : 'account.registering');
+  return t(mode.value === 'login' ? 'account.loginTab' : 'account.createAccount');
+});
 </script>
 
 <template>
@@ -95,17 +101,7 @@ const { mode, verificationEmail, verificationCode, email, password, displayName,
           </template>
           <p v-if="errorMessage" class="error" role="alert">{{ errorMessage }}</p>
           <button class="primary" type="submit" :disabled="submitting">
-            {{
-              verificationEmail
-                ? submitting ? t('auth.verifying') : t('auth.verifyEmail')
-                : submitting
-                ? mode === 'login'
-                  ? t('account.loggingIn')
-                  : t('account.registering')
-                : mode === 'login'
-                  ? t('account.loginTab')
-                  : t('account.createAccount')
-            }}
+            {{ submitLabel }}
           </button>
         </form>
         <nav v-if="verificationEmail" class="verification-navigation" :aria-label="t('auth.verificationNavigation')">

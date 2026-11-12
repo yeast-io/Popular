@@ -1,4 +1,5 @@
 import type { AssistantSession } from './assistant-session.types.js';
+import { ASSISTANT_CLARIFICATIONS } from './assistant-clarification.policy.js';
 import type { DownloaderChoice } from '@movie-hub/contract';
 import type { AssistantDownloadAction, AssistantWorkflowTurn } from './assistant-workflow.types.js';
 import { RESOURCE_PAGE_SIZE } from '../resource-query/resource-query.presentation.js';
@@ -410,15 +411,7 @@ export class AssistantWorkflow implements AssistantWorkflowContract {
     intent: AssistantIntent,
     ambiguousTasks: boolean
   ): AssistantWorkflowResult {
-    const key = ambiguousTasks
-      ? 'ambiguousTasks'
-      : intent === 'recommend'
-        ? 'recommendUnavailable'
-        : intent === 'resources'
-          ? 'resourcesUnavailable'
-          : intent === 'download'
-            ? 'downloadUnavailable'
-            : 'unclear';
+    const key = ambiguousTasks ? 'ambiguousTasks' : (ASSISTANT_CLARIFICATIONS.get(intent) ?? 'unclear');
     return { intent, replyText: assistantText(turn.locale, key) };
   }
 

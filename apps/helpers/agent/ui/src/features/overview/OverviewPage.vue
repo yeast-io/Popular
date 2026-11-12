@@ -32,6 +32,12 @@ const ready = computed(
     && runtime.value.downloader === 'online'
 );
 const gatewayOnline = computed(() => !runtimeFailed.value && runtime.value.service === 'online');
+const heroLabels = computed(() => {
+  if (runtimeFailed.value) return { title: 'statusUnknown', description: 'runtimeUnavailableDescription' } as const;
+  if (ready.value) return { title: 'agentReady', description: 'readyDescription' } as const;
+  if (gatewayOnline.value) return { title: 'agentNeedsDownloader', description: 'needsDownloaderDescription' } as const;
+  return { title: 'agentNeedsSetup', description: 'setupDescription' } as const;
+});
 onMounted(() => {
   if (sites.available && !sites.loaded.value && !sites.error.value) void sites.load();
 });
@@ -45,26 +51,10 @@ function observed(status: string) {
     <div>
       <p class="eyebrow">{{ t.connectionHealth }}</p>
       <h2>
-        {{
-          runtimeFailed
-            ? t.statusUnknown
-            : ready
-              ? t.agentReady
-              : gatewayOnline
-                ? t.agentNeedsDownloader
-                : t.agentNeedsSetup
-        }}
+        {{ t[heroLabels.title] }}
       </h2>
       <p>
-        {{
-          runtimeFailed
-            ? t.runtimeUnavailableDescription
-            : ready
-              ? t.readyDescription
-              : gatewayOnline
-                ? t.needsDownloaderDescription
-                : t.setupDescription
-        }}
+        {{ t[heroLabels.description] }}
       </p>
     </div>
   </section>
@@ -137,15 +127,9 @@ function observed(status: string) {
                 class="status-dot"
                 :class="{ online: entry.snapshot.status === 'configured_valid' && entry.snapshot.enabled }"
               />
-              {{
-                entry.snapshot.status === 'unconfigured'
-                  ? t.unconfigured
-                  : entry.snapshot.status === 'configured_invalid'
-                    ? t.siteInvalid
-                    : entry.snapshot.enabled
-                      ? t.siteEnabled
-                      : t.siteDisabled
-              }}
+              <template v-if="entry.snapshot.status === 'unconfigured'">{{ t.unconfigured }}</template>
+              <template v-else-if="entry.snapshot.status === 'configured_invalid'">{{ t.siteInvalid }}</template>
+              <template v-else>{{ entry.snapshot.enabled ? t.siteEnabled : t.siteDisabled }}</template>
             </span>
             <p v-if="entry.snapshot.lastError" class="error">{{ text(entry.snapshot.lastError) }}</p>
           </dd>

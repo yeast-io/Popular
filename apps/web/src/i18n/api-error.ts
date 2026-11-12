@@ -7,6 +7,7 @@ const resourceSiteErrorKeys = {
   agentModeConflict: 'resourceSite.error.agentModeConflict', downloadLimited: 'resourceSite.error.downloadLimited',
   passkeyRequired: 'resourceSite.error.passkeyRequired',
   apiKeyRequired: 'resourceSite.error.apiKeyRequired', downloadExpired: 'resourceSite.error.downloadExpired',
+  redirected: 'resourceSite.error.redirected',
   authentication: 'resourceSite.error.authentication', blocked: 'resourceSite.error.blocked',
   rateLimited: 'resourceSite.error.rateLimited', invalidResponse: 'resourceSite.error.invalidResponse',
   network: 'resourceSite.error.network', timeout: 'resourceSite.error.timeout', invalidCredential: 'resourceSite.error.invalidCredential',

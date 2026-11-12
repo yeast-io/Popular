@@ -84,6 +84,16 @@ const watchlistTooltipId = useId();
 const membershipLoading = ref(false);
 const savingWatchlist = ref(false);
 const watchlistError = ref('');
+const watchlistLabels = computed(() => {
+  if (membershipLoading.value || savingWatchlist.value) {
+    return { action: t('watchlist.saving'), tooltip: t('watchlist.saving') };
+  }
+  if (watchlistError.value) return { action: t('actions.retry'), tooltip: t('actions.retry') };
+  return {
+    action: t(inWatchlist.value ? 'watchlist.remove' : 'watchlist.add'),
+    tooltip: t(inWatchlist.value ? 'watchlist.joined' : 'watchlist.notJoined'),
+  };
+});
 const seasonLoading = ref(false);
 const error = ref('');
 const seasonError = ref('');
@@ -253,10 +263,10 @@ window.addEventListener('integration-preferences-changed', clearResources);
             </button>
             <button class="detail-state-icon tv-watchlist-button" type="button" :class="{ active: inWatchlist }"
               :aria-pressed="inWatchlist" :aria-busy="membershipLoading || savingWatchlist" :disabled="membershipLoading || savingWatchlist"
-              :aria-label="t(membershipLoading || savingWatchlist ? 'watchlist.saving' : watchlistError ? 'actions.retry' : inWatchlist ? 'watchlist.remove' : 'watchlist.add')"
+              :aria-label="watchlistLabels.action"
               :aria-describedby="watchlistTooltipId" @click="toggleWatchlist">
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4V3Z" /><path v-if="inWatchlist" d="m9 9 2 2 4-4" /><path v-else d="M9 10h6m-3-3v6" /></svg>
-              <span :id="watchlistTooltipId" class="detail-state-tooltip" role="tooltip">{{ t(membershipLoading || savingWatchlist ? 'watchlist.saving' : watchlistError ? 'actions.retry' : inWatchlist ? 'watchlist.joined' : 'watchlist.notJoined') }}</span>
+              <span :id="watchlistTooltipId" class="detail-state-tooltip" role="tooltip">{{ watchlistLabels.tooltip }}</span>
             </button>
             <ResourceNotificationButton media-type="tv" :tmdb-id="props.tmdbId" :authenticated="!!props.authenticated" @feedback="resourceNotificationFeedback = $event" @require-login="emit('requireLogin')" />
           </div>

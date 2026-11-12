@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import type { IncomingMessage } from 'node:http';
+import type { RequestOptions, request as httpsRequest } from 'node:https';
 import {
   MTeamClient,
   classifyMTeamHttpFailure,
@@ -10,7 +14,61 @@ import {
   resolvePublicAddresses,
   verificationUrl,
   withAbsoluteTimeout,
+  requestBytes,
 } from './client.js';
+
+function transportFixture(hops: number, status = 302, location?: string) {
+  const seen: Array<{ url: URL; options: RequestOptions; body: string | undefined }> = [];
+  const transport = ((url: URL, options: RequestOptions, respond: (response: IncomingMessage) => void) => {
+    const request = new EventEmitter();
+    Object.assign(request, { end(body?: string) {
+      seen.push({ url, options, body });
+      queueMicrotask(() => {
+        const response = new PassThrough();
+        const redirect = seen.length <= hops;
+        Object.assign(response, { statusCode: redirect ? status : 200,
+          headers: redirect ? { location: location ?? `/hop-${seen.length}` } : {} });
+        respond(response as unknown as IncomingMessage);
+        response.end(redirect ? '' : 'ok');
+      });
+    } });
+    return request;
+  }) as unknown as typeof httpsRequest;
+  return { transport, seen };
+}
+
+test('M-Team follows five same-origin redirects with pinned DNS and stops before a sixth hop', async () => {
+  for (const hops of [5, 6]) {
+    const f = transportFixture(hops);
+    const signal = new AbortController().signal;
+    const result = requestBytes(new URL('https://api.m-team.cc/api/start'), { address: '1.1.1.1', family: 4 }, signal, 1024,
+      { method: 'POST', headers: { 'x-api-key': 'PRIVATE', 'content-type': 'application/json', 'content-length': 2 } }, '{}', f.transport);
+    if (hops === 5) assert.equal((await result).toString(), 'ok');
+    else await assert.rejects(result, { failureType: 'remote_error' });
+    assert.equal(f.seen.length, 6);
+    assert.ok(f.seen.every((r) => r.options.signal === signal && r.options.lookup));
+    assert.ok(f.seen.every((r) => (r.options.headers as Record<string, string>)['x-api-key'] === 'PRIVATE'));
+  }
+});
+
+test('M-Team redirect statuses replay POST bodies only for 307 and 308', async () => {
+  for (const status of [301, 302, 303, 307, 308]) {
+    const f = transportFixture(1, status);
+    await requestBytes(new URL('https://api.m-team.cc/api/start'), { address: '1.1.1.1', family: 4 }, new AbortController().signal, 1024,
+      { method: 'POST', headers: { 'x-api-key': 'PRIVATE', 'content-type': 'application/json', 'content-length': 2 } }, '{}', f.transport);
+    assert.equal(f.seen[1]!.options.method, status === 307 || status === 308 ? 'POST' : 'GET');
+    assert.equal(f.seen[1]!.body, status === 307 || status === 308 ? '{}' : undefined);
+  }
+});
+
+test('M-Team never forwards the API Key to a foreign origin or follows login and looping redirects', async () => {
+  for (const location of ['https://foreign.example/api', '/login', '/api/start', 'http://api.m-team.cc/api', '/file#PRIVATE']) {
+    const f = transportFixture(1, 302, location);
+    await assert.rejects(requestBytes(new URL('https://api.m-team.cc/api/start'), { address: '1.1.1.1', family: 4 }, new AbortController().signal, 1024,
+      { method: 'POST', headers: { 'x-api-key': 'PRIVATE' } }, '{}', f.transport));
+    assert.equal(f.seen.length, 1);
+  }
+});
 
 test('uses the authenticated M-Team endpoint that requires no request parameters', () => {
   assert.equal(verificationUrl('https://api.m-team.cc').href, 'https://api.m-team.cc/api/member/profile');

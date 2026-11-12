@@ -4,6 +4,8 @@ import { RpcError } from '@movie-hub/contract/socket-rpc';
 import { AgentResourceService } from './agent-resource.service.js';
 import { AgentResourceSource } from './agent-resource-source.adapter.js';
 import { RemoteTorrentService } from '../remote-downloads/remote-torrent.service.js';
+import { ResourceSiteError } from '../resource-sites/resource-site.errors.js';
+import { AiTrace, withAiTrace } from '../../infrastructure/logging/ai-trace.js';
 import type {
   IntegrationPreferencesRecord,
   IntegrationPreferencesStore,
@@ -82,6 +84,78 @@ function fixture() {
     },
   };
 }
+test('redirected prepare retains the original cause and logs site context with verbose disabled', async () => {
+  const f = fixture();
+  await f.service.setMode('alice', 'device-1');
+  const cause = new RpcError('AGENT_SITE_REDIRECTED', 'not_applied');
+  f.fail(cause);
+  const errors: Record<string, unknown>[] = [];
+  const trace = new AiTrace({ error: (fields: Record<string, unknown>) => {
+    errors.push(fields);
+  } }, { correlationId: 'redirect-trace' }, '', 'gateway-rpc', false);
+  await assert.rejects(
+    withAiTrace(trace, () => f.service.prepare('alice', 'hdwing', '123', 'command-1', 'device-1', 'a'.repeat(64))),
+    (error: unknown) => {
+      assert.equal((error as { reason: string }).reason, 'redirected');
+      assert.equal((error as Error).cause, cause);
+      return true;
+    }
+  );
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]!.site, 'hdwing');
+  assert.equal(errors[0]!.resourceOperation, 'prepare');
+  assert.equal(errors[0]!.resourceId, '123');
+  assert.equal(errors[0]!.commandId, 'command-1');
+  assert.equal(errors[0]!.deviceId, 'device-1');
+  assert.equal(errors[0]!.rpcErrorCode, 'AGENT_SITE_REDIRECTED');
+  assert.equal(errors[0]!.correlationId, 'redirect-trace');
+});
+test('Agent RPC errors preserve every mapped reason, HTTP status and original cause', async () => {
+  const f = fixture();
+  await f.service.setMode('alice', 'device-1');
+  const cases = [
+    ['AGENT_SITE_API_KEY_REQUIRED', 'apiKeyRequired', 502],
+    ['AGENT_SITE_DOWNLOAD_EXPIRED', 'downloadExpired', 502],
+    ['AGENT_SITE_AUTHENTICATION', 'authentication', 502],
+    ['AGENT_SITE_ACCOUNT_CHANGED', 'authentication', 502],
+    ['AGENT_SITE_NOT_CONFIGURED', 'notConfigured', 409],
+    ['AGENT_SITE_BLOCKED', 'blocked', 502],
+    ['AGENT_SITE_RATE_LIMITED', 'rateLimited', 502],
+    ['AGENT_RESOURCE_BUSY', 'rateLimited', 502],
+    ['AGENT_RESOURCE_TIMEOUT', 'timeout', 504],
+    ['AGENT_SITE_TIMEOUT', 'timeout', 504],
+    ['AGENT_RESOURCE_UNSUPPORTED', 'agentUnsupported', 503],
+    ['AGENT_SITE_UNSUPPORTED', 'agentUnsupported', 503],
+    ['AGENT_SITE_TARGET_CHANGED', 'agentModeConflict', 409],
+    ['AGENT_SITE_DOWNLOAD_LIMITED', 'downloadLimited', 502],
+    ['AGENT_RESOURCE_INVALID_RESPONSE', 'invalidResponse', 502],
+    ['AGENT_SITE_INVALID_RESPONSE', 'invalidResponse', 502],
+    ['AGENT_SITE_REDIRECTED', 'redirected', 502],
+    ['DEVICE_OFFLINE', 'agentUnavailable', 503],
+    ['UNKNOWN_ERROR', 'agentUnavailable', 503],
+    ['__proto__', 'agentUnavailable', 503],
+    ['toString', 'agentUnavailable', 503],
+  ] as const;
+  for (const [code, reason, statusCode] of cases) {
+    const cause = new RpcError(code, 'not_applied');
+    f.fail(cause);
+    await assert.rejects(f.service.states('alice'), (error: unknown) => {
+      assert.ok(error instanceof ResourceSiteError, code);
+      assert.equal(error.reason, reason, code);
+      assert.equal(error.statusCode, statusCode, code);
+      assert.equal(error.cause, cause, code);
+      return true;
+    });
+  }
+  const cause = new Error('unexpected gateway failure');
+  f.fail(cause);
+  await assert.rejects(f.service.states('alice'), (error: unknown) => {
+    assert.ok(error instanceof ResourceSiteError);
+    assert.equal(error.reason, 'agentUnavailable');
+    assert.equal(error.cause, cause);
+    return true;
+  });
+});
 test('local execution preserves cloud preferences and never falls back when offline', async () => {
   const f = fixture();
   let cloud = 0;

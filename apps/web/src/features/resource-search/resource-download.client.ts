@@ -132,13 +132,9 @@ export function useResourceDownloads(context: ResourceDownloadContext) {
   function canDownload(releaseId: string, site = 'mteam'): boolean {
     if (site !== 'mteam' && site !== 'hdarea' && site !== 'hdwing') return false;
     const existing = downloadFor(releaseId, site);
-    return existing
-      ? existing.status === 'missing'
-        ? downloadProviders.value.length > 0 || remoteDevices.value.length > 0
-        : (existing.executionMode === 'remote'
-            ? remoteDevices.value.some((device) => device.id === existing.remoteDeviceId)
-            : Boolean(choiceFor(existing)))
-      : downloadProviders.value.length > 0 || remoteDevices.value.length > 0;
+    if (!existing || existing.status === 'missing') return downloadProviders.value.length > 0 || remoteDevices.value.length > 0;
+    if (existing.executionMode === 'remote') return remoteDevices.value.some((device) => device.id === existing.remoteDeviceId);
+    return Boolean(choiceFor(existing));
   }
 
   function downloadUnavailable(releaseId: string, site = 'mteam'): string {

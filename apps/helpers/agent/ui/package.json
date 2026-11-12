@@ -1,7 +1,7 @@
 {
   "name": "@movie-hub/helper-agent-ui",
   "private": true,
-  "version": "0.1.1-beta.6",
+  "version": "0.1.1-beta.7",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

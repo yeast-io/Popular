@@ -413,9 +413,10 @@ export class ResourceQueryTool implements ResourceQueryCapability {
         };
     const statuses = results.map((result) => {
       const name = compactField(this.sources.get(result.provider)?.name ?? result.provider, 32);
-      return result.status === 'available'
-        ? `${name} · ${zh ? `本次返回 ${result.releases.length} 条` : `${result.releases.length} releases returned`}${result.cached ? (zh ? '（缓存）' : ' (cached)') : ''}`
-        : `${name} · ${labels[result.status]}`;
+      if (result.status !== 'available') return `${name} · ${labels[result.status]}`;
+      const countLabel = zh ? `本次返回 ${result.releases.length} 条` : `${result.releases.length} releases returned`;
+      const cachedLabel = result.cached ? (zh ? '（缓存）' : ' (cached)') : '';
+      return `${name} · ${countLabel}${cachedLabel}`;
     });
     const lines = state.releases
       .slice((page - 1) * RESOURCE_PAGE_SIZE, page * RESOURCE_PAGE_SIZE)

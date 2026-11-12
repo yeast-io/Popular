@@ -23,22 +23,16 @@ watch(config, (value) => {
   selectedModel.value = models.value.includes(model) ? model : '';
 });
 const statusLabel = computed(() => {
-  return !config.value.configured
-    ? t('ai.unconfigured')
-    : config.value.validation?.status === 'valid'
-      ? t('ai.valid')
-      : config.value.validation?.status === 'failed'
-        ? t('ai.failed')
-        : t('ai.configured');
+  if (!config.value.configured) return t('ai.unconfigured');
+  if (config.value.validation?.status === 'valid') return t('ai.valid');
+  if (config.value.validation?.status === 'failed') return t('ai.failed');
+  return t('ai.configured');
 });
 const statusClass = computed(() => {
-  return !config.value.configured
-    ? 'unconfigured'
-    : config.value.validation?.status === 'valid'
-      ? 'configured_valid'
-      : config.value.validation?.status === 'failed'
-        ? 'configured_invalid'
-        : 'configured_unverified';
+  if (!config.value.configured) return 'unconfigured';
+  if (config.value.validation?.status === 'valid') return 'configured_valid';
+  if (config.value.validation?.status === 'failed') return 'configured_invalid';
+  return 'configured_unverified';
 });
 const validationNotice = computed(() => {
   return config.value.validation?.status === 'failed'

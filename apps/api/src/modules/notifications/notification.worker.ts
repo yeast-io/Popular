@@ -136,7 +136,9 @@ export class NotificationWorker {
         if (error) this.report(error);
         currentAiTrace()?.event('notification.completed', { outcome: error ?? 'success' });
       } finally {
-        finishStatistics(!persisted ? 'failure' : cancelled ? 'cancelled' : error ? 'failure' : 'success');
+        const completedOutcome = error ? 'failure' : 'success';
+        const executionOutcome = cancelled ? 'cancelled' : completedOutcome;
+        finishStatistics(!persisted ? 'failure' : executionOutcome);
       }
     }
   }

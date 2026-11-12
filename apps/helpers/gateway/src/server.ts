@@ -6,7 +6,7 @@ import { GatewayService } from './gateway.service.js';
 import { createGatewayApp } from './gateway.routes.js';
 import { createRedisClient } from './infrastructure/redis/client.js';
 import { GatewayBridge } from './infrastructure/gateway-bridge.service.js';
-import { gatewayLogger } from './gateway-logging.service.js';
+import { gatewayLogger } from './gateway.logger.js';
 
 const config = configSchema.parse(process.env);
 const logger = gatewayLogger(config.LOG_LEVEL, [config.INTERNAL_INBOUND_TOKEN, config.REDIS_URL]);

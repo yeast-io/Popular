@@ -15,6 +15,7 @@ const enUS = {
   'agentResources.siteReady': 'Verified in Agent',
   'agentResources.siteInvalid': 'Update credentials in Agent',
   'agentResources.refresh': 'Refresh Agent status',
+  'resourceSite.error.redirected': 'The resource site redirected the request. Check the site address and login credentials.',
   'resourceSite.error.agentUnavailable': 'Your Agent is offline or unavailable. No cloud credentials were used.',
   'resourceSite.error.agentUnsupported': 'Update your Agent to use local resources.',
   'resourceSite.error.agentModeConflict': 'Resource execution changed. Reload and retry using the selected mode.',

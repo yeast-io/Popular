@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { serializeDiagnosticError } from '@movie-hub/contract';
-import { scrubGatewayDiagnostic } from './gateway-logging.service.js';
+import { scrubGatewayDiagnostic } from './gateway.logger.js';
 import { configSchema } from './gateway.schema.js';
 
 test('diagnostics retain stack/cause with full URL and credential redaction; verbose is a strict boolean', () => {
@@ -10,7 +10,7 @@ test('diagnostics retain stack/cause with full URL and credential redaction; ver
   const safe = scrubGatewayDiagnostic(serializeDiagnosticError(error));
   const text = JSON.stringify(safe);
   assert.ok(!text.includes('SEED_SECRET') && !text.includes('API_SECRET'));
-  assert.ok(text.includes('stack') && text.includes('cause') && text.includes('gateway-logging.service.test.ts'));
+  assert.ok(text.includes('stack') && text.includes('cause') && text.includes('gateway.logger.test.ts'));
   const config = {
     REDIS_URL: 'redis://localhost',
     INTERNAL_INBOUND_TOKEN: 'i'.repeat(32),

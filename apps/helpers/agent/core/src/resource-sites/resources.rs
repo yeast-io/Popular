@@ -159,7 +159,6 @@ async fn request(
     if url.origin() != base.origin() {
         return Err(invalid());
     }
-    trace.stage(&format!("resource-sites.{}.request.started", site.id()));
     let mut request = client(&url)?.request(
         if body.is_some() || form.is_some() {
             Method::POST
@@ -189,7 +188,14 @@ async fn request(
     } else {
         2 * 1024 * 1024
     };
-    let result = bytes(request.send().await?, limit).await?;
+    let response = super::http_diagnostics::send(
+        request,
+        site,
+        trace,
+        &format!("resource-sites.{}.request.http.started", site.id()),
+    )
+    .await?;
+    let result = bytes(response, limit).await?;
     trace.stage(&format!("resource-sites.{}.request.completed", site.id()));
     Ok(result)
 }
@@ -667,9 +673,14 @@ pub(super) async fn torrent(
         return Err(invalid());
     }
     // No API key or Cookie is attached to transferable torrent URLs.
-    trace.stage("resource-sites.torrent.read.started");
     let bytes = bytes(
-        client(&url)?.get(url.clone()).send().await?,
+        super::http_diagnostics::send(
+            client(&url)?.get(url.clone()),
+            site,
+            trace,
+            "resource-sites.torrent.read.started",
+        )
+        .await?,
         8 * 1024 * 1024,
     )
     .await?;
@@ -685,6 +696,25 @@ impl<C: CredentialStore + Send + Sync + 'static> ResourceSites<C> {
         tickets: &super::tickets::ResourceTickets,
         trace: &Trace,
     ) -> Result<Value, AgentError> {
+        let (operation, site, resource_id, command_id) = match &input {
+            ResourceRequest::List => ("list", None, None, None),
+            ResourceRequest::SetDefault { site } => ("setDefault", Some(*site), None, None),
+            ResourceRequest::Search { site, .. } => ("search", Some(*site), None, None),
+            ResourceRequest::Detail { site, resource_id } => {
+                ("detail", Some(*site), Some(resource_id), None)
+            }
+            ResourceRequest::Prepare {
+                site,
+                resource_id,
+                command_id,
+                ..
+            } => ("prepare", Some(*site), Some(resource_id), Some(command_id)),
+        };
+        trace.context(json!({
+            "resourceOperation": operation, "site": site.map(Site::id),
+            "resourceId": resource_id.filter(|s| id(s).is_ok()),
+            "commandId": command_id.filter(|s| crate::protocol::id(s))
+        }));
         if let ResourceRequest::SetDefault { site } = input {
             self.set_default(site, trace).await?;
         }
@@ -832,6 +862,103 @@ mod parser_tests {
             1
         );
         assert_eq!(row.children().filter("td").length(), 6);
+    }
+    #[tokio::test]
+    async fn redirects_preserve_http_context_without_credentials_or_following_location() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpListener,
+        };
+        for (operation, site) in [
+            ("verification", Site::Hdwing),
+            ("request", Site::Mteam),
+            ("request", Site::Hdwing),
+            ("prepare", Site::Hdarea),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+            let server = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut data = [0; 8192];
+                let n = socket.read(&mut data).await.unwrap();
+                let request = String::from_utf8_lossy(&data[..n]).to_string();
+                socket.write_all(b"HTTP/1.1 302 Found\r\nLocation: /login.php?passkey=REDIRECT_SECRET#SECRET_FRAGMENT\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+                drop(socket);
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(50), listener.accept())
+                        .await
+                        .is_err(),
+                    "credentials must never follow a redirect"
+                );
+                request
+            });
+            let trace = Trace::with_id("redirect-local-test".into());
+            trace.context(
+                json!({"resourceOperation":operation,"resourceId":"42","commandId":"command-42"}),
+            );
+            let secrets = SiteSecrets {
+                site,
+                base_url: base.to_string(),
+                credential: if site == Site::Hdarea {
+                    "a".repeat(32)
+                } else {
+                    "CREDENTIAL_SECRET".into()
+                },
+                passkey: "PASSKEY_SECRET".into(),
+                external_user_id: "123".into(),
+            };
+            let error = match operation {
+                "verification" => verification::verify(site, &base, &secrets.credential, &trace)
+                    .await
+                    .unwrap_err(),
+                "request" => request(
+                    site,
+                    &base,
+                    &secrets,
+                    "details.php?id=42&token=REQUEST_SECRET",
+                    None,
+                    None,
+                    &trace,
+                )
+                .await
+                .unwrap_err(),
+                "prepare" => match torrent(site, &base, &secrets, "42", &trace).await {
+                    Err(error) => error,
+                    Ok(_) => panic!("expected redirect"),
+                },
+                _ => unreachable!(),
+            };
+            assert_eq!(error.code, "siteRedirected");
+            assert_eq!(error.http_status, Some(302));
+            let record = trace.failure_record(&error);
+            assert_eq!(record["site"], site.id());
+            assert_eq!(record["httpStatus"], 302);
+            assert_eq!(record["requestOrigin"], base.origin().ascii_serialization());
+            assert_eq!(
+                record["redirectOrigin"],
+                base.origin().ascii_serialization()
+            );
+            assert_eq!(record["redirectEndpoint"], "/login.php");
+            assert_eq!(record["redirectSameOrigin"], true);
+            assert_eq!(record["resourceOperation"], operation);
+            assert_eq!(record["resourceId"], "42");
+            assert_eq!(record["correlationId"], "redirect-local-test");
+            assert!(record["httpDurationMs"].is_number());
+            assert!(record["stage"].as_str().unwrap().ends_with("started"));
+            assert!(!record["stack"].as_str().unwrap().is_empty());
+            let serialized = record.to_string();
+            for secret in [
+                "REDIRECT_SECRET",
+                "SECRET_FRAGMENT",
+                "CREDENTIAL_SECRET",
+                "PASSKEY_SECRET",
+                "REQUEST_SECRET",
+                &"a".repeat(32),
+            ] {
+                assert!(!serialized.contains(secret));
+            }
+            assert!(!server.await.unwrap().is_empty());
+        }
     }
     #[tokio::test]
     async fn hdarea_uses_short_tokens_and_keeps_torrent_contents_local() {

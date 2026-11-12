@@ -8,27 +8,26 @@ export class MongoOpenAIConfigStore implements OpenAIConfigStore {
 
   async find(ownerId: string): Promise<OpenAIConfigRecord | null> {
     const row = await this.configs.findOne({ ownerId }).select('+encryptedApiKey').lean().exec();
-    return row
-      ? {
-          ownerId: row.ownerId.toString(),
-          encryptedApiKey: row.encryptedApiKey,
-          maskedApiKey: row.maskedApiKey,
-          ...(row.model ? { model: row.model } : {}),
-          ...(row.validation?.method === 'model_list'
-            ? {
-                validation: {
-                  method: 'model_list' as const,
-                  status: row.validation.status as OpenAIValidation['status'],
-                  checkedAt: row.validation.checkedAt.toISOString(),
-                  models: row.validation.models,
-                  ...(row.validation.failureReason
-                    ? { failureReason: row.validation.failureReason as NonNullable<OpenAIValidation['failureReason']> }
-                    : {}),
-                },
-              }
-            : {}),
-        }
-      : null;
+    if (!row) return null;
+    return {
+      ownerId: row.ownerId.toString(),
+      encryptedApiKey: row.encryptedApiKey,
+      maskedApiKey: row.maskedApiKey,
+      ...(row.model ? { model: row.model } : {}),
+      ...(row.validation?.method === 'model_list'
+        ? {
+            validation: {
+              method: 'model_list' as const,
+              status: row.validation.status as OpenAIValidation['status'],
+              checkedAt: row.validation.checkedAt.toISOString(),
+              models: row.validation.models,
+              ...(row.validation.failureReason
+                ? { failureReason: row.validation.failureReason as NonNullable<OpenAIValidation['failureReason']> }
+                : {}),
+            },
+          }
+        : {}),
+    };
   }
 
   async save(record: OpenAIConfigRecord, expectedEncryptedApiKey: string | null): Promise<boolean> {

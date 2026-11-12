@@ -27,13 +27,9 @@ export class MTeamSearchSource implements ResourceSearchSource {
 
   async status(ownerId: string) {
     const config = await this.configs.find(ownerId, 'mteam');
-    return !config
-      ? ('unconfigured' as const)
-      : !config.externalUserId || config.lastFailureType
-          ? ('configured_invalid' as const)
-          : config.verifiedAt
-            ? ('configured_valid' as const)
-            : ('configured_unverified' as const);
+    if (!config) return 'unconfigured' as const;
+    if (!config.externalUserId || config.lastFailureType) return 'configured_invalid' as const;
+    return config.verifiedAt ? 'configured_valid' as const : 'configured_unverified' as const;
   }
 
   async search(ownerId: string, input: ResourceSiteSearch, signal: AbortSignal) {

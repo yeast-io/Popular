@@ -86,6 +86,7 @@ pub struct Trace {
     pub id: String,
     started: Instant,
     current_stage: Arc<Mutex<String>>,
+    fields: Arc<Mutex<serde_json::Map<String, serde_json::Value>>>,
 }
 impl Default for Trace {
     fn default() -> Self {
@@ -98,10 +99,20 @@ impl Trace {
             id: uuid::Uuid::new_v4().to_string(),
             started: Instant::now(),
             current_stage: Arc::new(Mutex::new("operation.started".into())),
+            fields: Arc::new(Mutex::new(serde_json::Map::new())),
         }
     }
     pub fn with_id(id: String) -> Self {
         Self { id, ..Self::new() }
+    }
+    // Only pass allowlisted diagnostic metadata, never requests or remote payloads.
+    pub(crate) fn context(&self, fields: serde_json::Value) {
+        if let Some(fields) = fields.as_object() {
+            self.fields
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .extend(fields.clone());
+        }
     }
     pub fn stage(&self, stage: &str) {
         *self.current_stage.lock().unwrap_or_else(|e| e.into_inner()) = stage.into();
@@ -110,17 +121,32 @@ impl Trace {
             .is_some_and(|s| s.verbose && matches!(s.level.as_str(), "trace" | "debug" | "info"))
         {
             emit(
-                serde_json::json!({"level":"info", "stage":stage,"correlationId":self.id,"durationMs":self.started.elapsed().as_millis(), "outcome":stage.rsplit('.').next(),"retryAttempt":0}),
+                self.record(serde_json::json!({"level":"info", "stage":stage,"correlationId":self.id,"durationMs":self.started.elapsed().as_millis(), "outcome":stage.rsplit('.').next(),"retryAttempt":0})),
             );
         }
     }
     pub fn failed(&self, error: &AgentError) {
-        failure(
+        if SETTINGS.get().is_some_and(|s| s.level == "off") {
+            return;
+        }
+        emit(self.failure_record(error));
+    }
+    fn record(&self, mut value: serde_json::Value) -> serde_json::Value {
+        value.as_object_mut().unwrap().extend(
+            self.fields
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
+        );
+        value
+    }
+    pub(crate) fn failure_record(&self, error: &AgentError) -> serde_json::Value {
+        self.record(failure_record(
             &self.current_stage.lock().unwrap_or_else(|e| e.into_inner()),
             &self.id,
             error,
             self.started.elapsed().as_millis(),
-        );
+        ))
     }
     pub fn finish<T>(&self, operation: &str, result: Result<T, AgentError>) -> Result<T, String> {
         match result {
@@ -129,12 +155,7 @@ impl Trace {
                 Ok(value)
             }
             Err(error) => {
-                failure(
-                    &self.current_stage.lock().unwrap_or_else(|e| e.into_inner()),
-                    &self.id,
-                    &error,
-                    self.started.elapsed().as_millis(),
-                );
+                self.failed(&error);
                 Err(error.code.into())
             }
         }
@@ -175,15 +196,16 @@ pub fn failure(stage: &str, id: &str, error: &AgentError, duration: u128) {
     if SETTINGS.get().is_some_and(|s| s.level == "off") {
         return;
     }
+    emit(failure_record(stage, id, error, duration));
+}
+fn failure_record(stage: &str, id: &str, error: &AgentError, duration: u128) -> serde_json::Value {
     let mut causes = Vec::new();
     let mut source = error.source();
     while let Some(error) = source {
         causes.push(category(error));
         source = error.source();
     }
-    emit(
-        serde_json::json!({"level":"error","stage":stage,"correlationId":id,"durationMs":duration,"outcome":"failed","errorCode":error.code,"httpStatus":error.http_status,"gatewayCode":error.gateway_code,"causes":causes,"stack":error.stack.to_string()}),
-    );
+    serde_json::json!({"level":"error","stage":stage,"correlationId":id,"durationMs":duration,"retryAttempt":0,"outcome":"failed","errorCode":error.code,"httpStatus":error.http_status,"gatewayCode":error.gateway_code,"causes":causes,"stack":error.stack.to_string()})
 }
 
 pub fn event(stage: &str, event: &crate::journal::Event) {

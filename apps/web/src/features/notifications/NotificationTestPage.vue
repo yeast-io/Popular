@@ -15,6 +15,13 @@ const sending = ref('');
 const error = ref('');
 const feedback = ref<Record<string, NotificationTestResult['results']>>({});
 const cooldowns = ref<Record<string, number>>({});
+function channelButtonLabel(itemId: NotificationTestList['items'][number]['id'], channel: NotificationTestList['channels'][number]) {
+  if (!channel.configured) return t('notificationTest.channelUnlinked', { channel: channel.name });
+  if (sending.value === `${itemId}:${channel.id}`) return t('notificationTest.sending');
+  const cooldown = cooldowns.value[channel.id];
+  if (cooldown) return t('notificationTest.channelCooldown', { channel: channel.name, seconds: cooldown });
+  return t('notificationTest.sendChannel', { channel: channel.name });
+}
 let disposed = false;
 let timer: ReturnType<typeof setInterval> | undefined;
 const controller = new AbortController();
@@ -129,15 +136,7 @@ onUnmounted(() => {
             :disabled="!channel.configured || Boolean(sending) || (cooldowns[channel.id] ?? 0) > 0"
             @click="send(item.id, channel.id)"
           >
-            {{
-              !channel.configured
-                ? t('notificationTest.channelUnlinked', { channel: channel.name })
-                : sending === `${item.id}:${channel.id}`
-                  ? t('notificationTest.sending')
-                  : cooldowns[channel.id]
-                    ? t('notificationTest.channelCooldown', { channel: channel.name, seconds: cooldowns[channel.id]! })
-                    : t('notificationTest.sendChannel', { channel: channel.name })
-            }}
+            {{ channelButtonLabel(item.id, channel) }}
           </button>
         </div>
       </article>

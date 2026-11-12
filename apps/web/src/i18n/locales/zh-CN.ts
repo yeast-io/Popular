@@ -13,6 +13,7 @@ const zhCN = {
   'agentResources.siteReady': '已在 Agent 中验证',
   'agentResources.siteInvalid': '请在 Agent 中更新凭据',
   'agentResources.refresh': '刷新 Agent 状态',
+  'resourceSite.error.redirected': '资源站点重定向了请求，请检查站点地址和登录凭据。',
   'resourceSite.error.agentUnavailable': '你的 Agent 离线或暂时不可用，未使用云端凭据。',
   'resourceSite.error.agentUnsupported': '请更新 Agent，以使用本地资源请求。',
   'resourceSite.error.agentModeConflict': '资源执行方式已变化，请刷新后使用当前模式重试。',

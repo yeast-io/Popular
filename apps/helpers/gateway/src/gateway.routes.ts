@@ -47,24 +47,18 @@ export async function createGatewayApp(
         && [400, 413, 415, 429].includes(err.statusCode)
         ? err.statusCode
         : undefined;
-    const code
-      = err instanceof RpcError
-        ? err.code
-        : err instanceof GatewayError
-          ? err.code
-          : err instanceof ZodError || frameworkStatus
-            ? 'INVALID_REQUEST'
-            : 'INTERNAL_ERROR';
-    const status
-      = err instanceof RpcError
-        ? err.code === 'INVALID_API_KEY'
-          ? 401
-          : 503
-        : err instanceof GatewayError
-          ? err.status
-          : err instanceof ZodError
-            ? 400
-            : (frameworkStatus ?? 500);
+    let code: string;
+    let status: number;
+    if (err instanceof RpcError) {
+      code = err.code;
+      status = err.code === 'INVALID_API_KEY' ? 401 : 503;
+    } else if (err instanceof GatewayError) {
+      code = err.code;
+      status = err.status;
+    } else {
+      code = err instanceof ZodError || frameworkStatus ? 'INVALID_REQUEST' : 'INTERNAL_ERROR';
+      status = err instanceof ZodError ? 400 : (frameworkStatus ?? 500);
+    }
     if (status >= 500)
       service.options.logger.error({ err, stage: 'http.failure', correlationId: request.id }, 'gateway');
     void reply.code(status).send({ error: { code, correlationId: request.id } });
@@ -332,14 +326,9 @@ export async function createGatewayApp(
             await service.message(peer, JSON.parse(data.toString()));
           })
           .catch(async (err) => {
-            const code
-              = err instanceof RpcError
-                ? err.code
-                : err instanceof GatewayError
-                  ? err.code
-                  : err instanceof ZodError || err instanceof SyntaxError
-                    ? 'INVALID_MESSAGE'
-                    : 'INTERNAL_ERROR';
+            let code: string;
+            if (err instanceof RpcError || err instanceof GatewayError) code = err.code;
+            else code = err instanceof ZodError || err instanceof SyntaxError ? 'INVALID_MESSAGE' : 'INTERNAL_ERROR';
             if (!(err instanceof GatewayError) && !(err instanceof ZodError) && !(err instanceof SyntaxError)) {
               service.options.logger.error({ err, stage: 'socket.message', connectionId: peer.id }, 'gateway');
             }

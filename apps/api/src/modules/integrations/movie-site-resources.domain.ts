@@ -2,6 +2,9 @@ import type { MovieResourceCheckResponse } from '@movie-hub/contract';
 import type { MovieResourceCheckCompletion, MovieResourceCheckRecord } from './movie-resource-check.types.js';
 
 export function siteCheckResponse(site: string, row?: MovieResourceCheckRecord | null): MovieResourceCheckResponse {
+  const lastErrorCode = site === 'mteam'
+    ? row?.lastErrorCode === 'authentication' ? 'MTEAM_AUTH_FAILED' as const : 'MTEAM_UNEXPECTED_RESPONSE' as const
+    : row?.lastErrorCode === 'authentication' ? 'RESOURCE_SITE_NOT_CONFIGURED' as const : 'RESOURCE_SITE_FAILED' as const;
   return {
     provider: site,
     availability: row?.availability ?? 'unchecked',
@@ -10,18 +13,7 @@ export function siteCheckResponse(site: string, row?: MovieResourceCheckRecord |
     ...(row?.expiresAt ? { expiresAt: row.expiresAt.toISOString() } : {}),
     ...(row?.lastAttemptAt ? { lastAttemptAt: row.lastAttemptAt.toISOString() } : {}),
     ...(row?.lastAttemptStatus ? { lastAttemptStatus: row.lastAttemptStatus } : {}),
-    ...(row?.lastErrorCode
-      ? {
-          lastErrorCode:
-            site === 'mteam'
-              ? row.lastErrorCode === 'authentication'
-                ? ('MTEAM_AUTH_FAILED' as const)
-                : ('MTEAM_UNEXPECTED_RESPONSE' as const)
-              : row.lastErrorCode === 'authentication'
-                ? ('RESOURCE_SITE_NOT_CONFIGURED' as const)
-                : ('RESOURCE_SITE_FAILED' as const),
-        }
-      : {}),
+    ...(row?.lastErrorCode ? { lastErrorCode } : {}),
   };
 }
 export function aggregateSiteChecks(
@@ -41,15 +33,12 @@ export function aggregateSiteChecks(
       || fresh.some((source) => {
         return source.availability === 'unchecked';
       });
-  const availability = fresh.some((source) => source.availability === 'available')
-    ? 'available'
-    : incomplete
-      ? 'unchecked'
-      : fresh.every((source) => source.availability === 'unavailable')
-        ? 'unavailable'
-        : fresh.some((source) => source.availability === 'unmatchable')
-          ? 'unmatchable'
-          : 'unchecked';
+  let availability: MovieResourceCheckResponse['availability'];
+  if (fresh.some((source) => source.availability === 'available')) availability = 'available';
+  else if (incomplete) availability = 'unchecked';
+  else if (fresh.every((source) => source.availability === 'unavailable')) availability = 'unavailable';
+  else if (fresh.some((source) => source.availability === 'unmatchable')) availability = 'unmatchable';
+  else availability = 'unchecked';
   const times = fresh.flatMap((source) => (source.checkedAt ? [source.checkedAt] : [])).sort();
   return {
     provider: 'all',

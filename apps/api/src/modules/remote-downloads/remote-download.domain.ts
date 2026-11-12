@@ -35,6 +35,10 @@ export function checkContext(c: CommandRecord, s: Session) {
   );
 }
 export function publicCommand(c: CommandRecord): PublicCommand {
+  let added: PublicCommand['added'];
+  if (c.result?.outcome === 'succeeded') added = true;
+  else if (c.result?.outcome === 'duplicate' || c.result?.outcome === 'failed') added = false;
+  else added = c.executionId ? null : false;
   return {
     commandId: c.commandId,
     downloadId: c.downloadId,
@@ -44,14 +48,7 @@ export function publicCommand(c: CommandRecord): PublicCommand {
     grantExpiresAt: c.grantExpiresAt,
     result: c.result,
     accepted: true,
-    added:
-      c.result?.outcome === 'succeeded'
-        ? true
-        : c.result?.outcome === 'duplicate' || c.result?.outcome === 'failed'
-          ? false
-          : c.executionId
-            ? null
-            : false,
+    added,
   };
 }
 
