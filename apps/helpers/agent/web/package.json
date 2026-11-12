@@ -1,7 +1,7 @@
 {
   "name": "@movie-hub/helper-agent-web",
   "private": true,
-  "version": "0.1.1-beta.7",
+  "version": "0.1.1-beta.8",
   "type": "module",
   "scripts": {
     "build": "vue-tsc --noEmit && vite build",
