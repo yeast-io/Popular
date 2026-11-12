@@ -31,6 +31,16 @@
 - When refactoring conditional logic, preserve branch precedence, mapped values, fallback behavior, error causes, and diagnostics unless the user authorizes a behavior change. Cover distinct outcomes and unknown inputs in existing behavioral tests.
 - Before finishing, inspect added or modified conditional expressions for these rules. Apply them to the scoped change; do not rewrite unrelated code.
 
+## Release workflow
+
+Use this fast release workflow by default unless the user explicitly requests additional validation. Release automation belongs in a single `tools/release.mjs` entrypoint with four independently callable modules: `agent`, `gateway`, `api`, and `web`. Until that entrypoint is implemented, execute the same steps directly; do not present the proposed commands as available commands.
+
+1. Confirm the selected module, release channel, current version, Git HEAD, pending changes, and target branch state using brief read-only checks. Preserve unrelated or concurrent work and resolve scope or branch conflicts before committing.
+2. Update only the selected module's version and its matching manifests and lockfiles. For Agent, synchronize package, Tauri, and Cargo versions; keep other modules' versions unchanged.
+3. Run `pnpm lint` exactly once as the only local release validation. Stop if lint fails and report the failure. Leave builds and tests to CI; do not install dependencies or run formatting checks, type checks, tests, builds, or packaging commands as extra release prerequisites. Reuse earlier validation results when reporting context.
+4. Commit the scoped code and version changes promptly. Immediately before committing, confirm HEAD and the index still match the reviewed scope so parallel edits cannot enter the release accidentally.
+5. Push the same release commit atomically to `main`, `release`, and `beta` using normal fast-forward updates. Let the selected module's existing CI trigger perform publication. Finish after confirming the push; report module, version, commit, and branch results without polling or waiting for GitHub Actions. Distinguish a successful push from a successfully built or published artifact.
+
 ## File and directory naming
 
 - Use lowercase kebab-case for directories and business-name segments, grouping files by feature and responsibility. Keep model decisions in `agents/` and persistence implementations under `infrastructure/`; do not create generic `types/`, `interfaces/`, or `utils/` directories merely to separate file kinds.
